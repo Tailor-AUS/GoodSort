@@ -37,7 +37,10 @@ export default function WalletPage() {
       {/* Balance */}
       <div className="bg-gradient-to-br from-green-600 to-green-700 rounded-2xl p-6 text-white mb-6 shadow-lg">
         <p className="text-green-200 text-sm font-medium">Available Balance</p>
-        <p className="text-4xl font-bold mt-1">{formatCents(user.balanceCents)}</p>
+        <p className="text-4xl font-bold mt-1">{formatCents(user.clearedCents)}</p>
+        {user.pendingCents > 0 && (
+          <p className="text-green-300 text-sm mt-1">+ {formatCents(user.pendingCents)} pending verification</p>
+        )}
         <button className="mt-4 bg-white/20 hover:bg-white/30 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
           Cash Out (Coming Soon)
         </button>
@@ -103,7 +106,9 @@ export default function WalletPage() {
                     </p>
                   </div>
                 </div>
-                <span className="text-green-600 font-bold text-sm">+{scan.refundCents}c</span>
+                <span className={`font-bold text-sm ${scan.status === "cleared" ? "text-green-600" : "text-amber-500"}`}>
+                  {scan.status === "cleared" ? "+" : ""}{scan.refundCents}c {scan.status === "pending" ? "" : ""}
+                </span>
               </div>
             ))}
           </div>

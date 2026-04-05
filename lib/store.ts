@@ -7,7 +7,8 @@ export interface User {
   unit: string;
   buildingId: string;
   role: "sorter" | "runner" | "both";
-  balanceCents: number;
+  pendingCents: number;
+  clearedCents: number;
   totalContainers: number;
   totalCO2SavedKg: number;
   scans: ScanRecord[];
@@ -24,6 +25,8 @@ export interface ScanRecord {
   containerName: string;
   material: string;
   refundCents: number;
+  status: "pending" | "cleared";
+  binCycleId: string;
   timestamp: string;
 }
 
@@ -71,25 +74,24 @@ export interface Bin {
   containerCount: number;
   materials: MaterialBreakdown;
   estimatedWeightKg: number;
-  capacityContainers: number; // max containers (crushed)
+  capacityContainers: number; // max containers (uncrushed)
   capacityLitres: number;
   fillPercent: number; // 0-100
   estimatedValueCents: number; // recycler value based on composition
+  cycleId: string; // unique per fill cycle, regenerated on collection
   claimedBy: string | null;
   claimedAt: string | null;
   lastCollectedAt: string | null;
 }
 
 // ── Capacity Constants ──
-// Based on 240L wheelie bin with "crush before you drop" policy
+// Based on 240L wheelie bin with uncrushed containers
+// Depots reject crushed containers (barcode + shape verification required)
 
 const BIN_CAPACITY_LITRES = 240;
 
-// Crushed containers per 240L bin by material type
-// Aluminium crushed: ~30% original vol → ~1,600/bin
-// PET crushed: ~40% original vol → ~750/bin
-// Mixed crushed average: ~1,100/bin
-const CRUSHED_CAPACITY_CONTAINERS = 1100;
+// Uncrushed containers per 240L bin (mixed materials)
+const BIN_CAPACITY_CONTAINERS = 350;
 
 // Weight per container by material type (grams)
 const MATERIAL_WEIGHT_G: Record<MaterialType, number> = {
@@ -132,12 +134,12 @@ const AVG_CONTAINER_WEIGHT_G = 25;
 // Bin becomes "full" on the map at this fill %
 const FULL_THRESHOLD_PERCENT = 80;
 
-// Runner economics: minimum containers to make a run worthwhile (~$30 payout)
-const MIN_WORTHWHILE_RUN = 600;
+// Runner economics: minimum containers to make a run worthwhile
+const MIN_WORTHWHILE_RUN = 200;
 
 export {
   BIN_CAPACITY_LITRES,
-  CRUSHED_CAPACITY_CONTAINERS,
+  BIN_CAPACITY_CONTAINERS,
   FULL_THRESHOLD_PERCENT,
   MIN_WORTHWHILE_RUN,
 };
@@ -158,10 +160,16 @@ const RUNNER_PAYOUT_CENTS = 5;
 
 export { SORTER_PAYOUT_CENTS, RUNNER_PAYOUT_CENTS };
 
+// ── Balance Helpers ──
+
+export function totalBalanceCents(user: User): number {
+  return user.pendingCents + user.clearedCents;
+}
+
 // ── Capacity Helpers ──
 
 export function calcFillPercent(containerCount: number): number {
-  return Math.min(100, Math.round((containerCount / CRUSHED_CAPACITY_CONTAINERS) * 100));
+  return Math.min(100, Math.round((containerCount / BIN_CAPACITY_CONTAINERS) * 100));
 }
 
 export function calcEstimatedWeightKg(containerCount: number): number {
@@ -236,7 +244,8 @@ export function createUser(name: string, unit: string, buildingId: string): User
     unit,
     buildingId,
     role: "sorter",
-    balanceCents: 0,
+    pendingCents: 0,
+    clearedCents: 0,
     totalContainers: 0,
     totalCO2SavedKg: 0,
     scans: [],
@@ -272,17 +281,23 @@ export function addScan(
   const user = getUser();
   if (!user) throw new Error("No user found");
 
+  // Get current bin cycle ID
+  const bin = getBinForBuilding(user.buildingId);
+  const cycleId = bin?.cycleId || crypto.randomUUID();
+
   const scan: ScanRecord = {
     id: crypto.randomUUID(),
     barcode,
     containerName,
     material,
     refundCents: SORTER_PAYOUT_CENTS,
+    status: "pending",
+    binCycleId: cycleId,
     timestamp: new Date().toISOString(),
   };
 
   user.scans.unshift(scan);
-  user.balanceCents += SORTER_PAYOUT_CENTS;
+  user.pendingCents += SORTER_PAYOUT_CENTS;
   user.totalContainers += 1;
   user.totalCO2SavedKg += CO2_PER_CONTAINER_KG;
   saveUser(user);
@@ -318,10 +333,11 @@ function makeBin(b: Building, containerCount: number, status: BinStatus, materia
     containerCount,
     materials: mats,
     estimatedWeightKg: calcWeightFromMaterials(mats),
-    capacityContainers: CRUSHED_CAPACITY_CONTAINERS,
+    capacityContainers: BIN_CAPACITY_CONTAINERS,
     capacityLitres: BIN_CAPACITY_LITRES,
     fillPercent: calcFillPercent(containerCount),
     estimatedValueCents: calcRecyclerValueCents(mats),
+    cycleId: crypto.randomUUID(),
     claimedBy: null,
     claimedAt: null,
     lastCollectedAt: null,
@@ -347,11 +363,11 @@ export function getBins(): Bin[] {
   // Seed with demo bins matching buildings
   const buildings = getBuildings();
   const bins: Bin[] = [
-    makeBin(buildings[0], 950, "full"),   // Harbour Towers: 86% full
-    makeBin(buildings[1], 420, "filling"), // Pacific Breeze: 38%
-    makeBin(buildings[2], 1020, "full"),   // The Pinnacle: 93% full
-    makeBin(buildings[3], 180, "filling"), // Coral Gardens: 16%
-    makeBin(buildings[4], 890, "full"),    // Skyline: 81% full
+    makeBin(buildings[0], 310, "full"),    // Harbour Towers: 89% full
+    makeBin(buildings[1], 140, "filling"), // Pacific Breeze: 40%
+    makeBin(buildings[2], 330, "full"),    // The Pinnacle: 94% full
+    makeBin(buildings[3], 60, "filling"),  // Coral Gardens: 17%
+    makeBin(buildings[4], 290, "full"),    // Skyline: 83% full
   ];
 
   localStorage.setItem(STORAGE_KEYS.bins, JSON.stringify(bins));
@@ -404,7 +420,7 @@ export function claimBin(binId: string): Bin | null {
   return bin;
 }
 
-export function completeBinRun(binId: string): { user: User; bin: Bin } | null {
+export function completeBinRun(binId: string): { user: User; bin: Bin; settledScans: number } | null {
   const user = getUser();
   if (!user) return null;
 
@@ -425,9 +441,22 @@ export function completeBinRun(binId: string): { user: User; bin: Bin } | null {
   };
 
   user.runs.unshift(run);
-  user.balanceCents += earned;
+  // Runner payout goes straight to cleared (they did the physical delivery)
+  user.clearedCents += earned;
   user.totalContainers += bin.containerCount;
   user.totalCO2SavedKg += bin.containerCount * CO2_PER_CONTAINER_KG;
+
+  // Settlement: clear all pending scans for this bin cycle
+  const cycleId = bin.cycleId;
+  let settledScans = 0;
+  for (const scan of user.scans) {
+    if (scan.binCycleId === cycleId && scan.status === "pending") {
+      scan.status = "cleared";
+      user.pendingCents -= scan.refundCents;
+      user.clearedCents += scan.refundCents;
+      settledScans++;
+    }
+  }
 
   // Update streak
   const today = new Date().toISOString().split("T")[0];
@@ -461,13 +490,14 @@ export function completeBinRun(binId: string): { user: User; bin: Bin } | null {
 
   saveUser(user);
 
-  // Reset the bin
+  // Reset the bin with a new cycle ID
   bin.status = "empty";
   bin.containerCount = 0;
   bin.materials = emptyMaterials();
   bin.estimatedWeightKg = 0;
   bin.estimatedValueCents = 0;
   bin.fillPercent = 0;
+  bin.cycleId = crypto.randomUUID();
   bin.claimedBy = null;
   bin.claimedAt = null;
   bin.lastCollectedAt = new Date().toISOString();
@@ -475,7 +505,7 @@ export function completeBinRun(binId: string): { user: User; bin: Bin } | null {
 
   updateRunnerLeaderboard(user.id, user.name, run.containerCount, earned);
 
-  return { user, bin };
+  return { user, bin, settledScans };
 }
 
 export function unclaimBin(binId: string): void {

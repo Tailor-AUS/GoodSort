@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getUser, formatCents, type User } from "@/lib/store";
+import { getUser, formatCents, totalBalanceCents, type User } from "@/lib/store";
 import { Onboarding } from "./components/onboarding";
 
 export default function HomePage() {
@@ -27,8 +27,11 @@ export default function HomePage() {
 
       {/* Balance Card */}
       <div className="bg-gradient-to-br from-green-600 to-green-700 rounded-2xl p-6 text-white mb-6 shadow-lg">
-        <p className="text-green-200 text-sm font-medium">Your Balance</p>
-        <p className="text-4xl font-bold mt-1">{formatCents(user.balanceCents)}</p>
+        <p className="text-green-200 text-sm font-medium">Available Balance</p>
+        <p className="text-4xl font-bold mt-1">{formatCents(user.clearedCents)}</p>
+        {user.pendingCents > 0 && (
+          <p className="text-green-300 text-sm mt-1">+ {formatCents(user.pendingCents)} pending</p>
+        )}
         <div className="flex justify-between mt-4 pt-4 border-t border-green-500/30">
           <div>
             <p className="text-green-200 text-xs">Containers</p>
@@ -51,7 +54,7 @@ export default function HomePage() {
         className="block bg-amber-500 hover:bg-amber-600 text-white rounded-2xl p-6 text-center mb-4 shadow-md transition-colors"
       >
         <p className="text-3xl mb-1">SCAN</p>
-        <p className="text-amber-100 text-sm">Scan a container barcode to earn 5c</p>
+        <p className="text-amber-100 text-sm">Scan a container barcode to earn 5c pending</p>
       </Link>
 
       {/* Two modes */}
@@ -61,7 +64,7 @@ export default function HomePage() {
           className="bg-white rounded-xl p-4 border border-gray-200 hover:border-green-300 transition-colors"
         >
           <p className="text-sm font-semibold text-gray-800">Sort</p>
-          <p className="text-xs text-gray-500">Scan containers, earn 5c each</p>
+          <p className="text-xs text-gray-500">Scan containers, earn 5c pending</p>
         </Link>
         <Link
           href="/run"
@@ -111,7 +114,9 @@ export default function HomePage() {
                     })}
                   </p>
                 </div>
-                <span className="text-green-600 font-bold text-sm">+{scan.refundCents}c</span>
+                <span className={`font-bold text-sm ${scan.status === "cleared" ? "text-green-600" : "text-amber-500"}`}>
+                  {scan.status === "cleared" ? "+" : ""}{scan.refundCents}c {scan.status === "pending" ? "" : ""}
+                </span>
               </div>
             ))}
           </div>

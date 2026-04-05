@@ -10,7 +10,7 @@ import {
   getFillBgColor,
   topMaterial,
   MATERIAL_LABELS,
-  CRUSHED_CAPACITY_CONTAINERS,
+  BIN_CAPACITY_CONTAINERS,
   type Bin,
   type User,
   type MaterialType,
@@ -279,7 +279,7 @@ export default function RunPage() {
               {/* Capacity Bar */}
               <div className="mb-2">
                 <div className="flex justify-between text-xs text-gray-500 mb-1">
-                  <span>{bin.containerCount.toLocaleString()} / {CRUSHED_CAPACITY_CONTAINERS.toLocaleString()}</span>
+                  <span>{bin.containerCount.toLocaleString()} / {BIN_CAPACITY_CONTAINERS.toLocaleString()}</span>
                   <span>{bin.fillPercent}% full</span>
                 </div>
                 <div className="h-2 bg-gray-100 rounded-full overflow-hidden">

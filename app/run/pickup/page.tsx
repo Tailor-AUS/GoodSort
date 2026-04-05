@@ -8,7 +8,7 @@ import Link from "next/link";
 function PickupContent() {
   const searchParams = useSearchParams();
   const binId = searchParams.get("binId");
-  const [result, setResult] = useState<{ user: User; bin: Bin } | null>(null);
+  const [result, setResult] = useState<{ user: User; bin: Bin; settledScans: number } | null>(null);
   const [confirmed, setConfirmed] = useState(false);
 
   function handleConfirm() {
@@ -49,10 +49,16 @@ function PickupContent() {
               {latestRun.containerCount} containers delivered from {latestRun.buildingName}
             </p>
 
+            {result.settledScans > 0 && (
+              <p className="text-green-600 text-sm mt-3">
+                {result.settledScans} pending scan{result.settledScans !== 1 ? "s" : ""} verified and cleared
+              </p>
+            )}
+
             <div className="flex justify-around mt-6 pt-4 border-t border-green-200">
               <div>
-                <p className="text-xs text-green-600">New Balance</p>
-                <p className="text-xl font-bold text-green-800">{formatCents(result.user.balanceCents)}</p>
+                <p className="text-xs text-green-600">Cleared Balance</p>
+                <p className="text-xl font-bold text-green-800">{formatCents(result.user.clearedCents)}</p>
               </div>
               <div>
                 <p className="text-xs text-green-600">Streak</p>

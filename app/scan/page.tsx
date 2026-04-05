@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { lookupContainer, createUnknownContainer } from "@/lib/containers";
 import {
   addScan, getUser, formatCents, SORTER_PAYOUT_CENTS,
-  getBinForBuilding, getFillBgColor, CRUSHED_CAPACITY_CONTAINERS,
+  getBinForBuilding, getFillBgColor, BIN_CAPACITY_CONTAINERS,
   type Bin,
 } from "@/lib/store";
 
@@ -15,7 +15,7 @@ interface ScanResult {
   brand: string;
   material: string;
   refundCents: number;
-  newBalance: number;
+  pendingBalance: number;
   totalContainers: number;
 }
 
@@ -41,7 +41,7 @@ export default function ScanPage() {
       brand: container.brand,
       material: container.material,
       refundCents: SORTER_PAYOUT_CENTS,
-      newBalance: user.balanceCents,
+      pendingBalance: user.pendingCents,
       totalContainers: user.totalContainers,
     });
     setScanState("success");
@@ -133,18 +133,19 @@ export default function ScanPage() {
       {/* Success State */}
       {scanState === "success" && result && (
         <div className="animate-slide-up">
-          <div className="bg-green-50 border-2 border-green-500 rounded-2xl p-6 text-center mb-4">
-            <div className="text-4xl mb-2 animate-ka-ching">+{result.refundCents}c</div>
-            <p className="text-green-800 font-semibold text-lg">{result.name}</p>
-            <p className="text-green-600 text-sm">{result.brand} &middot; {result.material}</p>
-            <div className="mt-4 pt-4 border-t border-green-200 flex justify-around">
+          <div className="bg-amber-50 border-2 border-amber-400 rounded-2xl p-6 text-center mb-4">
+            <div className="text-4xl mb-2 animate-ka-ching">+{result.refundCents}c pending</div>
+            <p className="text-amber-800 font-semibold text-lg">{result.name}</p>
+            <p className="text-amber-600 text-sm">{result.brand} &middot; {result.material}</p>
+            <p className="text-amber-500 text-xs mt-2">Clears when bin is collected and verified</p>
+            <div className="mt-4 pt-4 border-t border-amber-200 flex justify-around">
               <div>
-                <p className="text-xs text-green-600">New Balance</p>
-                <p className="text-lg font-bold text-green-800">{formatCents(result.newBalance)}</p>
+                <p className="text-xs text-amber-600">Pending</p>
+                <p className="text-lg font-bold text-amber-800">{formatCents(result.pendingBalance)}</p>
               </div>
               <div>
-                <p className="text-xs text-green-600">Total Containers</p>
-                <p className="text-lg font-bold text-green-800">{result.totalContainers}</p>
+                <p className="text-xs text-amber-600">Total Containers</p>
+                <p className="text-lg font-bold text-amber-800">{result.totalContainers}</p>
               </div>
             </div>
           </div>
@@ -239,7 +240,7 @@ export default function ScanPage() {
             <div className="mt-6 bg-white rounded-xl p-4 border border-gray-200">
               <h3 className="text-sm font-semibold text-gray-700 mb-2">Your Bin — {bin.buildingName}</h3>
               <div className="flex justify-between text-xs text-gray-500 mb-1">
-                <span>{bin.containerCount.toLocaleString()} / {CRUSHED_CAPACITY_CONTAINERS.toLocaleString()} containers</span>
+                <span>{bin.containerCount.toLocaleString()} / {BIN_CAPACITY_CONTAINERS.toLocaleString()} containers</span>
                 <span className={getFillBgColor(bin.fillPercent).replace("bg-", "text-")}>{bin.fillPercent}% full</span>
               </div>
               <div className="h-3 bg-gray-100 rounded-full overflow-hidden mb-2">
@@ -267,7 +268,7 @@ export default function ScanPage() {
                   </div>
                 </div>
               )}
-              <p className="text-xs text-gray-400 mt-2">~{bin.estimatedWeightKg}kg &middot; Crush cans to fit more!</p>
+              <p className="text-xs text-gray-400 mt-2">~{bin.estimatedWeightKg}kg</p>
             </div>
           )}
 
@@ -278,8 +279,8 @@ export default function ScanPage() {
               <li>Hold the barcode steady in the camera frame</li>
               <li>Eligible containers are 150ml to 3L</li>
               <li>Cans, bottles, cartons, and poppers all count</li>
-              <li>Crush cans before dropping — fits 3x more!</li>
-              <li>Each container earns you 5c — no limit!</li>
+              <li>Don't crush — depots need intact barcodes</li>
+              <li>Each scan earns 5c pending — clears on collection</li>
             </ul>
           </div>
         </>
