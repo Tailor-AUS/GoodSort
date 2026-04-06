@@ -99,7 +99,7 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
             e.HasIndex(c => c.UserId);
         });
 
-        // Seed default depot
+        // Seed default depot (static CreatedAt to avoid PendingModelChangesWarning)
         modelBuilder.Entity<Depot>().HasData(new Depot
         {
             Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
@@ -107,6 +107,7 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
             Address = "201 Montague Rd, West End",
             Lat = -27.4790,
             Lng = 153.0080,
+            CreatedAt = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc),
         });
     }
 }

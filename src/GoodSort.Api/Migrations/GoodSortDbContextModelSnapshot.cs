@@ -150,7 +150,7 @@ namespace GoodSort.Api.Migrations
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000001"),
                             Address = "201 Montague Rd, West End",
-                            CreatedAt = new DateTime(2026, 4, 6, 13, 58, 44, 338, DateTimeKind.Utc).AddTicks(3826),
+                            CreatedAt = new DateTime(2026, 4, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Lat = -27.478999999999999,
                             Lng = 153.00800000000001,
                             Name = "Tomra South Brisbane"

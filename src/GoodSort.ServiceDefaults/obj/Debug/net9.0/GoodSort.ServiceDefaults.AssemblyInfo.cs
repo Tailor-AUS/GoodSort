@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("GoodSort.ServiceDefaults")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+7038f0f64b46ecc10d477a497da92d155e3a73f9")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+7b622cc95bb8d0e2e3db74165b33aeaab4e1f6dc")]
 [assembly: System.Reflection.AssemblyProductAttribute("GoodSort.ServiceDefaults")]
 [assembly: System.Reflection.AssemblyTitleAttribute("GoodSort.ServiceDefaults")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
