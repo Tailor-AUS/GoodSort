@@ -1,0 +1,13 @@
+C:\Users\knoxh\GoodSort\src\GoodSort.ServiceDefaults\bin\Debug\net9.0\GoodSort.ServiceDefaults.deps.json
+C:\Users\knoxh\GoodSort\src\GoodSort.ServiceDefaults\bin\Debug\net9.0\GoodSort.ServiceDefaults.dll
+C:\Users\knoxh\GoodSort\src\GoodSort.ServiceDefaults\bin\Debug\net9.0\GoodSort.ServiceDefaults.pdb
+C:\Users\knoxh\GoodSort\src\GoodSort.ServiceDefaults\obj\Debug\net9.0\GoodSort.ServiceDefaults.csproj.AssemblyReference.cache
+C:\Users\knoxh\GoodSort\src\GoodSort.ServiceDefaults\obj\Debug\net9.0\GoodSort.ServiceDefaults.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\knoxh\GoodSort\src\GoodSort.ServiceDefaults\obj\Debug\net9.0\GoodSort.ServiceDefaults.AssemblyInfoInputs.cache
+C:\Users\knoxh\GoodSort\src\GoodSort.ServiceDefaults\obj\Debug\net9.0\GoodSort.ServiceDefaults.AssemblyInfo.cs
+C:\Users\knoxh\GoodSort\src\GoodSort.ServiceDefaults\obj\Debug\net9.0\GoodSort.ServiceDefaults.csproj.CoreCompileInputs.cache
+C:\Users\knoxh\GoodSort\src\GoodSort.ServiceDefaults\obj\Debug\net9.0\GoodSort.ServiceDefaults.sourcelink.json
+C:\Users\knoxh\GoodSort\src\GoodSort.ServiceDefaults\obj\Debug\net9.0\GoodSort.ServiceDefaults.dll
+C:\Users\knoxh\GoodSort\src\GoodSort.ServiceDefaults\obj\Debug\net9.0\refint\GoodSort.ServiceDefaults.dll
+C:\Users\knoxh\GoodSort\src\GoodSort.ServiceDefaults\obj\Debug\net9.0\GoodSort.ServiceDefaults.pdb
+C:\Users\knoxh\GoodSort\src\GoodSort.ServiceDefaults\obj\Debug\net9.0\ref\GoodSort.ServiceDefaults.dll
