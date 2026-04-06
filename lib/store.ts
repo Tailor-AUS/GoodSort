@@ -1,12 +1,46 @@
 // The Good Sort — Household + Route-Optimized Collection Model
 // localStorage-based state management for MVP
 
-// ── Material Types (MVP: aluminium only) ──
+// ── Material Types ──
 
-export type MaterialType = "aluminium";
+export type MaterialType = "aluminium" | "pet" | "glass" | "other";
 
 export interface MaterialBreakdown {
   aluminium: number;
+  pet: number;
+  glass: number;
+  other: number; // HDPE, cartons, etc.
+}
+
+// ── 4-Bag Sorting System ──
+// Each household gets 4 color-coded bags. Scanner tells user which bag.
+
+export interface BagInfo {
+  id: number;
+  label: string;
+  color: string;       // tailwind bg class
+  textColor: string;   // tailwind text class
+  borderColor: string; // tailwind border class
+  material: MaterialType;
+  emoji: string;
+}
+
+export const BAGS: BagInfo[] = [
+  { id: 1, label: "Blue Bag",  color: "bg-blue-500",  textColor: "text-blue-600",  borderColor: "border-blue-300",  material: "aluminium", emoji: "🔵" },
+  { id: 2, label: "Teal Bag",  color: "bg-teal-500",  textColor: "text-teal-600",  borderColor: "border-teal-300",  material: "pet",       emoji: "🟢" },
+  { id: 3, label: "Amber Bag", color: "bg-amber-500", textColor: "text-amber-600", borderColor: "border-amber-300", material: "glass",     emoji: "🟡" },
+  { id: 4, label: "Green Bag", color: "bg-green-600", textColor: "text-green-600", borderColor: "border-green-300", material: "other",     emoji: "🟤" },
+];
+
+export function getBagForMaterial(material: MaterialType): BagInfo {
+  return BAGS.find((b) => b.material === material) || BAGS[3]; // default to green/other
+}
+
+export function mapToMaterialType(material: string): MaterialType {
+  if (material === "aluminium") return "aluminium";
+  if (material === "pet") return "pet";
+  if (material === "glass") return "glass";
+  return "other"; // hdpe, liquid_paperboard, unknown
 }
 
 // ── Core Interfaces ──
@@ -127,28 +161,45 @@ const STORAGE_KEYS = {
   depots: `goodsort_depots_${DATA_VERSION}`,
 };
 
-// ── Material Constants (MVP: aluminium only) ──
+// ── Material Constants ──
 
-export const CAN_WEIGHT_G = 14; // grams per 375ml aluminium can
-export const ALUMINIUM_VALUE_CENTS_PER_KG = 250; // ~$2.50/kg recycler value
+export const MATERIAL_WEIGHT_G: Record<MaterialType, number> = {
+  aluminium: 14,
+  pet: 25,
+  glass: 200,
+  other: 20,
+};
 
 export const MATERIAL_LABELS: Record<MaterialType, string> = {
-  aluminium: "Aluminium Cans",
+  aluminium: "Aluminium",
+  pet: "PET Plastic",
+  glass: "Glass",
+  other: "Other",
 };
 
 // ── Material Helpers ──
 
 export function emptyMaterials(): MaterialBreakdown {
-  return { aluminium: 0 };
+  return { aluminium: 0, pet: 0, glass: 0, other: 0 };
 }
 
 export function calcWeightKg(containers: number): number {
-  return Math.round((containers * CAN_WEIGHT_G) / 100) / 10;
+  // Blended average ~20g per container across material types
+  return Math.round((containers * 20) / 100) / 10;
+}
+
+export function calcWeightFromMaterials(materials: MaterialBreakdown): number {
+  let totalG = 0;
+  for (const mat of Object.keys(materials) as MaterialType[]) {
+    totalG += materials[mat] * MATERIAL_WEIGHT_G[mat];
+  }
+  return Math.round(totalG / 100) / 10;
 }
 
 export function calcRecyclerValueCents(containers: number): number {
-  const weightKg = (containers * CAN_WEIGHT_G) / 1000;
-  return Math.round(weightKg * ALUMINIUM_VALUE_CENTS_PER_KG);
+  // Blended avg ~$1.50/kg recycler value
+  const weightKg = (containers * 20) / 1000;
+  return Math.round(weightKg * 150);
 }
 
 export function formatCents(cents: number): string {
@@ -239,6 +290,12 @@ export function getHouseholds(): Household[] {
 }
 
 function makeHousehold(id: string, name: string, address: string, lat: number, lng: number, containers: number): Household {
+  // Demo split: 45% aluminium, 30% PET, 15% glass, 10% other
+  const al = Math.round(containers * 0.45);
+  const pet = Math.round(containers * 0.30);
+  const glass = Math.round(containers * 0.15);
+  const other = containers - al - pet - glass;
+  const materials = { aluminium: al, pet, glass, other };
   return {
     id,
     name,
@@ -247,8 +304,8 @@ function makeHousehold(id: string, name: string, address: string, lat: number, l
     lng,
     pendingContainers: containers,
     pendingValueCents: containers * SORTER_PAYOUT_CENTS,
-    materials: { aluminium: containers },
-    estimatedWeightKg: calcWeightKg(containers),
+    materials,
+    estimatedWeightKg: calcWeightFromMaterials(materials),
     estimatedBags: Math.ceil(containers / CONTAINERS_PER_BAG),
     lastScanAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
     createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -294,8 +351,9 @@ export function addScan(barcode: string, containerName: string, material: string
     household.pendingContainers += 1;
     household.pendingValueCents += SORTER_PAYOUT_CENTS;
     if (!household.materials) household.materials = emptyMaterials();
-    household.materials.aluminium += 1;
-    household.estimatedWeightKg = calcWeightKg(household.pendingContainers);
+    const mat = mapToMaterialType(material);
+    household.materials[mat] += 1;
+    household.estimatedWeightKg = calcWeightFromMaterials(household.materials);
     household.estimatedBags = Math.ceil(household.pendingContainers / CONTAINERS_PER_BAG);
     household.lastScanAt = new Date().toISOString();
     saveHouseholds(households);

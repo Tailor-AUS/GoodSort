@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import {
   getOrCreateDefaultUser, getHouseholds, getRoutes, getDepots, getPendingRoutes, getActiveRoute, saveRoutes,
-  type User, type Household, type Route, type Depot,
+  type User, type Household, type Route, type Depot, type BagInfo,
 } from "@/lib/store";
 import { clusterHouseholds, getRouteReadyClusters, createRouteFromCluster } from "@/lib/clustering";
 import { MapView, type AppMode } from "./components/map-view";
@@ -57,10 +57,10 @@ export default function App() {
   }, [refreshData]);
 
   const handleScanComplete = useCallback(
-    (containerName: string, cents: number) => {
+    (containerName: string, cents: number, bag: BagInfo) => {
       setShowScanner(false);
       refreshData();
-      setToast({ text: `+${cents}c pending \u00b7 ${containerName}`, visible: true });
+      setToast({ text: `+${cents}c \u00b7 ${bag.label} \u00b7 ${containerName}`, visible: true });
       setTimeout(() => setToast((t) => (t ? { ...t, visible: false } : null)), 2500);
       setTimeout(() => setToast(null), 3000);
     },

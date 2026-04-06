@@ -12,6 +12,7 @@ import {
   getVolumeColor,
   SORTER_PAYOUT_CENTS,
   CONTAINERS_PER_BAG,
+  BAGS,
 } from "@/lib/store";
 import { claimRoute, startRoute, markStopPickedUp, skipStop, settleRoute, type HouseholdPayout } from "@/lib/routes";
 
@@ -144,13 +145,20 @@ export function BottomSheet({
 
               {userHousehold && (
                 <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 mb-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <p className="text-[13px] text-slate-500 font-medium">Your household</p>
-                    <p className="text-[13px] text-slate-900 font-semibold">{userHousehold.name}</p>
+                  <div className="flex justify-between items-center mb-3">
+                    <p className="text-[13px] text-slate-500 font-medium">Your bags</p>
+                    <p className="text-[13px] text-slate-900 font-semibold">{userHousehold.pendingContainers} total</p>
                   </div>
-                  <div className="flex justify-between text-[11px] text-slate-400">
-                    <span>{userHousehold.pendingContainers} containers</span>
-                    <span>{userHousehold.estimatedBags} bag{userHousehold.estimatedBags !== 1 ? "s" : ""}</span>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {BAGS.map((bag) => {
+                      const count = userHousehold.materials[bag.material] || 0;
+                      return (
+                        <div key={bag.id} className="flex items-center gap-1.5">
+                          <div className={`w-3 h-3 ${bag.color} rounded`} />
+                          <span className="text-[11px] text-slate-600 font-medium">{count}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -205,7 +213,21 @@ export function BottomSheet({
                 <MiniStat label="Weight" value={`${selectedHousehold.estimatedWeightKg}kg`} />
               </div>
 
-              <div className="bg-green-50 border border-green-200 rounded-2xl p-4 mt-4 text-center">
+              {/* 4-bag breakdown */}
+              <div className="grid grid-cols-4 gap-2 mb-4">
+                {BAGS.map((bag) => {
+                  const count = selectedHousehold.materials[bag.material] || 0;
+                  return (
+                    <div key={bag.id} className={`rounded-xl p-2.5 text-center border ${bag.borderColor} bg-white`}>
+                      <div className={`w-6 h-6 ${bag.color} rounded-lg mx-auto mb-1.5`} />
+                      <p className="text-[15px] font-display font-extrabold text-slate-900">{count}</p>
+                      <p className="text-[9px] text-slate-400 uppercase tracking-wider">{bag.label.split(" ")[0]}</p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="bg-green-50 border border-green-200 rounded-2xl p-4 text-center">
                 <p className="text-green-700 text-[13px] font-semibold">
                   {formatCents(selectedHousehold.pendingValueCents)} pending
                 </p>
