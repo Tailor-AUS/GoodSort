@@ -31,10 +31,15 @@ export function Scanner({ onClose, onScanComplete }: ScannerProps) {
     (barcode: string) => {
       // Prevent double-scan from overlapping detect() calls
       if (processedRef.current) return;
+
+      // Validate barcode format: must be 8-13 digits (EAN/UPC)
+      const cleaned = barcode.trim().replace(/\D/g, "");
+      if (cleaned.length < 8 || cleaned.length > 13) return;
+
       processedRef.current = true;
 
       stopCamera();
-      const container = lookupContainer(barcode) || createUnknownContainer(barcode);
+      const container = lookupContainer(cleaned) || createUnknownContainer(cleaned);
       const materialType = mapToMaterialType(container.material);
       const bag = getBagForMaterial(materialType);
       addScan(barcode, container.name, container.material);
