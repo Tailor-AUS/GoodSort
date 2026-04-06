@@ -1,137 +1,141 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { getUser, formatCents, totalBalanceCents, type User } from "@/lib/store";
+import dynamic from "next/dynamic";
+import { useState, useCallback, useEffect } from "react";
+import { getUser, getBins, type User, type Bin } from "@/lib/store";
 import { Onboarding } from "./components/onboarding";
+import { ModeToggle, type AppMode } from "./components/mode-toggle";
+import { BinSheet } from "./components/bin-sheet";
+import { ScanButton } from "./components/scan-button";
+import { Scanner } from "./components/scanner";
+import { AccountButton } from "./components/account-button";
+import { AccountPanel } from "./components/account-panel";
 
-export default function HomePage() {
+// MapLibre needs browser (WebGL) — skip SSR
+const MapView = dynamic(() => import("./components/map-view").then((m) => ({ default: m.MapView })), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full bg-gray-900 flex items-center justify-center">
+      <div className="text-white/30 text-sm">Loading map...</div>
+    </div>
+  ),
+});
+
+export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mode, setMode] = useState<AppMode>("sort");
+  const [bins, setBins] = useState<Bin[]>([]);
+  const [selectedBinId, setSelectedBinId] = useState<string | null>(null);
+  const [showScanner, setShowScanner] = useState(false);
+  const [showAccount, setShowAccount] = useState(false);
+  const [toast, setToast] = useState<{ text: string; visible: boolean } | null>(null);
 
   useEffect(() => {
     setUser(getUser());
+    setBins(getBins());
     setLoading(false);
   }, []);
 
-  if (loading) return <LoadingSkeleton />;
-  if (!user) return <Onboarding onComplete={(u) => setUser(u)} />;
+  const refreshData = useCallback(() => {
+    setUser(getUser());
+    setBins(getBins());
+  }, []);
+
+  const handleBinSelect = useCallback((binId: string) => {
+    setSelectedBinId(binId);
+  }, []);
+
+  const handleBinClose = useCallback(() => {
+    setSelectedBinId(null);
+  }, []);
+
+  const handleScanComplete = useCallback(
+    (containerName: string, cents: number) => {
+      setShowScanner(false);
+      refreshData();
+      // Show toast
+      setToast({ text: `\u23f3 +${cents}c pending \u00b7 ${containerName}`, visible: true });
+      setTimeout(() => setToast((t) => (t ? { ...t, visible: false } : null)), 2500);
+      setTimeout(() => setToast(null), 3000);
+    },
+    [refreshData]
+  );
+
+  const selectedBin = bins.find((b) => b.id === selectedBinId) || null;
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center bg-gray-900">
+        <div className="text-white/30 text-sm">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="h-full bg-gray-50 overflow-y-auto">
+        <Onboarding onComplete={(u) => { setUser(u); setBins(getBins()); }} />
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-md mx-auto px-4 pt-6">
-      {/* Header */}
-      <div className="text-center mb-6">
-        <h1 className="text-2xl font-bold text-green-700">The Good Sort</h1>
-        <p className="text-gray-500 text-sm">You sort it. We collect it. The planet keeps it.</p>
+    <div className="h-full relative">
+      {/* Map */}
+      <MapView
+        mode={mode}
+        bins={bins}
+        selectedBinId={selectedBinId}
+        onBinSelect={handleBinSelect}
+      />
+
+      {/* Top bar: mode toggle + account */}
+      <div className="fixed top-0 inset-x-0 z-30 flex justify-between items-center px-4 pt-[env(safe-area-inset-top,12px)] pb-2">
+        <div /> {/* spacer */}
+        <ModeToggle mode={mode} onChange={setMode} />
+        <AccountButton user={user} onClick={() => setShowAccount(true)} />
       </div>
 
-      {/* Balance Card */}
-      <div className="bg-gradient-to-br from-green-600 to-green-700 rounded-2xl p-6 text-white mb-6 shadow-lg">
-        <p className="text-green-200 text-sm font-medium">Available Balance</p>
-        <p className="text-4xl font-bold mt-1">{formatCents(user.clearedCents)}</p>
-        {user.pendingCents > 0 && (
-          <p className="text-green-300 text-sm mt-1">+ {formatCents(user.pendingCents)} pending</p>
-        )}
-        <div className="flex justify-between mt-4 pt-4 border-t border-green-500/30">
-          <div>
-            <p className="text-green-200 text-xs">Containers</p>
-            <p className="text-xl font-semibold">{user.totalContainers}</p>
-          </div>
-          <div>
-            <p className="text-green-200 text-xs">CO2 Saved</p>
-            <p className="text-xl font-semibold">{user.totalCO2SavedKg.toFixed(1)} kg</p>
-          </div>
-          <div>
-            <p className="text-green-200 text-xs">Per Scan</p>
-            <p className="text-xl font-semibold">5c</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Scan CTA */}
-      <Link
-        href="/scan"
-        className="block bg-amber-500 hover:bg-amber-600 text-white rounded-2xl p-6 text-center mb-4 shadow-md transition-colors"
-      >
-        <p className="text-3xl mb-1">SCAN</p>
-        <p className="text-amber-100 text-sm">Scan a container barcode to earn 5c pending</p>
-      </Link>
-
-      {/* Two modes */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        <Link
-          href="/scan"
-          className="bg-white rounded-xl p-4 border border-gray-200 hover:border-green-300 transition-colors"
+      {/* Toast */}
+      {toast && (
+        <div
+          className={`fixed top-20 left-1/2 -translate-x-1/2 z-40 bg-amber-500 text-white px-5 py-2.5 rounded-full shadow-lg text-sm font-medium ${
+            toast.visible ? "animate-toast-in" : "animate-toast-out"
+          }`}
         >
-          <p className="text-sm font-semibold text-gray-800">Sort</p>
-          <p className="text-xs text-gray-500">Scan containers, earn 5c pending</p>
-        </Link>
-        <Link
-          href="/run"
-          className="bg-white rounded-xl p-4 border border-gray-200 hover:border-amber-300 transition-colors"
-        >
-          <p className="text-sm font-semibold text-gray-800">Run</p>
-          <p className="text-xs text-gray-500">Find full bins, deliver, earn 5c each</p>
-        </Link>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="grid grid-cols-2 gap-3 mb-6">
-        <Link
-          href="/wallet"
-          className="bg-white rounded-xl p-4 border border-gray-200 hover:border-green-300 transition-colors"
-        >
-          <p className="text-sm font-semibold text-gray-800">Wallet</p>
-          <p className="text-xs text-gray-500">View history &amp; balance</p>
-        </Link>
-        <Link
-          href="/leaderboard"
-          className="bg-white rounded-xl p-4 border border-gray-200 hover:border-green-300 transition-colors"
-        >
-          <p className="text-sm font-semibold text-gray-800">Leaderboard</p>
-          <p className="text-xs text-gray-500">Buildings &amp; Runners</p>
-        </Link>
-      </div>
-
-      {/* Recent Scans */}
-      {user.scans.length > 0 && (
-        <div>
-          <h2 className="text-sm font-semibold text-gray-600 mb-2">Recent Scans</h2>
-          <div className="space-y-2">
-            {user.scans.slice(0, 5).map((scan) => (
-              <div
-                key={scan.id}
-                className="bg-white rounded-lg p-3 flex justify-between items-center border border-gray-100"
-              >
-                <div>
-                  <p className="text-sm font-medium">{scan.containerName}</p>
-                  <p className="text-xs text-gray-400">
-                    {new Date(scan.timestamp).toLocaleString("en-AU", {
-                      day: "numeric",
-                      month: "short",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </p>
-                </div>
-                <span className={`font-bold text-sm ${scan.status === "cleared" ? "text-green-600" : "text-amber-500"}`}>
-                  {scan.status === "cleared" ? "+" : ""}{scan.refundCents}c {scan.status === "pending" ? "" : ""}
-                </span>
-              </div>
-            ))}
-          </div>
+          {toast.text}
         </div>
       )}
-    </div>
-  );
-}
 
-function LoadingSkeleton() {
-  return (
-    <div className="max-w-md mx-auto px-4 pt-6 animate-pulse">
-      <div className="h-8 bg-gray-200 rounded w-48 mx-auto mb-6" />
-      <div className="h-40 bg-gray-200 rounded-2xl mb-6" />
-      <div className="h-24 bg-gray-200 rounded-2xl mb-4" />
+      {/* Scan button (Sort mode only, hidden when sheet is open) */}
+      {mode === "sort" && !selectedBinId && !showScanner && (
+        <ScanButton onClick={() => setShowScanner(true)} />
+      )}
+
+      {/* Bin bottom sheet */}
+      {selectedBin && (
+        <BinSheet
+          bin={selectedBin}
+          mode={mode}
+          onClose={handleBinClose}
+          onBinUpdate={() => {
+            refreshData();
+            setSelectedBinId(null);
+          }}
+        />
+      )}
+
+      {/* Scanner overlay */}
+      {showScanner && (
+        <Scanner
+          onClose={() => setShowScanner(false)}
+          onScanComplete={handleScanComplete}
+        />
+      )}
+
+      {/* Account panel */}
+      <AccountPanel user={user} open={showAccount} onClose={() => { setShowAccount(false); refreshData(); }} />
     </div>
   );
 }

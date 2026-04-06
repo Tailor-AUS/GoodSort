@@ -29,25 +29,25 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         <h1 className="text-3xl font-bold text-green-700 mb-2">The Good Sort</h1>
         <p className="text-gray-600 mb-2">You sort it. We collect it. The planet keeps it.</p>
         <p className="text-sm text-gray-400 mb-8">
-          Two ways to earn. Scan containers for 5c each.
-          Or find full bins on the map and deliver them for 5c per container.
+          Earn the full 10c refund on every container.
+          Scan, drop, and get paid when your bin is collected.
         </p>
 
         <div className="bg-white rounded-2xl p-6 border border-gray-200 mb-4 text-left">
-          <h3 className="font-semibold text-green-700 mb-3">Sort — Earn 5c per scan</h3>
+          <h3 className="font-semibold text-green-700 mb-3">Sort — Earn 10c per container</h3>
           <div className="space-y-3">
             <Step num={1} text="Scan the barcode on your container" />
-            <Step num={2} text="Drop it in The Good Sort bin in your building" />
-            <Step num={3} text="5c is instantly credited to your wallet" />
+            <Step num={2} text="Drop it in a Good Sort bin near you" />
+            <Step num={3} text="10c credited when the bin is collected and verified" />
           </div>
         </div>
 
         <div className="bg-white rounded-2xl p-6 border border-gray-200 mb-8 text-left">
-          <h3 className="font-semibold text-amber-600 mb-3">Run — Earn 5c per container delivered</h3>
+          <h3 className="font-semibold text-amber-600 mb-3">Run — Deliver bins, earn cash</h3>
           <div className="space-y-3">
             <Step num={1} text="Full bins appear on the map like loot drops" />
             <Step num={2} text="Claim a bin — first come, first served" />
-            <Step num={3} text="Deliver to the recycler, get paid instantly" />
+            <Step num={3} text="Deliver to the depot, get paid per container" />
           </div>
         </div>
 

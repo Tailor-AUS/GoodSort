@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { BottomNav } from "./components/bottom-nav";
 
 export const metadata: Metadata = {
   title: "The Good Sort",
@@ -28,9 +27,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col bg-gray-50">
-        <main className="flex-1 pb-20">{children}</main>
-        <BottomNav />
+      <body className="h-full overflow-hidden bg-gray-900">
+        {children}
       </body>
     </html>
   );
