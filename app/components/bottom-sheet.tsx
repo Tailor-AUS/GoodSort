@@ -10,9 +10,6 @@ import {
   type Depot,
   formatCents,
   getVolumeColor,
-  MATERIAL_LABELS,
-  type MaterialType,
-  type MaterialBreakdown,
   SORTER_PAYOUT_CENTS,
   CONTAINERS_PER_BAG,
 } from "@/lib/store";
@@ -208,9 +205,7 @@ export function BottomSheet({
                 <MiniStat label="Weight" value={`${selectedHousehold.estimatedWeightKg}kg`} />
               </div>
 
-              <MaterialBar materials={selectedHousehold.materials} total={selectedHousehold.pendingContainers} />
-
-              <div className="bg-green-50 border border-green-200 rounded-2xl p-4 mt-5 text-center">
+              <div className="bg-green-50 border border-green-200 rounded-2xl p-4 mt-4 text-center">
                 <p className="text-green-700 text-[13px] font-semibold">
                   {formatCents(selectedHousehold.pendingValueCents)} pending
                 </p>
@@ -395,32 +390,6 @@ function MiniStat({ label, value }: { label: string; value: string }) {
     <div className="bg-slate-50 rounded-xl p-3 text-center border border-slate-200">
       <p className="text-base font-display font-extrabold text-slate-900">{value}</p>
       <p className="text-[9px] text-slate-400 uppercase tracking-[0.15em] mt-0.5">{label}</p>
-    </div>
-  );
-}
-
-function MaterialBar({ materials, total }: { materials: MaterialBreakdown; total: number }) {
-  if (total === 0) return null;
-  const entries = Object.entries(materials).filter(([, c]) => c > 0) as [MaterialType, number][];
-  if (entries.length === 0) return null;
-
-  const colors: Record<string, string> = {
-    aluminium: "bg-blue-400", pet: "bg-cyan-400", glass: "bg-amber-400",
-    hdpe: "bg-purple-400", liquid_paperboard: "bg-orange-400",
-  };
-
-  return (
-    <div>
-      <div className="flex h-1 rounded-full overflow-hidden bg-slate-200 mb-2">
-        {entries.map(([mat, count]) => (
-          <div key={mat} className={`${colors[mat]} h-full`} style={{ width: `${(count / total) * 100}%` }} />
-        ))}
-      </div>
-      <div className="flex gap-3 flex-wrap">
-        {entries.map(([mat, count]) => (
-          <span key={mat} className="text-[11px] text-slate-400">{MATERIAL_LABELS[mat]} {count}</span>
-        ))}
-      </div>
     </div>
   );
 }

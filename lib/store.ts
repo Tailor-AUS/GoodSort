@@ -1,16 +1,12 @@
 // The Good Sort — Household + Route-Optimized Collection Model
 // localStorage-based state management for MVP
 
-// ── Material Types ──
+// ── Material Types (MVP: aluminium only) ──
 
-export type MaterialType = "aluminium" | "pet" | "glass" | "hdpe" | "liquid_paperboard";
+export type MaterialType = "aluminium";
 
 export interface MaterialBreakdown {
   aluminium: number;
-  pet: number;
-  glass: number;
-  hdpe: number;
-  liquid_paperboard: number;
 }
 
 // ── Core Interfaces ──
@@ -131,53 +127,28 @@ const STORAGE_KEYS = {
   depots: `goodsort_depots_${DATA_VERSION}`,
 };
 
-// ── Material Constants ──
+// ── Material Constants (MVP: aluminium only) ──
 
-export const MATERIAL_WEIGHT_G: Record<MaterialType, number> = {
-  aluminium: 14,
-  pet: 25,
-  glass: 200,
-  hdpe: 30,
-  liquid_paperboard: 10,
-};
-
-const MATERIAL_VALUE_CENTS_PER_KG: Record<MaterialType, number> = {
-  aluminium: 250,
-  pet: 60,
-  glass: 8,
-  hdpe: 70,
-  liquid_paperboard: 15,
-};
+export const CAN_WEIGHT_G = 14; // grams per 375ml aluminium can
+export const ALUMINIUM_VALUE_CENTS_PER_KG = 250; // ~$2.50/kg recycler value
 
 export const MATERIAL_LABELS: Record<MaterialType, string> = {
-  aluminium: "Aluminium",
-  pet: "PET Plastic",
-  glass: "Glass",
-  hdpe: "HDPE Plastic",
-  liquid_paperboard: "Carton",
+  aluminium: "Aluminium Cans",
 };
 
 // ── Material Helpers ──
 
 export function emptyMaterials(): MaterialBreakdown {
-  return { aluminium: 0, pet: 0, glass: 0, hdpe: 0, liquid_paperboard: 0 };
+  return { aluminium: 0 };
 }
 
-export function calcWeightFromMaterials(materials: MaterialBreakdown): number {
-  let totalG = 0;
-  for (const mat of Object.keys(materials) as MaterialType[]) {
-    totalG += materials[mat] * MATERIAL_WEIGHT_G[mat];
-  }
-  return Math.round(totalG / 100) / 10;
+export function calcWeightKg(containers: number): number {
+  return Math.round((containers * CAN_WEIGHT_G) / 100) / 10;
 }
 
-export function calcRecyclerValueCents(materials: MaterialBreakdown): number {
-  let totalCents = 0;
-  for (const mat of Object.keys(materials) as MaterialType[]) {
-    const weightKg = (materials[mat] * MATERIAL_WEIGHT_G[mat]) / 1000;
-    totalCents += weightKg * MATERIAL_VALUE_CENTS_PER_KG[mat];
-  }
-  return Math.round(totalCents);
+export function calcRecyclerValueCents(containers: number): number {
+  const weightKg = (containers * CAN_WEIGHT_G) / 1000;
+  return Math.round(weightKg * ALUMINIUM_VALUE_CENTS_PER_KG);
 }
 
 export function formatCents(cents: number): string {
@@ -268,7 +239,6 @@ export function getHouseholds(): Household[] {
 }
 
 function makeHousehold(id: string, name: string, address: string, lat: number, lng: number, containers: number): Household {
-  const materials = generateDemoMaterials(containers);
   return {
     id,
     name,
@@ -277,21 +247,12 @@ function makeHousehold(id: string, name: string, address: string, lat: number, l
     lng,
     pendingContainers: containers,
     pendingValueCents: containers * SORTER_PAYOUT_CENTS,
-    materials,
-    estimatedWeightKg: calcWeightFromMaterials(materials),
+    materials: { aluminium: containers },
+    estimatedWeightKg: calcWeightKg(containers),
     estimatedBags: Math.ceil(containers / CONTAINERS_PER_BAG),
     lastScanAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
     createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
   };
-}
-
-function generateDemoMaterials(total: number): MaterialBreakdown {
-  const al = Math.round(total * 0.45);
-  const pet = Math.round(total * 0.30);
-  const glass = Math.round(total * 0.10);
-  const hdpe = Math.round(total * 0.05);
-  const lp = total - al - pet - glass - hdpe;
-  return { aluminium: al, pet, glass, hdpe, liquid_paperboard: lp };
 }
 
 export function saveHouseholds(households: Household[]) {
@@ -333,11 +294,8 @@ export function addScan(barcode: string, containerName: string, material: string
     household.pendingContainers += 1;
     household.pendingValueCents += SORTER_PAYOUT_CENTS;
     if (!household.materials) household.materials = emptyMaterials();
-    const mat = material as MaterialType;
-    if (mat in household.materials) {
-      household.materials[mat] += 1;
-    }
-    household.estimatedWeightKg = calcWeightFromMaterials(household.materials);
+    household.materials.aluminium += 1;
+    household.estimatedWeightKg = calcWeightKg(household.pendingContainers);
     household.estimatedBags = Math.ceil(household.pendingContainers / CONTAINERS_PER_BAG);
     household.lastScanAt = new Date().toISOString();
     saveHouseholds(households);
