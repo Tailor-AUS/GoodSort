@@ -1,14 +1,12 @@
 "use client";
 
 import { User as UserIcon } from "lucide-react";
-import type { User } from "@/lib/store";
 
 interface AccountButtonProps {
-  user: User;
   onClick: () => void;
 }
 
-export function AccountButton({ user, onClick }: AccountButtonProps) {
+export function AccountButton({ onClick }: AccountButtonProps) {
   return (
     <button
       onClick={onClick}

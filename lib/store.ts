@@ -183,11 +183,6 @@ export function emptyMaterials(): MaterialBreakdown {
   return { aluminium: 0, pet: 0, glass: 0, other: 0 };
 }
 
-export function calcWeightKg(containers: number): number {
-  // Blended average ~20g per container across material types
-  return Math.round((containers * 20) / 100) / 10;
-}
-
 export function calcWeightFromMaterials(materials: MaterialBreakdown): number {
   let totalG = 0;
   for (const mat of Object.keys(materials) as MaterialType[]) {
@@ -196,34 +191,26 @@ export function calcWeightFromMaterials(materials: MaterialBreakdown): number {
   return Math.round(totalG / 100) / 10;
 }
 
-export function calcRecyclerValueCents(containers: number): number {
-  // Blended avg ~$1.50/kg recycler value
-  const weightKg = (containers * 20) / 1000;
-  return Math.round(weightKg * 150);
-}
-
 export function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-export function getVolumeColor(containers: number): string {
-  if (containers >= 150) return "bg-red-500";
-  if (containers >= 50) return "bg-amber-500";
-  return "bg-green-500";
-}
-
-export function getVolumeTextColor(containers: number): string {
-  if (containers >= 150) return "text-red-500";
-  if (containers >= 50) return "text-amber-500";
-  return "text-green-500";
-}
-
 // ── User Management ──
+
+// Safe JSON parse wrapper
+function safeParse<T>(data: string | null, fallback: T): T {
+  if (!data) return fallback;
+  try { return JSON.parse(data); } catch { return fallback; }
+}
+
+// Safe localStorage write
+function safeSet(key: string, value: string) {
+  try { localStorage.setItem(key, value); } catch (e) { console.error("localStorage write failed", e); }
+}
 
 export function getUser(): User | null {
   if (typeof window === "undefined") return null;
-  const data = localStorage.getItem(STORAGE_KEYS.user);
-  return data ? JSON.parse(data) : null;
+  return safeParse<User | null>(localStorage.getItem(STORAGE_KEYS.user), null);
 }
 
 export function createUser(name: string, householdId: string): User {
@@ -241,7 +228,7 @@ export function createUser(name: string, householdId: string): User {
     badges: [],
     createdAt: new Date().toISOString(),
   };
-  localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(user));
+  safeSet(STORAGE_KEYS.user, JSON.stringify(user));
   return user;
 }
 
@@ -252,8 +239,8 @@ export function getOrCreateDefaultUser(): User {
   return createUser("You", households[0]?.id || "h1");
 }
 
-function saveUser(user: User) {
-  localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(user));
+export function saveUser(user: User) {
+  safeSet(STORAGE_KEYS.user, JSON.stringify(user));
 }
 
 // ── Household Management ──
@@ -261,7 +248,7 @@ function saveUser(user: User) {
 export function getHouseholds(): Household[] {
   if (typeof window === "undefined") return [];
   const data = localStorage.getItem(STORAGE_KEYS.households);
-  if (data) return JSON.parse(data);
+  if (data) return safeParse<Household[]>(data, []);
 
   // Demo seed: 18 households in South Brisbane / West End area
   const demo: Household[] = [
@@ -285,7 +272,7 @@ export function getHouseholds(): Household[] {
     makeHousehold("h18", "River's Edge", "55 Kurilpa St, West End", -27.4845, 153.0145, 190),
   ];
 
-  localStorage.setItem(STORAGE_KEYS.households, JSON.stringify(demo));
+  safeSet(STORAGE_KEYS.households, JSON.stringify(demo));
   return demo;
 }
 
@@ -313,7 +300,7 @@ function makeHousehold(id: string, name: string, address: string, lat: number, l
 }
 
 export function saveHouseholds(households: Household[]) {
-  localStorage.setItem(STORAGE_KEYS.households, JSON.stringify(households));
+  safeSet(STORAGE_KEYS.households, JSON.stringify(households));
 }
 
 export function getHouseholdById(id: string): Household | null {
@@ -367,12 +354,12 @@ export function addScan(barcode: string, containerName: string, material: string
 export function getDepots(): Depot[] {
   if (typeof window === "undefined") return [];
   const data = localStorage.getItem(STORAGE_KEYS.depots);
-  if (data) return JSON.parse(data);
+  if (data) return safeParse<Depot[]>(data, []);
 
   const demo: Depot[] = [
     { id: "depot-1", name: "Tomra South Brisbane", address: "201 Montague Rd, West End", lat: -27.4790, lng: 153.0080 },
   ];
-  localStorage.setItem(STORAGE_KEYS.depots, JSON.stringify(demo));
+  safeSet(STORAGE_KEYS.depots, JSON.stringify(demo));
   return demo;
 }
 
@@ -381,12 +368,12 @@ export function getDepots(): Depot[] {
 export function getRoutes(): Route[] {
   if (typeof window === "undefined") return [];
   const data = localStorage.getItem(STORAGE_KEYS.routes);
-  if (data) return JSON.parse(data);
+  if (data) return safeParse<Route[]>(data, []);
   return [];
 }
 
 export function saveRoutes(routes: Route[]) {
-  localStorage.setItem(STORAGE_KEYS.routes, JSON.stringify(routes));
+  safeSet(STORAGE_KEYS.routes, JSON.stringify(routes));
 }
 
 export function getRouteById(id: string): Route | null {

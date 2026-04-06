@@ -69,6 +69,8 @@ function GoogleMapsProvider({ children }: { children: ReactNode }) {
       });
       mapRef.current = m;
       setMap(m);
+    }).catch((err) => {
+      console.error("Google Maps failed to load:", err);
     });
   }, []);
 
@@ -307,6 +309,7 @@ interface MapViewProps {
 
 export function MapView({ mode, households, selectedHouseholdId, userHouseholdId, activeRoute, depot, onHouseholdSelect, onMapTap }: MapViewProps) {
   const [userLoc, setUserLoc] = useState<LatLng | null>(null);
+  const handleLocated = useCallback((loc: LatLng) => setUserLoc(loc), []);
 
   if (!MAPS_KEY) return <NoApiKeyFallback />;
 
@@ -314,7 +317,7 @@ export function MapView({ mode, households, selectedHouseholdId, userHouseholdId
     <MapErrorBoundary>
       <GoogleMapsProvider>
         <MapClickHandler onMapTap={onMapTap} />
-        <AutoLocate onLocated={useCallback((loc: LatLng) => setUserLoc(loc), [])} />
+        <AutoLocate onLocated={handleLocated} />
         {userLoc && <UserLocationMarker loc={userLoc} />}
         <HouseholdMarkers
           households={households}

@@ -9,7 +9,6 @@ import {
   type User,
   type Depot,
   formatCents,
-  getVolumeColor,
   SORTER_PAYOUT_CENTS,
   CONTAINERS_PER_BAG,
   BAGS,
@@ -328,7 +327,7 @@ export function BottomSheet({
               {/* Progress */}
               <div className="flex items-center gap-2 mb-5">
                 <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                  <div className="h-full bg-green-600 rounded-full transition-all duration-300" style={{ width: `${(completedStops / totalStops) * 100}%` }} />
+                  <div className="h-full bg-green-600 rounded-full transition-all duration-300" style={{ width: `${totalStops > 0 ? (completedStops / totalStops) * 100 : 0}%` }} />
                 </div>
                 <span className="text-[11px] text-slate-400 font-medium">{completedStops}/{totalStops}</span>
               </div>
@@ -357,6 +356,17 @@ export function BottomSheet({
                 </button>
               </div>
             </>
+          )}
+
+          {/* Fallback: in_progress but all stops done (should be at_depot) */}
+          {activeRoute && activeRoute.status === "in_progress" && !currentStop && (
+            <div className="text-center py-6">
+              <p className="text-slate-500 text-sm">All stops completed</p>
+              <button onClick={() => { import("@/lib/routes").then((m) => { m.completeRouteAtDepot(activeRoute.id); onDataUpdate(); }); }}
+                className="mt-3 bg-green-600 text-white font-bold py-3 px-6 rounded-xl text-sm shadow-lg shadow-green-600/25">
+                Head to Depot
+              </button>
+            </div>
           )}
 
           {/* ═══════════════════════════════════════ */}

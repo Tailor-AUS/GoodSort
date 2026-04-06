@@ -14,6 +14,8 @@ export function Scanner({ onClose, onScanComplete }: ScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const processedRef = useRef(false); // Guard against double-scan race condition
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [scanning, setScanning] = useState(false);
   const [manualBarcode, setManualBarcode] = useState("");
   const [showManual, setShowManual] = useState(false);
@@ -27,6 +29,10 @@ export function Scanner({ onClose, onScanComplete }: ScannerProps) {
 
   const processBarcode = useCallback(
     (barcode: string) => {
+      // Prevent double-scan from overlapping detect() calls
+      if (processedRef.current) return;
+      processedRef.current = true;
+
       stopCamera();
       const container = lookupContainer(barcode) || createUnknownContainer(barcode);
       const materialType = mapToMaterialType(container.material);
@@ -35,7 +41,7 @@ export function Scanner({ onClose, onScanComplete }: ScannerProps) {
 
       // Show bag assignment for 2 seconds before closing
       setScanResult({ name: container.name, bag });
-      setTimeout(() => {
+      timeoutRef.current = setTimeout(() => {
         setScanResult(null);
         onScanComplete(container.name, SORTER_PAYOUT_CENTS, bag);
       }, 2000);
@@ -75,8 +81,12 @@ export function Scanner({ onClose, onScanComplete }: ScannerProps) {
   }, [processBarcode]);
 
   useEffect(() => {
+    processedRef.current = false;
     startCamera();
-    return () => stopCamera();
+    return () => {
+      stopCamera();
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
   }, [startCamera, stopCamera]);
 
   function handleManualSubmit(e: React.FormEvent) {
@@ -104,7 +114,7 @@ export function Scanner({ onClose, onScanComplete }: ScannerProps) {
             Put in the {bag.label}
           </p>
 
-          <p className="text-green-400 text-lg font-bold">+10c pending</p>
+          <p className="text-green-400 text-lg font-bold">+{SORTER_PAYOUT_CENTS}c pending</p>
 
           {/* Bag color strip */}
           <div className={`mt-8 mx-auto w-48 h-2 ${bag.color} rounded-full opacity-60`} />

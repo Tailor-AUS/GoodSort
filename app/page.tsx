@@ -67,6 +67,8 @@ export default function App() {
     [refreshData]
   );
 
+  const handleHouseholdSelect = useCallback((id: string) => setSelectedHouseholdId(id), []);
+  const handleMapTap = useCallback(() => setSelectedHouseholdId(null), []);
   const selectedHousehold = households.find((h) => h.id === selectedHouseholdId) || null;
 
   if (loading || !user) {
@@ -86,12 +88,12 @@ export default function App() {
         userHouseholdId={user.householdId}
         activeRoute={activeRoute}
         depot={depot}
-        onHouseholdSelect={(id) => setSelectedHouseholdId(id)}
-        onMapTap={() => { if (selectedHouseholdId) setSelectedHouseholdId(null); }}
+        onHouseholdSelect={handleHouseholdSelect}
+        onMapTap={handleMapTap}
       />
 
       <div className="fixed top-4 left-4 z-30">
-        <AccountButton user={user} onClick={() => setShowAccount(true)} />
+        <AccountButton onClick={() => setShowAccount(true)} />
       </div>
 
       {toast && (

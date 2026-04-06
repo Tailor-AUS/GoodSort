@@ -13,11 +13,9 @@ import {
   DRIVER_BASE_PAYOUT_CENTS,
   DRIVER_PER_CONTAINER_CENTS,
   emptyMaterials,
+  saveUser,
+  CONTAINERS_PER_BAG,
 } from "./store";
-
-function saveUser(user: User) {
-  localStorage.setItem("goodsort_user", JSON.stringify(user));
-}
 
 // ── Route Lifecycle ──
 
@@ -99,6 +97,10 @@ export function completeRouteAtDepot(routeId: string): Route | null {
   // Allow completing from in_progress too (if driver goes to depot early)
   if (route.status !== "at_depot" && route.status !== "in_progress") return null;
 
+  // Mark remaining pending stops as skipped
+  for (const stop of route.stops) {
+    if (stop.status === "pending") stop.status = "skipped";
+  }
   route.status = "at_depot";
   route.completedAt = new Date().toISOString();
   saveRoutes(routes);
@@ -150,7 +152,7 @@ export function settleRoute(routeId: string): {
     if (household) {
       household.pendingContainers = Math.max(0, household.pendingContainers - payout.containerCount);
       household.pendingValueCents = household.pendingContainers * SORTER_PAYOUT_CENTS;
-      household.estimatedBags = Math.ceil(household.pendingContainers / 150);
+      household.estimatedBags = Math.ceil(household.pendingContainers / CONTAINERS_PER_BAG);
       // Reset materials proportionally
       if (household.pendingContainers === 0) {
         household.materials = emptyMaterials();
@@ -166,7 +168,7 @@ export function settleRoute(routeId: string): {
     for (const scan of user.scans) {
       if (scan.householdId === user.householdId && scan.status === "pending" && settled < userPayout.containerCount) {
         scan.status = "settled";
-        user.pendingCents -= scan.refundCents;
+        user.pendingCents = Math.max(0, user.pendingCents - scan.refundCents);
         user.clearedCents += scan.refundCents;
         settled++;
       }

@@ -1,6 +1,6 @@
 // Household clustering for route generation
 import type { Household, Route, RouteStop, Depot } from "./store";
-import { calcDriverPayout, calcWeightKg, CONTAINERS_PER_BAG, SORTER_PAYOUT_CENTS } from "./store";
+import { calcDriverPayout, CONTAINERS_PER_BAG, SORTER_PAYOUT_CENTS } from "./store";
 
 export const CLUSTER_THRESHOLD_CONTAINERS = 2000;
 export const CLUSTER_RADIUS_KM = 3;
