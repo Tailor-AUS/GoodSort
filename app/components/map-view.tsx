@@ -12,23 +12,15 @@ import {
 } from "react";
 import { setOptions as setMapsOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { AlertTriangle } from "lucide-react";
-import type { Bin } from "@/lib/store";
+import type { Household, Route, Depot } from "@/lib/store";
 
-// ── Types ──
+export type AppMode = "sort" | "collect";
 
-export type AppMode = "sort" | "run";
-
-interface LatLng {
-  lat: number;
-  lng: number;
-}
-
-// ── Constants ──
+interface LatLng { lat: number; lng: number; }
 
 const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 const BRISBANE_CENTER: LatLng = { lat: -27.482, lng: 153.021 };
 
-// Clean light map style
 const MAP_STYLES: google.maps.MapTypeStyle[] = [
   { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
   { featureType: "transit", elementType: "labels", stylers: [{ visibility: "off" }] },
@@ -47,10 +39,7 @@ let _loaderP: Promise<void> | null = null;
 function loadMapsApi() {
   if (!_loaderP && MAPS_KEY) {
     setMapsOptions({ key: MAPS_KEY, v: "weekly" });
-    _loaderP = Promise.all([
-      importLibrary("maps"),
-      importLibrary("marker"),
-    ]).then(() => {});
+    _loaderP = Promise.all([importLibrary("maps"), importLibrary("marker"), importLibrary("routes")]).then(() => {});
   }
   return _loaderP ?? Promise.resolve();
 }
@@ -58,9 +47,7 @@ function loadMapsApi() {
 // ── Map Context ──
 
 const MapContext = createContext<google.maps.Map | null>(null);
-function useMap() {
-  return useContext(MapContext);
-}
+function useMap() { return useContext(MapContext); }
 
 function GoogleMapsProvider({ children }: { children: ReactNode }) {
   const divRef = useRef<HTMLDivElement>(null);
@@ -98,26 +85,21 @@ function GoogleMapsProvider({ children }: { children: ReactNode }) {
 function AutoLocate({ onLocated }: { onLocated: (loc: LatLng) => void }) {
   const map = useMap();
   const attempted = useRef(false);
-
   useEffect(() => {
     if (!map || attempted.current) return;
     attempted.current = true;
     if (!navigator.geolocation) return;
-
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         map.panTo(loc);
-        map.setZoom(14);
+        map.setZoom(15);
         onLocated(loc);
       },
-      () => {
-        // Permission denied or unavailable — stay on Brisbane center
-      },
+      () => {},
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 }
     );
   }, [map, onLocated]);
-
   return null;
 }
 
@@ -126,121 +108,152 @@ function AutoLocate({ onLocated }: { onLocated: (loc: LatLng) => void }) {
 function UserLocationMarker({ loc }: { loc: LatLng }) {
   const map = useMap();
   const markerRef = useRef<google.maps.Marker | null>(null);
-
   useEffect(() => {
     if (!map) return;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><circle cx="12" cy="12" r="10" fill="#3b82f6" opacity="0.2"/><circle cx="12" cy="12" r="6" fill="#3b82f6" stroke="#fff" stroke-width="2.5"/></svg>`;
     if (!markerRef.current) {
       markerRef.current = new google.maps.Marker({
-        map,
-        position: loc,
-        zIndex: 9999,
-        icon: {
-          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
-          scaledSize: new google.maps.Size(24, 24),
-          anchor: new google.maps.Point(12, 12),
-        },
+        map, position: loc, zIndex: 9999,
+        icon: { url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`, scaledSize: new google.maps.Size(24, 24), anchor: new google.maps.Point(12, 12) },
       });
     } else {
       markerRef.current.setPosition(loc);
     }
-    return () => {
-      if (markerRef.current) {
-        markerRef.current.setMap(null);
-        markerRef.current = null;
-      }
-    };
+    return () => { if (markerRef.current) { markerRef.current.setMap(null); markerRef.current = null; } };
   }, [map, loc]);
-
   return null;
 }
 
-// ── Bin Markers ──
+// ── Household Markers ──
 
-function getBinColor(bin: Bin, mode: AppMode): string {
-  if (mode === "run") return "#22c55e";
-  if (bin.fillPercent >= 80) return "#ef4444";
-  if (bin.fillPercent >= 50) return "#f59e0b";
+function getHouseholdColor(h: Household): string {
+  if (h.pendingContainers >= 150) return "#ef4444";
+  if (h.pendingContainers >= 50) return "#f59e0b";
   return "#22c55e";
 }
 
-function binMarkerSvg(bin: Bin, mode: AppMode, isSelected: boolean): string {
-  const color = getBinColor(bin, mode);
-  const size = isSelected ? 48 : 42;
-  const borderColor = isSelected ? "#16a34a" : "#ffffff";
+function householdMarkerSvg(h: Household, isSelected: boolean, isUserHome: boolean): string {
+  const color = getHouseholdColor(h);
+  const size = isSelected ? 48 : 40;
+  const borderColor = isSelected ? "#16a34a" : isUserHome ? "#3b82f6" : "#ffffff";
   const borderWidth = isSelected ? 3 : 2.5;
   const r = size / 2;
   const inner = r - borderWidth;
+  const label = h.pendingContainers >= 1000 ? `${Math.round(h.pendingContainers / 100) / 10}k` : h.pendingContainers.toString();
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
     <circle cx="${r}" cy="${r}" r="${inner}" fill="${color}" stroke="${borderColor}" stroke-width="${borderWidth}"/>
-    <text x="${r}" y="${r + 4}" text-anchor="middle" fill="#fff" font-size="11" font-weight="800" font-family="Inter,system-ui,sans-serif">${bin.fillPercent}%</text>
+    <text x="${r}" y="${r + 4}" text-anchor="middle" fill="#fff" font-size="${h.pendingContainers >= 1000 ? 9 : 10}" font-weight="800" font-family="Inter,system-ui,sans-serif">${label}</text>
   </svg>`;
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
-function BinMarkers({
-  bins,
-  mode,
-  selectedBinId,
+function HouseholdMarkers({
+  households,
+  selectedId,
+  userHouseholdId,
   onSelect,
 }: {
-  bins: Bin[];
-  mode: AppMode;
-  selectedBinId: string | null;
-  onSelect: (binId: string) => void;
+  households: Household[];
+  selectedId: string | null;
+  userHouseholdId: string;
+  onSelect: (id: string) => void;
 }) {
   const map = useMap();
   const markersRef = useRef<Map<string, { marker: google.maps.Marker; url: string }>>(new Map());
 
-  const visibleBins = mode === "run"
-    ? bins.filter((b) => b.fillPercent >= 80 && b.status !== "claimed" && b.status !== "collected")
-    : bins.filter((b) => b.status !== "collected");
+  const visible = households.filter((h) => h.pendingContainers > 0);
 
   useEffect(() => {
     if (!map) return;
-
     const prev = markersRef.current;
-    const nextIds = new Set(visibleBins.map((b) => b.id));
+    const nextIds = new Set(visible.map((h) => h.id));
 
-    // Remove markers no longer visible
     for (const [id, entry] of prev) {
-      if (!nextIds.has(id)) {
-        entry.marker.setMap(null);
-        prev.delete(id);
-      }
+      if (!nextIds.has(id)) { entry.marker.setMap(null); prev.delete(id); }
     }
 
-    // Add or update markers
-    for (const bin of visibleBins) {
-      const isSelected = bin.id === selectedBinId;
-      const url = binMarkerSvg(bin, mode, isSelected);
-      const existing = prev.get(bin.id);
-
+    for (const h of visible) {
+      const isSelected = h.id === selectedId;
+      const isHome = h.id === userHouseholdId;
+      const url = householdMarkerSvg(h, isSelected, isHome);
+      const existing = prev.get(h.id);
       if (existing && existing.url === url) continue;
       if (existing) existing.marker.setMap(null);
 
-      const size = isSelected ? 48 : 42;
+      const size = isSelected ? 48 : 40;
       const marker = new google.maps.Marker({
         map,
-        position: { lat: bin.lat, lng: bin.lng },
-        zIndex: isSelected ? 1000 : bin.fillPercent,
-        icon: {
-          url,
-          scaledSize: new google.maps.Size(size, size),
-          anchor: new google.maps.Point(size / 2, size / 2),
-        },
+        position: { lat: h.lat, lng: h.lng },
+        zIndex: isSelected ? 1000 : isHome ? 999 : h.pendingContainers,
+        icon: { url, scaledSize: new google.maps.Size(size, size), anchor: new google.maps.Point(size / 2, size / 2) },
       });
-      marker.addListener("click", () => onSelect(bin.id));
-      prev.set(bin.id, { marker, url });
+      marker.addListener("click", () => onSelect(h.id));
+      prev.set(h.id, { marker, url });
     }
 
-    return () => {
-      prev.forEach((e) => e.marker.setMap(null));
-      prev.clear();
-    };
-  }, [map, visibleBins, mode, selectedBinId, onSelect]);
+    return () => { prev.forEach((e) => e.marker.setMap(null)); prev.clear(); };
+  }, [map, visible, selectedId, userHouseholdId, onSelect]);
 
+  return null;
+}
+
+// ── Route Line ──
+
+function RouteLine({ route, depot }: { route: Route | null; depot: Depot | null }) {
+  const map = useMap();
+  const polylineRef = useRef<google.maps.Polyline | null>(null);
+  const depotMarkerRef = useRef<google.maps.Marker | null>(null);
+
+  useEffect(() => {
+    if (polylineRef.current) { polylineRef.current.setMap(null); polylineRef.current = null; }
+    if (depotMarkerRef.current) { depotMarkerRef.current.setMap(null); depotMarkerRef.current = null; }
+
+    if (!map || !route || !depot) return;
+
+    // Draw line connecting stops in sequence + depot at end
+    const path = route.stops
+      .sort((a, b) => a.sequence - b.sequence)
+      .map((s) => ({ lat: s.lat, lng: s.lng }));
+    path.push({ lat: depot.lat, lng: depot.lng });
+
+    polylineRef.current = new google.maps.Polyline({
+      map,
+      path,
+      strokeColor: "#16a34a",
+      strokeWeight: 4,
+      strokeOpacity: 0.7,
+    });
+
+    // Depot marker
+    const depotSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect x="4" y="4" width="24" height="24" rx="4" fill="#16a34a" stroke="#fff" stroke-width="2"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-size="12" font-weight="800">D</text></svg>`;
+    depotMarkerRef.current = new google.maps.Marker({
+      map,
+      position: { lat: depot.lat, lng: depot.lng },
+      zIndex: 2000,
+      icon: { url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(depotSvg)}`, scaledSize: new google.maps.Size(32, 32), anchor: new google.maps.Point(16, 16) },
+    });
+
+    return () => {
+      if (polylineRef.current) { polylineRef.current.setMap(null); polylineRef.current = null; }
+      if (depotMarkerRef.current) { depotMarkerRef.current.setMap(null); depotMarkerRef.current = null; }
+    };
+  }, [map, route, depot]);
+
+  return null;
+}
+
+// ── Map Click Handler ──
+
+function MapClickHandler({ onMapTap }: { onMapTap: () => void }) {
+  const map = useMap();
+  const cbRef = useRef(onMapTap);
+  cbRef.current = onMapTap;
+  useEffect(() => {
+    if (!map) return;
+    const l = map.addListener("click", () => cbRef.current());
+    return () => google.maps.event.removeListener(l);
+  }, [map]);
   return null;
 }
 
@@ -248,9 +261,7 @@ function BinMarkers({
 
 class MapErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
-  static getDerivedStateFromError(error: Error) {
-    return { error };
-  }
+  static getDerivedStateFromError(error: Error) { return { error }; }
   render() {
     if (this.state.error) {
       return (
@@ -259,12 +270,7 @@ class MapErrorBoundary extends Component<{ children: ReactNode }, { error: Error
             <AlertTriangle size={48} className="text-amber-500 mx-auto mb-4" />
             <p className="text-slate-900 font-display font-bold text-lg mb-2">Map failed to load</p>
             <p className="text-slate-500 text-sm mb-4">{this.state.error.message}</p>
-            <button
-              onClick={() => this.setState({ error: null })}
-              className="px-5 py-2.5 rounded-xl bg-green-500 text-black font-bold text-sm hover:bg-green-400 transition-colors shadow-lg shadow-green-500/25"
-            >
-              Try Again
-            </button>
+            <button onClick={() => this.setState({ error: null })} className="px-5 py-2.5 rounded-xl bg-green-600 text-white font-bold text-sm hover:bg-green-500 transition-colors shadow-lg shadow-green-600/25">Try Again</button>
           </div>
         </div>
       );
@@ -279,16 +285,8 @@ function NoApiKeyFallback() {
   return (
     <div className="absolute inset-0 bg-white flex items-center justify-center">
       <div className="text-center px-6 max-w-sm">
-        <div className="w-16 h-16 bg-neutral-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
-          <svg width="32" height="32" fill="none" stroke="#525252" strokeWidth="1.5">
-            <circle cx="16" cy="14" r="6" />
-            <path d="M16 20v2M8 28c0-4.4 3.6-8 8-8s8 3.6 8 8" />
-          </svg>
-        </div>
         <p className="text-slate-900 font-display font-bold text-lg mb-2">Map requires API key</p>
-        <p className="text-slate-500 text-sm">
-          Set <code className="text-neutral-400 bg-neutral-800 px-1.5 py-0.5 rounded text-xs">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> in your environment
-        </p>
+        <p className="text-slate-500 text-sm">Set <code className="text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded text-xs">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code></p>
       </div>
     </div>
   );
@@ -298,52 +296,34 @@ function NoApiKeyFallback() {
 
 interface MapViewProps {
   mode: AppMode;
-  bins: Bin[];
-  selectedBinId: string | null;
-  onBinSelect: (binId: string) => void;
+  households: Household[];
+  selectedHouseholdId: string | null;
+  userHouseholdId: string;
+  activeRoute: Route | null;
+  depot: Depot | null;
+  onHouseholdSelect: (id: string) => void;
   onMapTap: () => void;
 }
 
-export function MapView({ mode, bins, selectedBinId, onBinSelect, onMapTap }: MapViewProps) {
+export function MapView({ mode, households, selectedHouseholdId, userHouseholdId, activeRoute, depot, onHouseholdSelect, onMapTap }: MapViewProps) {
   const [userLoc, setUserLoc] = useState<LatLng | null>(null);
 
-  const handleLocated = useCallback((loc: LatLng) => {
-    setUserLoc(loc);
-  }, []);
-
-  if (!MAPS_KEY) {
-    return <NoApiKeyFallback />;
-  }
+  if (!MAPS_KEY) return <NoApiKeyFallback />;
 
   return (
     <MapErrorBoundary>
       <GoogleMapsProvider>
         <MapClickHandler onMapTap={onMapTap} />
-        <AutoLocate onLocated={handleLocated} />
+        <AutoLocate onLocated={useCallback((loc: LatLng) => setUserLoc(loc), [])} />
         {userLoc && <UserLocationMarker loc={userLoc} />}
-        <BinMarkers
-          bins={bins}
-          mode={mode}
-          selectedBinId={selectedBinId}
-          onSelect={onBinSelect}
+        <HouseholdMarkers
+          households={households}
+          selectedId={selectedHouseholdId}
+          userHouseholdId={userHouseholdId}
+          onSelect={onHouseholdSelect}
         />
+        {activeRoute && <RouteLine route={activeRoute} depot={depot} />}
       </GoogleMapsProvider>
     </MapErrorBoundary>
   );
-}
-
-// ── Map Click Handler ──
-
-function MapClickHandler({ onMapTap }: { onMapTap: () => void }) {
-  const map = useMap();
-  const cbRef = useRef(onMapTap);
-  cbRef.current = onMapTap;
-
-  useEffect(() => {
-    if (!map) return;
-    const listener = map.addListener("click", () => cbRef.current());
-    return () => google.maps.event.removeListener(listener);
-  }, [map]);
-
-  return null;
 }

@@ -1,7 +1,11 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { getOrCreateDefaultUser, getBins, type User, type Bin } from "@/lib/store";
+import {
+  getOrCreateDefaultUser, getHouseholds, getRoutes, getDepots, getPendingRoutes, getActiveRoute, saveRoutes,
+  type User, type Household, type Route, type Depot,
+} from "@/lib/store";
+import { clusterHouseholds, getRouteReadyClusters, createRouteFromCluster } from "@/lib/clustering";
 import { MapView, type AppMode } from "./components/map-view";
 import { BottomSheet } from "./components/bottom-sheet";
 import { Scanner } from "./components/scanner";
@@ -12,22 +16,45 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<AppMode>("sort");
-  const [bins, setBins] = useState<Bin[]>([]);
-  const [selectedBinId, setSelectedBinId] = useState<string | null>(null);
+  const [households, setHouseholds] = useState<Household[]>([]);
+  const [pendingRoutes, setPendingRoutes] = useState<Route[]>([]);
+  const [activeRoute, setActiveRoute] = useState<Route | null>(null);
+  const [depot, setDepot] = useState<Depot | null>(null);
+  const [selectedHouseholdId, setSelectedHouseholdId] = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [toast, setToast] = useState<{ text: string; visible: boolean } | null>(null);
 
-  useEffect(() => {
-    setUser(getOrCreateDefaultUser());
-    setBins(getBins());
-    setLoading(false);
+  const refreshData = useCallback(() => {
+    const u = getOrCreateDefaultUser();
+    const h = getHouseholds();
+    const depots = getDepots();
+    const d = depots[0] || null;
+
+    // Auto-generate routes from clusters
+    const clusters = clusterHouseholds(h);
+    const readyClusters = getRouteReadyClusters(clusters);
+    const existingRoutes = getRoutes();
+    const existingPending = existingRoutes.filter((r) => r.status === "pending");
+
+    // Only generate new routes if none exist
+    if (existingPending.length === 0 && readyClusters.length > 0 && d) {
+      const newRoutes = readyClusters.map((c) => createRouteFromCluster(c, d));
+      const allRoutes = [...existingRoutes, ...newRoutes];
+      saveRoutes(allRoutes);
+    }
+
+    setUser(u);
+    setHouseholds(h);
+    setPendingRoutes(getPendingRoutes());
+    setActiveRoute(getActiveRoute());
+    setDepot(d);
   }, []);
 
-  const refreshData = useCallback(() => {
-    setUser(getOrCreateDefaultUser());
-    setBins(getBins());
-  }, []);
+  useEffect(() => {
+    refreshData();
+    setLoading(false);
+  }, [refreshData]);
 
   const handleScanComplete = useCallback(
     (containerName: string, cents: number) => {
@@ -40,7 +67,7 @@ export default function App() {
     [refreshData]
   );
 
-  const selectedBin = bins.find((b) => b.id === selectedBinId) || null;
+  const selectedHousehold = households.find((h) => h.id === selectedHouseholdId) || null;
 
   if (loading || !user) {
     return (
@@ -52,57 +79,46 @@ export default function App() {
 
   return (
     <div className="h-full relative">
-      {/* Map — full screen */}
       <MapView
         mode={mode}
-        bins={bins}
-        selectedBinId={selectedBinId}
-        onBinSelect={(id) => setSelectedBinId(id)}
-        onMapTap={() => { if (selectedBinId) setSelectedBinId(null); }}
+        households={households}
+        selectedHouseholdId={selectedHouseholdId}
+        userHouseholdId={user.householdId}
+        activeRoute={activeRoute}
+        depot={depot}
+        onHouseholdSelect={(id) => setSelectedHouseholdId(id)}
+        onMapTap={() => { if (selectedHouseholdId) setSelectedHouseholdId(null); }}
       />
 
-      {/* Account — top left */}
       <div className="fixed top-4 left-4 z-30">
         <AccountButton user={user} onClick={() => setShowAccount(true)} />
       </div>
 
-      {/* Toast */}
       {toast && (
-        <div
-          className={`fixed top-16 left-1/2 z-40 bg-white border border-slate-200 text-slate-900 px-5 py-2.5 rounded-full shadow-lg text-sm font-medium ${
-            toast.visible ? "animate-toast-in" : "animate-toast-out"
-          }`}
-        >
+        <div className={`fixed top-16 left-1/2 z-40 bg-white border border-slate-200 text-slate-900 px-5 py-2.5 rounded-full shadow-lg text-sm font-medium ${toast.visible ? "animate-toast-in" : "animate-toast-out"}`}>
           <span className="text-green-600">{toast.text}</span>
         </div>
       )}
 
-      {/* Bottom sheet — always visible */}
       <BottomSheet
         mode={mode}
         onModeChange={setMode}
         user={user}
-        bins={bins}
-        selectedBin={selectedBin}
+        households={households}
+        selectedHousehold={selectedHousehold}
+        pendingRoutes={pendingRoutes}
+        activeRoute={activeRoute}
+        depot={depot}
         onScanPress={() => setShowScanner(true)}
-        onBinUpdate={refreshData}
-        onDeselectBin={() => setSelectedBinId(null)}
+        onDataUpdate={() => { refreshData(); setSelectedHouseholdId(null); }}
+        onDeselectHousehold={() => setSelectedHouseholdId(null)}
       />
 
-      {/* Scanner overlay */}
       {showScanner && (
-        <Scanner
-          onClose={() => setShowScanner(false)}
-          onScanComplete={handleScanComplete}
-        />
+        <Scanner onClose={() => setShowScanner(false)} onScanComplete={handleScanComplete} />
       )}
 
-      {/* Account panel */}
-      <AccountPanel
-        user={user}
-        open={showAccount}
-        onClose={() => { setShowAccount(false); refreshData(); }}
-      />
+      <AccountPanel user={user} open={showAccount} onClose={() => { setShowAccount(false); refreshData(); }} />
     </div>
   );
 }

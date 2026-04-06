@@ -12,20 +12,10 @@ interface AccountPanelProps {
 export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
   if (!open) return null;
 
-  const materialBreakdown = user.scans.reduce(
-    (acc, scan) => {
-      acc[scan.material] = (acc[scan.material] || 0) + 1;
-      return acc;
-    },
-    {} as Record<string, number>
-  );
-
   return (
     <>
       <div className="fixed inset-0 z-50 bg-black/20" onClick={onClose} />
-
       <div className="fixed inset-y-0 right-0 z-50 w-80 max-w-[85vw] bg-white overflow-y-auto animate-slide-in-right border-l border-slate-200 shadow-2xl">
-        {/* Header */}
         <div className="p-6 border-b border-slate-100">
           <div className="flex justify-between items-start mb-6">
             <div>
@@ -41,66 +31,54 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
             <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-[0.15em]">Available</p>
             <p className="text-3xl font-display font-extrabold text-slate-900 mt-1">{formatCents(user.clearedCents)}</p>
             {user.pendingCents > 0 && (
-              <p className="text-green-600/60 text-sm font-medium mt-0.5">
-                + {formatCents(user.pendingCents)} pending
-              </p>
+              <p className="text-green-600/60 text-sm font-medium mt-0.5">+ {formatCents(user.pendingCents)} pending</p>
             )}
           </div>
         </div>
 
-        {/* Stats */}
         <div className="p-6 border-b border-slate-100">
           <div className="grid grid-cols-3 gap-2">
-            <StatCard icon={Package} label="Sorted" value={user.totalContainers.toString()} />
+            <StatCard icon={Package} label="Scanned" value={user.totalContainers.toString()} />
             <StatCard icon={Leaf} label="CO2" value={`${user.totalCO2SavedKg.toFixed(1)}kg`} />
-            <StatCard icon={Truck} label="Runs" value={user.runs.length.toString()} />
+            <StatCard icon={Truck} label="Routes" value={user.collections.length.toString()} />
           </div>
         </div>
 
-        {/* Materials */}
-        {Object.keys(materialBreakdown).length > 0 && (
-          <div className="p-6 border-b border-slate-100">
-            <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-[0.15em] mb-3">Materials</p>
-            <div className="space-y-2.5">
-              {Object.entries(materialBreakdown)
-                .sort(([, a], [, b]) => b - a)
-                .map(([material, count]) => (
-                  <div key={material} className="flex justify-between items-center">
-                    <span className="text-[13px] text-slate-500 capitalize">{material.replace("_", " ")}</span>
-                    <span className="text-[13px] font-bold text-slate-900">{count}</span>
-                  </div>
-                ))}
-            </div>
-          </div>
-        )}
-
-        {/* Recent scans */}
         <div className="p-6">
           <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-[0.15em] mb-3">
-            History ({user.scans.length})
+            {user.collections.length > 0 ? "Collections" : "Scans"} ({user.collections.length > 0 ? user.collections.length : user.scans.length})
           </p>
-          {user.scans.length === 0 ? (
-            <p className="text-slate-400 text-[13px]">No scans yet</p>
-          ) : (
+
+          {user.collections.length > 0 ? (
             <div className="space-y-0 max-h-64 overflow-y-auto">
-              {user.scans.slice(0, 20).map((scan) => (
+              {user.collections.map((c) => (
+                <div key={c.id} className="flex justify-between items-center py-2.5 border-b border-slate-50 last:border-0">
+                  <div>
+                    <p className="text-[13px] text-slate-700 font-medium">{c.stopCount} stops &middot; {c.totalContainers} containers</p>
+                    <p className="text-[11px] text-slate-400">{new Date(c.timestamp).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                  </div>
+                  <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border bg-green-100 text-green-700 border-green-200">
+                    +{formatCents(c.earnedCents)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : user.scans.length > 0 ? (
+            <div className="space-y-0 max-h-64 overflow-y-auto">
+              {user.scans.slice(0, 15).map((scan) => (
                 <div key={scan.id} className="flex justify-between items-center py-2.5 border-b border-slate-50 last:border-0">
                   <div>
                     <p className="text-[13px] text-slate-700 font-medium">{scan.containerName}</p>
-                    <p className="text-[11px] text-slate-400">
-                      {new Date(scan.timestamp).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-                    </p>
+                    <p className="text-[11px] text-slate-400">{new Date(scan.timestamp).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
                   </div>
-                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                    scan.status === "cleared"
-                      ? "bg-green-100 text-green-700 border-green-200"
-                      : "bg-amber-100 text-amber-700 border-amber-200"
-                  }`}>
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${scan.status === "settled" ? "bg-green-100 text-green-700 border-green-200" : "bg-amber-100 text-amber-700 border-amber-200"}`}>
                     {scan.refundCents}c
                   </span>
                 </div>
               ))}
             </div>
+          ) : (
+            <p className="text-slate-400 text-[13px]">No activity yet</p>
           )}
 
           <button className="mt-6 w-full bg-slate-100 border border-slate-200 text-slate-400 font-semibold py-3 rounded-xl text-[13px] cursor-not-allowed flex items-center justify-center gap-2">

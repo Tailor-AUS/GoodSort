@@ -1,57 +1,7 @@
-// Local storage based state management for The Good Sort MVP
-// In production, this would be backed by a database
+// The Good Sort — Household + Route-Optimized Collection Model
+// localStorage-based state management for MVP
 
-export interface User {
-  id: string;
-  name: string;
-  unit: string;
-  buildingId: string;
-  role: "sorter" | "runner" | "both";
-  pendingCents: number;
-  clearedCents: number;
-  totalContainers: number;
-  totalCO2SavedKg: number;
-  scans: ScanRecord[];
-  runs: RunRecord[];
-  streak: number;
-  lastRunDate: string | null;
-  badges: string[];
-  createdAt: string;
-}
-
-export interface ScanRecord {
-  id: string;
-  barcode: string;
-  containerName: string;
-  material: string;
-  refundCents: number;
-  status: "pending" | "cleared";
-  binCycleId: string;
-  timestamp: string;
-}
-
-export interface RunRecord {
-  id: string;
-  binId: string;
-  buildingName: string;
-  containerCount: number;
-  earnedCents: number;
-  weightKg: number;
-  timestamp: string;
-}
-
-export interface Building {
-  id: string;
-  name: string;
-  address: string;
-  totalContainers: number;
-  totalResidents: number;
-  lat: number;
-  lng: number;
-  rank?: number;
-}
-
-export type BinStatus = "empty" | "filling" | "full" | "claimed" | "collected";
+// ── Material Types ──
 
 export type MaterialType = "aluminium" | "pet" | "glass" | "hdpe" | "liquid_paperboard";
 
@@ -63,38 +13,127 @@ export interface MaterialBreakdown {
   liquid_paperboard: number;
 }
 
-export interface Bin {
+// ── Core Interfaces ──
+
+export interface User {
   id: string;
-  buildingId: string;
-  buildingName: string;
+  name: string;
+  householdId: string;
+  role: "sorter" | "driver" | "both";
+  pendingCents: number;
+  clearedCents: number;
+  totalContainers: number;
+  totalCO2SavedKg: number;
+  scans: ScanRecord[];
+  collections: CollectionRecord[];
+  badges: string[];
+  createdAt: string;
+}
+
+export interface ScanRecord {
+  id: string;
+  barcode: string;
+  containerName: string;
+  material: string;
+  refundCents: number;
+  status: "pending" | "in_route" | "settled";
+  householdId: string;
+  routeId: string | null;
+  timestamp: string;
+}
+
+export interface Household {
+  id: string;
+  name: string;
   address: string;
   lat: number;
   lng: number;
-  status: BinStatus;
-  containerCount: number;
+  pendingContainers: number;
+  pendingValueCents: number;
   materials: MaterialBreakdown;
   estimatedWeightKg: number;
-  capacityContainers: number; // max containers (uncrushed)
-  capacityLitres: number;
-  fillPercent: number; // 0-100
-  estimatedValueCents: number; // recycler value based on composition
-  cycleId: string; // unique per fill cycle, regenerated on collection
-  claimedBy: string | null;
-  claimedAt: string | null;
-  lastCollectedAt: string | null;
+  estimatedBags: number;
+  lastScanAt: string | null;
+  createdAt: string;
 }
 
-// ── Capacity Constants ──
-// Based on 240L wheelie bin with uncrushed containers
-// Depots reject crushed containers (barcode + shape verification required)
+export type RouteStatus = "pending" | "claimed" | "in_progress" | "at_depot" | "settled" | "cancelled";
 
-const BIN_CAPACITY_LITRES = 240;
+export interface Route {
+  id: string;
+  status: RouteStatus;
+  stops: RouteStop[];
+  driverId: string | null;
+  claimedAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  settledAt: string | null;
+  totalContainers: number;
+  totalWeightKg: number;
+  totalValueCents: number;
+  driverPayoutCents: number;
+  estimatedDurationMin: number;
+  estimatedDistanceKm: number;
+  depotId: string;
+  createdAt: string;
+}
 
-// Uncrushed containers per 240L bin (mixed materials)
-const BIN_CAPACITY_CONTAINERS = 350;
+export interface RouteStop {
+  id: string;
+  householdId: string;
+  householdName: string;
+  address: string;
+  lat: number;
+  lng: number;
+  containerCount: number;
+  estimatedBags: number;
+  materials: MaterialBreakdown;
+  status: "pending" | "picked_up" | "skipped";
+  pickedUpAt: string | null;
+  actualContainerCount: number | null;
+  sequence: number;
+}
 
-// Weight per container by material type (grams)
-const MATERIAL_WEIGHT_G: Record<MaterialType, number> = {
+export interface CollectionRecord {
+  id: string;
+  routeId: string;
+  stopCount: number;
+  totalContainers: number;
+  earnedCents: number;
+  depotName: string;
+  timestamp: string;
+}
+
+export interface Depot {
+  id: string;
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+}
+
+// ── Constants ──
+
+const CONTAINERS_PER_BAG = 150;
+export const SORTER_PAYOUT_CENTS = 10;
+export const DRIVER_BASE_PAYOUT_CENTS = 2000; // $20 base
+export const DRIVER_PER_CONTAINER_CENTS = 2;
+const CO2_PER_CONTAINER_KG = 0.035;
+
+export { CONTAINERS_PER_BAG };
+
+const DATA_VERSION = "v4";
+
+const STORAGE_KEYS = {
+  user: "goodsort_user",
+  households: `goodsort_households_${DATA_VERSION}`,
+  routes: `goodsort_routes_${DATA_VERSION}`,
+  depots: `goodsort_depots_${DATA_VERSION}`,
+};
+
+// ── Material Constants ──
+
+export const MATERIAL_WEIGHT_G: Record<MaterialType, number> = {
   aluminium: 14,
   pet: 25,
   glass: 200,
@@ -102,22 +141,12 @@ const MATERIAL_WEIGHT_G: Record<MaterialType, number> = {
   liquid_paperboard: 10,
 };
 
-// Recycler commodity value per kg by material type (cents)
 const MATERIAL_VALUE_CENTS_PER_KG: Record<MaterialType, number> = {
-  aluminium: 250,  // ~$2.50/kg - best value
-  pet: 60,         // ~$0.60/kg
-  glass: 8,        // ~$0.08/kg - barely worth it by weight
-  hdpe: 70,        // ~$0.70/kg
-  liquid_paperboard: 15, // ~$0.15/kg
-};
-
-// VFM tier labels for UI
-export const MATERIAL_VFM: Record<MaterialType, { tier: string; color: string }> = {
-  aluminium: { tier: "Elite", color: "text-green-600" },
-  pet: { tier: "Good", color: "text-blue-600" },
-  hdpe: { tier: "Good", color: "text-blue-600" },
-  liquid_paperboard: { tier: "Great", color: "text-green-500" },
-  glass: { tier: "Low", color: "text-red-500" },
+  aluminium: 250,
+  pet: 60,
+  glass: 8,
+  hdpe: 70,
+  liquid_paperboard: 15,
 };
 
 export const MATERIAL_LABELS: Record<MaterialType, string> = {
@@ -125,57 +154,13 @@ export const MATERIAL_LABELS: Record<MaterialType, string> = {
   pet: "PET Plastic",
   glass: "Glass",
   hdpe: "HDPE Plastic",
-  liquid_paperboard: "Carton/Popper",
+  liquid_paperboard: "Carton",
 };
 
-// Average weight per container (grams, blended across material types)
-const AVG_CONTAINER_WEIGHT_G = 25;
+// ── Material Helpers ──
 
-// Bin becomes "full" on the map at this fill %
-const FULL_THRESHOLD_PERCENT = 80;
-
-// Runner economics: minimum containers to make a run worthwhile
-const MIN_WORTHWHILE_RUN = 200;
-
-export {
-  BIN_CAPACITY_LITRES,
-  BIN_CAPACITY_CONTAINERS,
-  FULL_THRESHOLD_PERCENT,
-  MIN_WORTHWHILE_RUN,
-};
-
-const DATA_VERSION = "v3"; // bump to reset demo data on deploy
-
-const STORAGE_KEYS = {
-  user: "goodsort_user",
-  buildings: `goodsort_buildings_${DATA_VERSION}`,
-  bins: `goodsort_bins_${DATA_VERSION}`,
-  runnerLeaderboard: `goodsort_runner_lb_${DATA_VERSION}`,
-};
-
-// CO2 saved per container (avg across material types, kg)
-const CO2_PER_CONTAINER_KG = 0.035;
-
-// Payout split
-const SORTER_PAYOUT_CENTS = 10;
-const RUNNER_PAYOUT_CENTS = 5;
-
-export { SORTER_PAYOUT_CENTS, RUNNER_PAYOUT_CENTS };
-
-// ── Balance Helpers ──
-
-export function totalBalanceCents(user: User): number {
-  return user.pendingCents + user.clearedCents;
-}
-
-// ── Capacity Helpers ──
-
-export function calcFillPercent(containerCount: number): number {
-  return Math.min(100, Math.round((containerCount / BIN_CAPACITY_CONTAINERS) * 100));
-}
-
-export function calcEstimatedWeightKg(containerCount: number): number {
-  return Math.round((containerCount * AVG_CONTAINER_WEIGHT_G) / 1000 * 10) / 10;
+export function emptyMaterials(): MaterialBreakdown {
+  return { aluminium: 0, pet: 0, glass: 0, hdpe: 0, liquid_paperboard: 0 };
 }
 
 export function calcWeightFromMaterials(materials: MaterialBreakdown): number {
@@ -183,7 +168,7 @@ export function calcWeightFromMaterials(materials: MaterialBreakdown): number {
   for (const mat of Object.keys(materials) as MaterialType[]) {
     totalG += materials[mat] * MATERIAL_WEIGHT_G[mat];
   }
-  return Math.round(totalG / 100) / 10; // round to 1 decimal kg
+  return Math.round(totalG / 100) / 10;
 }
 
 export function calcRecyclerValueCents(materials: MaterialBreakdown): number {
@@ -195,40 +180,20 @@ export function calcRecyclerValueCents(materials: MaterialBreakdown): number {
   return Math.round(totalCents);
 }
 
-export function emptyMaterials(): MaterialBreakdown {
-  return { aluminium: 0, pet: 0, glass: 0, hdpe: 0, liquid_paperboard: 0 };
+export function formatCents(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
 }
 
-export function topMaterial(materials: MaterialBreakdown): MaterialType {
-  let top: MaterialType = "aluminium";
-  let max = 0;
-  for (const mat of Object.keys(materials) as MaterialType[]) {
-    if (materials[mat] > max) {
-      max = materials[mat];
-      top = mat;
-    }
-  }
-  return top;
-}
-
-export function calcRunnerPayout(containerCount: number): number {
-  return containerCount * RUNNER_PAYOUT_CENTS;
-}
-
-export function isRunWorthwhile(containerCount: number): boolean {
-  return containerCount >= MIN_WORTHWHILE_RUN;
-}
-
-export function getFillColor(percent: number): string {
-  if (percent >= 80) return "text-red-500";
-  if (percent >= 50) return "text-amber-500";
-  return "text-green-500";
-}
-
-export function getFillBgColor(percent: number): string {
-  if (percent >= 80) return "bg-red-500";
-  if (percent >= 50) return "bg-amber-500";
+export function getVolumeColor(containers: number): string {
+  if (containers >= 150) return "bg-red-500";
+  if (containers >= 50) return "bg-amber-500";
   return "bg-green-500";
+}
+
+export function getVolumeTextColor(containers: number): string {
+  if (containers >= 150) return "text-red-500";
+  if (containers >= 50) return "text-amber-500";
+  return "text-green-500";
 }
 
 // ── User Management ──
@@ -239,28 +204,18 @@ export function getUser(): User | null {
   return data ? JSON.parse(data) : null;
 }
 
-export function getOrCreateDefaultUser(): User {
-  const existing = getUser();
-  if (existing) return existing;
-  const buildings = getBuildings();
-  return createUser("Sorter", "—", buildings[0]?.id || "b1");
-}
-
-export function createUser(name: string, unit: string, buildingId: string): User {
+export function createUser(name: string, householdId: string): User {
   const user: User = {
     id: crypto.randomUUID(),
     name,
-    unit,
-    buildingId,
+    householdId,
     role: "sorter",
     pendingCents: 0,
     clearedCents: 0,
     totalContainers: 0,
     totalCO2SavedKg: 0,
     scans: [],
-    runs: [],
-    streak: 0,
-    lastRunDate: null,
+    collections: [],
     badges: [],
     createdAt: new Date().toISOString(),
   };
@@ -268,31 +223,90 @@ export function createUser(name: string, unit: string, buildingId: string): User
   return user;
 }
 
-export function updateUserRole(role: "sorter" | "runner" | "both"): User {
-  const user = getUser();
-  if (!user) throw new Error("No user found");
-  user.role = role;
-  localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(user));
-  return user;
+export function getOrCreateDefaultUser(): User {
+  const existing = getUser();
+  if (existing) return existing;
+  const households = getHouseholds();
+  return createUser("You", households[0]?.id || "h1");
 }
 
 function saveUser(user: User) {
   localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(user));
 }
 
-// ── Sorter: Scan ──
+// ── Household Management ──
 
-export function addScan(
-  barcode: string,
-  containerName: string,
-  material: string,
-): User {
+export function getHouseholds(): Household[] {
+  if (typeof window === "undefined") return [];
+  const data = localStorage.getItem(STORAGE_KEYS.households);
+  if (data) return JSON.parse(data);
+
+  // Demo seed: 18 households in South Brisbane / West End area
+  const demo: Household[] = [
+    makeHousehold("h1", "The Hartleys", "45 Boundary St, South Brisbane", -27.4820, 153.0210, 320),
+    makeHousehold("h2", "Unit 4/12 Grey St", "12 Grey St, South Bank", -27.4780, 153.0180, 180),
+    makeHousehold("h3", "Sarah's Place", "88 Melbourne St, South Brisbane", -27.4750, 153.0250, 240),
+    makeHousehold("h4", "The Nguyens", "21 Vulture St, West End", -27.4850, 153.0130, 290),
+    makeHousehold("h5", "Unit 7 River View", "150 Montague Rd, West End", -27.4790, 153.0080, 160),
+    makeHousehold("h6", "Casa Martinez", "33 Hardgrave Rd, West End", -27.4830, 153.0050, 210),
+    makeHousehold("h7", "The Johnsons", "5 Sidon St, South Brisbane", -27.4760, 153.0220, 130),
+    makeHousehold("h8", "Apt 2B Riverside", "77 Ernest St, South Brisbane", -27.4740, 153.0190, 95),
+    makeHousehold("h9", "The Patels", "44 Fish Lane, South Brisbane", -27.4810, 153.0240, 270),
+    makeHousehold("h10", "Brook House", "19 Browning St, West End", -27.4870, 153.0100, 185),
+    makeHousehold("h11", "Unit 12 SkyTower", "100 Manning St, South Brisbane", -27.4800, 153.0160, 110),
+    makeHousehold("h12", "The O'Briens", "8 Jane St, West End", -27.4860, 153.0070, 340),
+    makeHousehold("h13", "Li Family", "62 Merivale St, South Brisbane", -27.4770, 153.0200, 75),
+    makeHousehold("h14", "The Wilsons", "28 Russell St, South Brisbane", -27.4790, 153.0270, 200),
+    makeHousehold("h15", "Flat 3 The Terrace", "15 Cordelia St, South Brisbane", -27.4815, 153.0175, 155),
+    makeHousehold("h16", "Sunny Side", "41 Tribune St, South Brisbane", -27.4835, 153.0205, 88),
+    makeHousehold("h17", "The Cooks", "7 Dock St, West End", -27.4880, 153.0120, 225),
+    makeHousehold("h18", "River's Edge", "55 Kurilpa St, West End", -27.4845, 153.0145, 190),
+  ];
+
+  localStorage.setItem(STORAGE_KEYS.households, JSON.stringify(demo));
+  return demo;
+}
+
+function makeHousehold(id: string, name: string, address: string, lat: number, lng: number, containers: number): Household {
+  const materials = generateDemoMaterials(containers);
+  return {
+    id,
+    name,
+    address,
+    lat,
+    lng,
+    pendingContainers: containers,
+    pendingValueCents: containers * SORTER_PAYOUT_CENTS,
+    materials,
+    estimatedWeightKg: calcWeightFromMaterials(materials),
+    estimatedBags: Math.ceil(containers / CONTAINERS_PER_BAG),
+    lastScanAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
+    createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+  };
+}
+
+function generateDemoMaterials(total: number): MaterialBreakdown {
+  const al = Math.round(total * 0.45);
+  const pet = Math.round(total * 0.30);
+  const glass = Math.round(total * 0.10);
+  const hdpe = Math.round(total * 0.05);
+  const lp = total - al - pet - glass - hdpe;
+  return { aluminium: al, pet, glass, hdpe, liquid_paperboard: lp };
+}
+
+export function saveHouseholds(households: Household[]) {
+  localStorage.setItem(STORAGE_KEYS.households, JSON.stringify(households));
+}
+
+export function getHouseholdById(id: string): Household | null {
+  return getHouseholds().find((h) => h.id === id) || null;
+}
+
+// ── Scanning ──
+
+export function addScan(barcode: string, containerName: string, material: string): User {
   const user = getUser();
   if (!user) throw new Error("No user found");
-
-  // Get current bin cycle ID
-  const bin = getBinForBuilding(user.buildingId);
-  const cycleId = bin?.cycleId || crypto.randomUUID();
 
   const scan: ScanRecord = {
     id: crypto.randomUUID(),
@@ -301,7 +315,8 @@ export function addScan(
     material,
     refundCents: SORTER_PAYOUT_CENTS,
     status: "pending",
-    binCycleId: cycleId,
+    householdId: user.householdId,
+    routeId: null,
     timestamp: new Date().toISOString(),
   };
 
@@ -311,307 +326,74 @@ export function addScan(
   user.totalCO2SavedKg += CO2_PER_CONTAINER_KG;
   saveUser(user);
 
-  // Update building + bin
-  updateBuildingCount(user.buildingId, 1);
-  addContainerToBin(user.buildingId, material as MaterialType);
+  // Update household
+  const households = getHouseholds();
+  const household = households.find((h) => h.id === user.householdId);
+  if (household) {
+    household.pendingContainers += 1;
+    household.pendingValueCents += SORTER_PAYOUT_CENTS;
+    if (!household.materials) household.materials = emptyMaterials();
+    const mat = material as MaterialType;
+    if (mat in household.materials) {
+      household.materials[mat] += 1;
+    }
+    household.estimatedWeightKg = calcWeightFromMaterials(household.materials);
+    household.estimatedBags = Math.ceil(household.pendingContainers / CONTAINERS_PER_BAG);
+    household.lastScanAt = new Date().toISOString();
+    saveHouseholds(households);
+  }
 
   return user;
 }
 
-function updateBuildingCount(buildingId: string, count: number) {
-  const buildings = getBuildings();
-  const building = buildings.find((b) => b.id === buildingId);
-  if (building) {
-    building.totalContainers += count;
-    localStorage.setItem(STORAGE_KEYS.buildings, JSON.stringify(buildings));
-  }
-}
+// ── Depots ──
 
-// ── Bins ──
-
-function makeBin(b: Building, containerCount: number, status: BinStatus, materials?: MaterialBreakdown): Bin {
-  const mats = materials || generateDemoMaterials(containerCount);
-  return {
-    id: `bin-${b.id}`,
-    buildingId: b.id,
-    buildingName: b.name,
-    address: b.address,
-    lat: b.lat,
-    lng: b.lng,
-    status,
-    containerCount,
-    materials: mats,
-    estimatedWeightKg: calcWeightFromMaterials(mats),
-    capacityContainers: BIN_CAPACITY_CONTAINERS,
-    capacityLitres: BIN_CAPACITY_LITRES,
-    fillPercent: calcFillPercent(containerCount),
-    estimatedValueCents: calcRecyclerValueCents(mats),
-    cycleId: crypto.randomUUID(),
-    claimedBy: null,
-    claimedAt: null,
-    lastCollectedAt: null,
-  };
-}
-
-// Generate a realistic material split for demo data
-function generateDemoMaterials(total: number): MaterialBreakdown {
-  // Typical apartment block: 45% aluminium, 30% PET, 10% glass, 5% HDPE, 10% cartons
-  const al = Math.round(total * 0.45);
-  const pet = Math.round(total * 0.30);
-  const glass = Math.round(total * 0.10);
-  const hdpe = Math.round(total * 0.05);
-  const lp = total - al - pet - glass - hdpe;
-  return { aluminium: al, pet, glass, hdpe, liquid_paperboard: lp };
-}
-
-export function getBins(): Bin[] {
+export function getDepots(): Depot[] {
   if (typeof window === "undefined") return [];
-  const data = localStorage.getItem(STORAGE_KEYS.bins);
+  const data = localStorage.getItem(STORAGE_KEYS.depots);
   if (data) return JSON.parse(data);
 
-  // Seed with demo bins matching buildings
-  const buildings = getBuildings();
-  const bins: Bin[] = [
-    makeBin(buildings[0], 310, "full"),    // Harbour Towers: 89% full
-    makeBin(buildings[1], 140, "filling"), // Pacific Breeze: 40%
-    makeBin(buildings[2], 330, "full"),    // The Pinnacle: 94% full
-    makeBin(buildings[3], 60, "filling"),  // Coral Gardens: 17%
-    makeBin(buildings[4], 290, "full"),    // Skyline: 83% full
+  const demo: Depot[] = [
+    { id: "depot-1", name: "Tomra South Brisbane", address: "201 Montague Rd, West End", lat: -27.4790, lng: 153.0080 },
   ];
-
-  localStorage.setItem(STORAGE_KEYS.bins, JSON.stringify(bins));
-  return bins;
-}
-
-function saveBins(bins: Bin[]) {
-  localStorage.setItem(STORAGE_KEYS.bins, JSON.stringify(bins));
-}
-
-function addContainerToBin(buildingId: string, material: MaterialType) {
-  const bins = getBins();
-  const bin = bins.find((b) => b.buildingId === buildingId);
-  if (!bin) return;
-
-  bin.containerCount += 1;
-  if (!bin.materials) bin.materials = emptyMaterials();
-  bin.materials[material] = (bin.materials[material] || 0) + 1;
-  bin.estimatedWeightKg = calcWeightFromMaterials(bin.materials);
-  bin.fillPercent = calcFillPercent(bin.containerCount);
-  bin.estimatedValueCents = calcRecyclerValueCents(bin.materials);
-
-  if (bin.fillPercent >= FULL_THRESHOLD_PERCENT && (bin.status === "filling" || bin.status === "empty")) {
-    bin.status = "full";
-  }
-  saveBins(bins);
-}
-
-export function getBinForBuilding(buildingId: string): Bin | null {
-  const bins = getBins();
-  return bins.find((b) => b.buildingId === buildingId) || null;
-}
-
-export function getFullBins(): Bin[] {
-  return getBins().filter((b) => b.status === "full");
-}
-
-export function claimBin(binId: string): Bin | null {
-  const user = getUser();
-  if (!user) return null;
-
-  const bins = getBins();
-  const bin = bins.find((b) => b.id === binId);
-  if (!bin || bin.status !== "full") return null;
-
-  bin.status = "claimed";
-  bin.claimedBy = user.id;
-  bin.claimedAt = new Date().toISOString();
-  saveBins(bins);
-  return bin;
-}
-
-export function completeBinRun(binId: string): { user: User; bin: Bin; settledScans: number } | null {
-  const user = getUser();
-  if (!user) return null;
-
-  const bins = getBins();
-  const bin = bins.find((b) => b.id === binId);
-  if (!bin || bin.status !== "claimed" || bin.claimedBy !== user.id) return null;
-
-  const earned = bin.containerCount * RUNNER_PAYOUT_CENTS;
-
-  const run: RunRecord = {
-    id: crypto.randomUUID(),
-    binId,
-    buildingName: bin.buildingName,
-    containerCount: bin.containerCount,
-    earnedCents: earned,
-    weightKg: bin.estimatedWeightKg,
-    timestamp: new Date().toISOString(),
-  };
-
-  user.runs.unshift(run);
-  // Runner payout goes straight to cleared (they did the physical delivery)
-  user.clearedCents += earned;
-  user.totalContainers += bin.containerCount;
-  user.totalCO2SavedKg += bin.containerCount * CO2_PER_CONTAINER_KG;
-
-  // Settlement: clear all pending scans for this bin cycle
-  const cycleId = bin.cycleId;
-  let settledScans = 0;
-  for (const scan of user.scans) {
-    if (scan.binCycleId === cycleId && scan.status === "pending") {
-      scan.status = "cleared";
-      user.pendingCents -= scan.refundCents;
-      user.clearedCents += scan.refundCents;
-      settledScans++;
-    }
-  }
-
-  // Update streak
-  const today = new Date().toISOString().split("T")[0];
-  if (user.lastRunDate) {
-    const lastDate = new Date(user.lastRunDate);
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    if (lastDate.toISOString().split("T")[0] === yesterday.toISOString().split("T")[0]) {
-      user.streak += 1;
-    } else if (user.lastRunDate !== today) {
-      user.streak = 1;
-    }
-  } else {
-    user.streak = 1;
-  }
-  user.lastRunDate = today;
-
-  // Award badges
-  if (user.runs.length === 1 && !user.badges.includes("first_run")) {
-    user.badges.push("first_run");
-  }
-  if (user.streak >= 7 && !user.badges.includes("week_warrior")) {
-    user.badges.push("week_warrior");
-  }
-  if (user.runs.length >= 10 && !user.badges.includes("ten_runs")) {
-    user.badges.push("ten_runs");
-  }
-  if (user.runs.length >= 50 && !user.badges.includes("fifty_runs")) {
-    user.badges.push("fifty_runs");
-  }
-
-  saveUser(user);
-
-  // Reset the bin with a new cycle ID
-  bin.status = "empty";
-  bin.containerCount = 0;
-  bin.materials = emptyMaterials();
-  bin.estimatedWeightKg = 0;
-  bin.estimatedValueCents = 0;
-  bin.fillPercent = 0;
-  bin.cycleId = crypto.randomUUID();
-  bin.claimedBy = null;
-  bin.claimedAt = null;
-  bin.lastCollectedAt = new Date().toISOString();
-  saveBins(bins);
-
-  updateRunnerLeaderboard(user.id, user.name, run.containerCount, earned);
-
-  return { user, bin, settledScans };
-}
-
-export function unclaimBin(binId: string): void {
-  const bins = getBins();
-  const bin = bins.find((b) => b.id === binId);
-  if (!bin || bin.status !== "claimed") return;
-  bin.status = "full";
-  bin.claimedBy = null;
-  bin.claimedAt = null;
-  saveBins(bins);
-}
-
-// ── Runner Leaderboard ──
-
-export interface RunnerRank {
-  userId: string;
-  name: string;
-  totalRuns: number;
-  totalContainers: number;
-  totalEarnedCents: number;
-  rank: number;
-}
-
-function updateRunnerLeaderboard(userId: string, name: string, containers: number, earned: number) {
-  const lb = getRunnerLeaderboard();
-  const existing = lb.find((r) => r.userId === userId);
-  if (existing) {
-    existing.totalRuns += 1;
-    existing.totalContainers += containers;
-    existing.totalEarnedCents += earned;
-  } else {
-    lb.push({ userId, name, totalRuns: 1, totalContainers: containers, totalEarnedCents: earned, rank: 0 });
-  }
-  localStorage.setItem(STORAGE_KEYS.runnerLeaderboard, JSON.stringify(lb));
-}
-
-export function getRunnerLeaderboard(): RunnerRank[] {
-  if (typeof window === "undefined") return [];
-  const data = localStorage.getItem(STORAGE_KEYS.runnerLeaderboard);
-  if (data) {
-    const lb: RunnerRank[] = JSON.parse(data);
-    return lb
-      .sort((a, b) => b.totalContainers - a.totalContainers)
-      .map((r, i) => ({ ...r, rank: i + 1 }));
-  }
-
-  const demo: RunnerRank[] = [
-    { userId: "demo-1", name: "Jake M", totalRuns: 34, totalContainers: 8420, totalEarnedCents: 42100, rank: 1 },
-    { userId: "demo-2", name: "Lisa K", totalRuns: 28, totalContainers: 6840, totalEarnedCents: 34200, rank: 2 },
-    { userId: "demo-3", name: "Marcus T", totalRuns: 21, totalContainers: 5230, totalEarnedCents: 26150, rank: 3 },
-    { userId: "demo-4", name: "Priya S", totalRuns: 15, totalContainers: 3600, totalEarnedCents: 18000, rank: 4 },
-  ];
-  localStorage.setItem(STORAGE_KEYS.runnerLeaderboard, JSON.stringify(demo));
+  localStorage.setItem(STORAGE_KEYS.depots, JSON.stringify(demo));
   return demo;
 }
 
-// ── Building Leaderboard ──
+// ── Routes ──
 
-export function getBuildings(): Building[] {
+export function getRoutes(): Route[] {
   if (typeof window === "undefined") return [];
-  const data = localStorage.getItem(STORAGE_KEYS.buildings);
+  const data = localStorage.getItem(STORAGE_KEYS.routes);
   if (data) return JSON.parse(data);
-
-  const demo: Building[] = [
-    { id: "b1", name: "Harbour Towers", address: "45 Boundary St, South Brisbane", totalContainers: 1847, totalResidents: 48, lat: -27.4820, lng: 153.0210 },
-    { id: "b2", name: "Pacific Breeze", address: "12 Merivale St, South Brisbane", totalContainers: 1523, totalResidents: 36, lat: -27.4780, lng: 153.0180 },
-    { id: "b3", name: "The Pinnacle", address: "88 Melbourne St, South Brisbane", totalContainers: 2104, totalResidents: 72, lat: -27.4750, lng: 153.0250 },
-    { id: "b4", name: "Coral Gardens", address: "21 Grey St, South Bank", totalContainers: 892, totalResidents: 24, lat: -27.4850, lng: 153.0230 },
-    { id: "b5", name: "Skyline Residences", address: "150 Vulture St, West End", totalContainers: 1205, totalResidents: 42, lat: -27.4880, lng: 153.0120 },
-  ];
-  localStorage.setItem(STORAGE_KEYS.buildings, JSON.stringify(demo));
-  return demo;
+  return [];
 }
 
-export function getLeaderboard(): (Building & { rank: number; perResident: number })[] {
-  const buildings = getBuildings();
-  return buildings
-    .map((b) => ({
-      ...b,
-      perResident: b.totalResidents > 0 ? Math.round(b.totalContainers / b.totalResidents) : 0,
-      rank: 0,
-    }))
-    .sort((a, b) => b.perResident - a.perResident)
-    .map((b, i) => ({ ...b, rank: i + 1 }));
+export function saveRoutes(routes: Route[]) {
+  localStorage.setItem(STORAGE_KEYS.routes, JSON.stringify(routes));
+}
+
+export function getRouteById(id: string): Route | null {
+  return getRoutes().find((r) => r.id === id) || null;
+}
+
+export function getPendingRoutes(): Route[] {
+  return getRoutes().filter((r) => r.status === "pending");
+}
+
+export function getActiveRoute(): Route | null {
+  return getRoutes().find((r) => r.status === "claimed" || r.status === "in_progress" || r.status === "at_depot") || null;
+}
+
+export function calcDriverPayout(containers: number): number {
+  return DRIVER_BASE_PAYOUT_CENTS + containers * DRIVER_PER_CONTAINER_CENTS;
 }
 
 // ── Badges ──
 
 export const BADGE_INFO: Record<string, { name: string; description: string; icon: string }> = {
-  first_run: { name: "First Run", description: "Completed your first bin pickup", icon: "🏃" },
-  week_warrior: { name: "Week Warrior", description: "7-day pickup streak", icon: "🔥" },
-  ten_runs: { name: "Ten Timer", description: "Completed 10 bin pickups", icon: "⭐" },
-  fifty_runs: { name: "Legend", description: "Completed 50 bin pickups", icon: "👑" },
+  first_scan: { name: "First Scan", description: "Scanned your first container", icon: "📱" },
+  hundred_club: { name: "100 Club", description: "Scanned 100 containers", icon: "💯" },
+  first_collection: { name: "First Collection", description: "Completed your first route", icon: "🚛" },
+  eco_warrior: { name: "Eco Warrior", description: "Saved 10kg of CO2", icon: "🌍" },
 };
-
-// ── Utilities ──
-
-export function formatCents(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
