@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#16a34a"/>
+  <text x="256" y="300" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-size="240" font-weight="800">G</text>
+  <text x="256" y="420" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-family="system-ui,sans-serif" font-size="80" font-weight="700">SORT</text>
+</svg>

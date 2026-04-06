@@ -73,14 +73,14 @@ export default function App() {
 
   if (loading || !user) {
     return (
-      <div className="h-full flex items-center justify-center bg-white">
+      <div className="h-dvh flex items-center justify-center bg-white">
         <div className="text-slate-400 text-sm">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="h-full relative">
+    <div className="h-dvh relative">
       <MapView
         mode={mode}
         households={households}
@@ -92,12 +92,17 @@ export default function App() {
         onMapTap={handleMapTap}
       />
 
-      <div className="fixed top-4 left-4 z-30">
+      {/* Account button — safe area aware */}
+      <div className="fixed z-30" style={{ top: "calc(env(safe-area-inset-top, 16px) + 0.5rem)", left: "1rem" }}>
         <AccountButton onClick={() => setShowAccount(true)} />
       </div>
 
+      {/* Toast — safe area aware */}
       {toast && (
-        <div className={`fixed top-16 left-1/2 z-40 bg-white border border-slate-200 text-slate-900 px-5 py-2.5 rounded-full shadow-lg text-sm font-medium ${toast.visible ? "animate-toast-in" : "animate-toast-out"}`}>
+        <div
+          className={`fixed left-1/2 z-[45] glass-strong border border-slate-200/50 text-slate-900 px-5 py-2.5 rounded-full shadow-xl text-sm font-medium ${toast.visible ? "animate-toast-in" : "animate-toast-out"}`}
+          style={{ top: "calc(env(safe-area-inset-top, 16px) + 3.5rem)" }}
+        >
           <span className="text-green-600">{toast.text}</span>
         </div>
       )}

@@ -23,61 +23,77 @@
 
 html {
   scroll-behavior: smooth;
+  height: 100dvh;
 }
 
-/* Google Maps overrides */
+body {
+  height: 100dvh;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Google Maps */
 .gm-style iframe + div { border: none !important; }
 
-/* Google Places Autocomplete dropdown */
+/* Google Places Autocomplete — light theme */
 .pac-container {
   background-color: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+  border-radius: 16px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
   margin-top: 4px;
   font-family: 'Inter', system-ui, sans-serif;
   z-index: 9999 !important;
 }
 .pac-item {
-  padding: 8px 12px;
+  padding: 10px 14px;
   border-top: 1px solid #f1f5f9;
   color: #334155;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.4;
 }
 .pac-item:first-child { border-top: none; }
-.pac-item:hover,
-.pac-item-selected { background-color: #f8fafc; }
+.pac-item:hover, .pac-item-selected { background-color: #f8fafc; }
 .pac-item-query { color: #0f172a; font-weight: 600; }
 .pac-matched { color: #16a34a; font-weight: 700; }
 .pac-icon { display: none; }
 
-/* Glass morphism */
+/* ── Glassmorphism ── */
 .glass {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
 }
 
 .glass-strong {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(24px) saturate(200%);
+  -webkit-backdrop-filter: blur(24px) saturate(200%);
 }
 
-/* Bottom sheet */
+.glass-dark {
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+/* ── Bottom sheet ── */
 .bottom-sheet {
-  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform;
+  transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: auto;
 }
 
-/* Animations */
+.sheet-inner {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Animations ── */
 @keyframes fade-up {
   0% { opacity: 0; transform: translateY(20px); }
   100% { opacity: 1; transform: translateY(0); }
 }
-
 .animate-fade-up {
   animation: fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
@@ -87,7 +103,6 @@ html {
   50% { transform: scale(1.12); }
   100% { transform: scale(1); }
 }
-
 .animate-ka-ching {
   animation: ka-ching 0.3s ease-in-out;
 }
@@ -96,7 +111,6 @@ html {
   0% { transform: translateY(24px); opacity: 0; }
   100% { transform: translateY(0); opacity: 1; }
 }
-
 .animate-slide-up {
   animation: slide-up 0.4s cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -105,37 +119,25 @@ html {
   0% { transform: translateX(-50%) translateY(-16px); opacity: 0; }
   100% { transform: translateX(-50%) translateY(0); opacity: 1; }
 }
-
 @keyframes toast-out {
   0% { transform: translateX(-50%) translateY(0); opacity: 1; }
   100% { transform: translateX(-50%) translateY(-16px); opacity: 0; }
 }
-
-.animate-toast-in {
-  animation: toast-in 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.animate-toast-out {
-  animation: toast-out 0.3s ease-in forwards;
-}
+.animate-toast-in { animation: toast-in 0.35s cubic-bezier(0.22, 1, 0.36, 1); }
+.animate-toast-out { animation: toast-out 0.3s ease-in forwards; }
 
 @keyframes slide-in-right {
   from { transform: translateX(100%); }
   to { transform: translateX(0); }
 }
-
 .animate-slide-in-right {
   animation: slide-in-right 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.reveal {
-  opacity: 0;
-  transform: translateY(28px);
-  transition: opacity 0.75s cubic-bezier(0.22, 1, 0.36, 1),
-              transform 0.75s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.reveal.visible {
-  opacity: 1;
-  transform: none;
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

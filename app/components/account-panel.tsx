@@ -14,16 +14,16 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-black/20" onClick={onClose} />
-      <div className="fixed inset-y-0 right-0 z-50 w-80 max-w-[85vw] bg-white overflow-y-auto animate-slide-in-right border-l border-slate-200 shadow-2xl">
-        <div className="p-6 border-b border-slate-100">
+      <div className="fixed inset-0 z-50 bg-black/20 touch-none" onClick={onClose} />
+      <div className="fixed inset-y-0 right-0 z-50 w-80 max-w-[85vw] glass-strong overflow-y-auto animate-slide-in-right border-l border-white/40 shadow-2xl">
+        <div className="p-6 border-b border-slate-100/60" style={{ paddingTop: "max(1.5rem, env(safe-area-inset-top))" }}>
           <div className="flex justify-between items-start mb-6">
             <div>
-              <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-[0.15em]">Account</p>
+              <p className="text-[12px] text-slate-400 font-semibold uppercase tracking-[0.12em]">Account</p>
               <h2 className="text-xl font-display font-extrabold text-slate-900 mt-1">{user.name}</h2>
             </div>
-            <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 transition-colors duration-200">
-              <X className="w-4 h-4" />
+            <button onClick={onClose} className="p-2.5 -mr-1 text-slate-400 hover:text-slate-600 transition-colors duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center">
+              <X className="w-5 h-5" />
             </button>
           </div>
 

@@ -125,13 +125,13 @@ export function Scanner({ onClose, onScanComplete }: ScannerProps) {
 
   // ── Camera View ──
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
-      <div className="flex justify-between items-center px-5 pt-[env(safe-area-inset-top,16px)] pb-3">
+    <div className="fixed inset-0 z-50 bg-black flex flex-col" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+      <div className="flex justify-between items-center px-5 pb-3" style={{ paddingTop: "calc(env(safe-area-inset-top, 16px) + 0.25rem)" }}>
         <div className="flex items-center gap-2.5">
           <ScanBarcode className="w-5 h-5 text-green-400" />
           <h2 className="text-[15px] font-display font-bold text-white">Scan Container</h2>
         </div>
-        <button onClick={handleClose} className="p-2 hover:bg-white/5 rounded-full transition-colors duration-200">
+        <button onClick={handleClose} className="p-3 hover:bg-white/5 rounded-full transition-colors duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center">
           <X className="w-5 h-5 text-neutral-400" />
         </button>
       </div>
@@ -177,7 +177,7 @@ export function Scanner({ onClose, onScanComplete }: ScannerProps) {
           <form onSubmit={handleManualSubmit} className="flex gap-2">
             <input type="text" inputMode="numeric" value={manualBarcode} onChange={(e) => setManualBarcode(e.target.value)}
               placeholder="Enter barcode..." autoFocus
-              className="flex-1 bg-[#1e1e1e] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white text-[14px] placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500/50" />
+              className="flex-1 bg-[#1e1e1e] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white text-base placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500/50" />
             <button type="submit" className="bg-green-600 hover:bg-green-500 text-white font-bold px-5 py-3 rounded-xl transition-colors duration-200 shadow-lg shadow-green-600/25">Add</button>
           </form>
         )}
