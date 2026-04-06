@@ -44,8 +44,8 @@ export default function App() {
 
   if (loading || !user) {
     return (
-      <div className="h-full flex items-center justify-center bg-black">
-        <div className="text-neutral-600 text-sm">Loading...</div>
+      <div className="h-full flex items-center justify-center bg-white">
+        <div className="text-slate-400 text-sm">Loading...</div>
       </div>
     );
   }
@@ -69,11 +69,11 @@ export default function App() {
       {/* Toast */}
       {toast && (
         <div
-          className={`fixed top-16 left-1/2 z-40 bg-[#1a1a1a] border border-[#333] text-white px-5 py-2.5 rounded-full shadow-lg text-sm font-medium ${
+          className={`fixed top-16 left-1/2 z-40 bg-white border border-slate-200 text-slate-900 px-5 py-2.5 rounded-full shadow-lg text-sm font-medium ${
             toast.visible ? "animate-toast-in" : "animate-toast-out"
           }`}
         >
-          <span className="text-green-400">{toast.text}</span>
+          <span className="text-green-600">{toast.text}</span>
         </div>
       )}
 

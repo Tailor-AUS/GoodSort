@@ -28,22 +28,17 @@ interface LatLng {
 const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 const BRISBANE_CENTER: LatLng = { lat: -27.482, lng: 153.021 };
 
-// Dark map style
-const DARK_MAP_STYLES: google.maps.MapTypeStyle[] = [
-  { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#4a4a6a" }] },
-  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#6a6a8a" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a2a3e" }] },
-  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#1a1a2e" }] },
-  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#333350" }] },
-  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#1a1a2e" }] },
-  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#5a5a7a" }] },
-  { featureType: "transit", elementType: "geometry", stylers: [{ color: "#222240" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0e0e1a" }] },
-  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#3a3a5a" }] },
+// Clean light map style
+const MAP_STYLES: google.maps.MapTypeStyle[] = [
   { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
-  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#1a2a1a" }] },
+  { featureType: "transit", elementType: "labels", stylers: [{ visibility: "off" }] },
+  { featureType: "water", elementType: "geometry.fill", stylers: [{ color: "#d4e8f7" }] },
+  { featureType: "landscape", elementType: "geometry.fill", stylers: [{ color: "#f5f5f5" }] },
+  { featureType: "road", elementType: "geometry.fill", stylers: [{ color: "#ffffff" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#e0e0e0" }] },
+  { featureType: "road.highway", elementType: "geometry.fill", stylers: [{ color: "#f0f0f0" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#999999" }] },
+  { featureType: "administrative", elementType: "labels.text.fill", stylers: [{ color: "#999999" }] },
 ];
 
 // ── Maps API Loader ──
@@ -82,8 +77,8 @@ function GoogleMapsProvider({ children }: { children: ReactNode }) {
         disableDefaultUI: true,
         zoomControl: true,
         zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_TOP },
-        styles: DARK_MAP_STYLES,
-        backgroundColor: "#0a0a0a",
+        styles: MAP_STYLES,
+        backgroundColor: "#f5f5f5",
       });
       mapRef.current = m;
       setMap(m);
@@ -172,7 +167,7 @@ function getBinColor(bin: Bin, mode: AppMode): string {
 function binMarkerSvg(bin: Bin, mode: AppMode, isSelected: boolean): string {
   const color = getBinColor(bin, mode);
   const size = isSelected ? 48 : 42;
-  const borderColor = isSelected ? "#22c55e" : "#ffffff";
+  const borderColor = isSelected ? "#16a34a" : "#ffffff";
   const borderWidth = isSelected ? 3 : 2.5;
   const r = size / 2;
   const inner = r - borderWidth;
@@ -259,11 +254,11 @@ class MapErrorBoundary extends Component<{ children: ReactNode }, { error: Error
   render() {
     if (this.state.error) {
       return (
-        <div className="absolute inset-0 bg-[#0a0a0a] flex items-center justify-center">
+        <div className="absolute inset-0 bg-white flex items-center justify-center">
           <div className="text-center px-6 max-w-md">
             <AlertTriangle size={48} className="text-amber-500 mx-auto mb-4" />
-            <p className="text-white font-display font-bold text-lg mb-2">Map failed to load</p>
-            <p className="text-neutral-500 text-sm mb-4">{this.state.error.message}</p>
+            <p className="text-slate-900 font-display font-bold text-lg mb-2">Map failed to load</p>
+            <p className="text-slate-500 text-sm mb-4">{this.state.error.message}</p>
             <button
               onClick={() => this.setState({ error: null })}
               className="px-5 py-2.5 rounded-xl bg-green-500 text-black font-bold text-sm hover:bg-green-400 transition-colors shadow-lg shadow-green-500/25"
@@ -282,7 +277,7 @@ class MapErrorBoundary extends Component<{ children: ReactNode }, { error: Error
 
 function NoApiKeyFallback() {
   return (
-    <div className="absolute inset-0 bg-[#0a0a0a] flex items-center justify-center">
+    <div className="absolute inset-0 bg-white flex items-center justify-center">
       <div className="text-center px-6 max-w-sm">
         <div className="w-16 h-16 bg-neutral-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
           <svg width="32" height="32" fill="none" stroke="#525252" strokeWidth="1.5">
@@ -290,8 +285,8 @@ function NoApiKeyFallback() {
             <path d="M16 20v2M8 28c0-4.4 3.6-8 8-8s8 3.6 8 8" />
           </svg>
         </div>
-        <p className="text-white font-display font-bold text-lg mb-2">Map requires API key</p>
-        <p className="text-neutral-500 text-sm">
+        <p className="text-slate-900 font-display font-bold text-lg mb-2">Map requires API key</p>
+        <p className="text-slate-500 text-sm">
           Set <code className="text-neutral-400 bg-neutral-800 px-1.5 py-0.5 rounded text-xs">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> in your environment
         </p>
       </div>

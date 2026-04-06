@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
     title: "The Good Sort",
   },
 };
@@ -17,7 +17,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: "#000000",
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({
@@ -33,7 +33,7 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="h-full overflow-hidden bg-black text-white" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <body className="h-full overflow-hidden bg-white text-slate-900" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
         {children}
       </body>
     </html>
