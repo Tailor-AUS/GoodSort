@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 
@@ -14,10 +13,7 @@ export default function VerifyPage() {
 
   useEffect(() => {
     const stored = sessionStorage.getItem("goodsort_verify_phone");
-    if (!stored) {
-      router.push("/login");
-      return;
-    }
+    if (!stored) { router.push("/login"); return; }
     setPhone(stored);
   }, [router]);
 
@@ -28,21 +24,31 @@ export default function VerifyPage() {
     setLoading(true);
 
     try {
-      const supabase = createClient();
-      const { error } = await supabase.auth.verifyOtp({
-        phone,
-        token: otp,
-        type: "sms",
+      const res = await fetch("/api/auth/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, code: otp }),
       });
 
-      if (error) {
-        setError(error.message);
+      if (!res.ok) {
+        setError("Invalid code. Please try again.");
         setLoading(false);
         return;
       }
 
+      const data = await res.json();
+      // Store JWT token in localStorage and cookie (middleware reads cookie)
+      localStorage.setItem("goodsort_token", data.token);
+      localStorage.setItem("goodsort_profile", JSON.stringify(data.profile));
+      document.cookie = `goodsort_token=${data.token}; path=/; max-age=${30 * 24 * 60 * 60}; SameSite=Lax`;
       sessionStorage.removeItem("goodsort_verify_phone");
-      router.push("/onboard");
+
+      // Check if profile needs onboarding (no household)
+      if (!data.profile.householdId) {
+        router.push("/onboard");
+      } else {
+        router.push("/");
+      }
     } catch {
       setError("Verification failed. Please try again.");
       setLoading(false);
@@ -57,9 +63,7 @@ export default function VerifyPage() {
             <ShieldCheck className="w-8 h-8 text-green-600" />
           </div>
           <h1 className="text-2xl font-display font-extrabold text-slate-900">Enter code</h1>
-          <p className="text-slate-400 text-[13px] mt-1">
-            Sent to {phone ? phone.replace(/(\+61)(\d{3})(\d{3})(\d{3})/, "$1 $2 $3 $4") : "your phone"}
-          </p>
+          <p className="text-slate-400 text-[13px] mt-1">Sent to {phone}</p>
         </div>
 
         <form onSubmit={handleVerify} className="space-y-4">
@@ -74,9 +78,7 @@ export default function VerifyPage() {
             autoFocus
           />
 
-          {error && (
-            <p className="text-red-500 text-[13px] text-center">{error}</p>
-          )}
+          {error && <p className="text-red-500 text-[13px] text-center">{error}</p>}
 
           <button
             type="submit"
@@ -87,11 +89,9 @@ export default function VerifyPage() {
           </button>
         </form>
 
-        <button
-          onClick={() => router.push("/login")}
-          className="w-full text-center text-[13px] text-slate-400 hover:text-slate-600 font-medium py-3 mt-2 transition-colors"
-        >
-          ← Use different number
+        <button onClick={() => router.push("/login")}
+          className="w-full text-center text-[13px] text-slate-400 hover:text-slate-600 font-medium py-3 mt-2 transition-colors">
+          Use different number
         </button>
       </div>
     </div>

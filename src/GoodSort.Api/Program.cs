@@ -1,11 +1,13 @@
 using GoodSort.Api.Data;
 using GoodSort.Api.Data.Entities;
+using GoodSort.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 builder.AddSqlServerDbContext<GoodSortDbContext>("goodsortdb");
+builder.Services.AddScoped<AuthService>();
 
 builder.Services.AddCors(options =>
 {
@@ -41,6 +43,24 @@ for (var i = 0; i < 10; i++)
 
 // ── Health ──
 app.MapGet("/api/health", () => Results.Ok(new { status = "healthy", service = "goodsort-api" }));
+
+// ── Auth (Azure Communication Services SMS OTP) ──
+app.MapPost("/api/auth/send-otp", async (SendOtpRequest req, AuthService auth) =>
+{
+    var phone = req.Phone.Trim();
+    if (!phone.StartsWith("+")) phone = "+61" + phone.TrimStart('0');
+    var sent = await auth.SendOtp(phone);
+    return sent ? Results.Ok(new { sent = true }) : Results.BadRequest(new { error = "Failed to send OTP" });
+});
+
+app.MapPost("/api/auth/verify-otp", async (VerifyOtpRequest req, AuthService auth) =>
+{
+    var phone = req.Phone.Trim();
+    if (!phone.StartsWith("+")) phone = "+61" + phone.TrimStart('0');
+    var (token, profile) = await auth.VerifyOtp(phone, req.Code);
+    if (token == null) return Results.Unauthorized();
+    return Results.Ok(new { token, profile });
+});
 
 // ── Households ──
 app.MapGet("/api/households", async (GoodSortDbContext db) =>
@@ -218,6 +238,8 @@ app.MapGet("/api/depots", async (GoodSortDbContext db) =>
 
 app.Run();
 
+record SendOtpRequest(string Phone);
+record VerifyOtpRequest(string Phone, string Code);
 record ScanRequest(Guid UserId, string Barcode, string ContainerName, string Material);
 record ClaimRequest(Guid DriverId);
 record PickupRequest(int ActualCount);
