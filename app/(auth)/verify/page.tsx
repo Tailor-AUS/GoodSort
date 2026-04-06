@@ -6,15 +6,15 @@ import { ShieldCheck } from "lucide-react";
 
 export default function VerifyPage() {
   const [otp, setOtp] = useState("");
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
 
   useEffect(() => {
-    const stored = sessionStorage.getItem("goodsort_verify_phone");
+    const stored = sessionStorage.getItem("goodsort_verify_email");
     if (!stored) { router.push("/login"); return; }
-    setPhone(stored);
+    setEmail(stored);
   }, [router]);
 
   async function handleVerify(e: React.FormEvent) {
@@ -27,7 +27,7 @@ export default function VerifyPage() {
       const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, code: otp }),
+        body: JSON.stringify({ email, code: otp }),
       });
 
       if (!res.ok) {
@@ -37,13 +37,11 @@ export default function VerifyPage() {
       }
 
       const data = await res.json();
-      // Store JWT token in localStorage and cookie (middleware reads cookie)
       localStorage.setItem("goodsort_token", data.token);
       localStorage.setItem("goodsort_profile", JSON.stringify(data.profile));
       document.cookie = `goodsort_token=${data.token}; path=/; max-age=${30 * 24 * 60 * 60}; SameSite=Lax`;
-      sessionStorage.removeItem("goodsort_verify_phone");
+      sessionStorage.removeItem("goodsort_verify_email");
 
-      // Check if profile needs onboarding (no household)
       if (!data.profile.householdId) {
         router.push("/onboard");
       } else {
@@ -62,8 +60,8 @@ export default function VerifyPage() {
           <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <ShieldCheck className="w-8 h-8 text-green-600" />
           </div>
-          <h1 className="text-2xl font-display font-extrabold text-slate-900">Enter code</h1>
-          <p className="text-slate-400 text-[13px] mt-1">Sent to {phone}</p>
+          <h1 className="text-2xl font-display font-extrabold text-slate-900">Check your email</h1>
+          <p className="text-slate-400 text-[13px] mt-1">Code sent to {email}</p>
         </div>
 
         <form onSubmit={handleVerify} className="space-y-4">
@@ -91,7 +89,7 @@ export default function VerifyPage() {
 
         <button onClick={() => router.push("/login")}
           className="w-full text-center text-[13px] text-slate-400 hover:text-slate-600 font-medium py-3 mt-2 transition-colors">
-          Use different number
+          Use different email
         </button>
       </div>
     </div>
