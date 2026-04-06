@@ -8,17 +8,17 @@
     "start": "next start"
   },
   "dependencies": {
-    "@vis.gl/react-maplibre": "^8.1.0",
+    "@googlemaps/js-api-loader": "^2.0.2",
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
     "lucide-react": "^1.7.0",
-    "maplibre-gl": "^5.22.0",
     "next": "16.2.2",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/google.maps": "^3.58.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

@@ -1,22 +1,12 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useState, useCallback, useEffect } from "react";
 import { getOrCreateDefaultUser, getBins, type User, type Bin } from "@/lib/store";
-import type { AppMode } from "./components/map-view";
+import { MapView, type AppMode } from "./components/map-view";
 import { BottomSheet } from "./components/bottom-sheet";
 import { Scanner } from "./components/scanner";
 import { AccountButton } from "./components/account-button";
 import { AccountPanel } from "./components/account-panel";
-
-const MapView = dynamic(() => import("./components/map-view").then((m) => ({ default: m.MapView })), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-full bg-black flex items-center justify-center">
-      <div className="text-neutral-600 text-sm">Loading map...</div>
-    </div>
-  ),
-});
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);

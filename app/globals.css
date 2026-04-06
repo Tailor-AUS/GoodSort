@@ -26,48 +26,33 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Map */
-.maplibregl-map {
-  width: 100% !important;
-  height: 100% !important;
-}
+/* Google Maps overrides */
+.gm-style iframe + div { border: none !important; }
 
-.maplibregl-ctrl-bottom-left,
-.maplibregl-ctrl-bottom-right {
-  display: none;
+/* Google Places Autocomplete dropdown — dark theme */
+.pac-container {
+  background-color: #18181b;
+  border: 1px solid #2a2a2a;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  margin-top: 4px;
+  font-family: 'Inter', system-ui, sans-serif;
+  z-index: 9999 !important;
 }
-
-/* Bin markers */
-.bin-marker {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  border: 2.5px solid rgba(255,255,255,0.85);
-  box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+.pac-item {
+  padding: 8px 12px;
+  border-top: 1px solid #222;
+  color: #e4e4e7;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 800;
-  font-family: var(--font-jakarta), system-ui, sans-serif;
-  color: white;
-  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  font-size: 13px;
+  line-height: 1.4;
 }
-
-.bin-marker:hover,
-.bin-marker.selected {
-  transform: scale(1.2);
-}
-
-.bin-marker.full {
-  animation: pulse-glow 2s infinite;
-}
-
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 2px 12px rgba(0,0,0,0.5); }
-  50% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0.12), 0 2px 12px rgba(0,0,0,0.5); }
-}
+.pac-item:first-child { border-top: none; }
+.pac-item:hover,
+.pac-item-selected { background-color: #262626; }
+.pac-item-query { color: #fff; font-weight: 600; }
+.pac-matched { color: #22c55e; font-weight: 700; }
+.pac-icon { display: none; }
 
 /* Glass morphism */
 .glass {
