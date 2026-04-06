@@ -7,7 +7,7 @@ import type { Bin } from "@/lib/store";
 
 export type AppMode = "sort" | "run";
 
-const GOLD_COAST_CENTER = { longitude: 153.41, latitude: -27.97 };
+const BRISBANE_CENTER = { longitude: 153.021, latitude: -27.482 };
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/dark";
 
 interface MapViewProps {
@@ -81,8 +81,8 @@ export function MapView({ mode, bins, selectedBinId, onBinSelect, onMapTap }: Ma
   return (
     <Map
       initialViewState={{
-        ...GOLD_COAST_CENTER,
-        zoom: 13,
+        ...BRISBANE_CENTER,
+        zoom: 14,
       }}
       style={{ width: "100%", height: "100%" }}
       mapStyle={MAP_STYLE}

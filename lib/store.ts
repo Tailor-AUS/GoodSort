@@ -144,11 +144,13 @@ export {
   MIN_WORTHWHILE_RUN,
 };
 
+const DATA_VERSION = "v3"; // bump to reset demo data on deploy
+
 const STORAGE_KEYS = {
   user: "goodsort_user",
-  buildings: "goodsort_buildings",
-  bins: "goodsort_bins",
-  runnerLeaderboard: "goodsort_runner_leaderboard",
+  buildings: `goodsort_buildings_${DATA_VERSION}`,
+  bins: `goodsort_bins_${DATA_VERSION}`,
+  runnerLeaderboard: `goodsort_runner_lb_${DATA_VERSION}`,
 };
 
 // CO2 saved per container (avg across material types, kg)
@@ -577,11 +579,11 @@ export function getBuildings(): Building[] {
   if (data) return JSON.parse(data);
 
   const demo: Building[] = [
-    { id: "b1", name: "Harbour Towers", address: "12 Marine Pde, Southport", totalContainers: 1847, totalResidents: 48, lat: -27.9670, lng: 153.4000 },
-    { id: "b2", name: "Pacific Breeze", address: "88 Surf Parade, Broadbeach", totalContainers: 1523, totalResidents: 36, lat: -28.0268, lng: 153.4315 },
-    { id: "b3", name: "The Pinnacle", address: "5 River Dr, Surfers Paradise", totalContainers: 2104, totalResidents: 72, lat: -27.9986, lng: 153.4311 },
-    { id: "b4", name: "Coral Gardens", address: "21 Palm Ave, Southport", totalContainers: 892, totalResidents: 24, lat: -27.9730, lng: 153.4100 },
-    { id: "b5", name: "Skyline Residences", address: "150 High St, Southport", totalContainers: 1205, totalResidents: 42, lat: -27.9650, lng: 153.3950 },
+    { id: "b1", name: "Harbour Towers", address: "45 Boundary St, South Brisbane", totalContainers: 1847, totalResidents: 48, lat: -27.4820, lng: 153.0210 },
+    { id: "b2", name: "Pacific Breeze", address: "12 Merivale St, South Brisbane", totalContainers: 1523, totalResidents: 36, lat: -27.4780, lng: 153.0180 },
+    { id: "b3", name: "The Pinnacle", address: "88 Melbourne St, South Brisbane", totalContainers: 2104, totalResidents: 72, lat: -27.4750, lng: 153.0250 },
+    { id: "b4", name: "Coral Gardens", address: "21 Grey St, South Bank", totalContainers: 892, totalResidents: 24, lat: -27.4850, lng: 153.0230 },
+    { id: "b5", name: "Skyline Residences", address: "150 Vulture St, West End", totalContainers: 1205, totalResidents: 42, lat: -27.4880, lng: 153.0120 },
   ];
   localStorage.setItem(STORAGE_KEYS.buildings, JSON.stringify(demo));
   return demo;
