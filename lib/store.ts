@@ -237,6 +237,13 @@ export function getUser(): User | null {
   return data ? JSON.parse(data) : null;
 }
 
+export function getOrCreateDefaultUser(): User {
+  const existing = getUser();
+  if (existing) return existing;
+  const buildings = getBuildings();
+  return createUser("Sorter", "—", buildings[0]?.id || "b1");
+}
+
 export function createUser(name: string, unit: string, buildingId: string): User {
   const user: User = {
     id: crypto.randomUUID(),

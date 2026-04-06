@@ -177,7 +177,7 @@ export function BinSheet({ bin, mode, onClose, onBinUpdate }: BinSheetProps) {
                 onClick={handleClaim}
                 className="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3.5 rounded-xl transition-colors text-lg"
               >
-                Claim This Bin
+                Claim This Bag
               </button>
             </div>
           )}
@@ -186,7 +186,7 @@ export function BinSheet({ bin, mode, onClose, onBinUpdate }: BinSheetProps) {
             <div>
               <div className="bg-gray-50 rounded-xl p-4 mb-3">
                 <p className="text-xs text-gray-500 mb-3">Delivery checklist:</p>
-                {["Collected bin from building", "Delivered to depot", "Returned empty bin"].map(
+                {["Took the full bag", "Replaced with a fresh bag", "Delivered bag to depot"].map(
                   (text, i) => (
                     <label key={i} className="flex items-center gap-2 mb-2 cursor-pointer">
                       <input
@@ -214,7 +214,7 @@ export function BinSheet({ bin, mode, onClose, onBinUpdate }: BinSheetProps) {
                 onClick={handleUnclaim}
                 className="w-full bg-white border border-gray-200 text-gray-500 font-medium py-2.5 rounded-xl transition-colors text-sm"
               >
-                Release Bin
+                Release Bag
               </button>
             </div>
           )}

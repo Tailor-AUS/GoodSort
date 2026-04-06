@@ -2,8 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useState, useCallback, useEffect } from "react";
-import { getUser, getBins, type User, type Bin } from "@/lib/store";
-import { Onboarding } from "./components/onboarding";
+import { getOrCreateDefaultUser, getBins, type User, type Bin } from "@/lib/store";
 import { ModeToggle, type AppMode } from "./components/mode-toggle";
 import { BinSheet } from "./components/bin-sheet";
 import { ScanButton } from "./components/scan-button";
@@ -32,13 +31,13 @@ export default function App() {
   const [toast, setToast] = useState<{ text: string; visible: boolean } | null>(null);
 
   useEffect(() => {
-    setUser(getUser());
+    setUser(getOrCreateDefaultUser());
     setBins(getBins());
     setLoading(false);
   }, []);
 
   const refreshData = useCallback(() => {
-    setUser(getUser());
+    setUser(getOrCreateDefaultUser());
     setBins(getBins());
   }, []);
 
@@ -72,13 +71,7 @@ export default function App() {
     );
   }
 
-  if (!user) {
-    return (
-      <div className="h-full bg-gray-50 overflow-y-auto">
-        <Onboarding onComplete={(u) => { setUser(u); setBins(getBins()); }} />
-      </div>
-    );
-  }
+  if (!user) return null;
 
   return (
     <div className="h-full relative">
