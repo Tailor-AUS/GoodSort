@@ -20,11 +20,23 @@ var app = builder.Build();
 app.UseCors();
 app.MapDefaultEndpoints();
 
-// Auto-migrate on startup
-using (var scope = app.Services.CreateScope())
+// Auto-migrate on startup with retry (SQL may not be ready yet)
+for (var i = 0; i < 10; i++)
 {
-    var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
-    await db.Database.MigrateAsync();
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
+        await db.Database.MigrateAsync();
+        app.Logger.LogInformation("Database migration completed successfully");
+        break;
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning("Migration attempt {Attempt} failed: {Message}", i + 1, ex.Message);
+        if (i == 9) throw;
+        await Task.Delay(3000);
+    }
 }
 
 // ── Health ──

@@ -25,7 +25,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("GoodSort.AppHost")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0572debb10474ef4fbb785119e564fab76b95d06")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+5fdc58c34452436e91d87e1bada68b3dce3ee59b")]
 [assembly: System.Reflection.AssemblyProductAttribute("GoodSort.AppHost")]
 [assembly: System.Reflection.AssemblyTitleAttribute("GoodSort.AppHost")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
