@@ -1,23 +1,25 @@
 "use client";
 
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useCallback } from "react";
 import { Map, GeolocateControl, Marker } from "@vis.gl/react-maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { AppMode } from "./mode-toggle";
 import type { Bin } from "@/lib/store";
 
+export type AppMode = "sort" | "run";
+
 const GOLD_COAST_CENTER = { longitude: 153.41, latitude: -27.97 };
-const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
+const MAP_STYLE = "https://tiles.openfreemap.org/styles/dark";
 
 interface MapViewProps {
   mode: AppMode;
   bins: Bin[];
   selectedBinId: string | null;
   onBinSelect: (binId: string) => void;
+  onMapTap: () => void;
 }
 
 function getBinColor(bin: Bin, mode: AppMode): string {
-  if (mode === "run") return "#ef4444"; // red for full bins in run mode
+  if (mode === "run") return "#22c55e";
   if (bin.fillPercent >= 80) return "#ef4444";
   if (bin.fillPercent >= 50) return "#f59e0b";
   return "#22c55e";
@@ -48,12 +50,11 @@ function BinMarker({
       }}
     >
       <div
-        className={`bin-marker ${isFull && mode === "run" ? "full" : ""}`}
+        className={`bin-marker ${isFull && mode === "run" ? "full" : ""} ${isSelected ? "selected" : ""}`}
         style={{
           backgroundColor: color,
-          transform: isSelected ? "scale(1.25)" : "scale(1)",
-          borderColor: isSelected ? "#facc15" : "white",
-          borderWidth: isSelected ? "4px" : "3px",
+          borderColor: isSelected ? "#22c55e" : "rgba(255,255,255,0.9)",
+          borderWidth: isSelected ? "3px" : "2.5px",
         }}
       >
         {bin.fillPercent}%
@@ -62,7 +63,7 @@ function BinMarker({
   );
 }
 
-export function MapView({ mode, bins, selectedBinId, onBinSelect }: MapViewProps) {
+export function MapView({ mode, bins, selectedBinId, onBinSelect, onMapTap }: MapViewProps) {
   const geolocateRef = useRef<maplibregl.GeolocateControl | null>(null);
 
   const visibleBins = mode === "run"
@@ -70,7 +71,6 @@ export function MapView({ mode, bins, selectedBinId, onBinSelect }: MapViewProps
     : bins.filter((b) => b.status !== "collected");
 
   const handleMapLoad = useCallback(() => {
-    // Trigger geolocation on map load
     setTimeout(() => {
       if (geolocateRef.current) {
         geolocateRef.current.trigger();
@@ -87,6 +87,7 @@ export function MapView({ mode, bins, selectedBinId, onBinSelect }: MapViewProps
       style={{ width: "100%", height: "100%" }}
       mapStyle={MAP_STYLE}
       onLoad={handleMapLoad}
+      onClick={onMapTap}
       attributionControl={false}
     >
       <GeolocateControl
@@ -94,7 +95,7 @@ export function MapView({ mode, bins, selectedBinId, onBinSelect }: MapViewProps
         position="top-right"
         trackUserLocation
         showAccuracyCircle={false}
-        style={{ marginTop: "70px", marginRight: "12px" }}
+        style={{ marginTop: "16px", marginRight: "16px" }}
       />
 
       {visibleBins.map((bin) => (

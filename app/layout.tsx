@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "The Good Sort",
-  description: "Scan. Sort. Save the planet. Earn 10c per container.",
+  description: "Scan. Sort. Earn 10c per container.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -17,7 +17,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: "#16a34a",
+  themeColor: "#000000",
 };
 
 export default function RootLayout({
@@ -27,7 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full antialiased">
-      <body className="h-full overflow-hidden bg-gray-900">
+      <body className="h-full overflow-hidden bg-black text-white">
         {children}
       </body>
     </html>

@@ -13,7 +13,7 @@ export function AccountButton({ user, onClick }: AccountButtonProps) {
   return (
     <button
       onClick={onClick}
-      className="w-10 h-10 rounded-full bg-white shadow-lg flex items-center justify-center text-green-700 font-bold text-sm hover:scale-105 transition-transform"
+      className="w-10 h-10 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center text-white font-bold text-sm hover:bg-black/70 transition-all active:scale-95"
     >
       {initial}
     </button>
