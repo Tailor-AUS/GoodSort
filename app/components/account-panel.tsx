@@ -1,5 +1,6 @@
 "use client";
 
+import { X, Package, Leaf, Truck, Wallet } from "lucide-react";
 import { formatCents, type User } from "@/lib/store";
 
 interface AccountPanelProps {
@@ -21,28 +22,26 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-black/60" onClick={onClose} />
+      <div className="fixed inset-0 z-50 bg-black/70" onClick={onClose} />
 
-      <div className="fixed inset-y-0 right-0 z-50 w-80 max-w-[85vw] bg-[#111] overflow-y-auto animate-slide-in-right">
+      <div className="fixed inset-y-0 right-0 z-50 w-80 max-w-[85vw] bg-[#111] overflow-y-auto animate-slide-in-right border-l border-[#222]">
         {/* Header */}
-        <div className="p-6 border-b border-[#262626]">
-          <div className="flex justify-between items-start mb-5">
+        <div className="p-6 border-b border-[#1e1e1e]">
+          <div className="flex justify-between items-start mb-6">
             <div>
-              <h2 className="text-xl font-bold text-white">{user.name}</h2>
-              <p className="text-neutral-500 text-xs">Unit {user.unit}</p>
+              <p className="text-[11px] text-neutral-500 font-semibold uppercase tracking-[0.15em]">Account</p>
+              <h2 className="text-xl font-display font-extrabold text-white mt-1">{user.name}</h2>
             </div>
-            <button onClick={onClose} className="p-1 text-neutral-500 hover:text-white">
-              <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M6 6l8 8M14 6l-8 8" />
-              </svg>
+            <button onClick={onClose} className="p-1.5 text-neutral-600 hover:text-neutral-300 transition-colors duration-200">
+              <X className="w-4 h-4" />
             </button>
           </div>
 
-          <div>
-            <p className="text-neutral-500 text-xs uppercase tracking-wider">Available</p>
-            <p className="text-3xl font-bold text-white mt-1">{formatCents(user.clearedCents)}</p>
+          <div className="bg-[#1e1e1e] rounded-2xl p-4 border border-[#2a2a2a]">
+            <p className="text-[11px] text-neutral-500 font-semibold uppercase tracking-[0.15em]">Available</p>
+            <p className="text-3xl font-display font-extrabold text-white mt-1">{formatCents(user.clearedCents)}</p>
             {user.pendingCents > 0 && (
-              <p className="text-green-400/70 text-sm mt-0.5">
+              <p className="text-green-400/50 text-sm font-medium mt-0.5">
                 + {formatCents(user.pendingCents)} pending
               </p>
             )}
@@ -50,25 +49,25 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
         </div>
 
         {/* Stats */}
-        <div className="p-6 border-b border-[#262626]">
-          <div className="grid grid-cols-3 gap-3">
-            <StatCard label="Containers" value={user.totalContainers.toString()} />
-            <StatCard label="CO2 Saved" value={`${user.totalCO2SavedKg.toFixed(1)}kg`} />
-            <StatCard label="Runs" value={user.runs.length.toString()} />
+        <div className="p-6 border-b border-[#1e1e1e]">
+          <div className="grid grid-cols-3 gap-2">
+            <StatCard icon={Package} label="Sorted" value={user.totalContainers.toString()} />
+            <StatCard icon={Leaf} label="CO2" value={`${user.totalCO2SavedKg.toFixed(1)}kg`} />
+            <StatCard icon={Truck} label="Runs" value={user.runs.length.toString()} />
           </div>
         </div>
 
         {/* Materials */}
         {Object.keys(materialBreakdown).length > 0 && (
-          <div className="p-6 border-b border-[#262626]">
-            <p className="text-xs text-neutral-500 uppercase tracking-wider mb-3">Materials</p>
-            <div className="space-y-2">
+          <div className="p-6 border-b border-[#1e1e1e]">
+            <p className="text-[11px] text-neutral-500 font-semibold uppercase tracking-[0.15em] mb-3">Materials</p>
+            <div className="space-y-2.5">
               {Object.entries(materialBreakdown)
                 .sort(([, a], [, b]) => b - a)
                 .map(([material, count]) => (
-                  <div key={material} className="flex justify-between">
-                    <span className="text-sm text-neutral-400 capitalize">{material.replace("_", " ")}</span>
-                    <span className="text-sm font-medium text-white">{count}</span>
+                  <div key={material} className="flex justify-between items-center">
+                    <span className="text-[13px] text-neutral-400 capitalize">{material.replace("_", " ")}</span>
+                    <span className="text-[13px] font-bold text-white">{count}</span>
                   </div>
                 ))}
             </div>
@@ -77,27 +76,26 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
 
         {/* Recent scans */}
         <div className="p-6">
-          <p className="text-xs text-neutral-500 uppercase tracking-wider mb-3">
-            Scans ({user.scans.length})
+          <p className="text-[11px] text-neutral-500 font-semibold uppercase tracking-[0.15em] mb-3">
+            History ({user.scans.length})
           </p>
           {user.scans.length === 0 ? (
-            <p className="text-neutral-600 text-sm">No scans yet</p>
+            <p className="text-neutral-600 text-[13px]">No scans yet</p>
           ) : (
-            <div className="space-y-0 max-h-60 overflow-y-auto">
+            <div className="space-y-0 max-h-64 overflow-y-auto">
               {user.scans.slice(0, 20).map((scan) => (
-                <div key={scan.id} className="flex justify-between items-center py-2 border-b border-[#1a1a1a]">
+                <div key={scan.id} className="flex justify-between items-center py-2.5 border-b border-[#1a1a1a] last:border-0">
                   <div>
-                    <p className="text-sm text-neutral-300">{scan.containerName}</p>
-                    <p className="text-xs text-neutral-600">
-                      {new Date(scan.timestamp).toLocaleString("en-AU", {
-                        day: "numeric",
-                        month: "short",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                    <p className="text-[13px] text-neutral-300 font-medium">{scan.containerName}</p>
+                    <p className="text-[11px] text-neutral-600">
+                      {new Date(scan.timestamp).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                     </p>
                   </div>
-                  <span className={`text-xs font-bold ${scan.status === "cleared" ? "text-green-400" : "text-amber-400"}`}>
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                    scan.status === "cleared"
+                      ? "bg-green-500/15 text-green-400 border-green-500/20"
+                      : "bg-amber-500/15 text-amber-400 border-amber-500/20"
+                  }`}>
                     {scan.refundCents}c
                   </span>
                 </div>
@@ -105,7 +103,8 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
             </div>
           )}
 
-          <button className="mt-6 w-full bg-[#262626] text-neutral-500 font-medium py-3 rounded-xl text-sm cursor-not-allowed">
+          <button className="mt-6 w-full bg-[#1e1e1e] border border-[#2a2a2a] text-neutral-500 font-semibold py-3 rounded-xl text-[13px] cursor-not-allowed flex items-center justify-center gap-2">
+            <Wallet className="w-4 h-4" />
             Cash Out (Coming Soon)
           </button>
         </div>
@@ -114,11 +113,12 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
   return (
-    <div className="bg-[#1a1a1a] rounded-xl p-3 text-center">
-      <p className="text-lg font-bold text-white">{value}</p>
-      <p className="text-[10px] text-neutral-500 uppercase tracking-wider">{label}</p>
+    <div className="bg-[#1a1a1a] rounded-xl p-3 text-center border border-[#222]">
+      <Icon className="w-4 h-4 text-green-400/60 mx-auto mb-1.5" />
+      <p className="text-base font-display font-extrabold text-white">{value}</p>
+      <p className="text-[9px] text-neutral-600 uppercase tracking-[0.15em] mt-0.5">{label}</p>
     </div>
   );
 }

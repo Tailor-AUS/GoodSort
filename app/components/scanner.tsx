@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect } from "react";
+import { X, ScanBarcode } from "lucide-react";
 import { lookupContainer, createUnknownContainer } from "@/lib/containers";
 import { addScan, SORTER_PAYOUT_CENTS } from "@/lib/store";
 
@@ -102,47 +103,47 @@ export function Scanner({ onClose, onScanComplete }: ScannerProps) {
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
       {/* Header */}
-      <div className="flex justify-between items-center p-4 text-white">
-        <h2 className="text-lg font-semibold">Scan Container</h2>
-        <button onClick={handleClose} className="p-2 hover:bg-white/10 rounded-full">
-          <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M6 6l12 12M18 6L6 18" />
-          </svg>
+      <div className="flex justify-between items-center px-5 pt-[env(safe-area-inset-top,16px)] pb-3">
+        <div className="flex items-center gap-2.5">
+          <ScanBarcode className="w-5 h-5 text-green-400" />
+          <h2 className="text-[15px] font-display font-bold text-white">Scan Container</h2>
+        </div>
+        <button onClick={handleClose} className="p-2 hover:bg-white/5 rounded-full transition-colors duration-200">
+          <X className="w-5 h-5 text-neutral-400" />
         </button>
       </div>
 
       {/* Camera */}
       <div className="flex-1 relative">
         {!cameraFailed && (
-          <video
-            ref={videoRef}
-            className="w-full h-full object-cover"
-            playsInline
-            muted
-          />
+          <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
         )}
 
         {cameraFailed && (
           <div className="flex items-center justify-center h-full">
-            <p className="text-white/50 text-sm">Camera not available</p>
+            <p className="text-neutral-600 text-[13px]">Camera not available</p>
           </div>
         )}
 
         {scanning && !cameraFailed && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-56 h-56 border-2 border-white/40 rounded-lg">
-              <div className="w-full h-0.5 bg-green-400 animate-pulse mt-28" />
+            <div className="w-56 h-56 rounded-2xl border-2 border-green-400/30 relative">
+              <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-green-400 rounded-tl-2xl" />
+              <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-green-400 rounded-tr-2xl" />
+              <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-green-400 rounded-bl-2xl" />
+              <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-green-400 rounded-br-2xl" />
+              <div className="absolute inset-x-4 top-1/2 h-0.5 bg-green-400/60 animate-pulse" />
             </div>
           </div>
         )}
       </div>
 
       {/* Manual entry */}
-      <div className="p-4">
+      <div className="bg-[#141414] border-t border-[#222] px-5 py-4">
         {!showManual && (
           <button
             onClick={() => setShowManual(true)}
-            className="text-white/50 text-sm underline w-full text-center"
+            className="text-neutral-500 text-[13px] font-medium w-full text-center hover:text-neutral-300 transition-colors duration-200"
           >
             Enter barcode manually
           </button>
@@ -155,23 +156,19 @@ export function Scanner({ onClose, onScanComplete }: ScannerProps) {
               value={manualBarcode}
               onChange={(e) => setManualBarcode(e.target.value)}
               placeholder="Enter barcode..."
-              className="flex-1 bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="flex-1 bg-[#1e1e1e] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white text-[14px] placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500/50"
               autoFocus
             />
             <button
               type="submit"
-              className="bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-3 rounded-lg"
+              className="bg-green-500 hover:bg-green-400 text-black font-bold px-5 py-3 rounded-xl transition-colors duration-200 shadow-lg shadow-green-500/25"
             >
               Add
             </button>
           </form>
         )}
-      </div>
-
-      {/* Tips */}
-      <div className="px-4 pb-6">
-        <p className="text-white/30 text-xs text-center">
-          Don't crush containers &middot; Depots need intact barcodes &middot; 10c pending per scan
+        <p className="text-neutral-700 text-[11px] text-center mt-3">
+          Don't crush containers &middot; Depots need intact barcodes &middot; 10c per scan
         </p>
       </div>
     </div>
