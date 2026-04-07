@@ -8,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 builder.AddSqlServerDbContext<GoodSortDbContext>("goodsortdb");
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<VisionService>();
 builder.Services.AddHttpClient();
 
 builder.Services.AddCors(options =>
@@ -60,6 +61,91 @@ app.MapPost("/api/auth/verify-otp", async (VerifyOtpRequest req, AuthService aut
     var (token, profile) = await auth.VerifyOtp(email, req.Code);
     if (token == null) return Results.Unauthorized();
     return Results.Ok(new { token, profile });
+});
+
+// ── Photo Scan (Azure OpenAI Vision) ──
+app.MapPost("/api/scan/photo", async (PhotoScanRequest req, VisionService vision, GoodSortDbContext db) =>
+{
+    if (string.IsNullOrEmpty(req.Image))
+        return Results.BadRequest(new { error = "No image provided" });
+
+    // Strip data URL prefix if present
+    var base64 = req.Image;
+    if (base64.Contains(",")) base64 = base64.Split(',')[1];
+
+    var containers = await vision.IdentifyContainers(base64);
+    var totalItems = containers.Sum(c => c.Count);
+    var totalCents = containers.Where(c => c.Eligible).Sum(c => c.Count * 10);
+
+    return Results.Ok(new
+    {
+        containers,
+        totalItems,
+        totalCents,
+        summary = $"{totalItems} container{(totalItems != 1 ? "s" : "")} found — ${totalCents / 100.0:F2} pending"
+    });
+});
+
+// Confirm photo scan — actually creates the scan records
+app.MapPost("/api/scan/photo/confirm", async (PhotoConfirmRequest req, GoodSortDbContext db) =>
+{
+    var profile = await db.Profiles.FindAsync(req.UserId);
+    if (profile is null) return Results.NotFound("User not found");
+    var household = await db.Households.FindAsync(profile.HouseholdId);
+    if (household is null) return Results.BadRequest("No household");
+
+    var totalCents = 0;
+    var totalContainers = 0;
+
+    foreach (var item in req.Items)
+    {
+        if (!item.Eligible) continue;
+        for (var i = 0; i < item.Count; i++)
+        {
+            var scan = new Scan
+            {
+                UserId = profile.Id,
+                HouseholdId = household.Id,
+                Barcode = "PHOTO",
+                ContainerName = item.Name,
+                Material = item.Material,
+                RefundCents = 10,
+                Status = "pending",
+            };
+            db.Scans.Add(scan);
+            totalContainers++;
+            totalCents += 10;
+        }
+    }
+
+    profile.PendingCents += totalCents;
+    profile.TotalContainers += totalContainers;
+    profile.TotalCo2SavedKg += totalContainers * 0.035;
+
+    household.PendingContainers += totalContainers;
+    household.PendingValueCents += totalCents;
+    household.EstimatedWeightKg = household.PendingContainers * 0.020;
+    household.EstimatedBags = (int)Math.Ceiling(household.PendingContainers / 150.0);
+    household.LastScanAt = DateTime.UtcNow;
+
+    // Update materials
+    household.Materials ??= new MaterialBreakdown();
+    foreach (var item in req.Items.Where(i => i.Eligible))
+    {
+        for (var i = 0; i < item.Count; i++)
+        {
+            _ = item.Material switch
+            {
+                "aluminium" => household.Materials.Aluminium++,
+                "pet" => household.Materials.Pet++,
+                "glass" => household.Materials.Glass++,
+                _ => household.Materials.Other++,
+            };
+        }
+    }
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { totalContainers, totalCents, pendingCents = profile.PendingCents });
 });
 
 // ── Barcode Lookup (Open Food Facts proxy) ──
@@ -261,6 +347,9 @@ app.MapGet("/api/depots", async (GoodSortDbContext db) =>
 
 app.Run();
 
+record PhotoScanRequest(string Image);
+record PhotoConfirmRequest(Guid UserId, List<PhotoConfirmItem> Items);
+record PhotoConfirmItem(string Name, string Material, int Count, bool Eligible);
 record SendOtpRequest(string Email);
 record VerifyOtpRequest(string Email, string Code);
 record ScanRequest(Guid UserId, string Barcode, string ContainerName, string Material);

@@ -43,6 +43,17 @@ export default function SorterApp() {
     [refreshData]
   );
 
+  const handleBatchComplete = useCallback(
+    (totalItems: number, totalCents: number) => {
+      setShowScanner(false);
+      refreshData();
+      setToast({ text: `+$${(totalCents / 100).toFixed(2)} pending · ${totalItems} containers`, visible: true });
+      setTimeout(() => setToast((t) => (t ? { ...t, visible: false } : null)), 3500);
+      setTimeout(() => setToast(null), 4000);
+    },
+    [refreshData]
+  );
+
   const handleHouseholdSelect = useCallback((id: string) => setSelectedHouseholdId(id), []);
   const handleMapTap = useCallback(() => setSelectedHouseholdId(null), []);
   const selectedHousehold = households.find((h) => h.id === selectedHouseholdId) || null;
@@ -91,7 +102,7 @@ export default function SorterApp() {
       />
 
       {showScanner && (
-        <Scanner onClose={() => setShowScanner(false)} onScanComplete={handleScanComplete} />
+        <Scanner onClose={() => setShowScanner(false)} onScanComplete={handleScanComplete} onBatchComplete={handleBatchComplete} />
       )}
 
       <AccountPanel user={user} open={showAccount} onClose={() => { setShowAccount(false); refreshData(); }} />
