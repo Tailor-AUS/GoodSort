@@ -2,7 +2,7 @@
 
 import { useRef, useState, useCallback, useEffect } from "react";
 import { X, ScanBarcode } from "lucide-react";
-import { lookupContainer, createUnknownContainer } from "@/lib/containers";
+import { lookupContainer, lookupContainerAsync, createUnknownContainer } from "@/lib/containers";
 import { addScan, getBagForMaterial, mapToMaterialType, SORTER_PAYOUT_CENTS, type BagInfo } from "@/lib/store";
 
 interface ScannerProps {
@@ -20,7 +20,7 @@ export function Scanner({ onClose, onScanComplete }: ScannerProps) {
   const [manualBarcode, setManualBarcode] = useState("");
   const [showManual, setShowManual] = useState(false);
   const [cameraFailed, setCameraFailed] = useState(false);
-  const [scanResult, setScanResult] = useState<{ name: string; bag: BagInfo } | null>(null);
+  const [scanResult, setScanResult] = useState<{ name: string; bag: BagInfo | null } | null>(null);
 
   const stopCamera = useCallback(() => {
     if (scanIntervalRef.current) { clearInterval(scanIntervalRef.current); scanIntervalRef.current = null; }
@@ -28,27 +28,31 @@ export function Scanner({ onClose, onScanComplete }: ScannerProps) {
   }, []);
 
   const processBarcode = useCallback(
-    (barcode: string) => {
-      // Prevent double-scan from overlapping detect() calls
+    async (barcode: string) => {
       if (processedRef.current) return;
 
-      // Validate barcode format: must be 8-13 digits (EAN/UPC)
       const cleaned = barcode.trim().replace(/\D/g, "");
       if (cleaned.length < 8 || cleaned.length > 13) return;
 
       processedRef.current = true;
-
       stopCamera();
-      const container = lookupContainer(cleaned) || createUnknownContainer(cleaned);
+
+      // Try local DB first (instant), then async lookup (Open Food Facts)
+      let container = lookupContainer(cleaned);
+      if (!container) {
+        // Show "Looking up..." state
+        setScanResult({ name: "Looking up...", bag: null });
+        container = await lookupContainerAsync(cleaned);
+      }
+
       const materialType = mapToMaterialType(container.material);
       const bag = getBagForMaterial(materialType);
-      addScan(barcode, container.name, container.material);
+      addScan(cleaned, container.name, container.material);
 
-      // Show bag assignment for 2 seconds before closing
       setScanResult({ name: container.name, bag });
       timeoutRef.current = setTimeout(() => {
         setScanResult(null);
-        onScanComplete(container.name, SORTER_PAYOUT_CENTS, bag);
+        onScanComplete(container!.name, SORTER_PAYOUT_CENTS, bag);
       }, 2000);
     },
     [stopCamera, onScanComplete]
@@ -105,10 +109,24 @@ export function Scanner({ onClose, onScanComplete }: ScannerProps) {
   // ── Bag Assignment Screen ──
   if (scanResult) {
     const { name, bag } = scanResult;
+
+    // Loading state while looking up
+    if (!bag) {
+      return (
+        <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
+          <div className="text-center px-8">
+            <div className="w-24 h-24 bg-slate-700 rounded-3xl flex items-center justify-center mx-auto mb-6 animate-pulse">
+              <ScanBarcode className="w-10 h-10 text-slate-400" />
+            </div>
+            <p className="text-white/50 text-lg font-medium">Looking up container...</p>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
         <div className="animate-slide-up text-center px-8">
-          {/* Big colored bag indicator */}
           <div className={`w-24 h-24 ${bag.color} rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl`}>
             <span className="text-4xl">{bag.emoji}</span>
           </div>
@@ -121,7 +139,6 @@ export function Scanner({ onClose, onScanComplete }: ScannerProps) {
 
           <p className="text-green-400 text-lg font-bold">+{SORTER_PAYOUT_CENTS}c pending</p>
 
-          {/* Bag color strip */}
           <div className={`mt-8 mx-auto w-48 h-2 ${bag.color} rounded-full opacity-60`} />
         </div>
       </div>

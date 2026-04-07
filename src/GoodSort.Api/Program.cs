@@ -8,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 builder.AddSqlServerDbContext<GoodSortDbContext>("goodsortdb");
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddHttpClient();
 
 builder.Services.AddCors(options =>
 {
@@ -59,6 +60,29 @@ app.MapPost("/api/auth/verify-otp", async (VerifyOtpRequest req, AuthService aut
     var (token, profile) = await auth.VerifyOtp(email, req.Code);
     if (token == null) return Results.Unauthorized();
     return Results.Ok(new { token, profile });
+});
+
+// ── Barcode Lookup (Open Food Facts proxy) ──
+app.MapGet("/api/barcode/{barcode}", async (string barcode, IHttpClientFactory httpFactory) =>
+{
+    // Validate barcode format
+    if (barcode.Length < 8 || barcode.Length > 13 || !barcode.All(char.IsDigit))
+        return Results.BadRequest(new { error = "Invalid barcode format" });
+
+    try
+    {
+        var client = httpFactory.CreateClient();
+        client.DefaultRequestHeaders.Add("User-Agent", "TheGoodSort/1.0 (noreply@thegoodsort.org)");
+        var res = await client.GetAsync($"https://world.openfoodfacts.org/api/v2/product/{barcode}.json");
+        if (!res.IsSuccessStatusCode) return Results.Ok(new { found = false, barcode });
+
+        var json = await res.Content.ReadAsStringAsync();
+        return Results.Ok(new { found = true, barcode, data = System.Text.Json.JsonSerializer.Deserialize<object>(json) });
+    }
+    catch
+    {
+        return Results.Ok(new { found = false, barcode });
+    }
 });
 
 // ── Households ──
