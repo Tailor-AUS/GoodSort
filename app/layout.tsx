@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { AuthGuard } from "./components/shared/auth-guard";
 
 export const metadata: Metadata = {
   title: "The Good Sort",
@@ -38,7 +39,7 @@ export default function RootLayout({
         />
       </head>
       <body className="h-dvh overflow-hidden bg-white text-slate-900 overscroll-none" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
-        {children}
+        <AuthGuard>{children}</AuthGuard>
         <script dangerouslySetInnerHTML={{ __html: `
           if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/sw.js').catch(function() {});
