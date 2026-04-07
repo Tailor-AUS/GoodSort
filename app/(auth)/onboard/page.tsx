@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Home, User } from "lucide-react";
+import { apiUrl } from "@/lib/config";
 
 export default function OnboardPage() {
   const [step, setStep] = useState(0);
@@ -20,7 +21,7 @@ export default function OnboardPage() {
 
     try {
       // Create household via API
-      const hhRes = await fetch("/api/households", {
+      const hhRes = await fetch(apiUrl("/api/households"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -3,6 +3,7 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { X, Camera, ScanBarcode, Plus, Minus, Check, RotateCcw } from "lucide-react";
 import { lookupContainer, lookupContainerAsync } from "@/lib/containers";
+import { apiUrl } from "@/lib/config";
 import { addScan, getBagForMaterial, mapToMaterialType, SORTER_PAYOUT_CENTS, BAGS, type BagInfo } from "@/lib/store";
 
 interface ScannerProps {
@@ -96,7 +97,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     stopCamera();
 
     try {
-      const res = await fetch("/api/scan/photo", {
+      const res = await fetch(apiUrl("/api/scan/photo"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image: base64 }),
@@ -139,7 +140,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
 
     // Also try to confirm via API
     try {
-      await fetch("/api/scan/photo/confirm", {
+      await fetch(apiUrl("/api/scan/photo/confirm"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

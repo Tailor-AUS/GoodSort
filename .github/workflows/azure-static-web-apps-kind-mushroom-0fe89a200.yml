@@ -38,7 +38,7 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "upload"
           skip_app_build: true
-          app_location: ".next/standalone"
+          app_location: "out"
           output_location: ""
 
   close_pull_request_job:

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ScanBarcode } from "lucide-react";
+import { apiUrl } from "@/lib/config";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -16,7 +17,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/auth/send-otp", {
+      const res = await fetch(apiUrl("/api/auth/send-otp"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim() }),

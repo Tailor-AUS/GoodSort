@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
+import { apiUrl } from "@/lib/config";
 
 export default function VerifyPage() {
   const [otp, setOtp] = useState("");
@@ -24,7 +25,7 @@ export default function VerifyPage() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/auth/verify-otp", {
+      const res = await fetch(apiUrl("/api/auth/verify-otp"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, code: otp }),
