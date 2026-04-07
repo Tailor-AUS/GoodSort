@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { type User, type Household, type Depot, type BagInfo } from "@/lib/store";
-import { getUserApi, getHouseholdsApi, getDepotsApi } from "@/lib/store-api";
-import { getOrCreateDefaultUser, getHouseholds, getDepots } from "@/lib/store";
+import { type User, type SortBin, type Depot, type BagInfo } from "@/lib/store";
+import { getUserApi, getDepotsApi, getBinsApi } from "@/lib/store-api";
+import { getOrCreateDefaultUser, getDepots } from "@/lib/store";
 import { MapView } from "@/app/components/shared/map-view";
 import { SorterSheet } from "./components/sorter-sheet";
 import { Scanner } from "@/app/components/shared/scanner";
@@ -13,23 +13,22 @@ import { AccountPanel } from "@/app/components/shared/account-panel";
 export default function SorterApp() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [households, setHouseholds] = useState<Household[]>([]);
+  const [bins, setBins] = useState<SortBin[]>([]);
   const [depot, setDepot] = useState<Depot | null>(null);
-  const [selectedHouseholdId, setSelectedHouseholdId] = useState<string | null>(null);
+  const [selectedBinId, setSelectedBinId] = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [toast, setToast] = useState<{ text: string; visible: boolean } | null>(null);
 
   const refreshData = useCallback(async () => {
-    // Try API first, fall back to localStorage
-    const [apiUser, apiHouseholds, apiDepots] = await Promise.all([
+    const [apiUser, apiBins, apiDepots] = await Promise.all([
       getUserApi().catch(() => null),
-      getHouseholdsApi().catch(() => []),
+      getBinsApi().catch(() => []),
       getDepotsApi().catch(() => []),
     ]);
 
     setUser(apiUser || getOrCreateDefaultUser());
-    setHouseholds(apiHouseholds.length > 0 ? apiHouseholds : getHouseholds());
+    setBins(apiBins);
     setDepot((apiDepots.length > 0 ? apiDepots : getDepots())[0] || null);
   }, []);
 
@@ -59,9 +58,9 @@ export default function SorterApp() {
     [refreshData]
   );
 
-  const handleHouseholdSelect = useCallback((id: string) => setSelectedHouseholdId(id), []);
-  const handleMapTap = useCallback(() => setSelectedHouseholdId(null), []);
-  const selectedHousehold = households.find((h) => h.id === selectedHouseholdId) || null;
+  const handleBinSelect = useCallback((id: string) => setSelectedBinId(id), []);
+  const handleMapTap = useCallback(() => setSelectedBinId(null), []);
+  const selectedBin = bins.find((b) => b.id === selectedBinId) || null;
 
   if (loading || !user) {
     return (
@@ -75,12 +74,11 @@ export default function SorterApp() {
     <div className="h-dvh relative">
       <MapView
         mode="sort"
-        households={households}
-        selectedHouseholdId={selectedHouseholdId}
-        userHouseholdId={user.householdId}
+        bins={bins}
+        selectedBinId={selectedBinId}
         activeRoute={null}
         depot={depot}
-        onHouseholdSelect={handleHouseholdSelect}
+        onBinSelect={handleBinSelect}
         onMapTap={handleMapTap}
       />
 
@@ -99,11 +97,11 @@ export default function SorterApp() {
 
       <SorterSheet
         user={user}
-        households={households}
-        selectedHousehold={selectedHousehold}
+        bins={bins}
+        selectedBin={selectedBin}
         onScanPress={() => setShowScanner(true)}
-        onDataUpdate={() => { refreshData(); setSelectedHouseholdId(null); }}
-        onDeselectHousehold={() => setSelectedHouseholdId(null)}
+        onDataUpdate={() => { refreshData(); setSelectedBinId(null); }}
+        onDeselectBin={() => setSelectedBinId(null)}
       />
 
       {showScanner && (

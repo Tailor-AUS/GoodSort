@@ -1,18 +1,12 @@
 "use client";
 
 import {
-  createContext,
-  useContext,
-  useRef,
-  useEffect,
-  useState,
-  useCallback,
-  Component,
-  type ReactNode,
+  createContext, useContext, useRef, useEffect, useState, useCallback,
+  Component, type ReactNode,
 } from "react";
 import { setOptions as setMapsOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { AlertTriangle } from "lucide-react";
-import type { Household, Route, Depot } from "@/lib/store";
+import type { SortBin, Route, Depot } from "@/lib/store";
 
 export type AppMode = "sort" | "collect";
 
@@ -58,20 +52,14 @@ function GoogleMapsProvider({ children }: { children: ReactNode }) {
     loadMapsApi().then(() => {
       if (!divRef.current || mapRef.current) return;
       const m = new google.maps.Map(divRef.current, {
-        center: BRISBANE_CENTER,
-        zoom: 14,
-        gestureHandling: "greedy",
-        disableDefaultUI: true,
-        zoomControl: true,
+        center: BRISBANE_CENTER, zoom: 14,
+        gestureHandling: "greedy", disableDefaultUI: true, zoomControl: true,
         zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_TOP },
-        styles: MAP_STYLES,
-        backgroundColor: "#f5f5f5",
+        styles: MAP_STYLES, backgroundColor: "#f5f5f5",
       });
       mapRef.current = m;
       setMap(m);
-    }).catch((err) => {
-      console.error("Google Maps failed to load:", err);
-    });
+    }).catch((err) => { console.error("Google Maps failed:", err); });
   }, []);
 
   return (
@@ -92,12 +80,7 @@ function AutoLocate({ onLocated }: { onLocated: (loc: LatLng) => void }) {
     attempted.current = true;
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        map.panTo(loc);
-        map.setZoom(15);
-        onLocated(loc);
-      },
+      (pos) => { const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude }; map.panTo(loc); map.setZoom(15); onLocated(loc); },
       () => {},
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 }
     );
@@ -118,84 +101,81 @@ function UserLocationMarker({ loc }: { loc: LatLng }) {
         map, position: loc, zIndex: 9999,
         icon: { url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`, scaledSize: new google.maps.Size(24, 24), anchor: new google.maps.Point(12, 12) },
       });
-    } else {
-      markerRef.current.setPosition(loc);
-    }
+    } else { markerRef.current.setPosition(loc); }
     return () => { if (markerRef.current) { markerRef.current.setMap(null); markerRef.current = null; } };
   }, [map, loc]);
   return null;
 }
 
-// ── Household Markers ──
+// ── Bin Markers ──
 
-function getHouseholdColor(h: Household): string {
-  if (h.pendingContainers >= 150) return "#ef4444";
-  if (h.pendingContainers >= 50) return "#f59e0b";
-  return "#22c55e";
+function getBinColor(bin: SortBin): string {
+  if (bin.status === "full") return "#ef4444";
+  if (bin.pendingContainers >= 200) return "#ef4444";
+  if (bin.pendingContainers >= 50) return "#f59e0b";
+  return "#16a34a";
 }
 
-function householdMarkerSvg(h: Household, isSelected: boolean, isUserHome: boolean): string {
-  const color = getHouseholdColor(h);
-  const size = isSelected ? 48 : 40;
-  const borderColor = isSelected ? "#16a34a" : isUserHome ? "#3b82f6" : "#ffffff";
+function binMarkerSvg(bin: SortBin, isSelected: boolean): string {
+  const color = getBinColor(bin);
+  const size = isSelected ? 52 : 44;
+  const borderColor = isSelected ? "#16a34a" : "#ffffff";
   const borderWidth = isSelected ? 3 : 2.5;
   const r = size / 2;
   const inner = r - borderWidth;
-  const label = h.pendingContainers >= 1000 ? `${Math.round(h.pendingContainers / 100) / 10}k` : h.pendingContainers.toString();
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
+  // Recycling icon + bin code
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size + 16}">
     <circle cx="${r}" cy="${r}" r="${inner}" fill="${color}" stroke="${borderColor}" stroke-width="${borderWidth}"/>
-    <text x="${r}" y="${r + 4}" text-anchor="middle" fill="#fff" font-size="${h.pendingContainers >= 1000 ? 9 : 10}" font-weight="800" font-family="Inter,system-ui,sans-serif">${label}</text>
+    <text x="${r}" y="${r - 2}" text-anchor="middle" fill="#fff" font-size="16">♻</text>
+    <text x="${r}" y="${r + 12}" text-anchor="middle" fill="#fff" font-size="8" font-weight="700" font-family="Inter,system-ui,sans-serif">${bin.pendingContainers}</text>
+    <rect x="${r - 18}" y="${size + 1}" width="36" height="14" rx="7" fill="${color}" opacity="0.9"/>
+    <text x="${r}" y="${size + 11}" text-anchor="middle" fill="#fff" font-size="8" font-weight="700" font-family="Inter,system-ui,sans-serif">${bin.code}</text>
   </svg>`;
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
-function HouseholdMarkers({
-  households,
-  selectedId,
-  userHouseholdId,
-  onSelect,
+function BinMarkers({
+  bins, selectedId, onSelect,
 }: {
-  households: Household[];
+  bins: SortBin[];
   selectedId: string | null;
-  userHouseholdId: string;
   onSelect: (id: string) => void;
 }) {
   const map = useMap();
   const markersRef = useRef<Map<string, { marker: google.maps.Marker; url: string }>>(new Map());
 
-  const visible = households.filter((h) => h.pendingContainers > 0);
+  const visible = bins.filter((b) => b.status !== "disabled" && b.status !== "collected");
 
   useEffect(() => {
     if (!map) return;
     const prev = markersRef.current;
-    const nextIds = new Set(visible.map((h) => h.id));
+    const nextIds = new Set(visible.map((b) => b.id));
 
     for (const [id, entry] of prev) {
       if (!nextIds.has(id)) { entry.marker.setMap(null); prev.delete(id); }
     }
 
-    for (const h of visible) {
-      const isSelected = h.id === selectedId;
-      const isHome = h.id === userHouseholdId;
-      const url = householdMarkerSvg(h, isSelected, isHome);
-      const existing = prev.get(h.id);
+    for (const bin of visible) {
+      const isSelected = bin.id === selectedId;
+      const url = binMarkerSvg(bin, isSelected);
+      const existing = prev.get(bin.id);
       if (existing && existing.url === url) continue;
       if (existing) existing.marker.setMap(null);
 
-      const size = isSelected ? 48 : 40;
+      const size = isSelected ? 52 : 44;
       const marker = new google.maps.Marker({
         map,
-        position: { lat: h.lat, lng: h.lng },
-        zIndex: isSelected ? 1000 : isHome ? 999 : h.pendingContainers,
-        icon: { url, scaledSize: new google.maps.Size(size, size), anchor: new google.maps.Point(size / 2, size / 2) },
+        position: { lat: bin.lat, lng: bin.lng },
+        zIndex: isSelected ? 1000 : bin.pendingContainers,
+        icon: { url, scaledSize: new google.maps.Size(size, size + 16), anchor: new google.maps.Point(size / 2, size / 2) },
       });
-      marker.addListener("click", () => onSelect(h.id));
-      prev.set(h.id, { marker, url });
+      marker.addListener("click", () => onSelect(bin.id));
+      prev.set(bin.id, { marker, url });
     }
 
     return () => { prev.forEach((e) => e.marker.setMap(null)); prev.clear(); };
-  }, [map, visible, selectedId, userHouseholdId, onSelect]);
+  }, [map, visible, selectedId, onSelect]);
 
   return null;
 }
@@ -210,29 +190,16 @@ function RouteLine({ route, depot }: { route: Route | null; depot: Depot | null 
   useEffect(() => {
     if (polylineRef.current) { polylineRef.current.setMap(null); polylineRef.current = null; }
     if (depotMarkerRef.current) { depotMarkerRef.current.setMap(null); depotMarkerRef.current = null; }
-
     if (!map || !route || !depot) return;
 
-    // Draw line connecting stops in sequence + depot at end
-    const path = route.stops
-      .sort((a, b) => a.sequence - b.sequence)
-      .map((s) => ({ lat: s.lat, lng: s.lng }));
+    const path = route.stops.sort((a, b) => a.sequence - b.sequence).map((s) => ({ lat: s.lat, lng: s.lng }));
     path.push({ lat: depot.lat, lng: depot.lng });
 
-    polylineRef.current = new google.maps.Polyline({
-      map,
-      path,
-      strokeColor: "#16a34a",
-      strokeWeight: 4,
-      strokeOpacity: 0.7,
-    });
+    polylineRef.current = new google.maps.Polyline({ map, path, strokeColor: "#16a34a", strokeWeight: 4, strokeOpacity: 0.7 });
 
-    // Depot marker
     const depotSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect x="4" y="4" width="24" height="24" rx="4" fill="#16a34a" stroke="#fff" stroke-width="2"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-size="12" font-weight="800">D</text></svg>`;
     depotMarkerRef.current = new google.maps.Marker({
-      map,
-      position: { lat: depot.lat, lng: depot.lng },
-      zIndex: 2000,
+      map, position: { lat: depot.lat, lng: depot.lng }, zIndex: 2000,
       icon: { url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(depotSvg)}`, scaledSize: new google.maps.Size(32, 32), anchor: new google.maps.Point(16, 16) },
     });
 
@@ -259,7 +226,7 @@ function MapClickHandler({ onMapTap }: { onMapTap: () => void }) {
   return null;
 }
 
-// ── Error Boundary ──
+// ── Error Boundary + Fallback ──
 
 class MapErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
@@ -281,8 +248,6 @@ class MapErrorBoundary extends Component<{ children: ReactNode }, { error: Error
   }
 }
 
-// ── No API Key Fallback ──
-
 function NoApiKeyFallback() {
   return (
     <div className="absolute inset-0 bg-white flex items-center justify-center">
@@ -298,16 +263,15 @@ function NoApiKeyFallback() {
 
 interface MapViewProps {
   mode: AppMode;
-  households: Household[];
-  selectedHouseholdId: string | null;
-  userHouseholdId: string;
+  bins: SortBin[];
+  selectedBinId: string | null;
   activeRoute: Route | null;
   depot: Depot | null;
-  onHouseholdSelect: (id: string) => void;
+  onBinSelect: (id: string) => void;
   onMapTap: () => void;
 }
 
-export function MapView({ mode, households, selectedHouseholdId, userHouseholdId, activeRoute, depot, onHouseholdSelect, onMapTap }: MapViewProps) {
+export function MapView({ mode, bins, selectedBinId, activeRoute, depot, onBinSelect, onMapTap }: MapViewProps) {
   const [userLoc, setUserLoc] = useState<LatLng | null>(null);
   const handleLocated = useCallback((loc: LatLng) => setUserLoc(loc), []);
 
@@ -319,12 +283,7 @@ export function MapView({ mode, households, selectedHouseholdId, userHouseholdId
         <MapClickHandler onMapTap={onMapTap} />
         <AutoLocate onLocated={handleLocated} />
         {userLoc && <UserLocationMarker loc={userLoc} />}
-        <HouseholdMarkers
-          households={households}
-          selectedId={selectedHouseholdId}
-          userHouseholdId={userHouseholdId}
-          onSelect={onHouseholdSelect}
-        />
+        <BinMarkers bins={bins} selectedId={selectedBinId} onSelect={onBinSelect} />
         {activeRoute && <RouteLine route={activeRoute} depot={depot} />}
       </GoogleMapsProvider>
     </MapErrorBoundary>

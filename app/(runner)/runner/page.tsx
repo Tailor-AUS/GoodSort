@@ -2,11 +2,10 @@
 
 import { useState, useCallback, useEffect } from "react";
 import {
-  getOrCreateDefaultUser, getHouseholds, getRoutes, getDepots, getPendingRoutes, getActiveRoute, saveRoutes,
-  type User, type Household, type Route, type Depot,
+  getOrCreateDefaultUser, getDepots,
+  type User, type SortBin, type Route, type Depot,
 } from "@/lib/store";
-import { getUserApi, getHouseholdsApi, getPendingRoutesApi, getActiveRouteApi, getDepotsApi } from "@/lib/store-api";
-import { clusterHouseholds, getRouteReadyClusters, createRouteFromCluster } from "@/lib/clustering";
+import { getUserApi, getDepotsApi, getBinsApi, getPendingRoutesApi, getActiveRouteApi } from "@/lib/store-api";
 import { MapView } from "@/app/components/shared/map-view";
 import { RunnerSheet } from "./components/runner-sheet";
 import { AccountButton } from "@/app/components/shared/account-button";
@@ -15,56 +14,35 @@ import { AccountPanel } from "@/app/components/shared/account-panel";
 export default function RunnerApp() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [households, setHouseholds] = useState<Household[]>([]);
+  const [bins, setBins] = useState<SortBin[]>([]);
   const [pendingRoutes, setPendingRoutes] = useState<Route[]>([]);
   const [activeRoute, setActiveRoute] = useState<Route | null>(null);
   const [depot, setDepot] = useState<Depot | null>(null);
-  const [selectedHouseholdId, setSelectedHouseholdId] = useState<string | null>(null);
+  const [selectedBinId, setSelectedBinId] = useState<string | null>(null);
   const [showAccount, setShowAccount] = useState(false);
 
   const refreshData = useCallback(async () => {
-    // Try API first, fall back to localStorage
-    const [apiUser, apiHouseholds, apiDepots] = await Promise.all([
+    const [apiUser, apiBins, apiDepots, apiPending, apiActive] = await Promise.all([
       getUserApi().catch(() => null),
-      getHouseholdsApi().catch(() => []),
+      getBinsApi().catch(() => []),
       getDepotsApi().catch(() => []),
-    ]);
-
-    const u = apiUser || getOrCreateDefaultUser();
-    const h = apiHouseholds.length > 0 ? apiHouseholds : getHouseholds();
-    const depots = apiDepots.length > 0 ? apiDepots : getDepots();
-    const d = depots[0] || null;
-
-    // Auto-generate routes from clusters (localStorage fallback)
-    const clusters = clusterHouseholds(h);
-    const readyClusters = getRouteReadyClusters(clusters);
-    const existingRoutes = getRoutes();
-    const existingPending = existingRoutes.filter((r) => r.status === "pending");
-
-    if (existingPending.length === 0 && readyClusters.length > 0 && d) {
-      const newRoutes = readyClusters.map((c) => createRouteFromCluster(c, d));
-      saveRoutes([...existingRoutes, ...newRoutes]);
-    }
-
-    // Try API routes, fall back to local
-    const [apiPending, apiActive] = await Promise.all([
       getPendingRoutesApi().catch(() => []),
       getActiveRouteApi().catch(() => null),
     ]);
 
-    setUser(u);
-    setHouseholds(h);
-    setPendingRoutes(apiPending.length > 0 ? apiPending : getPendingRoutes());
-    setActiveRoute(apiActive || getActiveRoute());
-    setDepot(d);
+    setUser(apiUser || getOrCreateDefaultUser());
+    setBins(apiBins);
+    setDepot((apiDepots.length > 0 ? apiDepots : getDepots())[0] || null);
+    setPendingRoutes(apiPending);
+    setActiveRoute(apiActive);
   }, []);
 
   useEffect(() => {
     refreshData().then(() => setLoading(false));
   }, [refreshData]);
 
-  const handleHouseholdSelect = useCallback((id: string) => setSelectedHouseholdId(id), []);
-  const handleMapTap = useCallback(() => setSelectedHouseholdId(null), []);
+  const handleBinSelect = useCallback((id: string) => setSelectedBinId(id), []);
+  const handleMapTap = useCallback(() => setSelectedBinId(null), []);
 
   if (loading || !user) {
     return (
@@ -78,12 +56,11 @@ export default function RunnerApp() {
     <div className="h-dvh relative">
       <MapView
         mode="collect"
-        households={households}
-        selectedHouseholdId={selectedHouseholdId}
-        userHouseholdId={user.householdId}
+        bins={bins}
+        selectedBinId={selectedBinId}
         activeRoute={activeRoute}
         depot={depot}
-        onHouseholdSelect={handleHouseholdSelect}
+        onBinSelect={handleBinSelect}
         onMapTap={handleMapTap}
       />
 
@@ -96,7 +73,7 @@ export default function RunnerApp() {
         pendingRoutes={pendingRoutes}
         activeRoute={activeRoute}
         depot={depot}
-        onDataUpdate={() => { refreshData(); setSelectedHouseholdId(null); }}
+        onDataUpdate={() => { refreshData(); setSelectedBinId(null); }}
       />
 
       <AccountPanel user={user} open={showAccount} onClose={() => { setShowAccount(false); refreshData(); }} />
