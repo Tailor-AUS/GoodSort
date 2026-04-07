@@ -123,15 +123,6 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
             e.HasIndex(s => s.BinCode);
         });
 
-        // Seed demo bins
-        modelBuilder.Entity<Bin>().HasData(
-            new Bin { Id = Guid.Parse("10000000-0000-0000-0000-000000000001"), Code = "GS-0001", Name = "South Bank Parklands", Address = "Stanley St Plaza, South Brisbane", Lat = -27.4810, Lng = 153.0230, Status = "active", CreatedAt = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc) },
-            new Bin { Id = Guid.Parse("10000000-0000-0000-0000-000000000002"), Code = "GS-0002", Name = "West End Markets", Address = "Davies Park, West End", Lat = -27.4850, Lng = 153.0080, Status = "active", CreatedAt = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc) },
-            new Bin { Id = Guid.Parse("10000000-0000-0000-0000-000000000003"), Code = "GS-0003", Name = "Boundary St Shops", Address = "45 Boundary St, South Brisbane", Lat = -27.4820, Lng = 153.0210, Status = "active", CreatedAt = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc) },
-            new Bin { Id = Guid.Parse("10000000-0000-0000-0000-000000000004"), Code = "GS-0004", Name = "Fish Lane Precinct", Address = "Fish Lane, South Brisbane", Lat = -27.4800, Lng = 153.0240, Status = "active", CreatedAt = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc) },
-            new Bin { Id = Guid.Parse("10000000-0000-0000-0000-000000000005"), Code = "GS-0005", Name = "Montague Rd Reserve", Address = "Montague Rd, West End", Lat = -27.4790, Lng = 153.0100, Status = "active", CreatedAt = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc) }
-        );
-
         // Seed default depot (static CreatedAt to avoid PendingModelChangesWarning)
         modelBuilder.Entity<Depot>().HasData(new Depot
         {

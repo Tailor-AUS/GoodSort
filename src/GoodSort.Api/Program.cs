@@ -34,6 +34,21 @@ for (var i = 0; i < 10; i++)
         var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
         await db.Database.MigrateAsync();
         app.Logger.LogInformation("Database migration completed successfully");
+
+        // Seed demo bins if none exist
+        if (!await db.Bins.AnyAsync())
+        {
+            db.Bins.AddRange(
+                new Bin { Code = "GS-0001", Name = "South Bank Parklands", Address = "Stanley St Plaza, South Brisbane", Lat = -27.4810, Lng = 153.0230 },
+                new Bin { Code = "GS-0002", Name = "West End Markets", Address = "Davies Park, West End", Lat = -27.4850, Lng = 153.0080 },
+                new Bin { Code = "GS-0003", Name = "Boundary St Shops", Address = "45 Boundary St, South Brisbane", Lat = -27.4820, Lng = 153.0210 },
+                new Bin { Code = "GS-0004", Name = "Fish Lane Precinct", Address = "Fish Lane, South Brisbane", Lat = -27.4800, Lng = 153.0240 },
+                new Bin { Code = "GS-0005", Name = "Montague Rd Reserve", Address = "Montague Rd, West End", Lat = -27.4790, Lng = 153.0100 }
+            );
+            await db.SaveChangesAsync();
+            app.Logger.LogInformation("Seeded 5 demo bins");
+        }
+
         break;
     }
     catch (Exception ex)
