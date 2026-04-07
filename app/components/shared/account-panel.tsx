@@ -1,6 +1,6 @@
 "use client";
 
-import { X, Package, Leaf, Truck, Wallet } from "lucide-react";
+import { X, Package, Leaf, Truck, Wallet, LogOut } from "lucide-react";
 import { formatCents, type User } from "@/lib/store";
 
 interface AccountPanelProps {
@@ -84,6 +84,19 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
           <button className="mt-6 w-full bg-slate-100 border border-slate-200 text-slate-400 font-semibold py-3 rounded-xl text-[13px] cursor-not-allowed flex items-center justify-center gap-2">
             <Wallet className="w-4 h-4" />
             Cash Out (Coming Soon)
+          </button>
+
+          <button
+            onClick={() => {
+              localStorage.removeItem("goodsort_token");
+              localStorage.removeItem("goodsort_profile");
+              document.cookie = "goodsort_token=; path=/; max-age=0";
+              window.location.href = "/login";
+            }}
+            className="mt-3 w-full text-red-500 hover:text-red-600 font-medium py-3 rounded-xl text-[13px] transition-colors flex items-center justify-center gap-2"
+          >
+            <LogOut className="w-4 h-4" />
+            Log Out
           </button>
         </div>
       </div>
