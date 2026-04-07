@@ -23,7 +23,7 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(
             "https://www.thegoodsort.org",
             "https://thegoodsort.org",
-            "http://localhost:3000" // Local dev
+            "http://localhost:2000"
         )
         .AllowAnyHeader()
         .AllowAnyMethod();
