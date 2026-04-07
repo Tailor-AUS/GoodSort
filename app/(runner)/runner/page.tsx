@@ -5,6 +5,7 @@ import {
   getOrCreateDefaultUser, getHouseholds, getRoutes, getDepots, getPendingRoutes, getActiveRoute, saveRoutes,
   type User, type Household, type Route, type Depot,
 } from "@/lib/store";
+import { getUserApi, getHouseholdsApi, getPendingRoutesApi, getActiveRouteApi, getDepotsApi } from "@/lib/store-api";
 import { clusterHouseholds, getRouteReadyClusters, createRouteFromCluster } from "@/lib/clustering";
 import { MapView } from "@/app/components/shared/map-view";
 import { RunnerSheet } from "./components/runner-sheet";
@@ -21,13 +22,20 @@ export default function RunnerApp() {
   const [selectedHouseholdId, setSelectedHouseholdId] = useState<string | null>(null);
   const [showAccount, setShowAccount] = useState(false);
 
-  const refreshData = useCallback(() => {
-    const u = getOrCreateDefaultUser();
-    const h = getHouseholds();
-    const depots = getDepots();
+  const refreshData = useCallback(async () => {
+    // Try API first, fall back to localStorage
+    const [apiUser, apiHouseholds, apiDepots] = await Promise.all([
+      getUserApi().catch(() => null),
+      getHouseholdsApi().catch(() => []),
+      getDepotsApi().catch(() => []),
+    ]);
+
+    const u = apiUser || getOrCreateDefaultUser();
+    const h = apiHouseholds.length > 0 ? apiHouseholds : getHouseholds();
+    const depots = apiDepots.length > 0 ? apiDepots : getDepots();
     const d = depots[0] || null;
 
-    // Auto-generate routes from clusters
+    // Auto-generate routes from clusters (localStorage fallback)
     const clusters = clusterHouseholds(h);
     const readyClusters = getRouteReadyClusters(clusters);
     const existingRoutes = getRoutes();
@@ -38,16 +46,21 @@ export default function RunnerApp() {
       saveRoutes([...existingRoutes, ...newRoutes]);
     }
 
+    // Try API routes, fall back to local
+    const [apiPending, apiActive] = await Promise.all([
+      getPendingRoutesApi().catch(() => []),
+      getActiveRouteApi().catch(() => null),
+    ]);
+
     setUser(u);
     setHouseholds(h);
-    setPendingRoutes(getPendingRoutes());
-    setActiveRoute(getActiveRoute());
+    setPendingRoutes(apiPending.length > 0 ? apiPending : getPendingRoutes());
+    setActiveRoute(apiActive || getActiveRoute());
     setDepot(d);
   }, []);
 
   useEffect(() => {
-    refreshData();
-    setLoading(false);
+    refreshData().then(() => setLoading(false));
   }, [refreshData]);
 
   const handleHouseholdSelect = useCallback((id: string) => setSelectedHouseholdId(id), []);

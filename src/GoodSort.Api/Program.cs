@@ -9,6 +9,7 @@ builder.AddServiceDefaults();
 builder.AddSqlServerDbContext<GoodSortDbContext>("goodsortdb");
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<VisionService>();
+builder.Services.AddScoped<CashoutService>();
 builder.Services.AddHttpClient();
 
 builder.Services.AddCors(options =>
@@ -345,8 +346,97 @@ app.MapPost("/api/routes/{id:guid}/settle", async (Guid id, GoodSortDbContext db
 app.MapGet("/api/depots", async (GoodSortDbContext db) =>
     Results.Ok(await db.Depots.ToListAsync()));
 
+// ── Route Optimization (Google Directions API) ──
+app.MapPost("/api/routes/{id:guid}/optimize", async (Guid id, GoodSortDbContext db, IConfiguration config, IHttpClientFactory httpFactory) =>
+{
+    var route = await db.Routes.Include(r => r.Stops).Include(r => r.Depot).FirstOrDefaultAsync(r => r.Id == id);
+    if (route is null) return Results.NotFound();
+
+    var mapsKey = config["GOOGLE_MAPS_SERVER_KEY"] ?? config["NEXT_PUBLIC_GOOGLE_MAPS_API_KEY"] ?? "";
+    if (string.IsNullOrEmpty(mapsKey)) return Results.Ok(new { optimized = false, reason = "No API key" });
+
+    var stops = route.Stops.OrderBy(s => s.Sequence).ToList();
+    if (stops.Count < 2) return Results.Ok(new { optimized = false, reason = "Too few stops" });
+
+    // Build waypoints for Directions API
+    var origin = $"{stops[0].Lat},{stops[0].Lng}";
+    var destination = $"{route.Depot.Lat},{route.Depot.Lng}";
+    var waypoints = string.Join("|", stops.Skip(1).Select(s => $"{s.Lat},{s.Lng}"));
+
+    var client = httpFactory.CreateClient();
+    var url = $"https://maps.googleapis.com/maps/api/directions/json?origin={origin}&destination={destination}&waypoints=optimize:true|{waypoints}&key={mapsKey}";
+    var res = await client.GetAsync(url);
+    if (!res.IsSuccessStatusCode) return Results.Ok(new { optimized = false, reason = "API call failed" });
+
+    var json = await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+    if (json.GetProperty("status").GetString() != "OK") return Results.Ok(new { optimized = false, reason = json.GetProperty("status").GetString() });
+
+    var leg = json.GetProperty("routes")[0].GetProperty("legs");
+    var totalDuration = 0;
+    var totalDistance = 0;
+    for (int i = 0; i < leg.GetArrayLength(); i++)
+    {
+        totalDuration += leg[i].GetProperty("duration").GetProperty("value").GetInt32();
+        totalDistance += leg[i].GetProperty("distance").GetProperty("value").GetInt32();
+    }
+
+    // Update route with real values
+    route.EstimatedDurationMin = totalDuration / 60;
+    route.EstimatedDistanceKm = Math.Round(totalDistance / 1000.0, 1);
+
+    // Reorder stops based on optimized waypoint order
+    var order = json.GetProperty("routes")[0].GetProperty("waypoint_order");
+    for (int i = 0; i < order.GetArrayLength(); i++)
+    {
+        var originalIdx = order[i].GetInt32() + 1; // +1 because origin is stop[0]
+        if (originalIdx < stops.Count)
+            stops[originalIdx].Sequence = i + 1;
+    }
+    stops[0].Sequence = 0; // Origin stays first
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { optimized = true, durationMin = route.EstimatedDurationMin, distanceKm = route.EstimatedDistanceKm });
+});
+
+// ── Cash-out ──
+app.MapPost("/api/cashout", async (CashoutRequestDto req, CashoutService cashout) =>
+{
+    var (success, error) = await cashout.RequestCashout(req.UserId, req.AmountCents, req.Bsb, req.AccountNumber, req.AccountName);
+    return success ? Results.Ok(new { success = true }) : Results.BadRequest(new { error });
+});
+
+// ── Admin: Generate ABA file ──
+app.MapGet("/api/admin/aba-export", async (CashoutService cashout) =>
+{
+    var aba = await cashout.GenerateAbaFile();
+    if (string.IsNullOrEmpty(aba)) return Results.Ok(new { message = "No pending cashouts" });
+    return Results.Text(aba, "text/plain");
+});
+
+// ── Admin: Dashboard stats ──
+app.MapGet("/api/admin/stats", async (GoodSortDbContext db) =>
+{
+    var users = await db.Profiles.CountAsync();
+    var households = await db.Households.CountAsync();
+    var scans = await db.Scans.CountAsync();
+    var routes = await db.Routes.CountAsync();
+    var totalContainers = await db.Profiles.SumAsync(p => p.TotalContainers);
+    var totalPending = await db.Profiles.SumAsync(p => p.PendingCents);
+    var totalCleared = await db.Profiles.SumAsync(p => p.ClearedCents);
+    return Results.Ok(new { users, households, scans, routes, totalContainers, totalPending, totalCleared });
+});
+
+// ── Admin: List all users ──
+app.MapGet("/api/admin/users", async (GoodSortDbContext db) =>
+    Results.Ok(await db.Profiles.Include(p => p.Household).OrderByDescending(p => p.CreatedAt).Take(100).ToListAsync()));
+
+// ── Admin: List all cashout requests ──
+app.MapGet("/api/admin/cashouts", async (GoodSortDbContext db) =>
+    Results.Ok(await db.Set<GoodSort.Api.Services.CashoutRequest>().Include(c => c.User).OrderByDescending(c => c.CreatedAt).Take(100).ToListAsync()));
+
 app.Run();
 
+record CashoutRequestDto(Guid UserId, int AmountCents, string Bsb, string AccountNumber, string AccountName);
 record PhotoScanRequest(string Image);
 record PhotoConfirmRequest(Guid UserId, List<PhotoConfirmItem> Items);
 record PhotoConfirmItem(string Name, string Material, int Count, bool Eligible);

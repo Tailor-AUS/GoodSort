@@ -20,6 +20,21 @@ export default function OnboardPage() {
     setError("");
 
     try {
+      // Geocode address via Google Maps Geocoding
+      let lat = -27.48;
+      let lng = 153.02;
+      const mapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+      if (mapsKey) {
+        try {
+          const geoRes = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${mapsKey}&region=au`);
+          const geoData = await geoRes.json();
+          if (geoData.results?.[0]?.geometry?.location) {
+            lat = geoData.results[0].geometry.location.lat;
+            lng = geoData.results[0].geometry.location.lng;
+          }
+        } catch { /* use default coords */ }
+      }
+
       // Create household via API
       const hhRes = await fetch(apiUrl("/api/households"), {
         method: "POST",
@@ -27,8 +42,8 @@ export default function OnboardPage() {
         body: JSON.stringify({
           name: householdName || `${name}'s Place`,
           address,
-          lat: -27.48, // TODO: geocode via Google Places
-          lng: 153.02,
+          lat,
+          lng,
         }),
       });
 

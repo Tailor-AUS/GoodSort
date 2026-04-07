@@ -39,6 +39,11 @@ export default function RootLayout({
       </head>
       <body className="h-dvh overflow-hidden bg-white text-slate-900 overscroll-none" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
         {children}
+        <script dangerouslySetInnerHTML={{ __html: `
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').catch(function() {});
+          }
+        `}} />
       </body>
     </html>
   );

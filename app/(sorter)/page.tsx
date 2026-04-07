@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import {
-  getOrCreateDefaultUser, getHouseholds, getDepots,
-  type User, type Household, type Depot, type BagInfo,
-} from "@/lib/store";
+import { type User, type Household, type Depot, type BagInfo } from "@/lib/store";
+import { getUserApi, getHouseholdsApi, getDepotsApi } from "@/lib/store-api";
+import { getOrCreateDefaultUser, getHouseholds, getDepots } from "@/lib/store";
 import { MapView } from "@/app/components/shared/map-view";
 import { SorterSheet } from "./components/sorter-sheet";
 import { Scanner } from "@/app/components/shared/scanner";
@@ -21,15 +20,21 @@ export default function SorterApp() {
   const [showAccount, setShowAccount] = useState(false);
   const [toast, setToast] = useState<{ text: string; visible: boolean } | null>(null);
 
-  const refreshData = useCallback(() => {
-    setUser(getOrCreateDefaultUser());
-    setHouseholds(getHouseholds());
-    setDepot(getDepots()[0] || null);
+  const refreshData = useCallback(async () => {
+    // Try API first, fall back to localStorage
+    const [apiUser, apiHouseholds, apiDepots] = await Promise.all([
+      getUserApi().catch(() => null),
+      getHouseholdsApi().catch(() => []),
+      getDepotsApi().catch(() => []),
+    ]);
+
+    setUser(apiUser || getOrCreateDefaultUser());
+    setHouseholds(apiHouseholds.length > 0 ? apiHouseholds : getHouseholds());
+    setDepot((apiDepots.length > 0 ? apiDepots : getDepots())[0] || null);
   }, []);
 
   useEffect(() => {
-    refreshData();
-    setLoading(false);
+    refreshData().then(() => setLoading(false));
   }, [refreshData]);
 
   const handleScanComplete = useCallback(

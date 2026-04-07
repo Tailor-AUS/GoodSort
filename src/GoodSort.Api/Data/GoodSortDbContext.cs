@@ -1,4 +1,5 @@
 using GoodSort.Api.Data.Entities;
+using GoodSort.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace GoodSort.Api.Data;
@@ -12,6 +13,7 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
     public DbSet<RouteStop> RouteStops => Set<RouteStop>();
     public DbSet<Depot> Depots => Set<Depot>();
     public DbSet<Collection> Collections => Set<Collection>();
+    public DbSet<CashoutRequest> CashoutRequests => Set<CashoutRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

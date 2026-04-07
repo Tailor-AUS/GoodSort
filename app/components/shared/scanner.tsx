@@ -5,6 +5,7 @@ import { X, Camera, ScanBarcode, Plus, Minus, Check, RotateCcw } from "lucide-re
 import { lookupContainer, lookupContainerAsync } from "@/lib/containers";
 import { apiUrl } from "@/lib/config";
 import { addScan, getBagForMaterial, mapToMaterialType, SORTER_PAYOUT_CENTS, BAGS, type BagInfo } from "@/lib/store";
+import { addScanApi } from "@/lib/store-api";
 
 interface ScannerProps {
   onClose: () => void;
@@ -57,18 +58,35 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
       if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
 
       // In barcode mode, start detection
-      if (mode === "barcode" && "BarcodeDetector" in window) {
-        const detector = new (window as unknown as {
-          BarcodeDetector: new (opts: { formats: string[] }) => { detect: (source: HTMLVideoElement) => Promise<{ rawValue: string }[]> };
-        }).BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"] });
+      if (mode === "barcode") {
+        if ("BarcodeDetector" in window) {
+          // Native BarcodeDetector (Chrome Android, Safari 17.2+)
+          const detector = new (window as unknown as {
+            BarcodeDetector: new (opts: { formats: string[] }) => { detect: (source: HTMLVideoElement) => Promise<{ rawValue: string }[]> };
+          }).BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"] });
 
-        scanIntervalRef.current = setInterval(async () => {
-          if (!videoRef.current || videoRef.current.readyState !== 4 || processedRef.current) return;
+          scanIntervalRef.current = setInterval(async () => {
+            if (!videoRef.current || videoRef.current.readyState !== 4 || processedRef.current) return;
+            try {
+              const barcodes = await detector.detect(videoRef.current);
+              if (barcodes.length > 0) processBarcodeResult(barcodes[0].rawValue);
+            } catch { /* continue */ }
+          }, 250);
+        } else {
+          // ZXing fallback for iOS Safari and older browsers
           try {
-            const barcodes = await detector.detect(videoRef.current);
-            if (barcodes.length > 0) processBarcodeResult(barcodes[0].rawValue);
-          } catch { /* continue */ }
-        }, 250);
+            const { BrowserMultiFormatReader } = await import("@zxing/browser");
+            const reader = new BrowserMultiFormatReader();
+            reader.decodeFromVideoElement(videoRef.current!, (result) => {
+              if (result && !processedRef.current) {
+                processBarcodeResult(result.getText());
+              }
+            });
+          } catch {
+            // ZXing failed — show manual entry
+            setShowManual(true);
+          }
+        }
       }
     } catch {
       setCameraFailed(true);
@@ -132,7 +150,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
 
     for (const item of eligible) {
       for (let i = 0; i < item.count; i++) {
-        addScan("PHOTO", item.name, item.material);
+        addScanApi("PHOTO", item.name, item.material);
         totalItems++;
         totalCents += SORTER_PAYOUT_CENTS;
       }
@@ -181,7 +199,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
 
     const materialType = mapToMaterialType(container.material);
     const bag = getBagForMaterial(materialType);
-    addScan(cleaned, container.name, container.material);
+    addScanApi(cleaned, container.name, container.material);
 
     setScanResult({ name: container.name, bag });
     timeoutRef.current = setTimeout(() => {
