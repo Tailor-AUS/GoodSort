@@ -1,28 +1,23 @@
-// Household clustering for route generation
-import type { Household, Route, RouteStop, Depot } from "./store";
+// Bin clustering for route generation
+import type { SortBin, Route, RouteStop, Depot } from "./store";
 import { calcDriverPayout, CONTAINERS_PER_BAG, SORTER_PAYOUT_CENTS } from "./store";
 
-export const CLUSTER_THRESHOLD_CONTAINERS = 2000;
+export const CLUSTER_THRESHOLD_CONTAINERS = 500; // Lower threshold for bins (not households)
 export const CLUSTER_RADIUS_KM = 3;
 const MAX_STOPS_PER_ROUTE = 25;
 
-interface LatLng {
-  lat: number;
-  lng: number;
-}
+interface LatLng { lat: number; lng: number; }
 
-export interface HouseholdCluster {
+export interface BinCluster {
   id: string;
   centroid: LatLng;
-  households: Household[];
+  bins: SortBin[];
   totalContainers: number;
   totalWeightKg: number;
   totalValueCents: number;
   meetsThreshold: boolean;
   estimatedBags: number;
 }
-
-// ── Haversine Distance ──
 
 export function haversineKm(a: LatLng, b: LatLng): number {
   const R = 6371;
@@ -34,47 +29,34 @@ export function haversineKm(a: LatLng, b: LatLng): number {
   return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
-// ── DBSCAN-like Greedy Clustering ──
-
-export function clusterHouseholds(
-  households: Household[],
-  radiusKm: number = CLUSTER_RADIUS_KM,
-): HouseholdCluster[] {
-  const active = households.filter((h) => h.pendingContainers > 0);
+export function clusterBins(bins: SortBin[], radiusKm: number = CLUSTER_RADIUS_KM): BinCluster[] {
+  const active = bins.filter((b) => b.pendingContainers > 0 && b.status !== "disabled" && b.status !== "collected");
   const sorted = [...active].sort((a, b) => b.pendingContainers - a.pendingContainers);
   const visited = new Set<string>();
-  const clusters: HouseholdCluster[] = [];
+  const clusters: BinCluster[] = [];
 
   for (const seed of sorted) {
     if (visited.has(seed.id)) continue;
 
-    // Find all unvisited neighbors within radius
-    const neighbors = sorted.filter(
-      (h) => !visited.has(h.id) && haversineKm(seed, h) <= radiusKm
-    );
-
+    const neighbors = sorted.filter((b) => !visited.has(b.id) && haversineKm(seed, b) <= radiusKm);
     if (neighbors.length === 0) continue;
 
-    // Cap at max stops
-    const clusterHouseholds = neighbors.slice(0, MAX_STOPS_PER_ROUTE);
-    for (const h of clusterHouseholds) visited.add(h.id);
+    const clusterBins = neighbors.slice(0, MAX_STOPS_PER_ROUTE);
+    for (const b of clusterBins) visited.add(b.id);
 
-    const totalContainers = clusterHouseholds.reduce((s, h) => s + h.pendingContainers, 0);
-    const totalWeightKg = clusterHouseholds.reduce((s, h) => s + h.estimatedWeightKg, 0);
-    const totalValueCents = totalContainers * SORTER_PAYOUT_CENTS;
-
-    const centroid = {
-      lat: clusterHouseholds.reduce((s, h) => s + h.lat, 0) / clusterHouseholds.length,
-      lng: clusterHouseholds.reduce((s, h) => s + h.lng, 0) / clusterHouseholds.length,
-    };
+    const totalContainers = clusterBins.reduce((s, b) => s + b.pendingContainers, 0);
+    const totalWeightKg = clusterBins.reduce((s, b) => s + b.estimatedWeightKg, 0);
 
     clusters.push({
       id: `cluster-${clusters.length}`,
-      centroid,
-      households: clusterHouseholds,
+      centroid: {
+        lat: clusterBins.reduce((s, b) => s + b.lat, 0) / clusterBins.length,
+        lng: clusterBins.reduce((s, b) => s + b.lng, 0) / clusterBins.length,
+      },
+      bins: clusterBins,
       totalContainers,
       totalWeightKg: Math.round(totalWeightKg * 10) / 10,
-      totalValueCents,
+      totalValueCents: totalContainers * SORTER_PAYOUT_CENTS,
       meetsThreshold: totalContainers >= CLUSTER_THRESHOLD_CONTAINERS,
       estimatedBags: Math.ceil(totalContainers / CONTAINERS_PER_BAG),
     });
@@ -83,23 +65,21 @@ export function clusterHouseholds(
   return clusters;
 }
 
-// ── Route Generation ──
-
-export function getRouteReadyClusters(clusters: HouseholdCluster[]): HouseholdCluster[] {
+export function getRouteReadyClusters(clusters: BinCluster[]): BinCluster[] {
   return clusters.filter((c) => c.meetsThreshold);
 }
 
-export function createRouteFromCluster(cluster: HouseholdCluster, depot: Depot): Route {
-  const stops: RouteStop[] = cluster.households.map((h, i) => ({
+export function createRouteFromCluster(cluster: BinCluster, depot: Depot): Route {
+  const stops: RouteStop[] = cluster.bins.map((b, i) => ({
     id: crypto.randomUUID(),
-    householdId: h.id,
-    householdName: h.name,
-    address: h.address,
-    lat: h.lat,
-    lng: h.lng,
-    containerCount: h.pendingContainers,
-    estimatedBags: h.estimatedBags,
-    materials: { ...h.materials },
+    householdId: b.id, // Using householdId field for binId (backward compat)
+    householdName: `${b.name} (${b.code})`,
+    address: b.address,
+    lat: b.lat,
+    lng: b.lng,
+    containerCount: b.pendingContainers,
+    estimatedBags: Math.ceil(b.pendingContainers / CONTAINERS_PER_BAG),
+    materials: { ...b.materials },
     status: "pending" as const,
     pickedUpAt: null,
     actualContainerCount: null,
@@ -121,8 +101,8 @@ export function createRouteFromCluster(cluster: HouseholdCluster, depot: Depot):
     totalWeightKg: cluster.totalWeightKg,
     totalValueCents: cluster.totalValueCents,
     driverPayoutCents: calcDriverPayout(totalContainers),
-    estimatedDurationMin: Math.round(stops.length * 3 + 15), // ~3min/stop + 15min depot
-    estimatedDistanceKm: Math.round(cluster.households.length * 0.5 * 10) / 10,
+    estimatedDurationMin: Math.round(stops.length * 3 + 15),
+    estimatedDistanceKm: Math.round(cluster.bins.length * 0.5 * 10) / 10,
     depotId: depot.id,
     createdAt: new Date().toISOString(),
   };
