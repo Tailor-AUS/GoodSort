@@ -6,7 +6,7 @@ import { apiUrl } from "@/lib/config";
 
 interface Stats {
   users: number;
-  households: number;
+  bins: number;
   scans: number;
   routes: number;
   totalContainers: number;
@@ -58,8 +58,8 @@ export default function AdminPage() {
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8">
           <div className="bg-white rounded-xl p-4 border border-slate-200">
-            <p className="text-[11px] text-slate-400 uppercase tracking-wider">Households</p>
-            <p className="text-2xl font-display font-extrabold text-slate-900">{stats?.households ?? 0}</p>
+            <p className="text-[11px] text-slate-400 uppercase tracking-wider">Bins</p>
+            <p className="text-2xl font-display font-extrabold text-slate-900">{stats?.bins ?? 0}</p>
           </div>
           <div className="bg-white rounded-xl p-4 border border-slate-200">
             <p className="text-[11px] text-slate-400 uppercase tracking-wider">Total Scans</p>

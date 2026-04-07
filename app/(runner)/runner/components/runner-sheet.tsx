@@ -53,7 +53,7 @@ export function RunnerSheet({
           <p className="text-4xl font-display font-extrabold text-slate-900 mb-1 animate-ka-ching tracking-tight">
             +{formatCents(showSuccess.earned)}
           </p>
-          <p className="text-slate-500 text-[13px] mt-3">{showSuccess.stops} households collected</p>
+          <p className="text-slate-500 text-[13px] mt-3">{showSuccess.stops} bins collected</p>
         </div>
       </div>
     );
@@ -81,8 +81,8 @@ export function RunnerSheet({
                 </p>
                 <p className="text-slate-400 text-[13px] mt-1.5 font-medium">
                   {pendingRoutes.length > 0
-                    ? `${pendingRoutes.reduce((s, r) => s + r.stops.length, 0)} households ready`
-                    : "Waiting for households to scan"}
+                    ? `${pendingRoutes.reduce((s, r) => s + r.stops.length, 0)} bins ready`
+                    : "Waiting for bins to fill"}
                 </p>
               </div>
 
@@ -104,7 +104,7 @@ export function RunnerSheet({
                     <div key={route.id} className="glass rounded-2xl p-4 border border-white/40 shadow-sm">
                       <div className="flex justify-between items-start mb-3">
                         <div>
-                          <p className="text-[15px] text-slate-900 font-semibold">{route.stops.length} households</p>
+                          <p className="text-[15px] text-slate-900 font-semibold">{route.stops.length} bins</p>
                           <div className="flex items-center gap-3 mt-1">
                             <span className="flex items-center gap-1 text-[12px] text-slate-400">
                               <Package className="w-3 h-3" />{route.totalContainers}
@@ -155,7 +155,7 @@ export function RunnerSheet({
                   <div key={stop.id} className="flex items-center gap-3 py-2.5 px-3 glass rounded-xl border border-white/40">
                     <span className="w-6 h-6 rounded-full bg-slate-200 text-[11px] font-bold text-slate-500 flex items-center justify-center flex-shrink-0">{i + 1}</span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[13px] text-slate-700 font-medium truncate">{stop.householdName}</p>
+                      <p className="text-[13px] text-slate-700 font-medium truncate">{stop.householdName || "Bin"}</p>
                       <p className="text-[11px] text-slate-400">{stop.containerCount} containers</p>
                     </div>
                   </div>
@@ -179,7 +179,7 @@ export function RunnerSheet({
               </div>
               <div className="mb-5">
                 <p className="text-[12px] text-slate-400 font-semibold uppercase tracking-[0.12em]">Next pickup</p>
-                <p className="text-xl font-display font-extrabold text-slate-900 mt-1">{currentStop.householdName}</p>
+                <p className="text-xl font-display font-extrabold text-slate-900 mt-1">{currentStop.householdName || "Bin"}</p>
                 <p className="text-[13px] text-slate-400">{currentStop.address}</p>
                 <p className="text-[12px] text-slate-500 mt-1.5">{currentStop.containerCount} containers · {currentStop.estimatedBags} bag{currentStop.estimatedBags !== 1 ? "s" : ""}</p>
               </div>

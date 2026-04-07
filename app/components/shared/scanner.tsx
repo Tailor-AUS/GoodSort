@@ -7,6 +7,10 @@ import { apiUrl } from "@/lib/config";
 import { addScan, getBagForMaterial, mapToMaterialType, SORTER_PAYOUT_CENTS, BAGS, type BagInfo } from "@/lib/store";
 import { addScanApi } from "@/lib/store-api";
 
+function getStoredUserId(): string {
+  try { return JSON.parse(localStorage.getItem("goodsort_profile") || "{}").id || ""; } catch { return ""; }
+}
+
 interface ScannerProps {
   onClose: () => void;
   onScanComplete: (containerName: string, cents: number, bag: BagInfo) => void;
@@ -162,7 +166,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: "00000000-0000-0000-0000-000000000000", // TODO: use real user ID
+          userId: getStoredUserId(),
           items: eligible,
         }),
       });

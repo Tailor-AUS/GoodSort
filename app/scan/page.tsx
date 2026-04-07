@@ -2,11 +2,10 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { MapPin, Camera, ArrowLeft } from "lucide-react";
+import { Camera, ArrowLeft, MapPin } from "lucide-react";
 import { apiUrl } from "@/lib/config";
 import { Scanner } from "@/app/components/shared/scanner";
-import { addScan, getBagForMaterial, mapToMaterialType, SORTER_PAYOUT_CENTS, type BagInfo } from "@/lib/store";
-import { addScanApi } from "@/lib/store-api";
+import { type BagInfo } from "@/lib/store";
 
 interface BinInfo {
   id: string;

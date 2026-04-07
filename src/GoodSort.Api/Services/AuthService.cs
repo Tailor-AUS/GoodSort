@@ -102,7 +102,7 @@ public class AuthService
 
     public string GenerateJwt(Profile profile)
     {
-        var key = _config["JWT_SECRET"] ?? "goodsort-dev-secret-key-min-32-chars!!";
+        var key = _config["JWT_SECRET"] ?? throw new InvalidOperationException("JWT_SECRET must be configured");
         var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key));
         var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
 

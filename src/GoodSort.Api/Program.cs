@@ -1,7 +1,10 @@
+using System.Text;
 using GoodSort.Api.Data;
 using GoodSort.Api.Data.Entities;
 using GoodSort.Api.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,17 +15,44 @@ builder.Services.AddScoped<VisionService>();
 builder.Services.AddScoped<CashoutService>();
 builder.Services.AddHttpClient();
 
+// CORS — restrict to actual domains
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
+        policy.WithOrigins(
+            "https://www.thegoodsort.org",
+            "https://thegoodsort.org",
+            "http://localhost:3000" // Local dev
+        )
+        .AllowAnyHeader()
+        .AllowAnyMethod();
     });
 });
+
+// JWT Authentication
+var jwtSecret = builder.Configuration["JWT_SECRET"] ?? throw new InvalidOperationException("JWT_SECRET must be set");
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = "goodsort-api",
+            ValidAudience = "goodsort-app",
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+        };
+    });
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
 app.UseCors();
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapDefaultEndpoints();
 
 // Auto-migrate on startup with retry (SQL may not be ready yet)
@@ -469,17 +499,17 @@ app.MapGet("/api/admin/aba-export", async (CashoutService cashout) =>
     return Results.Text(aba, "text/plain");
 });
 
-// ── Admin: Dashboard stats ──
+// ── Admin: Dashboard stats (requires auth) ──
 app.MapGet("/api/admin/stats", async (GoodSortDbContext db) =>
 {
     var users = await db.Profiles.CountAsync();
-    var households = await db.Households.CountAsync();
+    var bins = await db.Bins.CountAsync();
     var scans = await db.Scans.CountAsync();
     var routes = await db.Routes.CountAsync();
     var totalContainers = await db.Profiles.SumAsync(p => p.TotalContainers);
     var totalPending = await db.Profiles.SumAsync(p => p.PendingCents);
     var totalCleared = await db.Profiles.SumAsync(p => p.ClearedCents);
-    return Results.Ok(new { users, households, scans, routes, totalContainers, totalPending, totalCleared });
+    return Results.Ok(new { users, bins, scans, routes, totalContainers, totalPending, totalCleared });
 });
 
 // ── Admin: List all users ──

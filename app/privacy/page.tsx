@@ -10,7 +10,7 @@ export default function PrivacyPage() {
           The Good Sort collects the following information when you use our service:
         </p>
         <ul className="list-disc pl-5 text-slate-600 text-sm space-y-1 mb-4">
-          <li>Phone number (for account verification)</li>
+          <li>Email address (for account verification)</li>
           <li>Name and household address</li>
           <li>Container scan records (barcodes, materials, timestamps)</li>
           <li>Location data (for map functionality and route optimization)</li>

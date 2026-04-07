@@ -18,7 +18,7 @@ public class VisionService
 
     public async Task<List<IdentifiedContainer>> IdentifyContainers(string base64Image)
     {
-        var endpoint = _config["AZURE_OPENAI_ENDPOINT"] ?? "https://oai-tailor-app-prod.openai.azure.com/";
+        var endpoint = _config["AZURE_OPENAI_ENDPOINT"] ?? "";
         var apiKey = _config["AZURE_OPENAI_KEY"] ?? "";
         var deploymentName = _config["AZURE_OPENAI_DEPLOYMENT"] ?? "gpt-4.1";
 

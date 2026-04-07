@@ -40,7 +40,7 @@ export default function VerifyPage() {
       const data = await res.json();
       localStorage.setItem("goodsort_token", data.token);
       localStorage.setItem("goodsort_profile", JSON.stringify(data.profile));
-      document.cookie = `goodsort_token=${data.token}; path=/; max-age=${30 * 24 * 60 * 60}; SameSite=Lax`;
+      document.cookie = `goodsort_token=${data.token}; path=/; max-age=${30 * 24 * 60 * 60}; SameSite=Lax; Secure`;
       sessionStorage.removeItem("goodsort_verify_email");
 
       if (!data.profile.householdId) {
