@@ -72,6 +72,24 @@ export interface ScanRecord {
   timestamp: string;
 }
 
+export interface SortBin {
+  id: string;
+  code: string;
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+  hostedBy: string | null;
+  pendingContainers: number;
+  pendingValueCents: number;
+  materials: MaterialBreakdown;
+  estimatedWeightKg: number;
+  status: string;
+  lastScanAt: string | null;
+  lastCollectedAt: string | null;
+  createdAt: string;
+}
+
 export interface Household {
   id: string;
   name: string;

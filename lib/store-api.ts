@@ -2,7 +2,7 @@
 // Falls back to localStorage store when API is unavailable
 
 import { apiUrl } from "./config";
-import type { User, Household, Route, Depot, ScanRecord, CollectionRecord } from "./store";
+import type { User, Household, Route, Depot, ScanRecord, CollectionRecord, SortBin } from "./store";
 import {
   getUser as getLocalUser,
   getOrCreateDefaultUser as getLocalDefault,
@@ -188,6 +188,17 @@ export async function settleRouteApi(routeId: string): Promise<{ driverPayout: n
 export async function getDepotsApi(): Promise<Depot[]> {
   const depots = await apiFetch<Depot[]>("/api/depots");
   return depots || getLocalDepots();
+}
+
+// ── Bins ──
+
+export async function getBinsApi(): Promise<SortBin[]> {
+  const bins = await apiFetch<SortBin[]>("/api/bins");
+  return bins || [];
+}
+
+export async function getBinByCodeApi(code: string): Promise<SortBin | null> {
+  return apiFetch<SortBin>(`/api/bins/code/${code}`);
 }
 
 // ── Health ──

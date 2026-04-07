@@ -64,6 +64,47 @@ app.MapPost("/api/auth/verify-otp", async (VerifyOtpRequest req, AuthService aut
     return Results.Ok(new { token, profile });
 });
 
+// ── Bins (QR-coded drop points) ──
+app.MapGet("/api/bins", async (GoodSortDbContext db) =>
+    Results.Ok(await db.Bins.Where(b => b.Status != "disabled").OrderByDescending(b => b.PendingContainers).ToListAsync()));
+
+app.MapGet("/api/bins/{id:guid}", async (Guid id, GoodSortDbContext db) =>
+    await db.Bins.FindAsync(id) is { } b ? Results.Ok(b) : Results.NotFound());
+
+app.MapGet("/api/bins/code/{code}", async (string code, GoodSortDbContext db) =>
+    await db.Bins.FirstOrDefaultAsync(b => b.Code == code) is { } b ? Results.Ok(b) : Results.NotFound());
+
+app.MapPost("/api/bins", async (Bin bin, GoodSortDbContext db) =>
+{
+    if (string.IsNullOrEmpty(bin.Code))
+    {
+        var count = await db.Bins.CountAsync() + 1;
+        bin.Code = $"GS-{count:D4}";
+    }
+    db.Bins.Add(bin);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/bins/{bin.Id}", bin);
+});
+
+app.MapGet("/api/bins/{id:guid}/qr", (Guid id, GoodSortDbContext db) =>
+{
+    var bin = db.Bins.Find(id);
+    if (bin is null) return Results.NotFound();
+
+    var url = $"https://www.thegoodsort.org/scan?bin={bin.Code}";
+    var svg = $@"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 380'>
+        <rect width='300' height='380' fill='white' rx='16'/>
+        <rect x='20' y='20' width='260' height='260' fill='#f1f5f9' rx='12'/>
+        <text x='150' y='160' text-anchor='middle' font-family='system-ui' font-size='48' font-weight='800' fill='#16a34a'>{bin.Code}</text>
+        <text x='150' y='200' text-anchor='middle' font-family='system-ui' font-size='14' fill='#64748b'>Scan to recycle</text>
+        <text x='150' y='310' text-anchor='middle' font-family='system-ui' font-size='13' font-weight='700' fill='#0f172a'>{bin.Name}</text>
+        <text x='150' y='335' text-anchor='middle' font-family='system-ui' font-size='11' fill='#94a3b8'>{url}</text>
+        <text x='150' y='365' text-anchor='middle' font-family='system-ui' font-size='10' fill='#16a34a'>thegoodsort.org</text>
+    </svg>";
+
+    return Results.Text(svg, "image/svg+xml");
+});
+
 // ── Photo Scan (Azure OpenAI Vision) ──
 app.MapPost("/api/scan/photo", async (PhotoScanRequest req, VisionService vision, GoodSortDbContext db) =>
 {
@@ -437,8 +478,8 @@ app.MapGet("/api/admin/cashouts", async (GoodSortDbContext db) =>
 app.Run();
 
 record CashoutRequestDto(Guid UserId, int AmountCents, string Bsb, string AccountNumber, string AccountName);
-record PhotoScanRequest(string Image);
-record PhotoConfirmRequest(Guid UserId, List<PhotoConfirmItem> Items);
+record PhotoScanRequest(string Image, string? BinCode = null);
+record PhotoConfirmRequest(Guid UserId, List<PhotoConfirmItem> Items, string? BinCode = null);
 record PhotoConfirmItem(string Name, string Material, int Count, bool Eligible);
 record SendOtpRequest(string Email);
 record VerifyOtpRequest(string Email, string Code);
