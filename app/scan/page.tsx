@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Camera, MapPin, RotateCcw, Check, Mail, ShieldCheck } from "lucide-react";
+import { Camera, MapPin, RotateCcw, Check, Mail, ShieldCheck, ImagePlus } from "lucide-react";
 import { apiUrl } from "@/lib/config";
 import { BAGS, getBagForMaterial, mapToMaterialType } from "@/lib/store";
 
@@ -13,7 +13,7 @@ interface IdentifiedItem {
   name: string; material: string; count: number; eligible: boolean;
 }
 
-type Step = "loading" | "no-bin" | "error" | "auth" | "verify" | "camera" | "analyzing" | "results" | "done";
+type Step = "loading" | "auth" | "verify" | "camera" | "analyzing" | "results" | "error" | "done";
 
 function ScanPageContent() {
   const searchParams = useSearchParams();
@@ -21,6 +21,7 @@ function ScanPageContent() {
 
   const [step, setStep] = useState<Step>("loading");
   const [bin, setBin] = useState<BinInfo | null>(null);
+  const [apiError, setApiError] = useState(false);
 
   // Auth
   const [email, setEmail] = useState("");
@@ -32,36 +33,28 @@ function ScanPageContent() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraDenied, setCameraDenied] = useState(false);
 
   // Results
   const [results, setResults] = useState<IdentifiedItem[]>([]);
   const [totalItems, setTotalItems] = useState(0);
 
-  // ── Load bin + check auth ──
+  // ── Init ──
   useEffect(() => {
     const token = localStorage.getItem("goodsort_token");
 
-    if (!binCode) {
-      // No bin code — if logged in, go straight to camera (scan containers directly)
-      if (token) {
-        setStep("camera");
-      } else {
-        setStep("auth");
-      }
-      return;
+    if (binCode) {
+      fetch(apiUrl(`/api/bins/code/${binCode}`))
+        .then((r) => { if (!r.ok) throw new Error(); return r.json(); })
+        .then((d) => { setBin(d); setStep(token ? "camera" : "auth"); })
+        .catch(() => setStep(token ? "camera" : "auth")); // Bin not found — still let them scan
+    } else {
+      setStep(token ? "camera" : "auth");
     }
-
-    // Has bin code — look it up
-    fetch(apiUrl(`/api/bins/code/${binCode}`))
-      .then((r) => { if (!r.ok) throw new Error(); return r.json(); })
-      .then((d) => {
-        setBin(d);
-        setStep(token ? "camera" : "auth");
-      })
-      .catch(() => setStep("error"));
   }, [binCode]);
 
-  // ── Auth: send OTP ──
+  // ── Auth ──
   async function sendOtp() {
     if (!email.includes("@")) return;
     setAuthLoading(true); setAuthError("");
@@ -76,7 +69,6 @@ function ScanPageContent() {
     setAuthLoading(false);
   }
 
-  // ── Auth: verify OTP ──
   async function verifyOtp() {
     if (otp.length < 6) return;
     setAuthLoading(true); setAuthError("");
@@ -96,10 +88,9 @@ function ScanPageContent() {
   }
 
   // ── Camera ──
-  const [cameraReady, setCameraReady] = useState(false);
-
   const startCamera = useCallback(async () => {
     setCameraReady(false);
+    setCameraDenied(false);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -107,49 +98,85 @@ function ScanPageContent() {
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        // Wait for video metadata before playing (iOS fix)
+        await new Promise<void>((resolve) => {
+          videoRef.current!.addEventListener("loadedmetadata", () => resolve(), { once: true });
+        });
         await videoRef.current.play();
         setCameraReady(true);
       }
-    } catch (err) {
-      console.error("Camera failed:", err);
+    } catch (err: unknown) {
+      const name = err instanceof Error ? err.name : "";
+      if (name === "NotAllowedError") {
+        setCameraDenied(true);
+      }
       setCameraReady(false);
     }
   }, []);
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) { streamRef.current.getTracks().forEach((t) => t.stop()); streamRef.current = null; }
+    setCameraReady(false);
   }, []);
 
   useEffect(() => {
     if (step === "camera") startCamera();
-    return () => stopCamera();
+    return () => { if (step === "camera") stopCamera(); };
   }, [step, startCamera, stopCamera]);
 
-  // ── Capture + AI ──
+  // ── Capture from camera ──
   async function capture() {
     if (!videoRef.current || !canvasRef.current) return;
-    setStep("analyzing");
+    const video = videoRef.current;
+    if (video.videoWidth === 0 || video.videoHeight === 0) return; // Not ready
 
     const canvas = canvasRef.current;
-    const video = videoRef.current;
-    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-    canvas.getContext("2d")!.drawImage(video, 0, 0);
-    const base64 = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0);
     stopCamera();
 
+    const base64 = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
+    await analyzeImage(base64);
+  }
+
+  // ── Capture from file input (fallback) ──
+  function handleFileCapture(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    stopCamera();
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = (reader.result as string).split(",")[1];
+      await analyzeImage(base64);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // ── Send to AI ──
+  async function analyzeImage(base64: string) {
+    setStep("analyzing");
+    setApiError(false);
     try {
       const res = await fetch(apiUrl("/api/scan/photo"), {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image: base64, binCode }),
       });
-      if (!res.ok) { setResults([]); setStep("results"); return; }
+      if (!res.ok) throw new Error("API error");
       const data = await res.json();
       setResults(data.containers || []);
-    } catch { setResults([]); }
+    } catch {
+      setResults([]);
+      setApiError(true);
+    }
     setStep("results");
   }
 
-  // ── Confirm sort ──
+  // ── Confirm ──
   async function confirm() {
     const eligible = results.filter((r) => r.eligible);
     const total = eligible.reduce((s, r) => s + r.count, 0);
@@ -162,80 +189,50 @@ function ScanPageContent() {
         body: JSON.stringify({ userId, items: eligible, binCode }),
       });
     } catch { /* best effort */ }
-
     setStep("done");
   }
 
-  function retake() { setResults([]); setStep("camera"); }
-  function sortMore() { setTotalItems(0); setResults([]); setStep("camera"); }
+  function retake() {
+    setResults([]);
+    setApiError(false);
+    setCameraReady(false);
+    setStep("camera");
+  }
 
-  // ════════════════════════════════════════
+  // ════════════════════════════════════
   // RENDER
-  // ════════════════════════════════════════
+  // ════════════════════════════════════
 
-  // Loading
   if (step === "loading") return <Center><p className="text-slate-400">Loading...</p></Center>;
 
-  // No bin
-  if (step === "no-bin") return (
-    <Center>
-      <IconCircle><Camera className="w-8 h-8 text-green-600" /></IconCircle>
-      <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-2">Scan a Bin QR Code</h1>
-      <p className="text-slate-400 text-[13px]">Find a Good Sort bin and scan the QR code to start</p>
-    </Center>
-  );
-
-  // Error
-  if (step === "error") return (
-    <Center>
-      <h1 className="text-xl font-display font-extrabold text-slate-900 mb-2">Bin Not Found</h1>
-      <p className="text-slate-400 text-[13px]">Code &quot;{binCode}&quot; not recognised</p>
-    </Center>
-  );
-
-  // Auth — email entry
+  // Auth
   if (step === "auth") return (
-    <div className="h-dvh bg-white flex flex-col items-center justify-center px-6">
-      <div className="w-full max-w-sm">
-        <BinBadge bin={bin} />
-        <div className="text-center mb-8">
-          <IconCircle><Mail className="w-7 h-7 text-green-600" /></IconCircle>
-          <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">Enter your email</h1>
-          <p className="text-slate-400 text-[13px]">To earn 5c per container sorted</p>
-        </div>
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
-          className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 mb-3" autoFocus />
-        {authError && <p className="text-red-500 text-[12px] mb-2">{authError}</p>}
-        <button onClick={sendOtp} disabled={authLoading || !email.includes("@")}
-          className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20 disabled:opacity-50 min-h-[48px]">
-          {authLoading ? "Sending..." : "Continue"}
-        </button>
-      </div>
-    </div>
+    <Center>
+      <IconBubble><Mail className="w-7 h-7 text-green-600" /></IconBubble>
+      <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">Enter your email</h1>
+      <p className="text-slate-400 text-[13px] mb-6">To track your sorting credits</p>
+      <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
+        className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 mb-3" autoFocus />
+      {authError && <p className="text-red-500 text-[12px] mb-2">{authError}</p>}
+      <GreenButton onClick={sendOtp} disabled={authLoading || !email.includes("@")}>
+        {authLoading ? "Sending..." : "Continue"}
+      </GreenButton>
+    </Center>
   );
 
-  // Verify OTP
   if (step === "verify") return (
-    <div className="h-dvh bg-white flex flex-col items-center justify-center px-6">
-      <div className="w-full max-w-sm">
-        <BinBadge bin={bin} />
-        <div className="text-center mb-8">
-          <IconCircle><ShieldCheck className="w-7 h-7 text-green-600" /></IconCircle>
-          <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">Check your email</h1>
-          <p className="text-slate-400 text-[13px]">Code sent to {email}</p>
-        </div>
-        <input type="text" inputMode="numeric" maxLength={6} value={otp}
-          onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} placeholder="000000"
-          className="w-full text-center text-3xl font-display font-extrabold tracking-[0.3em] border border-slate-200 rounded-xl px-4 py-4 text-slate-900 placeholder-slate-200 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 mb-3" autoFocus />
-        {authError && <p className="text-red-500 text-[12px] mb-2 text-center">{authError}</p>}
-        <button onClick={verifyOtp} disabled={authLoading || otp.length < 6}
-          className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20 disabled:opacity-50 min-h-[48px]">
-          {authLoading ? "Verifying..." : "Verify"}
-        </button>
-        <button onClick={() => { setStep("auth"); setOtp(""); }}
-          className="w-full text-slate-400 text-[13px] font-medium py-2 mt-2">Different email</button>
-      </div>
-    </div>
+    <Center>
+      <IconBubble><ShieldCheck className="w-7 h-7 text-green-600" /></IconBubble>
+      <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">Check your email</h1>
+      <p className="text-slate-400 text-[13px] mb-6">Code sent to {email}</p>
+      <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp}
+        onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} placeholder="000000"
+        className="w-full text-center text-3xl font-display font-extrabold tracking-[0.3em] border border-slate-200 rounded-xl px-4 py-4 text-slate-900 placeholder-slate-200 focus:outline-none focus:ring-2 focus:ring-green-500/30 mb-3" autoFocus />
+      {authError && <p className="text-red-500 text-[12px] mb-2 text-center">{authError}</p>}
+      <GreenButton onClick={verifyOtp} disabled={authLoading || otp.length < 6}>
+        {authLoading ? "Verifying..." : "Verify"}
+      </GreenButton>
+    </Center>
   );
 
   // Done
@@ -244,49 +241,50 @@ function ScanPageContent() {
       <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
         <Check className="w-8 h-8 text-green-600" />
       </div>
-      <p className="text-3xl font-display font-extrabold text-green-600 mb-2 animate-ka-ching">+{totalItems * 5}c</p>
-      <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">Sorting credit earned!</h1>
+      {totalItems > 0 && (
+        <p className="text-3xl font-display font-extrabold text-green-600 mb-2 animate-ka-ching">+{totalItems * 5}c</p>
+      )}
+      <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">
+        {totalItems > 0 ? "Sorting credit earned!" : "Done!"}
+      </h1>
       <p className="text-slate-500 text-[13px]">{totalItems} container{totalItems !== 1 ? "s" : ""} sorted{bin ? ` at ${bin.name}` : ""}</p>
-      <p className="text-slate-400 text-[12px] mt-1">Pending until collected</p>
-      <button onClick={sortMore}
-        className="mt-6 w-full max-w-sm bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20">
-        Sort More
-      </button>
+      <GreenButton onClick={retake}>Sort More</GreenButton>
     </Center>
   );
 
   // Analyzing
   if (step === "analyzing") return (
-    <div className="h-dvh bg-black flex items-center justify-center">
+    <div className="fixed inset-0 bg-black flex items-center justify-center z-50">
       <div className="text-center">
         <Camera className="w-10 h-10 text-green-400 animate-pulse mx-auto mb-3" />
         <p className="text-white text-lg font-display font-bold">Identifying...</p>
-        <p className="text-white/40 text-[12px] mt-1">Finding containers in your photo</p>
       </div>
     </div>
   );
 
-  // Results — sorting guide
+  // Results
   if (step === "results") {
     const eligible = results.filter((r) => r.eligible);
     const total = eligible.reduce((s, r) => s + r.count, 0);
 
     return (
-      <div className="h-dvh bg-white flex flex-col" style={{ paddingTop: "env(safe-area-inset-top,0)", paddingBottom: "env(safe-area-inset-bottom,0)" }}>
+      <div className="fixed inset-0 bg-white flex flex-col z-50" style={{ paddingTop: "env(safe-area-inset-top,0)", paddingBottom: "env(safe-area-inset-bottom,0)" }}>
         <div className="px-5 py-3 border-b border-slate-100">
-          {bin && <p className="text-[12px] text-green-600 font-bold">{bin.code}</p>}
           <h2 className="text-[17px] font-display font-extrabold text-slate-900">
-            {total > 0 ? `Sort ${total} container${total !== 1 ? "s" : ""}` : "No containers found"}
+            {apiError ? "Connection error" : total > 0 ? `Sort ${total} container${total !== 1 ? "s" : ""}` : "No containers found"}
           </h2>
+          {apiError && <p className="text-red-500 text-[12px] mt-1">Could not reach the server. Check your connection and try again.</p>}
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-3">
-          {eligible.length === 0 ? (
+          {eligible.length === 0 && !apiError && (
             <div className="text-center py-12">
               <Camera className="w-12 h-12 text-slate-300 mx-auto mb-3" />
               <p className="text-slate-400 text-[13px]">No containers detected. Try better lighting.</p>
             </div>
-          ) : (
+          )}
+
+          {eligible.length > 0 && (
             <div className="space-y-2">
               {eligible.map((item, i) => {
                 const bag = getBagForMaterial(mapToMaterialType(item.material));
@@ -303,19 +301,17 @@ function ScanPageContent() {
                   </div>
                 );
               })}
-            </div>
-          )}
 
-          {eligible.length > 0 && (
-            <div className="mt-5 p-4 bg-slate-50 rounded-2xl border border-slate-200">
-              <p className="text-[12px] text-slate-400 font-semibold uppercase tracking-wider mb-3">Bin Slots</p>
-              <div className="grid grid-cols-4 gap-2">
-                {BAGS.map((bag) => (
-                  <div key={bag.id} className="text-center">
-                    <div className={`w-8 h-8 ${bag.color} rounded-lg mx-auto mb-1`} />
-                    <p className="text-[10px] text-slate-500 font-medium">{bag.label.split(" ")[0]}</p>
-                  </div>
-                ))}
+              <div className="mt-4 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                <p className="text-[12px] text-slate-400 font-semibold uppercase tracking-wider mb-3">Bin Slots</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {BAGS.map((bag) => (
+                    <div key={bag.id} className="text-center">
+                      <div className={`w-8 h-8 ${bag.color} rounded-lg mx-auto mb-1`} />
+                      <p className="text-[10px] text-slate-500 font-medium">{bag.label.split(" ")[0]}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -324,12 +320,14 @@ function ScanPageContent() {
         <div className="px-5 py-4 border-t border-slate-100">
           <div className="flex gap-2">
             <button onClick={retake}
-              className="flex-1 py-3.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-[13px] flex items-center justify-center gap-2 min-h-[48px]">
+              className="flex-1 py-3.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-[13px] flex items-center justify-center gap-2 min-h-[48px]"
+              style={{ touchAction: "manipulation" }}>
               <RotateCcw className="w-4 h-4" /> Retake
             </button>
             {total > 0 && (
               <button onClick={confirm}
-                className="flex-[2] bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20 flex items-center justify-center gap-2 min-h-[48px]">
+                className="flex-[2] bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20 flex items-center justify-center gap-2 min-h-[48px]"
+                style={{ touchAction: "manipulation" }}>
                 <Check className="w-5 h-5" /> Done &middot; +{total * 5}c
               </button>
             )}
@@ -339,92 +337,82 @@ function ScanPageContent() {
     );
   }
 
-  // Camera view — structured like native camera app
-  // Header (top) → Video (middle) → Controls (bottom, fixed height)
+  // ════════════════════════════════════
+  // CAMERA VIEW
+  // ════════════════════════════════════
   return (
-    <div className="fixed inset-0 bg-black flex flex-col">
+    <div className="fixed inset-0 bg-black flex flex-col z-50">
       {/* Top bar */}
-      <div className="flex-shrink-0 px-5 pb-2 bg-black z-10" style={{ paddingTop: "calc(env(safe-area-inset-top, 16px) + 0.25rem)" }}>
+      <div className="flex-shrink-0 px-5 pb-2 bg-black" style={{ paddingTop: "calc(env(safe-area-inset-top, 16px) + 0.25rem)" }}>
         <p className="text-[15px] text-white font-display font-bold">
           {bin ? bin.name : "Scan Your Containers"}
         </p>
       </div>
 
-      {/* Camera feed — takes remaining space above controls */}
+      {/* Camera feed */}
       <div className="flex-1 relative overflow-hidden">
-        <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" playsInline muted autoPlay />
+        <video
+          ref={videoRef}
+          className="absolute inset-0 w-full h-full object-cover"
+          playsInline
+          muted
+          autoPlay
+          style={{ WebkitTransform: "translateZ(0)" }}
+        />
         <canvas ref={canvasRef} className="hidden" />
-
-        {!cameraReady && (
-          <div className="absolute inset-0 bg-black flex items-center justify-center z-10">
-            <div className="text-center">
-              <Camera className="w-10 h-10 text-white/30 mx-auto mb-2 animate-pulse" />
-              <p className="text-white/40 text-[13px]">Starting camera...</p>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Bottom controls — fixed height, always visible, ABOVE Safari bar */}
-      <div className="flex-shrink-0 bg-black z-10" style={{ paddingBottom: "max(20px, env(safe-area-inset-bottom, 20px))" }}>
-        <div className="flex flex-col items-center py-4 gap-2">
-          {cameraReady ? (
-            <button onClick={capture}
-              className="rounded-full bg-white active:scale-90 transition-transform"
-              style={{ width: "72px", height: "72px", border: "4px solid rgba(255,255,255,0.3)", boxShadow: "0 0 20px rgba(255,255,255,0.2)" }} />
-          ) : (
-            <label className="rounded-full bg-white flex items-center justify-center cursor-pointer"
-              style={{ width: "72px", height: "72px", border: "4px solid rgba(255,255,255,0.3)" }}>
-              <Camera className="w-7 h-7 text-slate-400" />
-              <input type="file" accept="image/*" capture="environment" className="hidden"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  setStep("analyzing");
-                  const reader = new FileReader();
-                  reader.onload = async () => {
-                    const base64 = (reader.result as string).split(",")[1];
-                    try {
-                      const res = await fetch(apiUrl("/api/scan/photo"), {
-                        method: "POST", headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ image: base64, binCode }),
-                      });
-                      if (res.ok) { const data = await res.json(); setResults(data.containers || []); }
-                      else { setResults([]); }
-                    } catch { setResults([]); }
-                    setStep("results");
-                  };
-                  reader.readAsDataURL(file);
-                }} />
-            </label>
-          )}
-          <p className="text-white/30 text-[12px]">
-            {cameraReady ? "Tap to capture" : "Tap to open camera"}
-          </p>
+      {/* Bottom controls — always visible */}
+      <div className="flex-shrink-0 bg-black" style={{ paddingBottom: "max(20px, env(safe-area-inset-bottom, 20px))" }}>
+        <div className="flex items-center justify-center gap-6 py-4">
+          {/* File input — always available as fallback */}
+          <label className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center cursor-pointer"
+            style={{ touchAction: "manipulation" }}>
+            <ImagePlus className="w-5 h-5 text-white/60" />
+            <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileCapture} />
+          </label>
+
+          {/* Main capture button */}
+          <button
+            onClick={cameraReady ? capture : undefined}
+            className={`rounded-full bg-white active:scale-90 transition-transform ${!cameraReady ? "opacity-40" : ""}`}
+            style={{ width: "72px", height: "72px", border: "4px solid rgba(255,255,255,0.4)", touchAction: "manipulation" }}
+          />
+
+          {/* Spacer for symmetry */}
+          <div className="w-12 h-12" />
         </div>
+
+        {/* Status text */}
+        <p className="text-white/30 text-[12px] text-center pb-1">
+          {cameraDenied
+            ? "Camera blocked — tap the gallery icon instead"
+            : cameraReady
+            ? "Tap the button to capture"
+            : "Starting camera..."}
+        </p>
       </div>
     </div>
   );
 }
 
-// ── Shared components ──
+// ── Shared ──
 
 function Center({ children }: { children: React.ReactNode }) {
-  return <div className="h-dvh bg-white flex flex-col items-center justify-center px-6"><div className="w-full max-w-sm text-center">{children}</div></div>;
+  return <div className="min-h-dvh bg-white flex flex-col items-center justify-center px-6"><div className="w-full max-w-sm text-center">{children}</div></div>;
 }
 
-function IconCircle({ children }: { children: React.ReactNode }) {
+function IconBubble({ children }: { children: React.ReactNode }) {
   return <div className="w-14 h-14 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-4">{children}</div>;
 }
 
-function BinBadge({ bin }: { bin: BinInfo | null }) {
-  if (!bin) return null;
+function GreenButton({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
   return (
-    <div className="flex items-center gap-2 justify-center mb-6">
-      <MapPin className="w-3.5 h-3.5 text-green-600" />
-      <span className="text-[12px] text-green-600 font-bold">{bin.code}</span>
-      <span className="text-[12px] text-slate-400">{bin.name}</span>
-    </div>
+    <button onClick={onClick} disabled={disabled}
+      className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20 disabled:opacity-50 transition-all min-h-[48px] flex items-center justify-center mt-3"
+      style={{ touchAction: "manipulation" }}>
+      {children}
+    </button>
   );
 }
 
