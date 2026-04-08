@@ -382,12 +382,13 @@ function ScanPageContent() {
         )}
       </div>
 
-      <div className="bg-black/80 px-5 py-5">
-        <div className="flex flex-col items-center gap-3">
+      <div className="bg-black/80 px-5 pt-4" style={{ paddingBottom: "max(1.5rem, calc(env(safe-area-inset-bottom, 0px) + 1rem))" }}>
+        <div className="flex flex-col items-center gap-2">
           <button onClick={capture} disabled={!cameraReady}
-            className="w-16 h-16 rounded-full bg-white border-4 border-white/30 shadow-lg active:scale-90 transition-transform disabled:opacity-30" />
+            className="w-18 h-18 rounded-full bg-white border-4 border-white/30 shadow-lg active:scale-90 transition-transform disabled:opacity-30"
+            style={{ width: "72px", height: "72px" }} />
           <p className="text-white/30 text-[12px] text-center">
-            {cameraReady ? "Tap to photograph your containers" : "Waiting for camera permission..."}
+            {cameraReady ? "Tap to photograph" : "Waiting for camera..."}
           </p>
         </div>
       </div>
