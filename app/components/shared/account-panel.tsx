@@ -1,6 +1,8 @@
 "use client";
 
-import { X, Package, Leaf, Truck, Wallet, LogOut } from "lucide-react";
+import { useState } from "react";
+import { X, Package, Leaf, Truck, Wallet, LogOut, DollarSign, CheckCircle } from "lucide-react";
+import { apiUrl } from "@/lib/config";
 import { formatCents, type User } from "@/lib/store";
 
 interface AccountPanelProps {
@@ -81,10 +83,7 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
             <p className="text-slate-400 text-[13px]">No activity yet</p>
           )}
 
-          <button className="mt-6 w-full bg-slate-100 border border-slate-200 text-slate-400 font-semibold py-3 rounded-xl text-[13px] cursor-not-allowed flex items-center justify-center gap-2">
-            <Wallet className="w-4 h-4" />
-            Cash Out (Coming Soon)
-          </button>
+          <CashoutSection clearedCents={user.clearedCents} />
 
           <button
             onClick={() => {
@@ -110,6 +109,142 @@ function StatCard({ icon: Icon, label, value }: { icon: React.ElementType; label
       <Icon className="w-4 h-4 text-green-600/60 mx-auto mb-1.5" />
       <p className="text-base font-display font-extrabold text-slate-900">{value}</p>
       <p className="text-[9px] text-slate-400 uppercase tracking-[0.15em] mt-0.5">{label}</p>
+    </div>
+  );
+}
+
+function CashoutSection({ clearedCents }: { clearedCents: number }) {
+  const [showForm, setShowForm] = useState(false);
+  const [bsb, setBsb] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [accountName, setAccountName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState("");
+
+  const minCashout = 2000; // $20 in cents
+  const canCashout = clearedCents >= minCashout;
+
+  async function handleCashout() {
+    if (!canCashout || !bsb || !accountNumber || !accountName) return;
+    setLoading(true);
+    setError("");
+
+    try {
+      const userId = (() => { try { return JSON.parse(localStorage.getItem("goodsort_profile") || "{}").id; } catch { return ""; } })();
+      const res = await fetch(apiUrl("/api/cashout"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          amountCents: clearedCents,
+          bsb: bsb.replace(/\D/g, ""),
+          accountNumber: accountNumber.replace(/\D/g, ""),
+          accountName,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "Cashout failed");
+        setLoading(false);
+        return;
+      }
+
+      setSuccess(true);
+      setLoading(false);
+    } catch {
+      setError("Something went wrong");
+      setLoading(false);
+    }
+  }
+
+  if (success) {
+    return (
+      <div className="mt-6 bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+        <CheckCircle className="w-6 h-6 text-green-600 mx-auto mb-2" />
+        <p className="text-[13px] font-semibold text-green-700">Cashout requested!</p>
+        <p className="text-[11px] text-green-600 mt-1">You'll receive a bank transfer within 5 business days</p>
+      </div>
+    );
+  }
+
+  if (!showForm) {
+    return (
+      <button
+        onClick={() => canCashout ? setShowForm(true) : null}
+        className={`mt-6 w-full py-3 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-2 transition-all ${
+          canCashout
+            ? "bg-gradient-to-b from-green-500 to-green-600 text-white shadow-lg shadow-green-600/20"
+            : "bg-slate-100 border border-slate-200 text-slate-400 cursor-not-allowed"
+        }`}
+      >
+        <Wallet className="w-4 h-4" />
+        {canCashout
+          ? `Cash Out $${(clearedCents / 100).toFixed(2)}`
+          : `Cash Out (min $20 · ${clearedCents >= 100 ? `$${(clearedCents / 100).toFixed(2)}` : `${clearedCents}c`} available)`
+        }
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-6 bg-slate-50 border border-slate-200 rounded-xl p-4">
+      <div className="flex justify-between items-center mb-3">
+        <p className="text-[13px] font-semibold text-slate-900">Cash Out ${(clearedCents / 100).toFixed(2)}</p>
+        <button onClick={() => setShowForm(false)} className="text-slate-400 text-[11px]">Cancel</button>
+      </div>
+
+      <div className="space-y-2.5">
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 mb-1">BSB</label>
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={7}
+            value={bsb}
+            onChange={(e) => setBsb(e.target.value)}
+            placeholder="062-000"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+          />
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Account Number</label>
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={9}
+            value={accountNumber}
+            onChange={(e) => setAccountNumber(e.target.value)}
+            placeholder="12345678"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+          />
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Account Name</label>
+          <input
+            type="text"
+            value={accountName}
+            onChange={(e) => setAccountName(e.target.value)}
+            placeholder="John Smith"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+          />
+        </div>
+      </div>
+
+      {error && <p className="text-red-500 text-[11px] mt-2">{error}</p>}
+
+      <button
+        onClick={handleCashout}
+        disabled={loading || !bsb || !accountNumber || !accountName}
+        className="mt-3 w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3 rounded-xl text-[13px] shadow-lg shadow-green-600/20 disabled:opacity-50 min-h-[44px]"
+      >
+        {loading ? "Processing..." : `Transfer $${(clearedCents / 100).toFixed(2)}`}
+      </button>
+
+      <p className="text-[10px] text-slate-400 mt-2 text-center">
+        Bank transfers are processed weekly via ABA batch file
+      </p>
     </div>
   );
 }
