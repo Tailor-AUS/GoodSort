@@ -39,14 +39,23 @@ function ScanPageContent() {
 
   // ── Load bin + check auth ──
   useEffect(() => {
-    if (!binCode) { setStep("no-bin"); return; }
+    const token = localStorage.getItem("goodsort_token");
 
+    if (!binCode) {
+      // No bin code — if logged in, go straight to camera (scan containers directly)
+      if (token) {
+        setStep("camera");
+      } else {
+        setStep("auth");
+      }
+      return;
+    }
+
+    // Has bin code — look it up
     fetch(apiUrl(`/api/bins/code/${binCode}`))
       .then((r) => { if (!r.ok) throw new Error(); return r.json(); })
       .then((d) => {
         setBin(d);
-        // Check if already logged in
-        const token = localStorage.getItem("goodsort_token");
         setStep(token ? "camera" : "auth");
       })
       .catch(() => setStep("error"));
@@ -227,7 +236,7 @@ function ScanPageContent() {
       </div>
       <p className="text-3xl font-display font-extrabold text-green-600 mb-2 animate-ka-ching">+{totalItems * 5}c</p>
       <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">Sorting credit earned!</h1>
-      <p className="text-slate-500 text-[13px]">{totalItems} container{totalItems !== 1 ? "s" : ""} at {bin?.name}</p>
+      <p className="text-slate-500 text-[13px]">{totalItems} container{totalItems !== 1 ? "s" : ""} sorted{bin ? ` at ${bin.name}` : ""}</p>
       <p className="text-slate-400 text-[12px] mt-1">Pending until collected</p>
       <button onClick={sortMore}
         className="mt-6 w-full max-w-sm bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20">
@@ -255,7 +264,7 @@ function ScanPageContent() {
     return (
       <div className="h-dvh bg-white flex flex-col" style={{ paddingTop: "env(safe-area-inset-top,0)", paddingBottom: "env(safe-area-inset-bottom,0)" }}>
         <div className="px-5 py-3 border-b border-slate-100">
-          <p className="text-[12px] text-green-600 font-bold">{bin?.code}</p>
+          {bin && <p className="text-[12px] text-green-600 font-bold">{bin.code}</p>}
           <h2 className="text-[17px] font-display font-extrabold text-slate-900">
             {total > 0 ? `Sort ${total} container${total !== 1 ? "s" : ""}` : "No containers found"}
           </h2>
@@ -326,11 +335,17 @@ function ScanPageContent() {
       <div className="px-5 pb-3 bg-black/80" style={{ paddingTop: "calc(env(safe-area-inset-top,16px) + 0.25rem)" }}>
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-green-600/20 rounded-xl flex items-center justify-center flex-shrink-0">
-            <MapPin className="w-5 h-5 text-green-400" />
+            <Camera className="w-5 h-5 text-green-400" />
           </div>
           <div>
-            <p className="text-[12px] text-green-400 font-bold">{bin?.code}</p>
-            <p className="text-[15px] text-white font-display font-bold">{bin?.name}</p>
+            {bin ? (
+              <>
+                <p className="text-[12px] text-green-400 font-bold">{bin.code}</p>
+                <p className="text-[15px] text-white font-display font-bold">{bin.name}</p>
+              </>
+            ) : (
+              <p className="text-[15px] text-white font-display font-bold">Scan Your Containers</p>
+            )}
           </div>
         </div>
       </div>
