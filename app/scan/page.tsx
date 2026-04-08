@@ -96,14 +96,24 @@ function ScanPageContent() {
   }
 
   // ── Camera ──
+  const [cameraReady, setCameraReady] = useState(false);
+
   const startCamera = useCallback(async () => {
+    setCameraReady(false);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
       });
       streamRef.current = stream;
-      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
-    } catch { /* camera failed */ }
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+        setCameraReady(true);
+      }
+    } catch (err) {
+      console.error("Camera failed:", err);
+      setCameraReady(false);
+    }
   }, []);
 
   const stopCamera = useCallback(() => {
@@ -351,20 +361,34 @@ function ScanPageContent() {
       </div>
 
       <div className="flex-1 relative">
-        <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
+        <video ref={videoRef} className="w-full h-full object-cover" playsInline muted autoPlay />
         <canvas ref={canvasRef} className="hidden" />
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-[80%] h-[60%] border-2 border-white/20 rounded-3xl">
-            <p className="text-white/40 text-[12px] text-center mt-4 font-medium">Place containers in frame</p>
+
+        {cameraReady && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-[80%] h-[60%] border-2 border-white/20 rounded-3xl">
+              <p className="text-white/40 text-[12px] text-center mt-4 font-medium">Place containers in frame</p>
+            </div>
           </div>
-        </div>
+        )}
+
+        {!cameraReady && (
+          <div className="absolute inset-0 bg-black flex items-center justify-center">
+            <div className="text-center">
+              <Camera className="w-10 h-10 text-white/30 mx-auto mb-2 animate-pulse" />
+              <p className="text-white/40 text-[13px]">Starting camera...</p>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="bg-black/80 px-5 py-5">
         <div className="flex flex-col items-center gap-3">
-          <button onClick={capture}
-            className="w-16 h-16 rounded-full bg-white border-4 border-white/30 shadow-lg active:scale-90 transition-transform" />
-          <p className="text-white/30 text-[12px] text-center">Photo your containers — we&apos;ll tell you which slot</p>
+          <button onClick={capture} disabled={!cameraReady}
+            className="w-16 h-16 rounded-full bg-white border-4 border-white/30 shadow-lg active:scale-90 transition-transform disabled:opacity-30" />
+          <p className="text-white/30 text-[12px] text-center">
+            {cameraReady ? "Tap to photograph your containers" : "Waiting for camera permission..."}
+          </p>
         </div>
       </div>
     </div>
