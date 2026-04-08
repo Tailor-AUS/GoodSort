@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Mail, ShieldCheck, Package, Tags, Camera, Check, ChevronRight, Sparkles } from "lucide-react";
 import { apiUrl } from "@/lib/config";
@@ -62,23 +62,58 @@ export default function StartPage() {
   }
 
   // ── First sort camera ──
-  async function captureFirstSort() {
-    setStep("analyzing");
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [cameraReady, setCameraReady] = useState(false);
+
+  const startCamera = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      const video = document.createElement("video");
-      video.srcObject = stream;
-      await video.play();
-      await new Promise((r) => setTimeout(r, 500));
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+        setCameraReady(true);
+      }
+    } catch {
+      setCameraReady(false);
+    }
+  }, []);
 
-      const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-      canvas.getContext("2d")!.drawImage(video, 0, 0);
-      stream.getTracks().forEach((t) => t.stop());
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    setCameraReady(false);
+  }, []);
 
-      const base64 = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
+  // Start camera when entering firstsort step
+  useEffect(() => {
+    if (step === "firstsort") startCamera();
+    return () => { if (step === "firstsort") stopCamera(); };
+  }, [step, startCamera, stopCamera]);
+
+  async function captureFirstSort() {
+    if (!videoRef.current || !canvasRef.current) return;
+    setStep("analyzing");
+
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d")!.drawImage(video, 0, 0);
+    stopCamera();
+
+    const base64 = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
+
+    try {
       const res = await fetch(apiUrl("/api/scan/photo"), {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image: base64 }),
       });
       if (res.ok) {
@@ -214,25 +249,50 @@ export default function StartPage() {
             </>
           )}
 
-          {/* ═══ STEP 3: FIRST SORT ═══ */}
+          {/* ═══ STEP 3: FIRST SORT (full camera view) ═══ */}
           {step === "firstsort" && (
-            <>
-              <div className="text-center mb-6">
-                <IconBubble><Camera className="w-8 h-8 text-green-600" /></IconBubble>
-                <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-1">Your first sort!</h1>
-                <p className="text-slate-400 text-[13px]">Grab an empty can or bottle and photograph it</p>
+            <div className="fixed inset-0 bg-black flex flex-col z-50" style={{ paddingBottom: "env(safe-area-inset-bottom,0)" }}>
+              <div className="px-5 pb-3" style={{ paddingTop: "calc(env(safe-area-inset-top,16px) + 0.25rem)" }}>
+                <h2 className="text-[15px] font-display font-bold text-white">Your first sort!</h2>
+                <p className="text-white/50 text-[12px]">Point at an empty can or bottle</p>
               </div>
 
-              <div className="bg-slate-50 rounded-2xl p-6 text-center border border-slate-200 mb-6">
-                <Camera className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                <p className="text-slate-500 text-[13px]">Take a photo of any empty container</p>
-                <p className="text-slate-400 text-[12px] mt-1">We'll tell you which bin to put it in</p>
+              <div className="flex-1 relative">
+                <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
+                <canvas ref={canvasRef} className="hidden" />
+
+                {cameraReady && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-[75%] h-[55%] border-2 border-white/20 rounded-3xl">
+                      <p className="text-white/40 text-[12px] text-center mt-4 font-medium">Place container in frame</p>
+                    </div>
+                  </div>
+                )}
+
+                {!cameraReady && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <Camera className="w-10 h-10 text-white/30 mx-auto mb-2 animate-pulse" />
+                      <p className="text-white/40 text-[13px]">Starting camera...</p>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <GreenButton onClick={captureFirstSort}>
-                <Camera className="w-5 h-5 inline mr-2" /> Take Photo
-              </GreenButton>
-            </>
+              <div className="bg-black/80 px-5 py-5">
+                <div className="flex flex-col items-center gap-3">
+                  <button onClick={captureFirstSort} disabled={!cameraReady}
+                    className="w-16 h-16 rounded-full bg-white border-4 border-white/30 shadow-lg active:scale-90 transition-transform disabled:opacity-30" />
+                  <p className="text-white/30 text-[12px] text-center">Tap to photograph your container</p>
+                </div>
+              </div>
+
+              <button onClick={() => { stopCamera(); setStep("done"); }}
+                className="absolute top-4 right-4 text-white/50 text-[13px] font-medium p-2"
+                style={{ top: "calc(env(safe-area-inset-top,16px) + 0.25rem)" }}>
+                Skip
+              </button>
+            </div>
           )}
 
           {/* ═══ ANALYZING ═══ */}
