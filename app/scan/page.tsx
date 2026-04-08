@@ -379,12 +379,41 @@ function ScanPageContent() {
           </div>
         )}
 
-        {/* Capture button floats over the camera */}
-        <div className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 pb-6"
-          style={{ paddingBottom: "max(1.5rem, calc(env(safe-area-inset-bottom, 0px) + 1.5rem))" }}>
-          <button onClick={capture} disabled={!cameraReady}
-            className="rounded-full bg-white shadow-xl active:scale-90 transition-transform disabled:opacity-30"
-            style={{ width: "72px", height: "72px", border: "4px solid rgba(255,255,255,0.4)" }} />
+        {/* Capture button — centered in lower third */}
+        <div className="absolute inset-x-0 bottom-[15%] flex flex-col items-center gap-3">
+          {cameraReady ? (
+            <button onClick={capture}
+              className="rounded-full bg-white shadow-2xl active:scale-90 transition-transform"
+              style={{ width: "76px", height: "76px", border: "5px solid rgba(255,255,255,0.5)" }} />
+          ) : (
+            <>
+              <label className="rounded-full bg-white shadow-2xl flex items-center justify-center cursor-pointer"
+                style={{ width: "76px", height: "76px", border: "5px solid rgba(255,255,255,0.5)" }}>
+                <Camera className="w-8 h-8 text-slate-400" />
+                <input type="file" accept="image/*" capture="environment" className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setStep("analyzing");
+                    const reader = new FileReader();
+                    reader.onload = async () => {
+                      const base64 = (reader.result as string).split(",")[1];
+                      try {
+                        const res = await fetch(apiUrl("/api/scan/photo"), {
+                          method: "POST", headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ image: base64, binCode }),
+                        });
+                        if (res.ok) { const data = await res.json(); setResults(data.containers || []); }
+                        else { setResults([]); }
+                      } catch { setResults([]); }
+                      setStep("results");
+                    };
+                    reader.readAsDataURL(file);
+                  }} />
+              </label>
+              <p className="text-white/50 text-[12px]">Tap to use camera</p>
+            </>
+          )}
         </div>
       </div>
     </div>
