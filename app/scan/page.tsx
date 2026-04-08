@@ -339,81 +339,68 @@ function ScanPageContent() {
     );
   }
 
-  // Camera view
+  // Camera view — structured like native camera app
+  // Header (top) → Video (middle) → Controls (bottom, fixed height)
   return (
-    <div className="h-dvh bg-black flex flex-col" style={{ paddingBottom: "env(safe-area-inset-bottom,0)" }}>
-      <div className="px-5 pb-3 bg-black/80" style={{ paddingTop: "calc(env(safe-area-inset-top,16px) + 0.25rem)" }}>
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-green-600/20 rounded-xl flex items-center justify-center flex-shrink-0">
-            <Camera className="w-5 h-5 text-green-400" />
-          </div>
-          <div>
-            {bin ? (
-              <>
-                <p className="text-[12px] text-green-400 font-bold">{bin.code}</p>
-                <p className="text-[15px] text-white font-display font-bold">{bin.name}</p>
-              </>
-            ) : (
-              <p className="text-[15px] text-white font-display font-bold">Scan Your Containers</p>
-            )}
-          </div>
-        </div>
+    <div className="fixed inset-0 bg-black flex flex-col">
+      {/* Top bar */}
+      <div className="flex-shrink-0 px-5 pb-2 bg-black z-10" style={{ paddingTop: "calc(env(safe-area-inset-top, 16px) + 0.25rem)" }}>
+        <p className="text-[15px] text-white font-display font-bold">
+          {bin ? bin.name : "Scan Your Containers"}
+        </p>
       </div>
 
-      <div className="flex-1 relative">
-        <video ref={videoRef} className="w-full h-full object-cover" playsInline muted autoPlay />
+      {/* Camera feed — takes remaining space above controls */}
+      <div className="flex-1 relative overflow-hidden">
+        <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" playsInline muted autoPlay />
         <canvas ref={canvasRef} className="hidden" />
 
-        {cameraReady && (
-          <div className="absolute inset-x-0 top-8 flex justify-center">
-            <p className="text-white/50 text-[13px] font-medium bg-black/30 px-4 py-1.5 rounded-full">Place containers in frame</p>
-          </div>
-        )}
-
         {!cameraReady && (
-          <div className="absolute inset-0 bg-black flex items-center justify-center">
+          <div className="absolute inset-0 bg-black flex items-center justify-center z-10">
             <div className="text-center">
               <Camera className="w-10 h-10 text-white/30 mx-auto mb-2 animate-pulse" />
               <p className="text-white/40 text-[13px]">Starting camera...</p>
             </div>
           </div>
         )}
+      </div>
 
-        {/* Capture button — centered in lower third */}
-        <div className="absolute inset-x-0 bottom-[15%] flex flex-col items-center gap-3">
+      {/* Bottom controls — fixed height, always visible, ABOVE Safari bar */}
+      <div className="flex-shrink-0 bg-black z-10" style={{ paddingBottom: "max(20px, env(safe-area-inset-bottom, 20px))" }}>
+        <div className="flex flex-col items-center py-4 gap-2">
           {cameraReady ? (
             <button onClick={capture}
-              className="rounded-full bg-white shadow-2xl active:scale-90 transition-transform"
-              style={{ width: "76px", height: "76px", border: "5px solid rgba(255,255,255,0.5)" }} />
+              className="rounded-full bg-white active:scale-90 transition-transform"
+              style={{ width: "72px", height: "72px", border: "4px solid rgba(255,255,255,0.3)", boxShadow: "0 0 20px rgba(255,255,255,0.2)" }} />
           ) : (
-            <>
-              <label className="rounded-full bg-white shadow-2xl flex items-center justify-center cursor-pointer"
-                style={{ width: "76px", height: "76px", border: "5px solid rgba(255,255,255,0.5)" }}>
-                <Camera className="w-8 h-8 text-slate-400" />
-                <input type="file" accept="image/*" capture="environment" className="hidden"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    setStep("analyzing");
-                    const reader = new FileReader();
-                    reader.onload = async () => {
-                      const base64 = (reader.result as string).split(",")[1];
-                      try {
-                        const res = await fetch(apiUrl("/api/scan/photo"), {
-                          method: "POST", headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ image: base64, binCode }),
-                        });
-                        if (res.ok) { const data = await res.json(); setResults(data.containers || []); }
-                        else { setResults([]); }
-                      } catch { setResults([]); }
-                      setStep("results");
-                    };
-                    reader.readAsDataURL(file);
-                  }} />
-              </label>
-              <p className="text-white/50 text-[12px]">Tap to use camera</p>
-            </>
+            <label className="rounded-full bg-white flex items-center justify-center cursor-pointer"
+              style={{ width: "72px", height: "72px", border: "4px solid rgba(255,255,255,0.3)" }}>
+              <Camera className="w-7 h-7 text-slate-400" />
+              <input type="file" accept="image/*" capture="environment" className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setStep("analyzing");
+                  const reader = new FileReader();
+                  reader.onload = async () => {
+                    const base64 = (reader.result as string).split(",")[1];
+                    try {
+                      const res = await fetch(apiUrl("/api/scan/photo"), {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ image: base64, binCode }),
+                      });
+                      if (res.ok) { const data = await res.json(); setResults(data.containers || []); }
+                      else { setResults([]); }
+                    } catch { setResults([]); }
+                    setStep("results");
+                  };
+                  reader.readAsDataURL(file);
+                }} />
+            </label>
           )}
+          <p className="text-white/30 text-[12px]">
+            {cameraReady ? "Tap to capture" : "Tap to open camera"}
+          </p>
         </div>
       </div>
     </div>
