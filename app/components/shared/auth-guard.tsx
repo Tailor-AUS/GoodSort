@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 
-const PUBLIC_PATHS = ["/login", "/verify", "/onboard", "/privacy", "/terms", "/scan"];
+const PUBLIC_PATHS = ["/login", "/verify", "/onboard", "/privacy", "/terms", "/scan", "/start"];
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const [checked, setChecked] = useState(false);
