@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 600" font-family="system-ui, Arial, sans-serif">
+  <!-- Background -->
+  <rect width="400" height="600" rx="20" fill="white" stroke="#e2e8f0" stroke-width="2"/>
+
+  <!-- Header - Brand -->
+  <rect x="0" y="0" width="400" height="80" rx="20" fill="#16a34a"/>
+  <rect x="0" y="40" width="400" height="40" fill="#16a34a"/>
+  <text x="200" y="36" text-anchor="middle" fill="white" font-size="28" font-weight="800">♻ The Good Sort</text>
+  <text x="200" y="62" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="13" font-weight="600">Scan. Sort. Earn 5c per container.</text>
+
+  <!-- QR Code Area -->
+  <rect x="100" y="100" width="200" height="200" rx="16" fill="#f8fafc" stroke="#e2e8f0" stroke-width="2"/>
+  <text x="200" y="190" text-anchor="middle" fill="#16a34a" font-size="60" font-weight="800">QR</text>
+  <text x="200" y="220" text-anchor="middle" fill="#64748b" font-size="14" font-weight="600">GS-XXXX</text>
+  <text x="200" y="280" text-anchor="middle" fill="#94a3b8" font-size="10">thegoodsort.org/scan?bin=GS-XXXX</text>
+
+  <!-- Steps -->
+  <text x="200" y="330" text-anchor="middle" fill="#0f172a" font-size="16" font-weight="800">HOW IT WORKS</text>
+
+  <!-- Step 1 -->
+  <circle cx="50" cy="365" r="16" fill="#16a34a"/>
+  <text x="50" y="370" text-anchor="middle" fill="white" font-size="14" font-weight="800">1</text>
+  <text x="80" y="362" fill="#0f172a" font-size="13" font-weight="700">Scan QR code</text>
+  <text x="80" y="378" fill="#64748b" font-size="11">Opens the app on your phone</text>
+
+  <!-- Step 2 -->
+  <circle cx="50" cy="410" r="16" fill="#16a34a"/>
+  <text x="50" y="415" text-anchor="middle" fill="white" font-size="14" font-weight="800">2</text>
+  <text x="80" y="407" fill="#0f172a" font-size="13" font-weight="700">Photo your containers</text>
+  <text x="80" y="423" fill="#64748b" font-size="11">AI tells you which slot</text>
+
+  <!-- Step 3 -->
+  <circle cx="50" cy="455" r="16" fill="#16a34a"/>
+  <text x="50" y="460" text-anchor="middle" fill="white" font-size="14" font-weight="800">3</text>
+  <text x="80" y="452" fill="#0f172a" font-size="13" font-weight="700">Sort into coloured slots</text>
+  <text x="80" y="468" fill="#64748b" font-size="11">Earn 5c per container</text>
+
+  <!-- 4 Color Slots Legend -->
+  <rect x="20" y="495" width="360" height="80" rx="12" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+
+  <!-- Blue - Cans -->
+  <rect x="30" y="505" width="75" height="60" rx="8" fill="#3b82f6" opacity="0.15"/>
+  <circle cx="67" cy="525" r="12" fill="#3b82f6"/>
+  <text x="67" y="530" text-anchor="middle" fill="white" font-size="14">🔵</text>
+  <text x="67" y="555" text-anchor="middle" fill="#3b82f6" font-size="10" font-weight="700">CANS</text>
+
+  <!-- Teal - Plastic -->
+  <rect x="115" y="505" width="75" height="60" rx="8" fill="#14b8a6" opacity="0.15"/>
+  <circle cx="152" cy="525" r="12" fill="#14b8a6"/>
+  <text x="152" y="530" text-anchor="middle" fill="white" font-size="14">🟢</text>
+  <text x="152" y="555" text-anchor="middle" fill="#14b8a6" font-size="10" font-weight="700">PLASTIC</text>
+
+  <!-- Amber - Glass -->
+  <rect x="200" y="505" width="75" height="60" rx="8" fill="#f59e0b" opacity="0.15"/>
+  <circle cx="237" cy="525" r="12" fill="#f59e0b"/>
+  <text x="237" y="530" text-anchor="middle" fill="white" font-size="14">🟡</text>
+  <text x="237" y="555" text-anchor="middle" fill="#f59e0b" font-size="10" font-weight="700">GLASS</text>
+
+  <!-- Green - Other -->
+  <rect x="285" y="505" width="95" height="60" rx="8" fill="#16a34a" opacity="0.15"/>
+  <circle cx="332" cy="525" r="12" fill="#16a34a"/>
+  <text x="332" y="530" text-anchor="middle" fill="white" font-size="14">🟤</text>
+  <text x="332" y="555" text-anchor="middle" fill="#16a34a" font-size="10" font-weight="700">OTHER</text>
+
+  <!-- Footer -->
+  <text x="200" y="593" text-anchor="middle" fill="#94a3b8" font-size="9">thegoodsort.org — We collect and recycle for you</text>
+</svg>
