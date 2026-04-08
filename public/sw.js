@@ -1,64 +1,35 @@
 // The Good Sort — Service Worker
-// Handles push notifications and offline caching
+// Handles push notifications. NO aggressive caching.
 
-self.addEventListener("install", (event) => {
-  self.skipWaiting();
-});
-
+self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  // Clear ALL old caches on activate
+  event.waitUntil(
+    caches.keys().then((names) => Promise.all(names.map((n) => caches.delete(n))))
+      .then(() => self.clients.claim())
+  );
 });
 
-// Push notification handler
+// Push notifications
 self.addEventListener("push", (event) => {
   const data = event.data?.json() || {};
-  const title = data.title || "The Good Sort";
-  const body = data.body || "You have a new notification";
-  const icon = "/icon-192.png";
-
   event.waitUntil(
-    self.registration.showNotification(title, {
-      body,
-      icon,
-      badge: "/icon-192.png",
+    self.registration.showNotification(data.title || "The Good Sort", {
+      body: data.body || "You have a notification",
+      icon: "/icon-192.png",
       data: data.url || "/",
-      vibrate: [200, 100, 200],
     })
   );
 });
 
-// Notification click handler
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  event.waitUntil(
-    self.clients.openWindow(event.notification.data || "/")
-  );
+  event.waitUntil(self.clients.openWindow(event.notification.data || "/"));
 });
 
-// Basic offline cache
-const CACHE_NAME = "goodsort-v1";
-
-self.addEventListener("fetch", (event) => {
-  // Only cache GET requests for static assets
-  if (event.request.method !== "GET") return;
-  if (event.request.url.includes("/api/")) return; // Don't cache API calls
-
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request).then((response) => {
-        // Cache successful responses
-        if (response.ok && response.type === "basic") {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-        }
-        return response;
-      }).catch(() => {
-        // Offline fallback
-        if (event.request.destination === "document") {
-          return caches.match("/index.html");
-        }
-        return new Response("Offline", { status: 503 });
-      });
-    })
-  );
+// Network-first for everything — no caching HTML/JS
+self.addEventListener("fetch", () => {
+  // Let the browser handle all fetches normally
+  // No cache interception
+  return;
 });
