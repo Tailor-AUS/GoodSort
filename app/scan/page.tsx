@@ -99,8 +99,13 @@ function ScanPageContent() {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         // Wait for video metadata before playing (iOS fix)
+        // Must check readyState first — autoPlay can fire loadedmetadata before listener is attached
         await new Promise<void>((resolve) => {
-          videoRef.current!.addEventListener("loadedmetadata", () => resolve(), { once: true });
+          if (videoRef.current!.readyState >= 1) {
+            resolve();
+          } else {
+            videoRef.current!.addEventListener("loadedmetadata", () => resolve(), { once: true });
+          }
         });
         await videoRef.current.play();
         setCameraReady(true);
@@ -374,8 +379,9 @@ function ScanPageContent() {
 
           {/* Main capture button */}
           <button
-            onClick={cameraReady ? capture : undefined}
-            className={`rounded-full bg-white active:scale-90 transition-transform ${!cameraReady ? "opacity-40" : ""}`}
+            onClick={capture}
+            disabled={!cameraReady}
+            className="rounded-full bg-white active:scale-90 transition-transform disabled:opacity-40"
             style={{ width: "72px", height: "72px", border: "4px solid rgba(255,255,255,0.4)", touchAction: "manipulation" }}
           />
 

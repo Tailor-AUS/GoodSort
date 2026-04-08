@@ -75,6 +75,10 @@ export default function StartPage() {
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        await new Promise<void>((resolve) => {
+          if (videoRef.current!.readyState >= 1) resolve();
+          else videoRef.current!.addEventListener("loadedmetadata", () => resolve(), { once: true });
+        });
         await videoRef.current.play();
         setCameraReady(true);
       }

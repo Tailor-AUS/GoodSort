@@ -59,7 +59,14 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
         video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
       });
       streamRef.current = stream;
-      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await new Promise<void>((resolve) => {
+          if (videoRef.current!.readyState >= 1) resolve();
+          else videoRef.current!.addEventListener("loadedmetadata", () => resolve(), { once: true });
+        });
+        await videoRef.current.play();
+      }
 
       // In barcode mode, start detection
       if (mode === "barcode") {
