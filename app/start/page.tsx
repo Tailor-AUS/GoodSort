@@ -90,7 +90,7 @@ export default function StartPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-white flex flex-col" style={{ paddingTop: "env(safe-area-inset-top,0)", paddingBottom: "env(safe-area-inset-bottom,0)" }}>
+    <div className="min-h-dvh bg-white flex flex-col overflow-y-auto overscroll-none" style={{ paddingTop: "env(safe-area-inset-top,0)", paddingBottom: "env(safe-area-inset-bottom,0)" }}>
       {/* Progress bar */}
       {stepNum > 0 && (
         <div className="px-6 pt-4">
@@ -99,7 +99,7 @@ export default function StartPage() {
               <div key={s} className={`h-1.5 flex-1 rounded-full transition-all duration-500 ${s <= stepNum ? "bg-green-500" : "bg-slate-200"}`} />
             ))}
           </div>
-          <p className="text-[11px] text-slate-400 mt-2 text-center">Step {stepNum} of 4</p>
+          <p className="text-[12px] text-slate-400 mt-2 text-center">Step {stepNum} of 4</p>
         </div>
       )}
 
@@ -122,7 +122,7 @@ export default function StartPage() {
               <GreenButton onClick={sendOtp} disabled={authLoading || !email.includes("@")}>
                 {authLoading ? "Sending code..." : "Get Started"}
               </GreenButton>
-              <p className="text-center text-[11px] text-slate-400 mt-4">We'll send a verification code to your email</p>
+              <p className="text-center text-[12px] text-slate-400 mt-4">We'll send a verification code to your email</p>
             </>
           )}
 
@@ -194,7 +194,7 @@ export default function StartPage() {
                       <span className="text-2xl">{bag.emoji}</span>
                     </div>
                     <p className="text-[15px] font-display font-extrabold text-slate-900">{bag.id}</p>
-                    <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider mt-0.5">
+                    <p className="text-[12px] text-slate-500 font-semibold uppercase tracking-wider mt-0.5">
                       {bag.material === "aluminium" && "CANS"}
                       {bag.material === "pet" && "PLASTIC"}
                       {bag.material === "glass" && "GLASS"}
@@ -226,7 +226,7 @@ export default function StartPage() {
               <div className="bg-slate-50 rounded-2xl p-6 text-center border border-slate-200 mb-6">
                 <Camera className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                 <p className="text-slate-500 text-[13px]">Take a photo of any empty container</p>
-                <p className="text-slate-400 text-[11px] mt-1">We'll tell you which bin to put it in</p>
+                <p className="text-slate-400 text-[12px] mt-1">We'll tell you which bin to put it in</p>
               </div>
 
               <GreenButton onClick={captureFirstSort}>

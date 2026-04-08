@@ -255,7 +255,7 @@ function ScanPageContent() {
     return (
       <div className="h-dvh bg-white flex flex-col" style={{ paddingTop: "env(safe-area-inset-top,0)", paddingBottom: "env(safe-area-inset-bottom,0)" }}>
         <div className="px-5 py-3 border-b border-slate-100">
-          <p className="text-[11px] text-green-600 font-bold">{bin?.code}</p>
+          <p className="text-[12px] text-green-600 font-bold">{bin?.code}</p>
           <h2 className="text-[17px] font-display font-extrabold text-slate-900">
             {total > 0 ? `Sort ${total} container${total !== 1 ? "s" : ""}` : "No containers found"}
           </h2>
@@ -289,7 +289,7 @@ function ScanPageContent() {
 
           {eligible.length > 0 && (
             <div className="mt-5 p-4 bg-slate-50 rounded-2xl border border-slate-200">
-              <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider mb-3">Bin Slots</p>
+              <p className="text-[12px] text-slate-400 font-semibold uppercase tracking-wider mb-3">Bin Slots</p>
               <div className="grid grid-cols-4 gap-2">
                 {BAGS.map((bag) => (
                   <div key={bag.id} className="text-center">
@@ -329,7 +329,7 @@ function ScanPageContent() {
             <MapPin className="w-5 h-5 text-green-400" />
           </div>
           <div>
-            <p className="text-[11px] text-green-400 font-bold">{bin?.code}</p>
+            <p className="text-[12px] text-green-400 font-bold">{bin?.code}</p>
             <p className="text-[15px] text-white font-display font-bold">{bin?.name}</p>
           </div>
         </div>
@@ -349,7 +349,7 @@ function ScanPageContent() {
         <div className="flex flex-col items-center gap-3">
           <button onClick={capture}
             className="w-16 h-16 rounded-full bg-white border-4 border-white/30 shadow-lg active:scale-90 transition-transform" />
-          <p className="text-white/30 text-[11px] text-center">Photo your containers — we&apos;ll tell you which slot</p>
+          <p className="text-white/30 text-[12px] text-center">Photo your containers — we&apos;ll tell you which slot</p>
         </div>
       </div>
     </div>
