@@ -12,7 +12,7 @@ public class Scan
     public string Barcode { get; set; } = "";
     public string ContainerName { get; set; } = "";
     public string Material { get; set; } = "aluminium";
-    public int RefundCents { get; set; } = 10;
+    public int RefundCents { get; set; } = 5; // Sorting credit, not CDS refund
     public string Status { get; set; } = "pending"; // pending, in_route, settled
     public Guid? RouteId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

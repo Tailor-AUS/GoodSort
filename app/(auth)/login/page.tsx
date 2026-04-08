@@ -46,7 +46,7 @@ export default function LoginPage() {
             <ScanBarcode className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-display font-extrabold text-slate-900">The Good Sort</h1>
-          <p className="text-slate-400 text-[13px] mt-1">Scan. Sort. Earn 10c per container.</p>
+          <p className="text-slate-400 text-[13px] mt-1">Scan. Sort. Earn sorting credits.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

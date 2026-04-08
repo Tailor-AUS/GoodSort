@@ -196,7 +196,7 @@ app.MapPost("/api/scan/photo/confirm", async (PhotoConfirmRequest req, GoodSortD
                 Barcode = "PHOTO",
                 ContainerName = item.Name,
                 Material = item.Material,
-                RefundCents = 10,
+                RefundCents = 5,
                 Status = "pending",
             };
             db.Scans.Add(scan);
@@ -296,16 +296,16 @@ app.MapPost("/api/scans", async (ScanRequest req, GoodSortDbContext db) =>
     {
         UserId = profile.Id, HouseholdId = household.Id,
         Barcode = req.Barcode, ContainerName = req.ContainerName,
-        Material = req.Material, RefundCents = 10, Status = "pending",
+        Material = req.Material, RefundCents = 5, Status = "pending",
     };
     db.Scans.Add(scan);
 
-    profile.PendingCents += 10;
+    profile.PendingCents += 5;
     profile.TotalContainers += 1;
     profile.TotalCo2SavedKg += 0.035;
 
     household.PendingContainers += 1;
-    household.PendingValueCents += 10;
+    household.PendingValueCents += 5;
     household.EstimatedWeightKg = household.PendingContainers * 0.020;
     household.EstimatedBags = (int)Math.Ceiling(household.PendingContainers / 150.0);
     household.LastScanAt = DateTime.UtcNow;

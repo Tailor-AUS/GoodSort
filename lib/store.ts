@@ -163,9 +163,10 @@ export interface Depot {
 // ── Constants ──
 
 const CONTAINERS_PER_BAG = 150;
-export const SORTER_PAYOUT_CENTS = 10;
-export const DRIVER_BASE_PAYOUT_CENTS = 2000; // $20 base
-export const DRIVER_PER_CONTAINER_CENTS = 2;
+export const SORTER_PAYOUT_CENTS = 5; // Sorting credit — NOT a CDS refund
+export const RUNNER_PAYOUT_CENTS = 5; // Runner credit per container
+export const DRIVER_BASE_PAYOUT_CENTS = 0; // No base — pure per-container
+export const DRIVER_PER_CONTAINER_CENTS = 5; // 5c per container delivered
 const CO2_PER_CONTAINER_KG = 0.035;
 
 export { CONTAINERS_PER_BAG };

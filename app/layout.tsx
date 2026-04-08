@@ -4,7 +4,7 @@ import { AuthGuard } from "./components/shared/auth-guard";
 
 export const metadata: Metadata = {
   title: "The Good Sort",
-  description: "Scan. Sort. Earn 10c per container.",
+  description: "Scan. Sort. Earn sorting credits.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,

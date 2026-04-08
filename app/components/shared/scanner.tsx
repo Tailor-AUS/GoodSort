@@ -254,7 +254,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
                     <div className={`w-8 h-8 ${bag.color} rounded-lg flex-shrink-0`} />
                     <div className="flex-1 min-w-0">
                       <p className="text-[13px] text-slate-900 font-medium truncate">{item.name}</p>
-                      <p className="text-[11px] text-slate-400">{bag.label} &middot; {item.eligible ? "10c each" : "Not eligible"}</p>
+                      <p className="text-[11px] text-slate-400">{bag.label} &middot; {item.eligible ? "5c credit" : "Not eligible"}</p>
                     </div>
                     {item.eligible && (
                       <div className="flex items-center gap-2">
