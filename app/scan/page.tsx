@@ -365,10 +365,8 @@ function ScanPageContent() {
         <canvas ref={canvasRef} className="hidden" />
 
         {cameraReady && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-[80%] h-[60%] border-2 border-white/20 rounded-3xl">
-              <p className="text-white/40 text-[12px] text-center mt-4 font-medium">Place containers in frame</p>
-            </div>
+          <div className="absolute inset-x-0 top-8 flex justify-center">
+            <p className="text-white/50 text-[13px] font-medium bg-black/30 px-4 py-1.5 rounded-full">Place containers in frame</p>
           </div>
         )}
 
@@ -380,16 +378,13 @@ function ScanPageContent() {
             </div>
           </div>
         )}
-      </div>
 
-      <div className="bg-black/80 px-5 pt-4" style={{ paddingBottom: "max(1.5rem, calc(env(safe-area-inset-bottom, 0px) + 1rem))" }}>
-        <div className="flex flex-col items-center gap-2">
+        {/* Capture button floats over the camera */}
+        <div className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 pb-6"
+          style={{ paddingBottom: "max(1.5rem, calc(env(safe-area-inset-bottom, 0px) + 1.5rem))" }}>
           <button onClick={capture} disabled={!cameraReady}
-            className="w-18 h-18 rounded-full bg-white border-4 border-white/30 shadow-lg active:scale-90 transition-transform disabled:opacity-30"
-            style={{ width: "72px", height: "72px" }} />
-          <p className="text-white/30 text-[12px] text-center">
-            {cameraReady ? "Tap to photograph" : "Waiting for camera..."}
-          </p>
+            className="rounded-full bg-white shadow-xl active:scale-90 transition-transform disabled:opacity-30"
+            style={{ width: "72px", height: "72px", border: "4px solid rgba(255,255,255,0.4)" }} />
         </div>
       </div>
     </div>
