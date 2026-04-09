@@ -19,15 +19,19 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(apiUrl("/api/admin/stats"))
-      .then((r) => r.json())
+    const token = localStorage.getItem("goodsort_token");
+    const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+    fetch(apiUrl("/api/admin/stats"), { headers })
+      .then((r) => { if (!r.ok) throw new Error(); return r.json(); })
       .then(setStats)
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
   async function exportAba() {
-    const res = await fetch(apiUrl("/api/admin/aba-export"));
+    const token = localStorage.getItem("goodsort_token");
+    const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+    const res = await fetch(apiUrl("/api/admin/aba-export"), { headers });
     const text = await res.text();
     if (!text || text.includes("No pending")) {
       alert("No pending cashouts to export");

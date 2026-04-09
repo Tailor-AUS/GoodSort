@@ -59,7 +59,7 @@ function GoogleMapsProvider({ children }: { children: ReactNode }) {
       });
       mapRef.current = m;
       setMap(m);
-    }).catch((err) => { console.error("Google Maps failed:", err); });
+    }).catch(() => {});
   }, []);
 
   return (

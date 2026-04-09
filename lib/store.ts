@@ -224,7 +224,7 @@ function safeParse<T>(data: string | null, fallback: T): T {
 
 // Safe localStorage write
 function safeSet(key: string, value: string) {
-  try { localStorage.setItem(key, value); } catch (e) { console.error("localStorage write failed", e); }
+  try { localStorage.setItem(key, value); } catch { /* storage full or unavailable */ }
 }
 
 export function getUser(): User | null {
