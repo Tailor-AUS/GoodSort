@@ -23,7 +23,7 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(
             "https://www.thegoodsort.org",
             "https://thegoodsort.org",
-            "http://localhost:2000"
+            "https://kind-mushroom-0fe89a200.2.azurestaticapps.net"
         )
         .AllowAnyHeader()
         .AllowAnyMethod();
@@ -162,7 +162,7 @@ app.MapPost("/api/scan/photo", async (PhotoScanRequest req, VisionService vision
 
     var containers = await vision.IdentifyContainers(base64);
     var totalItems = containers.Sum(c => c.Count);
-    var totalCents = containers.Where(c => c.Eligible).Sum(c => c.Count * 10);
+    var totalCents = containers.Where(c => c.Eligible).Sum(c => c.Count * 5);
 
     return Results.Ok(new
     {
@@ -399,7 +399,7 @@ app.MapPost("/api/routes/{id:guid}/settle", async (Guid id, GoodSortDbContext db
 
     var pickedUp = route.Stops.Where(s => s.Status == "picked_up").ToList();
     var totalCollected = pickedUp.Sum(s => s.ActualContainerCount ?? s.ContainerCount);
-    var driverPayout = 2000 + totalCollected * 2;
+    var driverPayout = totalCollected * 5; // 5c per container, no base
 
     route.DriverPayoutCents = driverPayout;
     route.Status = "settled"; route.SettledAt = DateTime.UtcNow;
@@ -410,7 +410,7 @@ app.MapPost("/api/routes/{id:guid}/settle", async (Guid id, GoodSortDbContext db
         if (hh is null) continue;
         var count = stop.ActualContainerCount ?? stop.ContainerCount;
         hh.PendingContainers = Math.Max(0, hh.PendingContainers - count);
-        hh.PendingValueCents = hh.PendingContainers * 10;
+        hh.PendingValueCents = hh.PendingContainers * 5;
         hh.EstimatedBags = (int)Math.Ceiling(hh.PendingContainers / 150.0);
         if (hh.PendingContainers == 0) hh.Materials = new MaterialBreakdown();
     }
@@ -497,15 +497,15 @@ app.MapPost("/api/cashout", async (CashoutRequestDto req, CashoutService cashout
     return success ? Results.Ok(new { success = true }) : Results.BadRequest(new { error });
 });
 
-// ── Admin: Generate ABA file ──
+// ── Admin: Generate ABA file (auth required) ──
 app.MapGet("/api/admin/aba-export", async (CashoutService cashout) =>
 {
     var aba = await cashout.GenerateAbaFile();
     if (string.IsNullOrEmpty(aba)) return Results.Ok(new { message = "No pending cashouts" });
     return Results.Text(aba, "text/plain");
-});
+}).RequireAuthorization();
 
-// ── Admin: Dashboard stats (requires auth) ──
+// ── Admin: Dashboard stats (auth required) ──
 app.MapGet("/api/admin/stats", async (GoodSortDbContext db) =>
 {
     var users = await db.Profiles.CountAsync();
@@ -516,18 +516,32 @@ app.MapGet("/api/admin/stats", async (GoodSortDbContext db) =>
     var totalPending = await db.Profiles.SumAsync(p => p.PendingCents);
     var totalCleared = await db.Profiles.SumAsync(p => p.ClearedCents);
     return Results.Ok(new { users, bins, scans, routes, totalContainers, totalPending, totalCleared });
-});
+}).RequireAuthorization();
 
-// ── Admin: List all users ──
+// ── Admin: List all users (auth required) ──
 app.MapGet("/api/admin/users", async (GoodSortDbContext db) =>
-    Results.Ok(await db.Profiles.Include(p => p.Household).OrderByDescending(p => p.CreatedAt).Take(100).ToListAsync()));
+    Results.Ok(await db.Profiles.Include(p => p.Household).OrderByDescending(p => p.CreatedAt).Take(100).ToListAsync()))
+    .RequireAuthorization();
 
-// ── Admin: List all cashout requests ──
+// ── Admin: List all cashout requests (auth required) ──
 app.MapGet("/api/admin/cashouts", async (GoodSortDbContext db) =>
-    Results.Ok(await db.Set<GoodSort.Api.Services.CashoutRequest>().Include(c => c.User).OrderByDescending(c => c.CreatedAt).Take(100).ToListAsync()));
+    Results.Ok(await db.Set<GoodSort.Api.Services.CashoutRequest>().Include(c => c.User).OrderByDescending(c => c.CreatedAt).Take(100).ToListAsync()))
+    .RequireAuthorization();
+
+// ── Profile PATCH (update name + household) ──
+app.MapPatch("/api/profiles/{id:guid}", async (Guid id, ProfileUpdateRequest req, GoodSortDbContext db) =>
+{
+    var profile = await db.Profiles.FindAsync(id);
+    if (profile is null) return Results.NotFound();
+    if (req.Name is not null) profile.Name = req.Name;
+    if (req.HouseholdId is not null) profile.HouseholdId = req.HouseholdId;
+    await db.SaveChangesAsync();
+    return Results.Ok(profile);
+});
 
 app.Run();
 
+record ProfileUpdateRequest(string? Name, Guid? HouseholdId);
 record CashoutRequestDto(Guid UserId, int AmountCents, string Bsb, string AccountNumber, string AccountName);
 record PhotoScanRequest(string Image, string? BinCode = null);
 record PhotoConfirmRequest(Guid UserId, List<PhotoConfirmItem> Items, string? BinCode = null);

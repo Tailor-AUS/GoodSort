@@ -2,7 +2,7 @@
   "id": "/",
   "name": "The Good Sort",
   "short_name": "GoodSort",
-  "description": "Scan. Sort. Earn 10c per container.",
+  "description": "Scan. Sort. Earn sorting credits.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

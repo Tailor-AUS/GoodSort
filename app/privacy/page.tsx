@@ -33,7 +33,7 @@ export default function PrivacyPage() {
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">4. Your Rights</h2>
         <p className="text-slate-600 text-sm mb-4">
           Under the Australian Privacy Act 1988, you have the right to access, correct, and delete
-          your personal information. Contact us at privacy@goodsort.com.au to exercise these rights.
+          your personal information. Contact us at privacy@thegoodsort.org to exercise these rights.
         </p>
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">5. Location Data</h2>
@@ -45,8 +45,8 @@ export default function PrivacyPage() {
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">6. Contact</h2>
         <p className="text-slate-600 text-sm mb-4">
-          For privacy inquiries, contact us at privacy@goodsort.com.au or write to:
-          The Good Sort Pty Ltd, South Brisbane QLD 4101, Australia.
+          For privacy inquiries, contact us at privacy@thegoodsort.org or write to:
+          The Good Sort Pty Ltd, Moorooka QLD 4105, Australia.
         </p>
       </div>
     </div>

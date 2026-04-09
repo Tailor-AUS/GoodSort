@@ -38,7 +38,7 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="h-dvh overflow-hidden bg-white text-slate-900 overscroll-none" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <body className="min-h-dvh bg-white text-slate-900 overscroll-none" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
         <AuthGuard>{children}</AuthGuard>
         <script src="/sw-init.js" defer />
       </body>

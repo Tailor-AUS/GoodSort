@@ -50,10 +50,14 @@ export default function OnboardPage() {
       if (!hhRes.ok) { setError("Failed to create household"); setLoading(false); return; }
       const household = await hhRes.json();
 
-      // Update profile name + household
+      // Update profile on backend AND localStorage
       const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
       if (profile.id) {
-        // TODO: Add PATCH /api/profiles/{id} endpoint
+        await fetch(apiUrl(`/api/profiles/${profile.id}`), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, householdId: household.id }),
+        });
         profile.name = name;
         profile.householdId = household.id;
         localStorage.setItem("goodsort_profile", JSON.stringify(profile));

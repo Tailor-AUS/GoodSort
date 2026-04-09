@@ -70,14 +70,13 @@ export default function StartPage() {
   const startCamera = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
       });
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await new Promise<void>((resolve) => {
-          if (videoRef.current!.readyState >= 1) resolve();
-          else videoRef.current!.addEventListener("loadedmetadata", () => resolve(), { once: true });
+          videoRef.current!.addEventListener("loadedmetadata", () => resolve(), { once: true });
         });
         await videoRef.current.play();
         setCameraReady(true);
@@ -173,7 +172,7 @@ export default function StartPage() {
                 <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-1">Check your email</h1>
                 <p className="text-slate-400 text-[13px]">Code sent to {email}</p>
               </div>
-              <input type="text" inputMode="numeric" maxLength={6} value={otp}
+              <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} placeholder="000000"
                 className="w-full text-center text-3xl font-display font-extrabold tracking-[0.3em] border border-slate-200 rounded-xl px-4 py-4 text-slate-900 placeholder-slate-200 focus:outline-none focus:ring-2 focus:ring-green-500/30 mb-3" autoFocus />
               {authError && <p className="text-red-500 text-[12px] mb-2 text-center">{authError}</p>}
@@ -262,7 +261,7 @@ export default function StartPage() {
               </div>
 
               <div className="flex-1 relative">
-                <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
+                <video ref={videoRef} className="w-full h-full object-cover" playsInline muted autoPlay />
                 <canvas ref={canvasRef} className="hidden" />
 
                 {cameraReady && (

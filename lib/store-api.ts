@@ -78,7 +78,7 @@ export async function getUserApi(): Promise<User | null> {
       barcode: s.barcode,
       containerName: s.containerName,
       material: s.material,
-      refundCents: s.refundCents || 10,
+      refundCents: s.refundCents || 5,
       status: s.status as "pending" | "in_route" | "settled",
       householdId: s.householdId,
       routeId: s.routeId,

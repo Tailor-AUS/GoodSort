@@ -69,6 +69,7 @@ export default function VerifyPage() {
           <input
             type="text"
             inputMode="numeric"
+            autoComplete="one-time-code"
             maxLength={6}
             value={otp}
             onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
