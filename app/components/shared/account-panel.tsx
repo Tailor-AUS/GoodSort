@@ -14,6 +14,11 @@ interface AccountPanelProps {
 export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
   if (!open) return null;
 
+  // Show email when name is default "New User" or "You"
+  const displayName = (user.name === "New User" || user.name === "You")
+    ? (() => { try { const p = JSON.parse(localStorage.getItem("goodsort_profile") || "{}"); return p.phone || p.email || user.name; } catch { return user.name; } })()
+    : user.name;
+
   return (
     <>
       <div className="fixed inset-0 z-50 bg-black/20 touch-none" onClick={onClose} />
@@ -22,7 +27,7 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
           <div className="flex justify-between items-start mb-6">
             <div>
               <p className="text-[12px] text-slate-400 font-semibold uppercase tracking-[0.12em]">Account</p>
-              <h2 className="text-xl font-display font-extrabold text-slate-900 mt-1">{user.name}</h2>
+              <h2 className="text-xl font-display font-extrabold text-slate-900 mt-1">{displayName}</h2>
             </div>
             <button onClick={onClose} className="p-2.5 -mr-1 text-slate-400 hover:text-slate-600 transition-colors duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center">
               <X className="w-5 h-5" />

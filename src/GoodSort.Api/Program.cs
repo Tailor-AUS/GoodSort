@@ -289,12 +289,11 @@ app.MapPost("/api/scans", async (ScanRequest req, GoodSortDbContext db) =>
 {
     var profile = await db.Profiles.FindAsync(req.UserId);
     if (profile is null) return Results.NotFound("User not found");
-    var household = await db.Households.FindAsync(profile.HouseholdId);
-    if (household is null) return Results.BadRequest("No household");
 
     var scan = new Scan
     {
-        UserId = profile.Id, HouseholdId = household.Id,
+        UserId = profile.Id,
+        HouseholdId = profile.HouseholdId, // nullable — works without household
         Barcode = req.Barcode, ContainerName = req.ContainerName,
         Material = req.Material, RefundCents = 5, Status = "pending",
     };
@@ -304,20 +303,27 @@ app.MapPost("/api/scans", async (ScanRequest req, GoodSortDbContext db) =>
     profile.TotalContainers += 1;
     profile.TotalCo2SavedKg += 0.035;
 
-    household.PendingContainers += 1;
-    household.PendingValueCents += 5;
-    household.EstimatedWeightKg = household.PendingContainers * 0.020;
-    household.EstimatedBags = (int)Math.Ceiling(household.PendingContainers / 150.0);
-    household.LastScanAt = DateTime.UtcNow;
-
-    household.Materials ??= new MaterialBreakdown();
-    _ = req.Material switch
+    // Update household stats if assigned
+    var household = profile.HouseholdId.HasValue
+        ? await db.Households.FindAsync(profile.HouseholdId)
+        : null;
+    if (household is not null)
     {
-        "aluminium" => household.Materials.Aluminium++,
-        "pet" => household.Materials.Pet++,
-        "glass" => household.Materials.Glass++,
-        _ => household.Materials.Other++,
-    };
+        household.PendingContainers += 1;
+        household.PendingValueCents += 5;
+        household.EstimatedWeightKg = household.PendingContainers * 0.020;
+        household.EstimatedBags = (int)Math.Ceiling(household.PendingContainers / 150.0);
+        household.LastScanAt = DateTime.UtcNow;
+
+        household.Materials ??= new MaterialBreakdown();
+        _ = req.Material switch
+        {
+            "aluminium" => household.Materials.Aluminium++,
+            "pet" => household.Materials.Pet++,
+            "glass" => household.Materials.Glass++,
+            _ => household.Materials.Other++,
+        };
+    }
 
     await db.SaveChangesAsync();
     return Results.Ok(new { scan.Id, profile.PendingCents, profile.TotalContainers });

@@ -86,9 +86,13 @@ public class AuthService
         var profile = await _db.Profiles.FirstOrDefaultAsync(p => p.Phone == key);
         if (profile == null)
         {
+            // Derive display name from email prefix (e.g. "jane.smith@..." → "Jane Smith")
+            var prefix = key.Split('@')[0].Replace('.', ' ').Replace('_', ' ').Replace('-', ' ');
+            var displayName = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(prefix);
+
             profile = new Profile
             {
-                Name = "New User",
+                Name = displayName,
                 Phone = key, // Using Phone field for email (reusing existing schema)
                 Role = "sorter",
             };
