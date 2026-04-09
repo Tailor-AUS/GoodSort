@@ -13,6 +13,7 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
     public DbSet<RouteStop> RouteStops => Set<RouteStop>();
     public DbSet<Depot> Depots => Set<Depot>();
     public DbSet<Bin> Bins => Set<Bin>();
+    public DbSet<OtpCode> OtpCodes => Set<OtpCode>();
     public DbSet<Collection> Collections => Set<Collection>();
     public DbSet<CashoutRequest> CashoutRequests => Set<CashoutRequest>();
 
@@ -39,7 +40,8 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
                     v => v.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList()
                 );
 
-            e.HasIndex(p => p.Phone).IsUnique().HasFilter("[Phone] IS NOT NULL");
+            e.HasIndex(p => p.Email).IsUnique().HasFilter("[Email] IS NOT NULL");
+            e.HasIndex(p => p.Phone).HasFilter("[Phone] IS NOT NULL");
         });
 
         // Scan
@@ -100,6 +102,13 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
                 .OnDelete(DeleteBehavior.NoAction);
 
             e.HasIndex(c => c.UserId);
+        });
+
+        // OTP codes
+        modelBuilder.Entity<OtpCode>(e =>
+        {
+            e.HasIndex(o => o.Email);
+            e.HasIndex(o => o.ExpiresAt);
         });
 
         // Bin

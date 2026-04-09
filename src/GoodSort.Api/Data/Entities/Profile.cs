@@ -4,7 +4,8 @@ public class Profile
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "New User";
-    public string? Phone { get; set; }
+    public string? Email { get; set; } // Primary identity — email address
+    public string? Phone { get; set; } // Legacy — was used for email before rename
     public Guid? HouseholdId { get; set; }
     public Household? Household { get; set; }
     public string Role { get; set; } = "sorter"; // sorter, driver, both

@@ -97,8 +97,8 @@ app.MapPost("/api/auth/send-otp", async (SendOtpRequest req, AuthService auth) =
 {
     var email = req.Email.Trim().ToLower();
     if (!email.Contains('@')) return Results.BadRequest(new { error = "Invalid email" });
-    var sent = await auth.SendOtp(email);
-    return sent ? Results.Ok(new { sent = true }) : Results.BadRequest(new { error = "Failed to send code" });
+    var (success, error) = await auth.SendOtp(email);
+    return success ? Results.Ok(new { sent = true }) : Results.BadRequest(new { error = error ?? "Failed to send code" });
 });
 
 app.MapPost("/api/auth/verify-otp", async (VerifyOtpRequest req, AuthService auth) =>

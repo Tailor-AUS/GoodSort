@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -12,8 +11,6 @@ namespace GoodSort.Api.Services;
 
 public class AuthService
 {
-    private static readonly ConcurrentDictionary<string, (string Code, DateTime Expiry)> _otpStore = new();
-
     private readonly GoodSortDbContext _db;
     private readonly IConfiguration _config;
     private readonly ILogger<AuthService> _logger;
@@ -25,22 +22,37 @@ public class AuthService
         _logger = logger;
     }
 
-    public async Task<bool> SendOtp(string email)
+    public async Task<(bool Success, string? Error)> SendOtp(string email)
     {
-        var code = Random.Shared.Next(100000, 999999).ToString();
-        _otpStore[email.ToLower()] = (code, DateTime.UtcNow.AddMinutes(5));
+        // Rate limit: max 5 OTPs per email per hour
+        var oneHourAgo = DateTime.UtcNow.AddHours(-1);
+        var recentCount = await _db.OtpCodes.CountAsync(o => o.Email == email && o.CreatedAt > oneHourAgo);
+        if (recentCount >= 5)
+            return (false, "Too many requests. Try again in an hour.");
 
+        var code = Random.Shared.Next(100000, 999999).ToString();
+
+        // Store in database
+        _db.OtpCodes.Add(new OtpCode
+        {
+            Email = email,
+            Code = code,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(5),
+        });
+        await _db.SaveChangesAsync();
+
+        // Send email
         var connectionString = _config["ACS_CONNECTION_STRING"];
         if (string.IsNullOrEmpty(connectionString))
         {
             _logger.LogWarning("ACS_CONNECTION_STRING not set — OTP for {Email}: {Code}", email, code);
-            return true;
+            return (true, null);
         }
 
         try
         {
             var client = new EmailClient(connectionString);
-            var sender = _config["ACS_EMAIL_SENDER"] ?? "DoNotReply@tailor.au";
+            var sender = _config["ACS_EMAIL_SENDER"] ?? "DoNotReply@thegoodsort.org";
 
             var content = new EmailContent("Your Good Sort verification code")
             {
@@ -63,37 +75,56 @@ public class AuthService
             var message = new EmailMessage(sender, email, content);
             await client.SendAsync(Azure.WaitUntil.Started, message);
             _logger.LogInformation("OTP email sent to {Email}", email);
-            return true;
+            return (true, null);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send OTP email to {Email}", email);
-            return false;
+            return (false, "Failed to send email. Try again.");
         }
     }
 
     public async Task<(string? Token, Profile? Profile)> VerifyOtp(string email, string code)
     {
-        var key = email.ToLower();
-        if (!_otpStore.TryGetValue(key, out var stored))
+        var otp = await _db.OtpCodes
+            .Where(o => o.Email == email && !o.Used && o.ExpiresAt > DateTime.UtcNow)
+            .OrderByDescending(o => o.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        if (otp == null)
             return (null, null);
 
-        if (stored.Expiry < DateTime.UtcNow || stored.Code != code)
+        // Rate limit: max 5 attempts per OTP
+        otp.Attempts++;
+        if (otp.Attempts > 5)
+        {
+            otp.Used = true;
+            await _db.SaveChangesAsync();
             return (null, null);
+        }
 
-        _otpStore.TryRemove(key, out _);
+        if (otp.Code != code)
+        {
+            await _db.SaveChangesAsync();
+            return (null, null);
+        }
 
-        var profile = await _db.Profiles.FirstOrDefaultAsync(p => p.Phone == key);
+        // Mark as used
+        otp.Used = true;
+        await _db.SaveChangesAsync();
+
+        // Find or create profile
+        var profile = await _db.Profiles.FirstOrDefaultAsync(p => p.Email == email || p.Phone == email);
         if (profile == null)
         {
-            // Derive display name from email prefix (e.g. "jane.smith@..." → "Jane Smith")
-            var prefix = key.Split('@')[0].Replace('.', ' ').Replace('_', ' ').Replace('-', ' ');
+            var prefix = email.Split('@')[0].Replace('.', ' ').Replace('_', ' ').Replace('-', ' ');
             var displayName = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(prefix);
 
             profile = new Profile
             {
                 Name = displayName,
-                Phone = key, // Using Phone field for email (reusing existing schema)
+                Email = email,
+                Phone = email, // Backward compat
                 Role = "sorter",
             };
             _db.Profiles.Add(profile);
