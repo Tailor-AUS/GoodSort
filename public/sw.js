@@ -1,12 +1,20 @@
 // The Good Sort — Service Worker
-// Handles push notifications. NO aggressive caching.
+// Handles push notifications. NO caching — network only.
 
 self.addEventListener("install", () => self.skipWaiting());
+
 self.addEventListener("activate", (event) => {
-  // Clear ALL old caches on activate
   event.waitUntil(
-    caches.keys().then((names) => Promise.all(names.map((n) => caches.delete(n))))
+    caches.keys()
+      .then((names) => Promise.all(names.map((n) => caches.delete(n))))
       .then(() => self.clients.claim())
+      .then(() => {
+        // Tell all open tabs to reload so they get fresh code
+        return self.clients.matchAll({ type: "window" });
+      })
+      .then((clients) => {
+        clients.forEach((client) => client.postMessage({ type: "SW_UPDATED" }));
+      })
   );
 });
 
@@ -25,11 +33,4 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   event.waitUntil(self.clients.openWindow(event.notification.data || "/"));
-});
-
-// Network-first for everything — no caching HTML/JS
-self.addEventListener("fetch", () => {
-  // Let the browser handle all fetches normally
-  // No cache interception
-  return;
 });

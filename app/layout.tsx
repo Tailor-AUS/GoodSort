@@ -42,7 +42,21 @@ export default function RootLayout({
         <AuthGuard>{children}</AuthGuard>
         <script dangerouslySetInnerHTML={{ __html: `
           if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js').catch(function() {});
+            navigator.serviceWorker.register('/sw.js').then(function(reg) {
+              // Check for updates every 60s (catches deploys while app is open)
+              setInterval(function() { reg.update(); }, 60000);
+            }).catch(function() {});
+            // Reload when a new service worker takes over
+            navigator.serviceWorker.addEventListener('message', function(e) {
+              if (e.data && e.data.type === 'SW_UPDATED') {
+                window.location.reload();
+              }
+            });
+            // Also reload if the controlling SW changes (e.g. first install)
+            var refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', function() {
+              if (!refreshing) { refreshing = true; window.location.reload(); }
+            });
           }
         `}} />
       </body>
