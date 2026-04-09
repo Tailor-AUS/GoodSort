@@ -7,7 +7,7 @@ export default function TermsPage() {
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">1. Service Description</h2>
         <p className="text-slate-600 text-sm mb-4">
-          The Good Sort Pty Ltd (&quot;The Good Sort&quot;, &quot;we&quot;, &quot;us&quot;) operates a container
+          Crispr Projects Pty Ltd (ABN 85 680 798 770), trading as The Good Sort (&quot;The Good Sort&quot;, &quot;we&quot;, &quot;us&quot;) operates a container
           sorting and collection platform. We provide physical collection bins (&quot;Bins&quot;) at various
           locations where users (&quot;Sorters&quot;) may deposit eligible beverage containers. We separately
           engage collection personnel (&quot;Runners&quot;) to collect deposited containers and deliver them
@@ -79,7 +79,7 @@ export default function TermsPage() {
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">9. Bins and Property</h2>
         <p className="text-slate-600 text-sm mb-4">
-          Good Sort Bins remain the property of The Good Sort Pty Ltd. Bins are placed at locations
+          Good Sort Bins remain the property of Crispr Projects Pty Ltd (ABN 85 680 798 770), trading as The Good Sort. Bins are placed at locations
           with the consent of the property owner or occupier. Containers deposited in Bins become
           the property of The Good Sort upon deposit. Tampering with, damaging, or removing Bins
           or their contents is prohibited and may constitute theft.
@@ -111,7 +111,7 @@ export default function TermsPage() {
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">13. Contact</h2>
         <p className="text-slate-600 text-sm mb-4">
           For questions about these terms, contact us at legal@thegoodsort.org or write to:
-          The Good Sort Pty Ltd, Moorooka QLD 4105, Australia.
+          Crispr Projects Pty Ltd (ABN 85 680 798 770), trading as The Good Sort, Moorooka QLD 4105, Australia.
         </p>
       </div>
     </div>

@@ -46,7 +46,7 @@ export default function PrivacyPage() {
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">6. Contact</h2>
         <p className="text-slate-600 text-sm mb-4">
           For privacy inquiries, contact us at privacy@thegoodsort.org or write to:
-          The Good Sort Pty Ltd, Moorooka QLD 4105, Australia.
+          Crispr Projects Pty Ltd (ABN 85 680 798 770), trading as The Good Sort, Moorooka QLD 4105, Australia.
         </p>
       </div>
     </div>
