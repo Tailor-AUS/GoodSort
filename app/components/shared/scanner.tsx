@@ -375,8 +375,8 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
       </div>
 
       {/* Camera feed */}
-      <div className="flex-1 relative">
-        {!cameraFailed && <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />}
+      <div className="flex-1 relative overflow-hidden min-h-0">
+        {!cameraFailed && <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" playsInline muted />}
         <canvas ref={canvasRef} className="hidden" />
 
         {cameraFailed && (
@@ -408,12 +408,13 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
         )}
       </div>
 
-      {/* Bottom controls */}
-      <div className="bg-black/80 px-5 py-4">
+      {/* Bottom controls — flex-shrink-0 keeps it visible above browser bar */}
+      <div className="flex-shrink-0 bg-black" style={{ paddingBottom: "max(20px, env(safe-area-inset-bottom, 20px))" }}>
         {mode === "photo" ? (
-          <div className="flex flex-col items-center gap-3">
+          <div className="flex flex-col items-center gap-3 py-4">
             <button onClick={capturePhoto} disabled={!scanning || cameraFailed}
-              className="w-16 h-16 rounded-full bg-white border-4 border-white/30 shadow-lg active:scale-90 transition-transform disabled:opacity-30" />
+              className="rounded-full bg-white border-4 border-white/30 shadow-lg active:scale-90 transition-transform disabled:opacity-30"
+              style={{ width: "72px", height: "72px", touchAction: "manipulation" }} />
             <p className="text-white/30 text-[11px] text-center">
               Lay containers on a surface and take a photo
             </p>
