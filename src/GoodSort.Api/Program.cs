@@ -181,16 +181,19 @@ app.MapPost("/api/scan/photo", async (PhotoScanRequest req, VisionService vision
     var base64 = req.Image;
     if (base64.Contains(",")) base64 = base64.Split(',')[1];
 
-    var containers = await vision.IdentifyContainers(base64);
-    var totalItems = containers.Sum(c => c.Count);
-    var totalCents = containers.Where(c => c.Eligible).Sum(c => c.Count * 5);
+    var result = await vision.IdentifyContainers(base64);
+    var totalItems = result.Containers.Sum(c => c.Count);
+    var totalCents = result.Containers.Where(c => c.Eligible).Sum(c => c.Count * 5);
 
     return Results.Ok(new
     {
-        containers,
+        containers = result.Containers,
         totalItems,
         totalCents,
-        summary = $"{totalItems} container{(totalItems != 1 ? "s" : "")} found — ${totalCents / 100.0:F2} pending"
+        message = result.Message,
+        summary = totalItems > 0
+            ? $"{totalItems} container{(totalItems != 1 ? "s" : "")} found — ${totalCents / 100.0:F2} pending"
+            : result.Message,
     });
 });
 

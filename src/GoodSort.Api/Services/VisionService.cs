@@ -20,7 +20,7 @@ public class VisionService
         _httpFactory = httpFactory;
     }
 
-    public async Task<List<IdentifiedContainer>> IdentifyContainers(string base64Image)
+    public async Task<VisionResult> IdentifyContainers(string base64Image)
     {
         // Tailor Vision (TV) takes priority, Azure OpenAI as fallback
         var tvApiKey = _config["TAILOR_VISION_API_KEY"] ?? "";
@@ -33,7 +33,7 @@ public class VisionService
 
     // ── Tailor Vision API (api.tailor.au/api/vision/classify) ─────────────
 
-    private async Task<List<IdentifiedContainer>> IdentifyViaTailorVision(string base64Image)
+    private async Task<VisionResult> IdentifyViaTailorVision(string base64Image)
     {
         try
         {
@@ -71,7 +71,7 @@ public class VisionService
             if (tvResponse?.Classification == null)
             {
                 _logger.LogWarning("Tailor Vision returned null classification");
-                return [];
+                return new VisionResult { Message = "Hmm, couldn't quite figure that one out. Try a clearer photo!" };
             }
 
             _logger.LogInformation(
@@ -80,7 +80,6 @@ public class VisionService
                 tvResponse.Classification.Material,
                 tvResponse.Classification.Confidence);
 
-            // Map Tailor Vision response to GoodSort's IdentifiedContainer
             var container = new IdentifiedContainer
             {
                 Name = tvResponse.Classification.Description,
@@ -91,7 +90,11 @@ public class VisionService
                 Barcode = tvResponse.Barcode?.Value,
             };
 
-            return [container];
+            var msg = container.Eligible
+                ? $"Found a {container.Name}! That's 5 cents sorted 🎉"
+                : $"Spotted a {container.Name}, but it's not CDS eligible unfortunately.";
+
+            return new VisionResult { Containers = [container], Message = msg };
         }
         catch (Exception ex)
         {
@@ -115,14 +118,18 @@ public class VisionService
 
     // ── Azure OpenAI — Direct fallback ────────────────────────────────────
 
-    private static readonly string ContainerPrompt = @"You are a container recycling identification system for the QLD Container Refund Scheme (Containers for Change).
+    private static readonly string ContainerPrompt = @"You are a fun, friendly container recycling identification system for the QLD Container Refund Scheme (Containers for Change), called The Good Sort.
 
 Analyze this photo and identify ALL beverage containers visible. Count each distinct container type.
 
-For each container type found, return:
+ALWAYS return a JSON object with two fields:
+1. ""containers"": array of identified containers
+2. ""message"": a short, friendly message about what you see (ALWAYS include this, even if no containers found)
+
+For each container in the array, include:
 - name: product name and size (e.g. ""Coca-Cola 375ml can"", ""Mount Franklin 600ml bottle"")
 - material: one of ""aluminium"", ""pet"", ""glass"", ""liquid_paperboard""
-- count: how many of this exact item you see in the photo
+- count: how many of this exact item you see
 - eligible: true if it's a beverage container between 150ml and 3L
 
 Material classification rules:
@@ -132,14 +139,34 @@ Material classification rules:
 - liquid_paperboard: cartons/poppers (juice boxes, flavoured milk cartons)
 
 If you cannot identify the specific product, describe what you see (e.g. ""silver aluminium can 375ml"").
-Only include items that are beverage containers. Ignore food, packaging, or non-container items.
 
-Return ONLY a JSON array, no explanation or markdown. Example:
-[{""name"":""Coca-Cola 375ml can"",""material"":""aluminium"",""count"":3,""eligible"":true},{""name"":""Mount Franklin 600ml bottle"",""material"":""pet"",""count"":2,""eligible"":true}]
+MESSAGE GUIDELINES:
+- If containers found: be encouraging. E.g. ""Nice haul! 3 cans ready to sort — that's 15 cents!"" or ""Spotted some VB stubbies — classic choice, even better recycled.""
+- If no containers but you can see what's in the photo: be witty and Australian. E.g.:
+  - Person/selfie: ""Looking good, but I can't recycle you! Though if I could, you'd be worth way more than 10 cents 😄 Try pointing the camera at a can or bottle.""
+  - Food: ""That looks delicious but I'm more of a cans-and-bottles sort of AI. Show me your empties!""
+  - Pet/animal: ""What a legend! But I can only sort containers, not critters. Got any cans nearby?""
+  - Scenery/nature: ""Beautiful spot! If you've got any empties from enjoying the view, point the camera at those.""
+  - Random object: ""Interesting! But that's not quite what I'm after. I'm looking for cans, bottles, or cartons — the stuff you get 10 cents for.""
+  - Blurry/dark: ""I can't quite make that out — try getting a bit closer with better lighting.""
+- Keep messages under 30 words. Be warm, Aussie, and a little cheeky.
 
-If no containers are found, return: []";
+Return ONLY a JSON object, no explanation or markdown. Examples:
 
-    private async Task<List<IdentifiedContainer>> IdentifyViaAzureOpenAI(string base64Image)
+With containers:
+{""containers"":[{""name"":""Coca-Cola 375ml can"",""material"":""aluminium"",""count"":3,""eligible"":true}],""message"":""3 Coke cans spotted! That's 15 cents heading your way 🎉""}
+
+No containers (selfie):
+{""containers"":[],""message"":""Can't recycle you mate, but you're definitely worth more than 10 cents! Try pointing at a can or bottle 😄""}
+
+No containers (food):
+{""containers"":[],""message"":""Looks tasty! But I'm after the empties, not the snacks. Got any cans nearby?""}
+
+No containers (blurry):
+{""containers"":[],""message"":""Bit blurry — try getting closer with the camera steady. I'll sort it once I can see it!""}
+";
+
+    private async Task<VisionResult> IdentifyViaAzureOpenAI(string base64Image)
     {
         var endpoint = _config["AZURE_OPENAI_ENDPOINT"] ?? "";
         var apiKey = _config["AZURE_OPENAI_KEY"] ?? "";
@@ -148,7 +175,11 @@ If no containers are found, return: []";
         if (string.IsNullOrEmpty(apiKey))
         {
             _logger.LogWarning("No vision API configured — returning mock data");
-            return [new IdentifiedContainer { Name = "Unknown Container", Material = "aluminium", Count = 1, Eligible = true }];
+            return new VisionResult
+            {
+                Containers = [new IdentifiedContainer { Name = "Unknown Container", Material = "aluminium", Count = 1, Eligible = true }],
+                Message = "Vision API not configured — showing sample data",
+            };
         }
 
         try
@@ -179,18 +210,38 @@ If no containers are found, return: []";
                 content = content.Trim();
             }
 
+            // New format returns { containers: [], message: "" }
+            var result = JsonSerializer.Deserialize<VisionResult>(content, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+            });
+
+            if (result != null)
+            {
+                _logger.LogInformation("Azure OpenAI identified {Count} container types, message: {Message}",
+                    result.Containers.Count, result.Message);
+                return result;
+            }
+
+            // Fallback: try parsing as old format (plain array)
             var containers = JsonSerializer.Deserialize<List<IdentifiedContainer>>(content, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true,
             });
 
-            _logger.LogInformation("Azure OpenAI identified {Count} container types", containers?.Count ?? 0);
-            return containers ?? [];
+            _logger.LogInformation("Azure OpenAI identified {Count} container types (legacy format)", containers?.Count ?? 0);
+            return new VisionResult
+            {
+                Containers = containers ?? [],
+                Message = containers?.Count > 0
+                    ? $"Found {containers.Count} container{(containers.Count != 1 ? "s" : "")}!"
+                    : "No containers spotted — try pointing the camera at a can or bottle!",
+            };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Azure OpenAI call failed");
-            return [];
+            return new VisionResult { Message = "Something went wrong analysing that photo. Give it another go!" };
         }
     }
 }
@@ -228,7 +279,13 @@ public class TailorVisionBarcode
     public bool CatalogueMatch { get; set; }
 }
 
-// ── GoodSort container result ─────────────────────────────────────────
+// ── Vision result (containers + message) ──────────────────────────────
+
+public class VisionResult
+{
+    public List<IdentifiedContainer> Containers { get; set; } = [];
+    public string Message { get; set; } = "";
+}
 
 public class IdentifiedContainer
 {
