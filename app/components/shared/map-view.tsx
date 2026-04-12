@@ -7,6 +7,16 @@ import {
 import { setOptions as setMapsOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { AlertTriangle } from "lucide-react";
 import type { SortBin, Route, Depot } from "@/lib/store";
+import type { RunStopDetail } from "@/lib/marketplace";
+
+export interface RunCentroid {
+  id: string;
+  lat: number;
+  lng: number;
+  label: string;
+  containers: number;
+  pricingTier: number;
+}
 
 export type AppMode = "sort" | "collect";
 
@@ -212,6 +222,131 @@ function RouteLine({ route, depot }: { route: Route | null; depot: Depot | null 
   return null;
 }
 
+// ── Centroid Bubbles (privacy-safe area markers for marketplace runs) ──
+
+function CentroidBubbles({ centroids }: { centroids: RunCentroid[] }) {
+  const map = useMap();
+  const markersRef = useRef<Map<string, google.maps.Marker>>(new Map());
+  const circlesRef = useRef<Map<string, google.maps.Circle>>(new Map());
+
+  useEffect(() => {
+    if (!map) return;
+    const prevMarkers = markersRef.current;
+    const prevCircles = circlesRef.current;
+    const nextIds = new Set(centroids.map((c) => c.id));
+
+    // Remove old
+    for (const [id, marker] of prevMarkers) {
+      if (!nextIds.has(id)) { marker.setMap(null); prevMarkers.delete(id); }
+    }
+    for (const [id, circle] of prevCircles) {
+      if (!nextIds.has(id)) { circle.setMap(null); prevCircles.delete(id); }
+    }
+
+    for (const c of centroids) {
+      const tierColor = c.pricingTier >= 4 ? "#f59e0b" : c.pricingTier >= 3 ? "#16a34a" : "#3b82f6";
+
+      // Area bubble (blurred circle — no exact addresses)
+      if (!prevCircles.has(c.id)) {
+        const circle = new google.maps.Circle({
+          map,
+          center: { lat: c.lat, lng: c.lng },
+          radius: 500, // 500m blur radius
+          fillColor: tierColor,
+          fillOpacity: 0.08,
+          strokeColor: tierColor,
+          strokeOpacity: 0.3,
+          strokeWeight: 1.5,
+          clickable: false,
+        });
+        prevCircles.set(c.id, circle);
+      }
+
+      // Label marker
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="44">
+        <rect x="0" y="0" width="80" height="30" rx="15" fill="${tierColor}" opacity="0.9"/>
+        <text x="40" y="14" text-anchor="middle" fill="#fff" font-size="10" font-weight="800" font-family="Inter,system-ui,sans-serif">${c.containers}</text>
+        <text x="40" y="24" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="7" font-family="Inter,system-ui,sans-serif">${c.label}</text>
+      </svg>`;
+
+      if (!prevMarkers.has(c.id)) {
+        const marker = new google.maps.Marker({
+          map,
+          position: { lat: c.lat, lng: c.lng },
+          zIndex: 500,
+          icon: {
+            url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+            scaledSize: new google.maps.Size(80, 44),
+            anchor: new google.maps.Point(40, 22),
+          },
+        });
+        prevMarkers.set(c.id, marker);
+      } else {
+        const existing = prevMarkers.get(c.id)!;
+        existing.setIcon({
+          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+          scaledSize: new google.maps.Size(80, 44),
+          anchor: new google.maps.Point(40, 22),
+        });
+      }
+    }
+
+    return () => {
+      prevMarkers.forEach((m) => m.setMap(null)); prevMarkers.clear();
+      prevCircles.forEach((c) => c.setMap(null)); prevCircles.clear();
+    };
+  }, [map, centroids]);
+
+  return null;
+}
+
+// ── Active Run Stop Markers ──
+
+function ActiveRunStopMarkers({ stops }: { stops: RunStopDetail[] }) {
+  const map = useMap();
+  const markersRef = useRef<Map<string, google.maps.Marker>>(new Map());
+
+  useEffect(() => {
+    if (!map) return;
+    const prev = markersRef.current;
+    const nextIds = new Set(stops.map((s) => s.id));
+
+    for (const [id, marker] of prev) {
+      if (!nextIds.has(id)) { marker.setMap(null); prev.delete(id); }
+    }
+
+    for (const stop of stops) {
+      const color = stop.status === "picked_up" ? "#16a34a" : stop.status === "skipped" ? "#94a3b8" : stop.status === "arrived" ? "#3b82f6" : "#f59e0b";
+      const icon = stop.status === "picked_up" ? "✓" : stop.status === "skipped" ? "—" : `${stop.sequence + 1}`;
+
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">
+        <circle cx="16" cy="16" r="14" fill="${color}" stroke="#fff" stroke-width="2.5"/>
+        <text x="16" y="21" text-anchor="middle" fill="#fff" font-size="12" font-weight="800" font-family="Inter,system-ui,sans-serif">${icon}</text>
+      </svg>`;
+
+      if (!prev.has(stop.id)) {
+        const marker = new google.maps.Marker({
+          map,
+          position: { lat: stop.lat, lng: stop.lng },
+          zIndex: 1500,
+          icon: { url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`, scaledSize: new google.maps.Size(32, 32), anchor: new google.maps.Point(16, 16) },
+        });
+        prev.set(stop.id, marker);
+      } else {
+        prev.get(stop.id)!.setIcon({
+          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+          scaledSize: new google.maps.Size(32, 32),
+          anchor: new google.maps.Point(16, 16),
+        });
+      }
+    }
+
+    return () => { prev.forEach((m) => m.setMap(null)); prev.clear(); };
+  }, [map, stops]);
+
+  return null;
+}
+
 // ── Map Click Handler ──
 
 function MapClickHandler({ onMapTap }: { onMapTap: () => void }) {
@@ -264,14 +399,17 @@ function NoApiKeyFallback() {
 interface MapViewProps {
   mode: AppMode;
   bins: SortBin[];
-  selectedBinId: string | null;
-  activeRoute: Route | null;
+  selectedBinId?: string | null;
+  activeRoute?: Route | null;
   depot: Depot | null;
-  onBinSelect: (id: string) => void;
+  onBinSelect?: (id: string) => void;
   onMapTap: () => void;
+  // Marketplace additions
+  runCentroids?: RunCentroid[];
+  activeRunStops?: RunStopDetail[];
 }
 
-export function MapView({ mode, bins, selectedBinId, activeRoute, depot, onBinSelect, onMapTap }: MapViewProps) {
+export function MapView({ mode, bins, selectedBinId, activeRoute, depot, onBinSelect, onMapTap, runCentroids, activeRunStops }: MapViewProps) {
   const [userLoc, setUserLoc] = useState<LatLng | null>(null);
   const handleLocated = useCallback((loc: LatLng) => setUserLoc(loc), []);
 
@@ -283,8 +421,10 @@ export function MapView({ mode, bins, selectedBinId, activeRoute, depot, onBinSe
         <MapClickHandler onMapTap={onMapTap} />
         <AutoLocate onLocated={handleLocated} />
         {userLoc && <UserLocationMarker loc={userLoc} />}
-        <BinMarkers bins={bins} selectedId={selectedBinId} onSelect={onBinSelect} />
+        {onBinSelect && <BinMarkers bins={bins} selectedId={selectedBinId ?? null} onSelect={onBinSelect} />}
         {activeRoute && <RouteLine route={activeRoute} depot={depot} />}
+        {runCentroids && runCentroids.length > 0 && <CentroidBubbles centroids={runCentroids} />}
+        {activeRunStops && activeRunStops.length > 0 && <ActiveRunStopMarkers stops={activeRunStops} />}
       </GoogleMapsProvider>
     </MapErrorBoundary>
   );

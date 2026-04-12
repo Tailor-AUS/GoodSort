@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AuthGuard } from "./components/shared/auth-guard";
+import { InstallPrompt } from "./components/shared/install-prompt";
 
 export const metadata: Metadata = {
   title: "The Good Sort",
@@ -12,6 +13,7 @@ export const metadata: Metadata = {
     title: "The Good Sort",
   },
   icons: {
+    icon: "/favicon.svg",
     apple: "/apple-touch-icon.png",
   },
 };
@@ -40,6 +42,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-dvh bg-white text-slate-900 overscroll-none" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
         <AuthGuard>{children}</AuthGuard>
+        <InstallPrompt />
         <script src="/sw-init.js" defer />
       </body>
     </html>

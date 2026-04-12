@@ -2,8 +2,9 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Mail, ShieldCheck, Package, Tags, Camera, Check, ChevronRight, Sparkles } from "lucide-react";
+import { Mail, ShieldCheck, Package, Tags, Camera, Check, ChevronRight } from "lucide-react";
 import { apiUrl } from "@/lib/config";
+import { Logo } from "@/app/components/shared/logo";
 import { BAGS, getBagForMaterial, mapToMaterialType } from "@/lib/store";
 
 type Step = "email" | "verify" | "bins" | "labels" | "firstsort" | "analyzing" | "sortresult" | "done";
@@ -148,10 +149,9 @@ export default function StartPage() {
           {step === "email" && (
             <>
               <div className="text-center mb-8">
-                <div className="w-20 h-20 bg-green-600 rounded-3xl flex items-center justify-center mx-auto mb-5 shadow-lg shadow-green-600/20">
-                  <Sparkles className="w-10 h-10 text-white" />
+                <div className="flex justify-center mb-5">
+                  <Logo size="lg" />
                 </div>
-                <h1 className="text-3xl font-display font-extrabold text-slate-900 mb-2">The Good Sort</h1>
                 <p className="text-slate-400 text-[14px]">Turn your empty cans and bottles into cash</p>
               </div>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter your email"
@@ -350,8 +350,8 @@ export default function StartPage() {
           {step === "done" && (
             <>
               <div className="text-center mb-6">
-                <div className="w-20 h-20 bg-green-50 rounded-3xl flex items-center justify-center mx-auto mb-5">
-                  <Sparkles className="w-10 h-10 text-green-600" />
+                <div className="flex justify-center mb-5">
+                  <Logo size="lg" />
                 </div>
                 <h1 className="text-3xl font-display font-extrabold text-slate-900 mb-2">You're all set!</h1>
                 <p className="text-slate-500 text-[14px] mb-1">Start sorting your containers into your 4 bins</p>

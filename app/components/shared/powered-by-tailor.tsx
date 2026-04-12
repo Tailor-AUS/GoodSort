@@ -1,12 +1,22 @@
 "use client";
 
+import Link from "next/link";
+import { Logo } from "./logo";
+
+/**
+ * Branding footer — matches Spark's pattern:
+ * [logo + brand name](/) [powered by tailor](https://tailor.au)
+ */
 export function PoweredByTailor() {
   return (
-    <div className="flex justify-center">
+    <div className="flex items-center justify-center gap-3">
+      <Link href="/" className="hover:opacity-80 transition-opacity duration-200">
+        <Logo size="sm" />
+      </Link>
       <a href="https://tailor.au" target="_blank" rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 text-[11px] tracking-wide text-slate-400 hover:text-slate-600 border border-slate-200/50 rounded-full pl-2.5 pr-3 py-1 transition-all duration-200">
-        <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor"><path d="M5 0L9.33 3v6L5 12 .67 9V3L5 0z" /></svg>
-        <span>Powered by <span className="font-bold text-slate-500">Tailor</span></span>
+        className="inline-flex items-center gap-1 text-[10px] tracking-wide text-slate-400 hover:text-slate-500 transition-colors duration-200">
+        <span>powered by</span>
+        <span className="font-bold text-slate-500">tailor</span>
       </a>
     </div>
   );

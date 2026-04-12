@@ -13,7 +13,28 @@ builder.AddSqlServerDbContext<GoodSortDbContext>("goodsortdb");
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<VisionService>();
 builder.Services.AddScoped<CashoutService>();
+builder.Services.AddScoped<PricingService>();
+builder.Services.AddScoped<RunnerService>();
+builder.Services.AddHostedService<RunGenerationService>();
 builder.Services.AddHttpClient();
+
+// Tailor Vision (TV) — api.tailor.au/api/vision/classify
+// GoodSort dogfoods Tailor Vision, billed via BAINK (baink.tailor.au)
+builder.Services.AddHttpClient("TailorVision", client =>
+{
+    var url = builder.Configuration["TAILOR_VISION_API_URL"] ?? "https://api.tailor.au";
+    var key = builder.Configuration["TAILOR_VISION_API_KEY"] ?? "";
+    client.BaseAddress = new Uri(url);
+    if (!string.IsNullOrEmpty(key))
+        client.DefaultRequestHeaders.Add("X-Api-Key", key);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
+// JSON serialization — handle circular references (Run ↔ RunnerProfile)
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
+});
 
 // CORS — restrict to actual domains
 builder.Services.AddCors(options =>
@@ -528,6 +549,91 @@ app.MapGet("/api/admin/cashouts", async (GoodSortDbContext db) =>
     Results.Ok(await db.Set<GoodSort.Api.Services.CashoutRequest>().Include(c => c.User).OrderByDescending(c => c.CreatedAt).Take(100).ToListAsync()))
     .RequireAuthorization();
 
+// ── Admin: Seed test data for marketplace (bins with containers + generate runs) ──
+app.MapPost("/api/admin/seed-marketplace", async (GoodSortDbContext db, PricingService pricing) =>
+{
+    // Fill bins with test containers
+    var bins = await db.Bins.Where(b => b.Status == "active").ToListAsync();
+    var rng = new Random(42);
+    foreach (var bin in bins)
+    {
+        bin.PendingContainers = rng.Next(60, 200);
+        bin.PendingValueCents = bin.PendingContainers * 5;
+        bin.Materials = new MaterialBreakdown
+        {
+            Aluminium = (int)(bin.PendingContainers * 0.4),
+            Pet = (int)(bin.PendingContainers * 0.3),
+            Glass = (int)(bin.PendingContainers * 0.2),
+            Other = (int)(bin.PendingContainers * 0.1),
+        };
+        bin.EstimatedWeightKg = bin.PendingContainers * 0.020;
+    }
+    await db.SaveChangesAsync();
+
+    // Create a test run from the first 3 bins
+    var dropPoint = await db.Depots.FirstOrDefaultAsync();
+    if (dropPoint == null) return Results.BadRequest("No depot");
+
+    var testBins = bins.Take(3).ToList();
+    var totalContainers = testBins.Sum(b => b.PendingContainers);
+
+    var run = new Run
+    {
+        Status = "available",
+        DropPointId = dropPoint.Id,
+        CentroidLat = testBins.Average(b => b.Lat),
+        CentroidLng = testBins.Average(b => b.Lng),
+        AreaName = "South Brisbane",
+        EstimatedContainers = totalContainers,
+        EstimatedDistanceKm = 4.2,
+        EstimatedDurationMin = 25,
+        Materials = new MaterialBreakdown
+        {
+            Aluminium = testBins.Sum(b => b.Materials.Aluminium),
+            Pet = testBins.Sum(b => b.Materials.Pet),
+            Glass = testBins.Sum(b => b.Materials.Glass),
+            Other = testBins.Sum(b => b.Materials.Other),
+        },
+        ExpiresAt = DateTime.UtcNow.AddHours(4),
+    };
+
+    var seq = 0;
+    foreach (var bin in testBins)
+    {
+        run.Stops.Add(new RunStop
+        {
+            BinId = bin.Id,
+            Lat = bin.Lat,
+            Lng = bin.Lng,
+            EstimatedContainers = bin.PendingContainers,
+            PickupInstruction = $"Collect from {bin.Name}",
+            Sequence = seq++,
+        });
+    }
+
+    db.Runs.Add(run);
+
+    // Price the run
+    var result = await pricing.CalculateRate(run);
+    run.PerContainerCents = result.PerContainerCents;
+    run.EstimatedPayoutCents = result.EstimatedPayoutCents;
+    run.PricingTier = result.PricingTier;
+    run.LastPricedAt = DateTime.UtcNow;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new
+    {
+        message = "Test data seeded",
+        binsFilled = bins.Count,
+        runId = run.Id,
+        runContainers = totalContainers,
+        perContainerCents = run.PerContainerCents,
+        estimatedPayout = run.EstimatedPayoutCents,
+        pricingTier = run.PricingTier,
+        pricingFactors = result.Factors,
+    });
+}).RequireAuthorization();
+
 // ── Profile PATCH (update name + household) ──
 app.MapPatch("/api/profiles/{id:guid}", async (Guid id, ProfileUpdateRequest req, GoodSortDbContext db) =>
 {
@@ -539,7 +645,390 @@ app.MapPatch("/api/profiles/{id:guid}", async (Guid id, ProfileUpdateRequest req
     return Results.Ok(profile);
 });
 
+// ══════════════════════════════════════════════════════════════════════
+// ── RUNNER MARKETPLACE ──
+// ══════════════════════════════════════════════════════════════════════
+
+// ── Runner: Register as runner ──
+app.MapPost("/api/runner/register", async (RunnerRegisterRequest req, GoodSortDbContext db) =>
+{
+    var profile = await db.Profiles.FindAsync(req.ProfileId);
+    if (profile is null) return Results.NotFound("Profile not found");
+
+    var existing = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == req.ProfileId);
+    if (existing is not null) return Results.Ok(existing);
+
+    var runner = new RunnerProfile
+    {
+        ProfileId = profile.Id,
+        VehicleType = req.VehicleType ?? "car",
+        CapacityBags = req.CapacityBags ?? 10,
+        ServiceRadiusKm = req.ServiceRadiusKm ?? 10.0,
+    };
+    profile.Role = "both";
+    db.RunnerProfiles.Add(runner);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/runner/profile", runner);
+});
+
+// ── Runner: Get my profile ──
+app.MapGet("/api/runner/profile/{profileId:guid}", async (Guid profileId, GoodSortDbContext db) =>
+    await db.RunnerProfiles.Include(rp => rp.Profile).FirstOrDefaultAsync(rp => rp.ProfileId == profileId)
+    is { } rp ? Results.Ok(rp) : Results.NotFound());
+
+// ── Runner: Update profile ──
+app.MapPatch("/api/runner/profile/{profileId:guid}", async (Guid profileId, RunnerProfileUpdateRequest req, GoodSortDbContext db) =>
+{
+    var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == profileId);
+    if (runner is null) return Results.NotFound();
+    if (req.VehicleType is not null) runner.VehicleType = req.VehicleType;
+    if (req.CapacityBags.HasValue) runner.CapacityBags = req.CapacityBags.Value;
+    if (req.ServiceRadiusKm.HasValue) runner.ServiceRadiusKm = req.ServiceRadiusKm.Value;
+    await db.SaveChangesAsync();
+    return Results.Ok(runner);
+});
+
+// ── Runner: Location heartbeat ──
+app.MapPost("/api/runner/heartbeat", async (RunnerHeartbeatRequest req, GoodSortDbContext db) =>
+{
+    var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == req.ProfileId);
+    if (runner is null) return Results.NotFound();
+    runner.IsOnline = req.IsOnline;
+    runner.LastLat = req.Lat;
+    runner.LastLng = req.Lng;
+    runner.LastLocationAt = DateTime.UtcNow;
+    await db.SaveChangesAsync();
+    return Results.Ok(new { online = runner.IsOnline });
+});
+
+// ── Marketplace: Get available runs near location ──
+app.MapGet("/api/marketplace/runs", async (double lat, double lng, double? radiusKm, GoodSortDbContext db) =>
+{
+    var radius = radiusKm ?? 15.0;
+    var runs = await db.Runs
+        .Include(r => r.Stops)
+        .Where(r => r.Status == "available" && r.ExpiresAt > DateTime.UtcNow)
+        .ToListAsync();
+
+    // Filter by distance from runner (haversine)
+    var nearby = runs
+        .Select(r => new
+        {
+            Run = r,
+            DistanceKm = HaversineKm(lat, lng, r.CentroidLat, r.CentroidLng)
+        })
+        .Where(x => x.DistanceKm <= radius)
+        .OrderBy(x => x.DistanceKm)
+        .Select(x => new
+        {
+            x.Run.Id,
+            x.Run.Status,
+            x.Run.AreaName,
+            x.Run.CentroidLat,
+            x.Run.CentroidLng,
+            x.Run.EstimatedContainers,
+            x.Run.PerContainerCents,
+            x.Run.EstimatedPayoutCents,
+            x.Run.PricingTier,
+            x.Run.EstimatedDistanceKm,
+            x.Run.EstimatedDurationMin,
+            StopCount = x.Run.Stops.Count,
+            x.DistanceKm,
+            x.Run.ExpiresAt,
+            x.Run.Materials,
+        })
+        .ToList();
+
+    return Results.Ok(nearby);
+});
+
+// ── Marketplace: Claim a run ──
+app.MapPost("/api/marketplace/runs/{id:guid}/claim", async (Guid id, MarketplaceClaimRequest req, GoodSortDbContext db, PricingService pricing) =>
+{
+    var run = await db.Runs.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == id);
+    if (run is null || run.Status != "available") return Results.BadRequest("Run not available");
+    if (run.ExpiresAt <= DateTime.UtcNow) return Results.BadRequest("Run expired");
+
+    var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == req.ProfileId);
+    if (runner is null) return Results.BadRequest("Not registered as runner");
+
+    // Re-price with runner's level bonus
+    var result = await pricing.CalculateRate(run, runner);
+    run.PerContainerCents = result.PerContainerCents;
+    run.EstimatedPayoutCents = result.EstimatedPayoutCents;
+    run.PricingTier = result.PricingTier;
+
+    run.RunnerId = runner.Id;
+    run.Status = "claimed";
+    run.ClaimedAt = DateTime.UtcNow;
+
+    await db.SaveChangesAsync();
+
+    // Return run with stops (now includes lat/lng for navigation)
+    return Results.Ok(run);
+});
+
+// ── Marketplace: Start a run ──
+app.MapPost("/api/marketplace/runs/{id:guid}/start", async (Guid id, GoodSortDbContext db) =>
+{
+    var run = await db.Runs.FindAsync(id);
+    if (run is null || run.Status != "claimed") return Results.BadRequest();
+    run.Status = "in_progress";
+    run.StartedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync();
+    return Results.Ok(run);
+});
+
+// ── Marketplace: Arrive at stop ──
+app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/arrive",
+    async (Guid runId, Guid stopId, GoodSortDbContext db) =>
+{
+    var stop = await db.RunStops.FirstOrDefaultAsync(s => s.RunId == runId && s.Id == stopId);
+    if (stop is null || stop.Status != "pending") return Results.BadRequest();
+    stop.Status = "arrived";
+    stop.ArrivedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync();
+    return Results.Ok(stop);
+});
+
+// ── Marketplace: Complete pickup at stop (with photo) ──
+app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/pickup",
+    async (Guid runId, Guid stopId, RunStopPickupRequest req, GoodSortDbContext db) =>
+{
+    var run = await db.Runs.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == runId);
+    if (run is null || run.Status != "in_progress") return Results.BadRequest();
+
+    var stop = run.Stops.FirstOrDefault(s => s.Id == stopId);
+    if (stop is null || (stop.Status != "pending" && stop.Status != "arrived")) return Results.BadRequest();
+
+    stop.Status = "picked_up";
+    stop.PickedUpAt = DateTime.UtcNow;
+    stop.ActualContainers = req.ActualContainers;
+    if (req.PhotoUrl is not null) stop.PhotoUrl = req.PhotoUrl;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(run);
+});
+
+// ── Marketplace: Skip a stop ──
+app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/skip",
+    async (Guid runId, Guid stopId, GoodSortDbContext db) =>
+{
+    var run = await db.Runs.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == runId);
+    if (run is null || run.Status != "in_progress") return Results.BadRequest();
+
+    var stop = run.Stops.FirstOrDefault(s => s.Id == stopId);
+    if (stop is null || (stop.Status != "pending" && stop.Status != "arrived")) return Results.BadRequest();
+
+    stop.Status = "skipped";
+    await db.SaveChangesAsync();
+    return Results.Ok(run);
+});
+
+// ── Marketplace: Mark run as delivering (heading to drop point) ──
+app.MapPost("/api/marketplace/runs/{id:guid}/deliver", async (Guid id, GoodSortDbContext db) =>
+{
+    var run = await db.Runs.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == id);
+    if (run is null || run.Status != "in_progress") return Results.BadRequest();
+
+    // Auto-check: all stops must be picked_up or skipped
+    if (run.Stops.Any(s => s.Status == "pending" || s.Status == "arrived"))
+        return Results.BadRequest("Not all stops completed");
+
+    run.Status = "delivering";
+    await db.SaveChangesAsync();
+    return Results.Ok(run);
+});
+
+// ── Marketplace: Complete delivery at drop point ──
+app.MapPost("/api/marketplace/runs/{id:guid}/complete", async (Guid id, GoodSortDbContext db) =>
+{
+    var run = await db.Runs.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == id);
+    if (run is null || run.Status != "delivering") return Results.BadRequest();
+
+    run.Status = "completed";
+    run.CompletedAt = DateTime.UtcNow;
+    run.DeliveredAt = DateTime.UtcNow;
+    run.ActualContainers = run.Stops.Where(s => s.Status == "picked_up").Sum(s => s.ActualContainers ?? s.EstimatedContainers);
+
+    await db.SaveChangesAsync();
+    return Results.Ok(run);
+});
+
+// ── Marketplace: Settle a completed run (admin) ──
+app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (Guid id, GoodSortDbContext db, RunnerService runnerService) =>
+{
+    var run = await db.Runs.Include(r => r.Stops).Include(r => r.DropPoint).FirstOrDefaultAsync(r => r.Id == id);
+    if (run is null || run.Status != "completed") return Results.BadRequest();
+
+    // Calculate actual payout
+    run.ActualPayoutCents = run.ActualContainers * run.PerContainerCents;
+    run.Status = "settled";
+    run.SettledAt = DateTime.UtcNow;
+
+    // Generate rating
+    var rating = await runnerService.GenerateRating(run);
+
+    // Update runner stats (level, streak, badges, efficiency)
+    await runnerService.UpdateRunnerStats(run);
+
+    // Credit the runner's profile
+    if (run.RunnerId.HasValue)
+    {
+        var runner = await db.RunnerProfiles.Include(rp => rp.Profile).FirstOrDefaultAsync(rp => rp.Id == run.RunnerId);
+        if (runner?.Profile is not null)
+            runner.Profile.ClearedCents += run.ActualPayoutCents;
+    }
+
+    // Clear bin pending counts for picked-up stops
+    foreach (var stop in run.Stops.Where(s => s.Status == "picked_up"))
+    {
+        var bin = await db.Bins.FindAsync(stop.BinId);
+        if (bin is not null)
+        {
+            var count = stop.ActualContainers ?? stop.EstimatedContainers;
+            bin.PendingContainers = Math.Max(0, bin.PendingContainers - count);
+            bin.PendingValueCents = bin.PendingContainers * 5;
+            bin.LastCollectedAt = DateTime.UtcNow;
+            if (bin.PendingContainers == 0) bin.Materials = new MaterialBreakdown();
+        }
+    }
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { run.Id, run.ActualPayoutCents, run.ActualContainers, rating = rating.Stars });
+}).RequireAuthorization();
+
+// ── Runner: My runs ──
+app.MapGet("/api/runner/runs/{profileId:guid}", async (Guid profileId, string? status, GoodSortDbContext db) =>
+{
+    var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == profileId);
+    if (runner is null) return Results.NotFound();
+
+    var q = db.Runs.Include(r => r.Stops).Where(r => r.RunnerId == runner.Id);
+    if (!string.IsNullOrEmpty(status)) q = q.Where(r => r.Status == status);
+    return Results.Ok(await q.OrderByDescending(r => r.CreatedAt).Take(50).ToListAsync());
+});
+
+// ── Runner: My active run ──
+app.MapGet("/api/runner/active/{profileId:guid}", async (Guid profileId, GoodSortDbContext db) =>
+{
+    var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == profileId);
+    if (runner is null) return Results.NotFound();
+
+    var active = await db.Runs
+        .Include(r => r.Stops.OrderBy(s => s.Sequence))
+        .Include(r => r.DropPoint)
+        .Where(r => r.RunnerId == runner.Id && (r.Status == "claimed" || r.Status == "in_progress" || r.Status == "delivering"))
+        .FirstOrDefaultAsync();
+
+    return active is not null ? Results.Ok(active) : Results.NotFound();
+});
+
+// ── Gamification: Earnings summary ──
+app.MapGet("/api/runner/earnings/{profileId:guid}", async (Guid profileId, GoodSortDbContext db) =>
+{
+    var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == profileId);
+    if (runner is null) return Results.NotFound();
+
+    var todayStart = DateTime.UtcNow.Date;
+    var weekStart = todayStart.AddDays(-(int)todayStart.DayOfWeek);
+
+    var todayEarnings = await db.Runs
+        .Where(r => r.RunnerId == runner.Id && r.Status == "settled" && r.SettledAt >= todayStart)
+        .SumAsync(r => r.ActualPayoutCents);
+
+    var weekEarnings = await db.Runs
+        .Where(r => r.RunnerId == runner.Id && r.Status == "settled" && r.SettledAt >= weekStart)
+        .SumAsync(r => r.ActualPayoutCents);
+
+    return Results.Ok(new
+    {
+        runner.LifetimeEarningsCents,
+        todayEarnings,
+        weekEarnings,
+        runner.TotalRuns,
+        runner.TotalContainersCollected,
+        runner.Rating,
+        runner.Level,
+        runner.CurrentStreakDays,
+        runner.LongestStreakDays,
+        runner.EfficiencyScore,
+        runner.Badges,
+    });
+});
+
+// ── Gamification: Leaderboard ──
+app.MapGet("/api/runner/leaderboard", async (string? period, int? limit, RunnerService runnerService) =>
+    Results.Ok(await runnerService.GetLeaderboard(period ?? "all", limit ?? 20)));
+
+// ── Admin: Pricing config ──
+app.MapGet("/api/admin/pricing", async (PricingService pricing) =>
+    Results.Ok(await pricing.GetActiveConfig())).RequireAuthorization();
+
+app.MapPatch("/api/admin/pricing", async (PricingConfig update, GoodSortDbContext db) =>
+{
+    var config = await db.PricingConfigs.FirstOrDefaultAsync(pc => pc.IsActive);
+    if (config is null) return Results.NotFound();
+    // Update individual fields
+    config.FloorCents = update.FloorCents;
+    config.CeilingCents = update.CeilingCents;
+    config.BaseCents = update.BaseCents;
+    config.MorningSurge = update.MorningSurge;
+    config.NightDiscount = update.NightDiscount;
+    config.GoldBonus = update.GoldBonus;
+    config.PlatinumBonus = update.PlatinumBonus;
+    config.AluminiumSpotCents = update.AluminiumSpotCents;
+    config.PetSpotCents = update.PetSpotCents;
+    config.GlassSpotCents = update.GlassSpotCents;
+    config.UpdatedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync();
+    return Results.Ok(config);
+}).RequireAuthorization();
+
+// ── Admin: Simulate pricing for a run ──
+app.MapPost("/api/admin/pricing/simulate", async (PricingSimulateRequest req, PricingService pricing) =>
+{
+    var simulatedRun = new Run
+    {
+        EstimatedContainers = req.Containers,
+        EstimatedDistanceKm = req.DistanceKm,
+        Materials = new MaterialBreakdown
+        {
+            Aluminium = (int)(req.Containers * 0.4),
+            Pet = (int)(req.Containers * 0.3),
+            Glass = (int)(req.Containers * 0.2),
+            Other = (int)(req.Containers * 0.1),
+        },
+    };
+    // Add fake stops for density calculation
+    for (var i = 0; i < req.StopCount; i++)
+        simulatedRun.Stops.Add(new RunStop());
+
+    var result = await pricing.CalculateRate(simulatedRun);
+    return Results.Ok(result);
+}).RequireAuthorization();
+
+// ── Admin: All marketplace runs ──
+app.MapGet("/api/admin/marketplace/runs", async (string? status, GoodSortDbContext db) =>
+{
+    var q = db.Runs.Include(r => r.Stops).Include(r => r.Runner).AsQueryable();
+    if (!string.IsNullOrEmpty(status)) q = q.Where(r => r.Status == status);
+    return Results.Ok(await q.OrderByDescending(r => r.CreatedAt).Take(100).ToListAsync());
+}).RequireAuthorization();
+
 app.Run();
+
+// ── Haversine helper ──
+static double HaversineKm(double lat1, double lng1, double lat2, double lng2)
+{
+    const double R = 6371.0;
+    var dLat = (lat2 - lat1) * Math.PI / 180;
+    var dLng = (lng2 - lng1) * Math.PI / 180;
+    var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+            Math.Cos(lat1 * Math.PI / 180) * Math.Cos(lat2 * Math.PI / 180) *
+            Math.Sin(dLng / 2) * Math.Sin(dLng / 2);
+    return R * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+}
 
 record ProfileUpdateRequest(string? Name, Guid? HouseholdId);
 record CashoutRequestDto(Guid UserId, int AmountCents, string Bsb, string AccountNumber, string AccountName);
@@ -551,3 +1040,9 @@ record VerifyOtpRequest(string Email, string Code);
 record ScanRequest(Guid UserId, string Barcode, string ContainerName, string Material);
 record ClaimRequest(Guid DriverId);
 record PickupRequest(int ActualCount);
+record RunnerRegisterRequest(Guid ProfileId, string? VehicleType, int? CapacityBags, double? ServiceRadiusKm);
+record RunnerProfileUpdateRequest(string? VehicleType, int? CapacityBags, double? ServiceRadiusKm);
+record RunnerHeartbeatRequest(Guid ProfileId, double Lat, double Lng, bool IsOnline);
+record MarketplaceClaimRequest(Guid ProfileId);
+record RunStopPickupRequest(int ActualContainers, string? PhotoUrl);
+record PricingSimulateRequest(int Containers, double DistanceKm, int StopCount);

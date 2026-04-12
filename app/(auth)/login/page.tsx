@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ScanBarcode } from "lucide-react";
 import { apiUrl } from "@/lib/config";
+import { Logo } from "@/app/components/shared/logo";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -42,10 +42,9 @@ export default function LoginPage() {
     <div className="h-dvh bg-white flex flex-col items-center justify-center px-6">
       <div className="w-full max-w-sm">
         <div className="text-center mb-10">
-          <div className="w-16 h-16 bg-green-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-green-600/20">
-            <ScanBarcode className="w-8 h-8 text-white" />
+          <div className="flex justify-center mb-4">
+            <Logo size="lg" />
           </div>
-          <h1 className="text-2xl font-display font-extrabold text-slate-900">The Good Sort</h1>
           <p className="text-slate-400 text-[13px] mt-1">Scan. Sort. Earn sorting credits.</p>
         </div>
 

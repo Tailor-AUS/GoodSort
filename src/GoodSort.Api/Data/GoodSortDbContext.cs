@@ -16,6 +16,11 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
     public DbSet<OtpCode> OtpCodes => Set<OtpCode>();
     public DbSet<Collection> Collections => Set<Collection>();
     public DbSet<CashoutRequest> CashoutRequests => Set<CashoutRequest>();
+    public DbSet<RunnerProfile> RunnerProfiles => Set<RunnerProfile>();
+    public DbSet<Run> Runs => Set<Run>();
+    public DbSet<RunStop> RunStops => Set<RunStop>();
+    public DbSet<RunnerRating> RunnerRatings => Set<RunnerRating>();
+    public DbSet<PricingConfig> PricingConfigs => Set<PricingConfig>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -130,6 +135,94 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
 
             e.HasIndex(s => s.BinId);
             e.HasIndex(s => s.BinCode);
+        });
+
+        // RunnerProfile
+        modelBuilder.Entity<RunnerProfile>(e =>
+        {
+            e.HasOne(rp => rp.Profile)
+                .WithOne()
+                .HasForeignKey<RunnerProfile>(rp => rp.ProfileId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.Property(rp => rp.Badges)
+                .HasConversion(
+                    v => string.Join(',', v),
+                    v => v.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList()
+                );
+
+            e.HasIndex(rp => rp.ProfileId).IsUnique();
+            e.HasIndex(rp => rp.IsOnline);
+            e.HasIndex(rp => rp.Level);
+        });
+
+        // Run
+        modelBuilder.Entity<Run>(e =>
+        {
+            e.HasOne(r => r.Runner)
+                .WithMany(rp => rp.Runs)
+                .HasForeignKey(r => r.RunnerId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            e.HasOne(r => r.DropPoint)
+                .WithMany()
+                .HasForeignKey(r => r.DropPointId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            e.HasOne(r => r.Rating)
+                .WithOne(rr => rr.Run)
+                .HasForeignKey<RunnerRating>(rr => rr.RunId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.OwnsOne(r => r.Materials, b => b.ToJson());
+
+            e.HasIndex(r => r.Status);
+            e.HasIndex(r => r.RunnerId);
+            e.HasIndex(r => new { r.CentroidLat, r.CentroidLng });
+            e.HasIndex(r => r.ExpiresAt);
+        });
+
+        // RunStop
+        modelBuilder.Entity<RunStop>(e =>
+        {
+            e.HasOne(s => s.Run)
+                .WithMany(r => r.Stops)
+                .HasForeignKey(s => s.RunId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(s => s.Bin)
+                .WithMany()
+                .HasForeignKey(s => s.BinId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            e.OwnsOne(s => s.Materials, b => b.ToJson());
+
+            e.HasIndex(s => s.RunId);
+            e.HasIndex(s => s.Status);
+        });
+
+        // RunnerRating
+        modelBuilder.Entity<RunnerRating>(e =>
+        {
+            e.HasOne(rr => rr.Runner)
+                .WithMany()
+                .HasForeignKey(rr => rr.RunnerId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            e.HasIndex(rr => rr.RunnerId);
+        });
+
+        // PricingConfig
+        modelBuilder.Entity<PricingConfig>(e =>
+        {
+            e.HasIndex(pc => pc.IsActive);
+        });
+
+        // Seed default pricing config (static CreatedAt)
+        modelBuilder.Entity<PricingConfig>().HasData(new PricingConfig
+        {
+            Id = Guid.Parse("00000000-0000-0000-0000-000000000010"),
+            CreatedAt = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc),
         });
 
         // Seed default depot (static CreatedAt to avoid PendingModelChangesWarning)
