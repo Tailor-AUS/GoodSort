@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Package, Leaf, Truck, Wallet, LogOut, DollarSign, CheckCircle } from "lucide-react";
+import { X, Package, Leaf, Truck, Wallet, LogOut, DollarSign, CheckCircle, Share2, Users, Gift } from "lucide-react";
 import { apiUrl } from "@/lib/config";
 import { formatCents, type User } from "@/lib/store";
 
@@ -90,6 +90,8 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
 
           <CashoutSection clearedCents={user.clearedCents} />
 
+          <InviteFriends user={user} />
+
           <button
             onClick={() => {
               localStorage.removeItem("goodsort_token");
@@ -114,6 +116,64 @@ function StatCard({ icon: Icon, label, value }: { icon: React.ElementType; label
       <Icon className="w-4 h-4 text-green-600/60 mx-auto mb-1.5" />
       <p className="text-base font-display font-extrabold text-slate-900">{value}</p>
       <p className="text-[9px] text-slate-400 uppercase tracking-[0.15em] mt-0.5">{label}</p>
+    </div>
+  );
+}
+
+function InviteFriends({ user }: { user: User }) {
+  const [copied, setCopied] = useState(false);
+  const [shared, setShared] = useState(false);
+
+  const inviteUrl = "https://www.thegoodsort.org/start";
+  const inviteText = user.totalContainers > 0
+    ? `I've recycled ${user.totalContainers} container${user.totalContainers !== 1 ? "s" : ""} and earned ${formatCents(user.pendingCents + user.clearedCents)} with The Good Sort! Scan your cans and bottles, earn 5c each. Join me:`
+    : "I just joined The Good Sort — scan your empty cans and bottles to earn 5c each. Give it a go:";
+
+  async function handleShare() {
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({
+          title: "Join The Good Sort",
+          text: inviteText,
+          url: inviteUrl,
+        });
+        setShared(true);
+        setTimeout(() => setShared(false), 3000);
+      } catch {
+        // User cancelled share — that's fine
+      }
+    } else {
+      handleCopy();
+    }
+  }
+
+  function handleCopy() {
+    navigator.clipboard?.writeText(`${inviteText} ${inviteUrl}`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="mt-5 bg-green-50 border border-green-200 rounded-xl p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <Users className="w-4 h-4 text-green-600" />
+        <p className="text-[13px] font-bold text-green-800">Invite Friends</p>
+      </div>
+      <p className="text-[12px] text-green-700/70 mb-3">
+        Get your mates sorting! Share The Good Sort and help keep QLD clean.
+      </p>
+      <button
+        onClick={handleShare}
+        className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-bold py-3 rounded-xl text-[13px] shadow-lg shadow-green-600/20 min-h-[44px] active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
+      >
+        {shared ? (
+          <><CheckCircle className="w-4 h-4" /> Shared!</>
+        ) : copied ? (
+          <><CheckCircle className="w-4 h-4" /> Copied!</>
+        ) : (
+          <><Share2 className="w-4 h-4" /> Invite Friends</>
+        )}
+      </button>
     </div>
   );
 }
