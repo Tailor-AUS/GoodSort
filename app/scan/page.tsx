@@ -40,6 +40,7 @@ function ScanPageContent() {
   const [results, setResults] = useState<IdentifiedItem[]>([]);
   const [aiMessage, setAiMessage] = useState("");
   const [totalItems, setTotalItems] = useState(0);
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
 
   // ── Init ──
   useEffect(() => {
@@ -144,7 +145,9 @@ function ScanPageContent() {
     ctx.drawImage(video, 0, 0);
     stopCamera();
 
-    const base64 = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+    setCapturedImage(dataUrl);
+    const base64 = dataUrl.split(",")[1];
     await analyzeImage(base64);
   }
 
@@ -157,7 +160,9 @@ function ScanPageContent() {
 
     const reader = new FileReader();
     reader.onload = async () => {
-      const base64 = (reader.result as string).split(",")[1];
+      const dataUrl = reader.result as string;
+      setCapturedImage(dataUrl);
+      const base64 = dataUrl.split(",")[1];
       await analyzeImage(base64);
     };
     reader.readAsDataURL(file);
@@ -278,13 +283,41 @@ function ScanPageContent() {
     </Center>
   );
 
-  // Analyzing
+  // Analyzing — show captured image with scan effect
   if (step === "analyzing") return (
-    <div className="fixed inset-0 bg-black flex items-center justify-center z-50">
-      <div className="text-center">
-        <Camera className="w-10 h-10 text-green-400 animate-pulse mx-auto mb-3" />
-        <p className="text-white text-lg font-display font-bold">Identifying...</p>
-      </div>
+    <div className="fixed inset-0 bg-black flex flex-col items-center justify-center z-50">
+      {capturedImage ? (
+        <div className="relative w-[85vw] max-w-sm aspect-[3/4] rounded-2xl overflow-hidden shadow-2xl">
+          {/* The photo they took */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={capturedImage} alt="Scanning" className="w-full h-full object-cover" />
+
+          {/* Dark overlay */}
+          <div className="absolute inset-0 bg-black/30" />
+
+          {/* Scanning line animation */}
+          <div className="absolute inset-x-0 h-[3px] bg-gradient-to-r from-transparent via-green-400 to-transparent shadow-[0_0_15px_rgba(74,222,128,0.6)] animate-scan-line" />
+
+          {/* Corner brackets */}
+          <div className="absolute top-4 left-4 w-8 h-8 border-t-2 border-l-2 border-green-400 rounded-tl-lg" />
+          <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-green-400 rounded-tr-lg" />
+          <div className="absolute bottom-4 left-4 w-8 h-8 border-b-2 border-l-2 border-green-400 rounded-bl-lg" />
+          <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-green-400 rounded-br-lg" />
+
+          {/* Status text */}
+          <div className="absolute bottom-8 inset-x-0 text-center">
+            <div className="inline-flex items-center gap-2 bg-black/60 backdrop-blur-sm rounded-full px-4 py-2">
+              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+              <p className="text-white text-[13px] font-semibold">Identifying containers...</p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="text-center">
+          <Camera className="w-10 h-10 text-green-400 animate-pulse mx-auto mb-3" />
+          <p className="text-white text-lg font-display font-bold">Identifying...</p>
+        </div>
+      )}
     </div>
   );
 
