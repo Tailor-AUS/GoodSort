@@ -129,7 +129,7 @@ export default function StartPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-white flex flex-col overflow-y-auto overscroll-none" style={{ paddingTop: "env(safe-area-inset-top,0)", paddingBottom: "env(safe-area-inset-bottom,0)" }}>
+    <div className="min-h-dvh bg-white flex flex-col overflow-y-auto overscroll-none" style={{ paddingTop: "env(safe-area-inset-top,0)", paddingBottom: "max(env(safe-area-inset-bottom,0px), 1rem)" }}>
       {/* Progress bar */}
       {stepNum > 0 && (
         <div className="px-6 pt-4">
@@ -155,6 +155,7 @@ export default function StartPage() {
                 <p className="text-slate-400 text-[14px]">Turn your empty cans and bottles into cash</p>
               </div>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter your email"
+                onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}
                 className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 mb-3" autoFocus />
               {authError && <p className="text-red-500 text-[12px] mb-2">{authError}</p>}
               <GreenButton onClick={sendOtp} disabled={authLoading || !email.includes("@")}>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Camera, MapPin, RotateCcw, Check, Mail, ShieldCheck, ImagePlus } from "lucide-react";
+import { Camera, MapPin, RotateCcw, Check, Mail, ShieldCheck, ImagePlus, X, Home } from "lucide-react";
 import { apiUrl } from "@/lib/config";
 import { BAGS, getBagForMaterial, mapToMaterialType } from "@/lib/store";
 
@@ -38,6 +38,7 @@ function ScanPageContent() {
 
   // Results
   const [results, setResults] = useState<IdentifiedItem[]>([]);
+  const [aiMessage, setAiMessage] = useState("");
   const [totalItems, setTotalItems] = useState(0);
 
   // ── Init ──
@@ -175,6 +176,7 @@ function ScanPageContent() {
       if (!res.ok) throw new Error("API error");
       const data = await res.json();
       setResults(data.containers || []);
+      setAiMessage(data.message || "");
     } catch {
       setResults([]);
       setApiError(true);
@@ -218,6 +220,7 @@ function ScanPageContent() {
       <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">Enter your email</h1>
       <p className="text-slate-400 text-[13px] mb-6">To track your sorting credits</p>
       <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
+        onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}
         className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 mb-3" autoFocus />
       {authError && <p className="text-red-500 text-[12px] mb-2">{authError}</p>}
       <GreenButton onClick={sendOtp} disabled={authLoading || !email.includes("@")}>
@@ -253,8 +256,25 @@ function ScanPageContent() {
       <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">
         {totalItems > 0 ? "Sorting credit earned!" : "Done!"}
       </h1>
-      <p className="text-slate-500 text-[13px]">{totalItems} container{totalItems !== 1 ? "s" : ""} sorted{bin ? ` at ${bin.name}` : ""}</p>
-      <GreenButton onClick={retake}>Sort More</GreenButton>
+      <p className="text-slate-500 text-[13px] mb-4">{totalItems} container{totalItems !== 1 ? "s" : ""} sorted{bin ? ` at ${bin.name}` : ""}</p>
+
+      {totalItems > 0 && (
+        <div className="bg-green-50 rounded-2xl p-4 border border-green-200 mb-4 text-left">
+          <p className="text-[12px] font-bold text-green-800 mb-2">How you get paid:</p>
+          <div className="space-y-1.5 text-[12px] text-green-700">
+            <p>1. Keep sorting — earn 5c per container</p>
+            <p>2. Credits add up in your account</p>
+            <p>3. Cash out at $20 via bank transfer</p>
+            <p>4. We collect your sorted containers for free</p>
+          </div>
+        </div>
+      )}
+
+      <GreenButton onClick={retake}>Scan Another</GreenButton>
+      <button onClick={() => window.location.href = "/"}
+        className="w-full mt-2 py-3 text-slate-400 font-medium text-[13px] hover:text-slate-600 transition-colors">
+        Go Home
+      </button>
     </Center>
   );
 
@@ -280,13 +300,15 @@ function ScanPageContent() {
             {apiError ? "Connection error" : total > 0 ? `Sort ${total} container${total !== 1 ? "s" : ""}` : "No containers found"}
           </h2>
           {apiError && <p className="text-red-500 text-[12px] mt-1">Could not reach the server. Check your connection and try again.</p>}
+          {aiMessage && !apiError && <p className="text-slate-500 text-[13px] mt-1">{aiMessage}</p>}
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-3">
           {eligible.length === 0 && !apiError && (
             <div className="text-center py-12">
               <Camera className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-slate-400 text-[13px]">No containers detected. Try better lighting.</p>
+              <p className="text-slate-500 text-[15px] font-semibold mb-2">{aiMessage || "No containers detected"}</p>
+              {!aiMessage && <p className="text-slate-400 text-[13px]">Try a clearer photo with better lighting</p>}
             </div>
           )}
 
@@ -330,11 +352,17 @@ function ScanPageContent() {
               style={{ touchAction: "manipulation" }}>
               <RotateCcw className="w-4 h-4" /> Retake
             </button>
-            {total > 0 && (
+            {total > 0 ? (
               <button onClick={confirm}
                 className="flex-[2] bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20 flex items-center justify-center gap-2 min-h-[48px]"
                 style={{ touchAction: "manipulation" }}>
                 <Check className="w-5 h-5" /> Done &middot; +{total * 5}c
+              </button>
+            ) : (
+              <button onClick={() => window.location.href = "/"}
+                className="flex-1 py-3.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-[13px] flex items-center justify-center gap-2 min-h-[48px]"
+                style={{ touchAction: "manipulation" }}>
+                <Home className="w-4 h-4" /> Home
               </button>
             )}
           </div>
@@ -371,32 +399,38 @@ function ScanPageContent() {
       {/* Bottom controls — always visible */}
       <div className="flex-shrink-0 bg-black" style={{ paddingBottom: "max(20px, env(safe-area-inset-bottom, 20px))" }}>
         <div className="flex items-center justify-center gap-6 py-4">
-          {/* File input — always available as fallback */}
-          <label className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center cursor-pointer"
-            style={{ touchAction: "manipulation" }}>
-            <ImagePlus className="w-5 h-5 text-white/60" />
+          {/* File input — always available, primary when camera not ready */}
+          <label className={`rounded-full flex items-center justify-center cursor-pointer transition-all ${
+            !cameraReady ? "w-[72px] h-[72px] bg-green-500 shadow-lg" : "w-12 h-12 bg-white/10"
+          }`} style={{ touchAction: "manipulation" }}>
+            <ImagePlus className={`${!cameraReady ? "w-8 h-8 text-white" : "w-5 h-5 text-white/60"}`} />
             <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileCapture} />
           </label>
 
-          {/* Main capture button */}
-          <button
-            onClick={capture}
-            disabled={!cameraReady}
-            className="rounded-full bg-white active:scale-90 transition-transform disabled:opacity-40"
-            style={{ width: "72px", height: "72px", border: "4px solid rgba(255,255,255,0.4)", touchAction: "manipulation" }}
-          />
+          {/* Main capture button — only when camera is live */}
+          {cameraReady && (
+            <button
+              onClick={capture}
+              className="rounded-full bg-white active:scale-90 transition-transform"
+              style={{ width: "72px", height: "72px", border: "4px solid rgba(255,255,255,0.4)", touchAction: "manipulation" }}
+            />
+          )}
 
-          {/* Spacer for symmetry */}
-          <div className="w-12 h-12" />
+          {/* Home button */}
+          <button onClick={() => window.location.href = "/"}
+            className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center"
+            style={{ touchAction: "manipulation" }}>
+            <X className="w-5 h-5 text-white/60" />
+          </button>
         </div>
 
         {/* Status text */}
         <p className="text-white/30 text-[12px] text-center pb-1">
           {cameraDenied
-            ? "Camera blocked — tap the gallery icon instead"
+            ? "Camera blocked — tap the green button to use your photo gallery"
             : cameraReady
-            ? "Tap the button to capture"
-            : "Starting camera..."}
+            ? "Tap the white button to capture, or use the gallery"
+            : "Tap the green button to take a photo"}
         </p>
       </div>
     </div>
@@ -406,7 +440,7 @@ function ScanPageContent() {
 // ── Shared ──
 
 function Center({ children }: { children: React.ReactNode }) {
-  return <div className="min-h-dvh bg-white flex flex-col items-center justify-center px-6"><div className="w-full max-w-sm text-center">{children}</div></div>;
+  return <div className="min-h-dvh bg-white flex flex-col items-center justify-center px-6 overflow-y-auto"><div className="w-full max-w-sm text-center py-8">{children}</div></div>;
 }
 
 function IconBubble({ children }: { children: React.ReactNode }) {

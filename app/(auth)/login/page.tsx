@@ -39,7 +39,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="h-dvh bg-white flex flex-col items-center justify-center px-6">
+    <div className="min-h-dvh bg-white flex flex-col items-center justify-center px-6 overflow-y-auto">
       <div className="w-full max-w-sm">
         <div className="text-center mb-10">
           <div className="flex justify-center mb-4">
@@ -57,6 +57,7 @@ export default function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               className="w-full border border-slate-200 rounded-xl px-4 py-3 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+              onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}
               required
               autoFocus
             />
