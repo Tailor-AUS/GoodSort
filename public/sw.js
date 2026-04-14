@@ -1,21 +1,29 @@
 // The Good Sort — Service Worker
 // Handles push notifications. NO caching — network only.
+// Version changes on each deploy to force SW update.
+const SW_VERSION = "20260413-0610";
 
-self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("install", () => {
+  console.log("[SW] Installing version", SW_VERSION);
+  self.skipWaiting();
+});
 
 self.addEventListener("activate", (event) => {
+  console.log("[SW] Activating version", SW_VERSION);
   event.waitUntil(
     caches.keys()
       .then((names) => Promise.all(names.map((n) => caches.delete(n))))
       .then(() => self.clients.claim())
-      .then(() => {
-        // Tell all open tabs to reload so they get fresh code
-        return self.clients.matchAll({ type: "window" });
-      })
+      .then(() => self.clients.matchAll({ type: "window" }))
       .then((clients) => {
-        clients.forEach((client) => client.postMessage({ type: "SW_UPDATED" }));
+        clients.forEach((client) => client.postMessage({ type: "SW_UPDATED", version: SW_VERSION }));
       })
   );
+});
+
+// Intercept ALL fetches — always go to network, never serve from cache
+self.addEventListener("fetch", (event) => {
+  event.respondWith(fetch(event.request));
 });
 
 // Push notifications

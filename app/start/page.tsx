@@ -25,6 +25,7 @@ export default function StartPage() {
 
   // First sort
   const [results, setResults] = useState<IdentifiedItem[]>([]);
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
 
   // Progress
   const stepNum = { email: 0, verify: 0, bins: 1, labels: 2, firstsort: 3, analyzing: 3, sortresult: 3, done: 4 }[step];
@@ -112,7 +113,9 @@ export default function StartPage() {
     canvas.getContext("2d")!.drawImage(video, 0, 0);
     stopCamera();
 
-    const base64 = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+    setCapturedImage(dataUrl);
+    const base64 = dataUrl.split(",")[1];
 
     try {
       const res = await fetch(apiUrl("/api/scan/photo"), {
@@ -301,10 +304,30 @@ export default function StartPage() {
 
           {/* ═══ ANALYZING ═══ */}
           {step === "analyzing" && (
-            <div className="text-center py-12">
-              <Camera className="w-12 h-12 text-green-400 animate-pulse mx-auto mb-4" />
-              <p className="text-xl font-display font-extrabold text-slate-900">Identifying...</p>
-              <p className="text-slate-400 text-[12px] mt-1">Our AI is figuring out what you've got</p>
+            <div className="fixed inset-0 bg-black flex items-center justify-center z-50">
+              {capturedImage ? (
+                <div className="relative w-[85vw] max-w-sm aspect-[3/4] rounded-2xl overflow-hidden shadow-2xl">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={capturedImage} alt="Scanning" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/30" />
+                  <div className="absolute inset-x-0 h-[3px] bg-gradient-to-r from-transparent via-green-400 to-transparent shadow-[0_0_15px_rgba(74,222,128,0.6)] animate-scan-line" />
+                  <div className="absolute top-4 left-4 w-8 h-8 border-t-2 border-l-2 border-green-400 rounded-tl-lg" />
+                  <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-green-400 rounded-tr-lg" />
+                  <div className="absolute bottom-4 left-4 w-8 h-8 border-b-2 border-l-2 border-green-400 rounded-bl-lg" />
+                  <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-green-400 rounded-br-lg" />
+                  <div className="absolute bottom-8 inset-x-0 text-center">
+                    <div className="inline-flex items-center gap-2 bg-black/60 backdrop-blur-sm rounded-full px-4 py-2">
+                      <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                      <p className="text-white text-[13px] font-semibold">Identifying containers...</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center">
+                  <Camera className="w-10 h-10 text-green-400 animate-pulse mx-auto mb-3" />
+                  <p className="text-white text-lg font-display font-bold">Identifying...</p>
+                </div>
+              )}
             </div>
           )}
 
