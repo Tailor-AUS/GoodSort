@@ -1,18 +1,18 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
-// SQL Server (Docker locally, Azure SQL in production)
-var sql = builder.AddSqlServer("sql")
-    .AddDatabase("goodsortdb");
-
-// .NET API
+// SQL Server — local Docker container in dev only.
+// In production the API reads the connection string for "goodsortdb" from
+// the ConnectionStrings__goodsortdb env var (Azure SQL in rg-goodsort-prod),
+// so we don't want Aspire provisioning a SQL container app in Azure.
 var api = builder.AddProject<Projects.GoodSort_Api>("api")
-    .WithReference(sql)
-    .WaitFor(sql)
     .WithExternalHttpEndpoints();
 
-// Next.js frontend (local dev only — production runs on Vercel)
 if (builder.ExecutionContext.IsRunMode)
 {
+    var sql = builder.AddSqlServer("sql").AddDatabase("goodsortdb");
+    api.WithReference(sql).WaitFor(sql);
+
+    // Next.js frontend (local dev only — production runs on Azure Static Web Apps)
     builder.AddNpmApp("frontend", "../../", "dev")
         .WithHttpEndpoint(env: "PORT")
         .WithExternalHttpEndpoints()
