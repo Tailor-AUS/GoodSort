@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { type User, type SortBin, type Depot, type BagInfo } from "@/lib/store";
 import { getUserApi, getDepotsApi, getBinsApi } from "@/lib/store-api";
 import { getOrCreateDefaultUser, getDepots } from "@/lib/store";
@@ -11,6 +12,7 @@ import { AccountButton } from "@/app/components/shared/account-button";
 import { AccountPanel } from "@/app/components/shared/account-panel";
 
 export default function SorterApp() {
+  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [bins, setBins] = useState<SortBin[]>([]);
@@ -33,8 +35,16 @@ export default function SorterApp() {
   }, []);
 
   useEffect(() => {
-    refreshData().then(() => setLoading(false));
-  }, [refreshData]);
+    refreshData().then(() => {
+      // Enforce address capture — users without a household finish onboarding
+      const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
+      if (profile.id && !profile.householdId) {
+        router.push("/onboard");
+        return;
+      }
+      setLoading(false);
+    });
+  }, [refreshData, router]);
 
   const handleScanComplete = useCallback(
     (containerName: string, cents: number, bag: BagInfo) => {

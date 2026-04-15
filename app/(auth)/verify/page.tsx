@@ -25,10 +25,11 @@ export default function VerifyPage() {
     setLoading(true);
 
     try {
+      const referrerId = (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("r") || sessionStorage.getItem("goodsort_referrer") : null) || undefined;
       const res = await fetch(apiUrl("/api/auth/verify-otp"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, code: otp }),
+        body: JSON.stringify({ email, code: otp, referrerId }),
       });
 
       if (!res.ok) {

@@ -126,7 +126,7 @@ app.MapPost("/api/auth/send-otp", async (SendOtpRequest req, AuthService auth) =
 app.MapPost("/api/auth/verify-otp", async (VerifyOtpRequest req, AuthService auth) =>
 {
     var email = req.Email.Trim().ToLower();
-    var (token, profile) = await auth.VerifyOtp(email, req.Code);
+    var (token, profile) = await auth.VerifyOtp(email, req.Code, req.ReferrerId);
     if (token == null) return Results.Unauthorized();
     return Results.Ok(new { token, profile });
 });
@@ -173,10 +173,17 @@ app.MapGet("/api/bins/{id:guid}/qr", (Guid id, GoodSortDbContext db) =>
 });
 
 // ── Photo Scan (Azure OpenAI Vision) ──
-app.MapPost("/api/scan/photo", async (PhotoScanRequest req, VisionService vision, GoodSortDbContext db) =>
+app.MapPost("/api/scan/photo", async (PhotoScanRequest req, VisionService vision, GoodSortDbContext db, IConfiguration cfg) =>
 {
     if (string.IsNullOrEmpty(req.Image))
         return Results.BadRequest(new { error = "No image provided" });
+
+    // Cost guardrail — cap daily vision API calls (default 2000/day).
+    var dailyCap = int.TryParse(cfg["VISION_DAILY_CAP"], out var c) ? c : 2000;
+    var since = DateTime.UtcNow.AddHours(-24);
+    var callsToday = await db.VisionCalls.CountAsync(v => v.CreatedAt >= since);
+    if (callsToday >= dailyCap)
+        return Results.StatusCode(429);
 
     // Strip data URL prefix if present
     var base64 = req.Image;
@@ -551,9 +558,21 @@ app.MapGet("/api/admin/stats", async (GoodSortDbContext db) =>
     var visionOpenAi = await db.VisionCalls.CountAsync(v => v.Provider == "openai" && v.Success);
     var visionFailed = await db.VisionCalls.CountAsync(v => !v.Success);
 
+    // Retention / activation
+    var activatedUsers = await db.Profiles.CountAsync(p => p.TotalContainers > 0);
+    var householdsWithAddress = await db.Households.CountAsync(h => h.Lat != 0 && h.Lng != 0);
+    var runnersRegistered = await db.RunnerProfiles.CountAsync();
+
     return Results.Ok(new
     {
         users, bins, scans, routes, totalContainers, totalPending, totalCleared,
+        activation = new
+        {
+            activatedUsers,
+            activationPct = users > 0 ? Math.Round(100.0 * activatedUsers / users, 1) : 0,
+            householdsWithAddress,
+            runnersRegistered,
+        },
         vision = new
         {
             total = visionTotal,
@@ -587,6 +606,32 @@ app.MapPatch("/api/profiles/{id:guid}", async (Guid id, ProfileUpdateRequest req
     return Results.Ok(profile);
 });
 
+// ── Profile DELETE — full account wipe (GDPR / privacy-policy right-to-erasure) ──
+app.MapDelete("/api/profiles/{id:guid}", async (Guid id, GoodSortDbContext db) =>
+{
+    var profile = await db.Profiles.Include(p => p.Scans).Include(p => p.Collections).FirstOrDefaultAsync(p => p.Id == id);
+    if (profile is null) return Results.NotFound();
+
+    db.Scans.RemoveRange(profile.Scans);
+    db.Collections.RemoveRange(profile.Collections);
+
+    // Null out runner claims so runs aren't orphaned
+    var claimedRoutes = await db.Routes.Where(r => r.DriverId == id).ToListAsync();
+    foreach (var r in claimedRoutes) r.DriverId = null;
+
+    var runnerProfile = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == id);
+    if (runnerProfile != null) db.RunnerProfiles.Remove(runnerProfile);
+
+    // Expire OTPs
+    var otps = await db.OtpCodes.Where(o => o.Email == profile.Email).ToListAsync();
+    db.OtpCodes.RemoveRange(otps);
+
+    db.Profiles.Remove(profile);
+    await db.SaveChangesAsync();
+    return Results.Ok(new { deleted = true });
+}).RequireAuthorization();
+
+
 // ══════════════════════════════════════════════════════════════════════
 // ── RUNNER MARKETPLACE ──
 // ══════════════════════════════════════════════════════════════════════
@@ -604,6 +649,8 @@ app.MapPost("/api/runner/register", async (RunnerRegisterRequest req, GoodSortDb
     {
         ProfileId = profile.Id,
         VehicleType = req.VehicleType ?? "car",
+        VehicleMake = req.VehicleMake ?? "",
+        VehicleRego = req.VehicleRego ?? "",
         CapacityBags = req.CapacityBags ?? 10,
         ServiceRadiusKm = req.ServiceRadiusKm ?? 10.0,
     };
@@ -978,11 +1025,11 @@ record PhotoScanRequest(string Image, string? BinCode = null);
 record PhotoConfirmRequest(Guid UserId, List<PhotoConfirmItem> Items, string? BinCode = null);
 record PhotoConfirmItem(string Name, string Material, int Count, bool Eligible);
 record SendOtpRequest(string Email);
-record VerifyOtpRequest(string Email, string Code);
+record VerifyOtpRequest(string Email, string Code, Guid? ReferrerId = null);
 record ScanRequest(Guid UserId, string Barcode, string ContainerName, string Material);
 record ClaimRequest(Guid DriverId);
 record PickupRequest(int ActualCount);
-record RunnerRegisterRequest(Guid ProfileId, string? VehicleType, int? CapacityBags, double? ServiceRadiusKm);
+record RunnerRegisterRequest(Guid ProfileId, string? VehicleType, string? VehicleMake, string? VehicleRego, int? CapacityBags, double? ServiceRadiusKm);
 record RunnerProfileUpdateRequest(string? VehicleType, int? CapacityBags, double? ServiceRadiusKm);
 record RunnerHeartbeatRequest(Guid ProfileId, double Lat, double Lng, bool IsOnline);
 record MarketplaceClaimRequest(Guid ProfileId);

@@ -14,6 +14,7 @@ public class Profile
     public int TotalContainers { get; set; }
     public double TotalCo2SavedKg { get; set; }
     public List<string> Badges { get; set; } = [];
+    public Guid? ReferrerId { get; set; } // ID of the user who invited this one
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public ICollection<Scan> Scans { get; set; } = [];

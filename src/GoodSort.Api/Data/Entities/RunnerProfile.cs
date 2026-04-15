@@ -8,6 +8,8 @@ public class RunnerProfile
 
     // Vehicle & capacity
     public string VehicleType { get; set; } = "car"; // car, bike, walk
+    public string VehicleMake { get; set; } = "";
+    public string VehicleRego { get; set; } = "";
     public int CapacityBags { get; set; } = 10;
     public double ServiceRadiusKm { get; set; } = 10.0;
 

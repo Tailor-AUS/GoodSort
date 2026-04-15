@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { X, Package, Leaf, Truck, Wallet, LogOut, DollarSign, CheckCircle, Share2, Users, Gift } from "lucide-react";
+import Link from "next/link";
+import { X, Package, Leaf, Truck, Wallet, LogOut, DollarSign, CheckCircle, Share2, Users, Gift, Trash2, Car } from "lucide-react";
 import { apiUrl } from "@/lib/config";
 import { formatCents, type User } from "@/lib/store";
 
@@ -92,6 +93,12 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
 
           <InviteFriends user={user} />
 
+          <Link href="/runner/signup"
+            className="mt-3 w-full text-slate-600 hover:text-slate-900 font-medium py-3 rounded-xl text-[13px] transition-colors flex items-center justify-center gap-2">
+            <Car className="w-4 h-4" />
+            Become a Runner
+          </Link>
+
           <button
             onClick={() => {
               localStorage.removeItem("goodsort_token");
@@ -99,10 +106,34 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
               document.cookie = "goodsort_token=; path=/; max-age=0";
               window.location.href = "/login";
             }}
-            className="mt-3 w-full text-red-500 hover:text-red-600 font-medium py-3 rounded-xl text-[13px] transition-colors flex items-center justify-center gap-2"
+            className="mt-3 w-full text-slate-500 hover:text-slate-900 font-medium py-3 rounded-xl text-[13px] transition-colors flex items-center justify-center gap-2"
           >
             <LogOut className="w-4 h-4" />
             Log Out
+          </button>
+
+          <button
+            onClick={async () => {
+              if (!confirm("Permanently delete your account, all scans and earnings? This cannot be undone.")) return;
+              const token = localStorage.getItem("goodsort_token");
+              const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
+              if (!profile.id || !token) return;
+              const res = await fetch(apiUrl(`/api/profiles/${profile.id}`), {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              if (res.ok) {
+                localStorage.clear();
+                document.cookie = "goodsort_token=; path=/; max-age=0";
+                window.location.href = "/";
+              } else {
+                alert("Failed to delete account. Please try again.");
+              }
+            }}
+            className="w-full text-red-500 hover:text-red-600 font-medium py-3 rounded-xl text-[12px] transition-colors flex items-center justify-center gap-2"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete Account
           </button>
         </div>
       </div>
@@ -124,7 +155,10 @@ function InviteFriends({ user }: { user: User }) {
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
 
-  const inviteUrl = "https://www.thegoodsort.org/start";
+  const profileId = (() => {
+    try { return JSON.parse(localStorage.getItem("goodsort_profile") || "{}").id as string | undefined; } catch { return undefined; }
+  })();
+  const inviteUrl = `https://www.thegoodsort.org/start${profileId ? `?r=${profileId}` : ""}`;
   const inviteText = user.totalContainers > 0
     ? `I've recycled ${user.totalContainers} container${user.totalContainers !== 1 ? "s" : ""} and earned ${formatCents(user.pendingCents + user.clearedCents)} with The Good Sort! Scan your cans and bottles, earn 5c each. Join me:`
     : "I just joined The Good Sort — scan your empty cans and bottles to earn 5c each. Give it a go:";

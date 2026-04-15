@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { Home, User } from "lucide-react";
 import { apiUrl } from "@/lib/config";
 
@@ -10,9 +11,35 @@ export default function OnboardPage() {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [householdName, setHouseholdName] = useState("");
+  const [lat, setLat] = useState<number | null>(null);
+  const [lng, setLng] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
+  const addressInput = useRef<HTMLInputElement>(null);
+
+  // Google Places Autocomplete for accurate address + lat/lng
+  useEffect(() => {
+    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    if (!key || !addressInput.current || step !== 1) return;
+    setOptions({ key, v: "weekly" });
+    importLibrary("places").then(() => {
+      if (!addressInput.current) return;
+      const ac = new google.maps.places.Autocomplete(addressInput.current, {
+        componentRestrictions: { country: "au" },
+        fields: ["formatted_address", "geometry"],
+        types: ["address"],
+      });
+      ac.addListener("place_changed", () => {
+        const p = ac.getPlace();
+        if (p.formatted_address) setAddress(p.formatted_address);
+        if (p.geometry?.location) {
+          setLat(p.geometry.location.lat());
+          setLng(p.geometry.location.lng());
+        }
+      });
+    });
+  }, [step]);
 
   async function handleComplete() {
     if (!name || !address) return;
@@ -20,17 +47,17 @@ export default function OnboardPage() {
     setError("");
 
     try {
-      // Geocode address via Google Maps Geocoding
-      let lat = -27.48;
-      let lng = 153.02;
+      // Use Autocomplete-selected coords, fall back to Geocoding
+      let hLat = lat ?? -27.48;
+      let hLng = lng ?? 153.02;
       const mapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-      if (mapsKey) {
+      if ((lat == null || lng == null) && mapsKey) {
         try {
           const geoRes = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${mapsKey}&region=au`);
           const geoData = await geoRes.json();
           if (geoData.results?.[0]?.geometry?.location) {
-            lat = geoData.results[0].geometry.location.lat;
-            lng = geoData.results[0].geometry.location.lng;
+            hLat = geoData.results[0].geometry.location.lat;
+            hLng = geoData.results[0].geometry.location.lng;
           }
         } catch { /* use default coords */ }
       }
@@ -42,8 +69,8 @@ export default function OnboardPage() {
         body: JSON.stringify({
           name: householdName || `${name}'s Place`,
           address,
-          lat,
-          lng,
+          lat: hLat,
+          lng: hLng,
         }),
       });
 
@@ -104,7 +131,7 @@ export default function OnboardPage() {
         <div className="space-y-3 mb-6">
           <div>
             <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">Address</label>
-            <input type="text" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="e.g. 45 Boundary St, South Brisbane"
+            <input ref={addressInput} type="text" value={address} onChange={(e) => { setAddress(e.target.value); setLat(null); setLng(null); }} placeholder="Start typing your address..."
               className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500" autoFocus />
           </div>
           <div>

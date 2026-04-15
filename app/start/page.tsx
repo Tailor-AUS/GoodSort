@@ -49,9 +49,10 @@ export default function StartPage() {
     if (otp.length < 6) return;
     setAuthLoading(true); setAuthError("");
     try {
+      const referrerId = (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("r") : null) || undefined;
       const res = await fetch(apiUrl("/api/auth/verify-otp"), {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), code: otp }),
+        body: JSON.stringify({ email: email.trim(), code: otp, referrerId }),
       });
       if (!res.ok) { setAuthError("Invalid code"); setAuthLoading(false); return; }
       const data = await res.json();

@@ -21,6 +21,12 @@ interface Stats {
     openai: number;
     failed: number;
   };
+  activation?: {
+    activatedUsers: number;
+    activationPct: number;
+    householdsWithAddress: number;
+    runnersRegistered: number;
+  };
 }
 
 export default function AdminPage() {
@@ -84,6 +90,31 @@ export default function AdminPage() {
           </div>
         </div>
 
+        {/* Activation */}
+        {stats?.activation && (
+          <div className="bg-white rounded-xl p-4 border border-slate-200 mb-4">
+            <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-3">Activation</p>
+            <div className="grid grid-cols-4 gap-3">
+              <div>
+                <p className="text-2xl font-display font-extrabold text-slate-900">{stats.activation.activationPct}%</p>
+                <p className="text-[11px] text-slate-400">Activated</p>
+              </div>
+              <div>
+                <p className="text-2xl font-display font-extrabold text-slate-900">{stats.activation.activatedUsers}</p>
+                <p className="text-[11px] text-slate-400">Scanned 1+</p>
+              </div>
+              <div>
+                <p className="text-2xl font-display font-extrabold text-slate-900">{stats.activation.householdsWithAddress}</p>
+                <p className="text-[11px] text-slate-400">Addresses</p>
+              </div>
+              <div>
+                <p className="text-2xl font-display font-extrabold text-slate-900">{stats.activation.runnersRegistered}</p>
+                <p className="text-[11px] text-slate-400">Runners</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Tailor Vision usage */}
         {stats?.vision && (
           <div className="bg-white rounded-xl p-4 border border-slate-200 mb-8">
@@ -118,6 +149,14 @@ export default function AdminPage() {
             <div>
               <p className="text-[14px] font-semibold text-slate-900">Users & Map</p>
               <p className="text-[12px] text-slate-400">See all users, their households, and bin locations on a map</p>
+            </div>
+          </Link>
+          <Link href="/admin/bins"
+            className="flex items-center gap-3 w-full bg-white rounded-xl p-4 border border-slate-200 hover:border-green-300 transition-colors text-left">
+            <Package className="w-5 h-5 text-green-600" />
+            <div>
+              <p className="text-[14px] font-semibold text-slate-900">Bins</p>
+              <p className="text-[12px] text-slate-400">Create and manage collection points</p>
             </div>
           </Link>
           <button onClick={exportAba}

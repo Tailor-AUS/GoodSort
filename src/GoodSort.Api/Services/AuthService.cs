@@ -84,7 +84,7 @@ public class AuthService
         }
     }
 
-    public async Task<(string? Token, Profile? Profile)> VerifyOtp(string email, string code)
+    public async Task<(string? Token, Profile? Profile)> VerifyOtp(string email, string code, Guid? referrerId = null)
     {
         var otp = await _db.OtpCodes
             .Where(o => o.Email == email && !o.Used && o.ExpiresAt > DateTime.UtcNow)
@@ -126,6 +126,7 @@ public class AuthService
                 Email = email,
                 Phone = email, // Backward compat
                 Role = "sorter",
+                ReferrerId = referrerId,
             };
             _db.Profiles.Add(profile);
             await _db.SaveChangesAsync();
