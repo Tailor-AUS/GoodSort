@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Camera, MapPin, RotateCcw, Check, Mail, ShieldCheck, ImagePlus, X, Home } from "lucide-react";
 import { apiUrl } from "@/lib/config";
-import { BAGS, getBagForMaterial, mapToMaterialType } from "@/lib/store";
 
 interface BinInfo {
   id: string; code: string; name: string; address: string; hostedBy: string | null;
@@ -347,32 +346,23 @@ function ScanPageContent() {
 
           {eligible.length > 0 && (
             <div className="space-y-2">
-              {eligible.map((item, i) => {
-                const bag = getBagForMaterial(mapToMaterialType(item.material));
-                return (
-                  <div key={i} className="flex items-center gap-3 p-3.5 rounded-2xl border border-slate-200">
-                    <div className={`w-10 h-10 ${bag.color} rounded-xl flex items-center justify-center flex-shrink-0`}>
-                      <span className="text-lg">{bag.emoji}</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[14px] text-slate-900 font-semibold">{item.name}</p>
-                      <p className="text-[12px] text-slate-500">Put in <span className="font-bold">{bag.label}</span> slot &middot; 5c each</p>
-                    </div>
-                    <span className="text-[15px] font-display font-extrabold text-slate-900">&times;{item.count}</span>
+              {eligible.map((item, i) => (
+                <div key={i} className="flex items-center gap-3 p-3.5 rounded-2xl border border-slate-200">
+                  <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <Check className="w-5 h-5 text-green-600" />
                   </div>
-                );
-              })}
-
-              <div className="mt-4 p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                <p className="text-[12px] text-slate-400 font-semibold uppercase tracking-wider mb-3">Bin Slots</p>
-                <div className="grid grid-cols-4 gap-2">
-                  {BAGS.map((bag) => (
-                    <div key={bag.id} className="text-center">
-                      <div className={`w-8 h-8 ${bag.color} rounded-lg mx-auto mb-1`} />
-                      <p className="text-[10px] text-slate-500 font-medium">{bag.label.split(" ")[0]}</p>
-                    </div>
-                  ))}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[14px] text-slate-900 font-semibold">{item.name}</p>
+                    <p className="text-[12px] text-slate-500">5c each &middot; into your yellow bin</p>
+                  </div>
+                  <span className="text-[15px] font-display font-extrabold text-slate-900">&times;{item.count}</span>
                 </div>
+              ))}
+
+              <div className="mt-4 p-4 bg-green-50 rounded-2xl border border-green-100">
+                <p className="text-[12px] text-slate-700 font-medium">
+                  Drop into the <span className="font-bold">CDS side</span> of your yellow bin. We'll pick it up the night before your council collection.
+                </p>
               </div>
             </div>
           )}

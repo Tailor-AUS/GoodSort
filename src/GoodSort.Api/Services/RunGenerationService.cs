@@ -72,17 +72,43 @@ public class RunGenerationService : BackgroundService
 
     private async Task GenerateRuns(GoodSortDbContext db, PricingService pricing)
     {
-        // Find bins that are "ready" (>= 50 containers) and NOT already in an active run
+        // Find bins that are "ready" and NOT already in an active run.
+        //
+        // Yellow-bin model: a residential household's bin is ready when council
+        // pickup is TOMORROW (local time). We run the night before and extract
+        // CDS containers before the truck arrives. Non-residential / legacy bins
+        // fall back to the old "50+ containers" threshold.
         var activeBinIds = await db.RunStops
             .Where(s => s.Run.Status == "available" || s.Run.Status == "claimed" || s.Run.Status == "in_progress" || s.Run.Status == "delivering")
             .Select(s => s.BinId)
             .Distinct()
             .ToListAsync();
 
-        var readyBins = await db.Bins
-            .Where(b => b.Status == "active" && b.PendingContainers >= 50 && !activeBinIds.Contains(b.Id))
-            .OrderByDescending(b => b.PendingContainers)
+        // Day-of-week that we should be collecting for (the council truck comes tomorrow)
+        var tomorrowDow = (int)DateTime.UtcNow.AddDays(1).DayOfWeek; // 0=Sun..6=Sat
+
+        var allCandidates = await db.Bins
+            .Where(b => b.Status == "active" && !activeBinIds.Contains(b.Id))
             .ToListAsync();
+
+        // Fetch household data for residential bins
+        var householdIds = allCandidates.Where(b => b.HouseholdId.HasValue).Select(b => b.HouseholdId!.Value).Distinct().ToList();
+        var households = await db.Households.Where(h => householdIds.Contains(h.Id)).ToDictionaryAsync(h => h.Id);
+
+        var readyBins = allCandidates.Where(b =>
+        {
+            if (b.HouseholdId.HasValue && households.TryGetValue(b.HouseholdId.Value, out var h))
+            {
+                // Residential: ready when the council comes tomorrow (and household has at least 1 pending container)
+                return h.Type == "residential"
+                    && h.CouncilCollectionDay == tomorrowDow
+                    && b.PendingContainers >= 1;
+            }
+            // Non-household bins: old threshold-based model
+            return b.PendingContainers >= 50;
+        })
+        .OrderByDescending(b => b.PendingContainers)
+        .ToList();
 
         if (readyBins.Count == 0) return;
 

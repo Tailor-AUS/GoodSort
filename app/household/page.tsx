@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Home, Package, Users, Weight } from "lucide-react";
+import { ArrowLeft, Home, Package, Users, Weight, Truck, Recycle } from "lucide-react";
 import { apiUrl } from "@/lib/config";
 import { formatCents } from "@/lib/store";
 
@@ -10,6 +10,9 @@ interface HouseholdDetail {
   id: string;
   name: string;
   address: string;
+  type: string;
+  councilCollectionDay: number | null;
+  usesDivider: boolean;
   pendingContainers: number;
   pendingValueCents: number;
   materials?: { aluminium: number; pet: number; glass: number; other: number };
@@ -18,11 +21,14 @@ interface HouseholdDetail {
   lastScanAt?: string | null;
 }
 
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 interface Member { id: string; email: string | null; name: string; totalContainers: number; }
 
 export default function HouseholdPage() {
   const [hh, setHh] = useState<HouseholdDetail | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
+  const [nextPickup, setNextPickup] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -32,7 +38,10 @@ export default function HouseholdPage() {
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(setHh)
       .catch(() => setErr("Couldn't load household."));
-    // No public "members of household" endpoint — caller can only see themselves.
+    fetch(apiUrl(`/api/households/${profile.householdId}/next-pickup`))
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.nextPickup) setNextPickup(d.nextPickup); })
+      .catch(() => {});
     setMembers([{ id: profile.id, email: profile.email, name: profile.name, totalContainers: profile.totalContainers ?? 0 }]);
   }, []);
 
@@ -49,6 +58,31 @@ export default function HouseholdPage() {
         {hh && (
           <>
             <p className="text-[13px] text-slate-500 mb-6">{hh.name} · {hh.address}</p>
+
+            {/* Next pickup banner — the heart of the yellow-bin model */}
+            {nextPickup && (
+              <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-2xl p-5 mb-6 shadow-lg shadow-green-600/25">
+                <div className="flex items-start gap-3">
+                  <Truck className="w-6 h-6 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-[11px] uppercase tracking-wider text-white/70 mb-1">Next pickup</p>
+                    <p className="text-xl font-display font-extrabold">
+                      {new Date(nextPickup).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "short" })}
+                    </p>
+                    <p className="text-[12px] text-white/80 mt-1">
+                      We'll come the night before your council truck ({hh.councilCollectionDay != null ? DAY_NAMES[hh.councilCollectionDay] : ""}).
+                      {hh.usesDivider && " Remember: cans & bottles on the CDS side of your divider."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            {!nextPickup && hh.type === "residential" && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex items-start gap-3">
+                <Recycle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-[13px] text-amber-900">Set your council collection day in settings so we can schedule pickups.</p>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3 mb-6">
               <Card icon={Package} label="Containers pending" value={String(hh.pendingContainers)} />

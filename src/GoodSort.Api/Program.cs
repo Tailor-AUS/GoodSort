@@ -15,6 +15,7 @@ builder.Services.AddScoped<VisionService>();
 builder.Services.AddScoped<CashoutService>();
 builder.Services.AddScoped<PricingService>();
 builder.Services.AddScoped<RunnerService>();
+builder.Services.AddScoped<BinDayService>();
 builder.Services.AddHostedService<RunGenerationService>();
 builder.Services.AddHttpClient();
 
@@ -301,7 +302,74 @@ app.MapPost("/api/households", async (Household household, GoodSortDbContext db)
 {
     db.Households.Add(household);
     await db.SaveChangesAsync();
+
+    // Residential households get an implicit "yellow bin" — a Bin that represents
+    // the user's kerbside council bin. The RunGenerationService clusters these
+    // for pickup on the day before the council truck arrives.
+    if (household.Type == "residential")
+    {
+        var code = $"GS-H{Math.Abs(household.Id.GetHashCode()) % 100000:D5}";
+        db.Bins.Add(new Bin
+        {
+            Code = code,
+            Name = household.Name,
+            Address = household.Address,
+            Lat = household.Lat,
+            Lng = household.Lng,
+            HouseholdId = household.Id,
+            HostedBy = null,
+        });
+        await db.SaveChangesAsync();
+    }
     return Results.Created($"/api/households/{household.Id}", household);
+});
+
+// ── Bin-day lookup — auto-fills the yellow bin collection day from an address ──
+app.MapPost("/api/households/lookup-bin-day", async (BinDayLookupRequest req, BinDayService svc) =>
+{
+    var result = await svc.Lookup(req.Lat, req.Lng, req.Address);
+    if (result is null) return Results.Ok(new { found = false });
+    return Results.Ok(new { found = true, dayOfWeek = result.DayOfWeek, councilArea = result.CouncilArea, source = result.Source });
+});
+
+// ── Next pickup — tells the household exactly when we're coming for their bin ──
+app.MapGet("/api/households/{id:guid}/next-pickup", async (Guid id, GoodSortDbContext db) =>
+{
+    var h = await db.Households.FindAsync(id);
+    if (h is null) return Results.NotFound();
+    if (h.Type != "residential" || h.CouncilCollectionDay is null)
+        return Results.Ok(new { nextPickup = (DateTime?)null, reason = "Not a residential household with a council collection day set." });
+
+    // We collect the night/day BEFORE council pickup. So runner day = (councilDay - 1) mod 7.
+    var today = DateTime.UtcNow.Date;
+    var runnerDay = ((h.CouncilCollectionDay.Value + 6) % 7); // day before council, 0=Sun..6=Sat
+    var daysAhead = ((int)runnerDay - (int)today.DayOfWeek + 7) % 7;
+    if (daysAhead == 0) daysAhead = 7; // if today is runner day but already past, target next week
+    var next = today.AddDays(daysAhead);
+    return Results.Ok(new
+    {
+        nextPickup = next,
+        councilDay = h.CouncilCollectionDay,
+        councilArea = h.CouncilArea,
+        usesDivider = h.UsesDivider,
+    });
+});
+
+// ── Waitlist for unit_complex customers (phase 2) ──
+app.MapPost("/api/waitlist/unit-complex", async (UnitComplexWaitlistRequest req, GoodSortDbContext db) =>
+{
+    var placeholder = new Household
+    {
+        Type = "unit_complex",
+        Name = req.BuildingName,
+        Address = req.Address,
+        Lat = req.Lat,
+        Lng = req.Lng,
+        BuildingName = req.BuildingName,
+    };
+    db.Households.Add(placeholder);
+    await db.SaveChangesAsync();
+    return Results.Ok(new { waitlisted = true, id = placeholder.Id });
 });
 
 // ── Profiles ──
@@ -1030,6 +1098,8 @@ record ScanRequest(Guid UserId, string Barcode, string ContainerName, string Mat
 record ClaimRequest(Guid DriverId);
 record PickupRequest(int ActualCount);
 record RunnerRegisterRequest(Guid ProfileId, string? VehicleType, string? VehicleMake, string? VehicleRego, int? CapacityBags, double? ServiceRadiusKm);
+record UnitComplexWaitlistRequest(string BuildingName, string Address, double Lat, double Lng);
+record BinDayLookupRequest(double Lat, double Lng, string? Address);
 record RunnerProfileUpdateRequest(string? VehicleType, int? CapacityBags, double? ServiceRadiusKm);
 record RunnerHeartbeatRequest(Guid ProfileId, double Lat, double Lng, bool IsOnline);
 record MarketplaceClaimRequest(Guid ProfileId);

@@ -9,6 +9,7 @@ public class Bin
     public double Lat { get; set; }
     public double Lng { get; set; }
     public string? HostedBy { get; set; } // "The Burrow Cafe" or null for public
+    public Guid? HouseholdId { get; set; } // links to residential household's yellow bin
     public int PendingContainers { get; set; }
     public int PendingValueCents { get; set; }
     public MaterialBreakdown Materials { get; set; } = new();
