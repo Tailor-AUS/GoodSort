@@ -1,14 +1,16 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
-// SQL Server — local Docker container in dev only.
-// In production the API reads the connection string for "goodsortdb" from
-// the ConnectionStrings__goodsortdb env var (Azure SQL in rg-goodsort-prod),
-// so we don't want Aspire provisioning a SQL container app in Azure.
+// Production environment variables (JWT_SECRET, Tailor Vision key, ACS, Azure
+// OpenAI, DB connection) are applied directly to the Container App spec via
+// an azd postdeploy hook (see azure.yaml + infra/restore-secrets.sh). This
+// avoids the Aspire/azd limitation where manually-set env vars get stripped
+// on each `azd deploy`.
 var api = builder.AddProject<Projects.GoodSort_Api>("api")
     .WithExternalHttpEndpoints();
 
 if (builder.ExecutionContext.IsRunMode)
 {
+    // Local dev: spin up SQL in Docker
     var sql = builder.AddSqlServer("sql").AddDatabase("goodsortdb");
     api.WithReference(sql).WaitFor(sql);
 

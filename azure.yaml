@@ -1,8 +1,24 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
 
 name: good-sort
-services:  
+services:
   app:
     language: dotnet
     project: ./src/GoodSort.AppHost/GoodSort.AppHost.csproj
     host: containerapp
+
+# After `azd deploy`, re-apply production env vars (JWT_SECRET, TV key, ACS,
+# Azure OpenAI, DB connection) because Aspire's generated manifest strips
+# anything it doesn't declare. Values are pulled from the azd environment
+# (.azure/<env>/.env — gitignored).
+hooks:
+  postdeploy:
+    shell: sh
+    run: infra/restore-secrets.sh
+    continueOnError: false
+    interactive: false
+    windows:
+      shell: pwsh
+      run: infra/restore-secrets.ps1
+      continueOnError: false
+      interactive: false
