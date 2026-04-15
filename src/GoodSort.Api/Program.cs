@@ -86,18 +86,19 @@ for (var i = 0; i < 10; i++)
         await db.Database.MigrateAsync();
         app.Logger.LogInformation("Database migration completed successfully");
 
-        // Seed demo bins if none exist
-        if (!await db.Bins.AnyAsync())
+        // One-shot cleanup of demo seed bins (GS-0001..GS-0005) if they have no
+        // referencing scans. Real bins created via /api/bins are untouched.
+        var demoCodes = new[] { "GS-0001", "GS-0002", "GS-0003", "GS-0004", "GS-0005" };
+        var demoBins = await db.Bins.Where(b => demoCodes.Contains(b.Code)).ToListAsync();
+        foreach (var bin in demoBins)
         {
-            db.Bins.AddRange(
-                new Bin { Code = "GS-0001", Name = "South Bank Parklands", Address = "Stanley St Plaza, South Brisbane", Lat = -27.4810, Lng = 153.0230 },
-                new Bin { Code = "GS-0002", Name = "West End Markets", Address = "Davies Park, West End", Lat = -27.4850, Lng = 153.0080 },
-                new Bin { Code = "GS-0003", Name = "Boundary St Shops", Address = "45 Boundary St, South Brisbane", Lat = -27.4820, Lng = 153.0210 },
-                new Bin { Code = "GS-0004", Name = "Fish Lane Precinct", Address = "Fish Lane, South Brisbane", Lat = -27.4800, Lng = 153.0240 },
-                new Bin { Code = "GS-0005", Name = "Montague Rd Reserve", Address = "Montague Rd, West End", Lat = -27.4790, Lng = 153.0100 }
-            );
+            var hasScans = await db.Scans.AnyAsync(s => s.BinId == bin.Id);
+            if (!hasScans) db.Bins.Remove(bin);
+        }
+        if (db.ChangeTracker.HasChanges())
+        {
             await db.SaveChangesAsync();
-            app.Logger.LogInformation("Seeded 5 demo bins");
+            app.Logger.LogInformation("Removed {Count} demo seed bins", demoBins.Count);
         }
 
         break;
@@ -574,91 +575,6 @@ app.MapGet("/api/admin/users", async (GoodSortDbContext db) =>
 app.MapGet("/api/admin/cashouts", async (GoodSortDbContext db) =>
     Results.Ok(await db.Set<GoodSort.Api.Services.CashoutRequest>().Include(c => c.User).OrderByDescending(c => c.CreatedAt).Take(100).ToListAsync()))
     .RequireAuthorization();
-
-// ── Admin: Seed test data for marketplace (bins with containers + generate runs) ──
-app.MapPost("/api/admin/seed-marketplace", async (GoodSortDbContext db, PricingService pricing) =>
-{
-    // Fill bins with test containers
-    var bins = await db.Bins.Where(b => b.Status == "active").ToListAsync();
-    var rng = new Random(42);
-    foreach (var bin in bins)
-    {
-        bin.PendingContainers = rng.Next(60, 200);
-        bin.PendingValueCents = bin.PendingContainers * 5;
-        bin.Materials = new MaterialBreakdown
-        {
-            Aluminium = (int)(bin.PendingContainers * 0.4),
-            Pet = (int)(bin.PendingContainers * 0.3),
-            Glass = (int)(bin.PendingContainers * 0.2),
-            Other = (int)(bin.PendingContainers * 0.1),
-        };
-        bin.EstimatedWeightKg = bin.PendingContainers * 0.020;
-    }
-    await db.SaveChangesAsync();
-
-    // Create a test run from the first 3 bins
-    var dropPoint = await db.Depots.FirstOrDefaultAsync();
-    if (dropPoint == null) return Results.BadRequest("No depot");
-
-    var testBins = bins.Take(3).ToList();
-    var totalContainers = testBins.Sum(b => b.PendingContainers);
-
-    var run = new Run
-    {
-        Status = "available",
-        DropPointId = dropPoint.Id,
-        CentroidLat = testBins.Average(b => b.Lat),
-        CentroidLng = testBins.Average(b => b.Lng),
-        AreaName = "South Brisbane",
-        EstimatedContainers = totalContainers,
-        EstimatedDistanceKm = 4.2,
-        EstimatedDurationMin = 25,
-        Materials = new MaterialBreakdown
-        {
-            Aluminium = testBins.Sum(b => b.Materials.Aluminium),
-            Pet = testBins.Sum(b => b.Materials.Pet),
-            Glass = testBins.Sum(b => b.Materials.Glass),
-            Other = testBins.Sum(b => b.Materials.Other),
-        },
-        ExpiresAt = DateTime.UtcNow.AddHours(4),
-    };
-
-    var seq = 0;
-    foreach (var bin in testBins)
-    {
-        run.Stops.Add(new RunStop
-        {
-            BinId = bin.Id,
-            Lat = bin.Lat,
-            Lng = bin.Lng,
-            EstimatedContainers = bin.PendingContainers,
-            PickupInstruction = $"Collect from {bin.Name}",
-            Sequence = seq++,
-        });
-    }
-
-    db.Runs.Add(run);
-
-    // Price the run
-    var result = await pricing.CalculateRate(run);
-    run.PerContainerCents = result.PerContainerCents;
-    run.EstimatedPayoutCents = result.EstimatedPayoutCents;
-    run.PricingTier = result.PricingTier;
-    run.LastPricedAt = DateTime.UtcNow;
-
-    await db.SaveChangesAsync();
-    return Results.Ok(new
-    {
-        message = "Test data seeded",
-        binsFilled = bins.Count,
-        runId = run.Id,
-        runContainers = totalContainers,
-        perContainerCents = run.PerContainerCents,
-        estimatedPayout = run.EstimatedPayoutCents,
-        pricingTier = run.PricingTier,
-        pricingFactors = result.Factors,
-    });
-}).RequireAuthorization();
 
 // ── Profile PATCH (update name + household) ──
 app.MapPatch("/api/profiles/{id:guid}", async (Guid id, ProfileUpdateRequest req, GoodSortDbContext db) =>

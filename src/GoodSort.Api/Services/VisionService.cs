@@ -204,13 +204,9 @@ No containers (blurry):
 
         if (string.IsNullOrEmpty(apiKey))
         {
-            _logger.LogWarning("No vision API configured — returning mock data");
-            await LogCall("mock", success: false, containerCount: 1, sw.ElapsedMilliseconds);
-            return new VisionResult
-            {
-                Containers = [new IdentifiedContainer { Name = "Unknown Container", Material = "aluminium", Count = 1, Eligible = true }],
-                Message = "Vision API not configured — showing sample data",
-            };
+            _logger.LogError("No vision API configured (neither Tailor Vision nor Azure OpenAI)");
+            await LogCall("none", success: false, containerCount: 0, sw.ElapsedMilliseconds);
+            return new VisionResult { Message = "Photo scan is temporarily unavailable. Please try again later." };
         }
 
         try

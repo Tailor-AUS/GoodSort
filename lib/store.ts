@@ -267,55 +267,7 @@ export function saveUser(user: User) {
 export function getHouseholds(): Household[] {
   if (typeof window === "undefined") return [];
   const data = localStorage.getItem(STORAGE_KEYS.households);
-  if (data) return safeParse<Household[]>(data, []);
-
-  // Demo seed: 18 households in South Brisbane / West End area
-  const demo: Household[] = [
-    makeHousehold("h1", "The Hartleys", "45 Boundary St, South Brisbane", -27.4820, 153.0210, 320),
-    makeHousehold("h2", "Unit 4/12 Grey St", "12 Grey St, South Bank", -27.4780, 153.0180, 180),
-    makeHousehold("h3", "Sarah's Place", "88 Melbourne St, South Brisbane", -27.4750, 153.0250, 240),
-    makeHousehold("h4", "The Nguyens", "21 Vulture St, West End", -27.4850, 153.0130, 290),
-    makeHousehold("h5", "Unit 7 River View", "150 Montague Rd, West End", -27.4790, 153.0080, 160),
-    makeHousehold("h6", "Casa Martinez", "33 Hardgrave Rd, West End", -27.4830, 153.0050, 210),
-    makeHousehold("h7", "The Johnsons", "5 Sidon St, South Brisbane", -27.4760, 153.0220, 130),
-    makeHousehold("h8", "Apt 2B Riverside", "77 Ernest St, South Brisbane", -27.4740, 153.0190, 95),
-    makeHousehold("h9", "The Patels", "44 Fish Lane, South Brisbane", -27.4810, 153.0240, 270),
-    makeHousehold("h10", "Brook House", "19 Browning St, West End", -27.4870, 153.0100, 185),
-    makeHousehold("h11", "Unit 12 SkyTower", "100 Manning St, South Brisbane", -27.4800, 153.0160, 110),
-    makeHousehold("h12", "The O'Briens", "8 Jane St, West End", -27.4860, 153.0070, 340),
-    makeHousehold("h13", "Li Family", "62 Merivale St, South Brisbane", -27.4770, 153.0200, 75),
-    makeHousehold("h14", "The Wilsons", "28 Russell St, South Brisbane", -27.4790, 153.0270, 200),
-    makeHousehold("h15", "Flat 3 The Terrace", "15 Cordelia St, South Brisbane", -27.4815, 153.0175, 155),
-    makeHousehold("h16", "Sunny Side", "41 Tribune St, South Brisbane", -27.4835, 153.0205, 88),
-    makeHousehold("h17", "The Cooks", "7 Dock St, West End", -27.4880, 153.0120, 225),
-    makeHousehold("h18", "River's Edge", "55 Kurilpa St, West End", -27.4845, 153.0145, 190),
-  ];
-
-  safeSet(STORAGE_KEYS.households, JSON.stringify(demo));
-  return demo;
-}
-
-function makeHousehold(id: string, name: string, address: string, lat: number, lng: number, containers: number): Household {
-  // Demo split: 45% aluminium, 30% PET, 15% glass, 10% other
-  const al = Math.round(containers * 0.45);
-  const pet = Math.round(containers * 0.30);
-  const glass = Math.round(containers * 0.15);
-  const other = containers - al - pet - glass;
-  const materials = { aluminium: al, pet, glass, other };
-  return {
-    id,
-    name,
-    address,
-    lat,
-    lng,
-    pendingContainers: containers,
-    pendingValueCents: containers * SORTER_PAYOUT_CENTS,
-    materials,
-    estimatedWeightKg: calcWeightFromMaterials(materials),
-    estimatedBags: Math.ceil(containers / CONTAINERS_PER_BAG),
-    lastScanAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-    createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-  };
+  return data ? safeParse<Household[]>(data, []) : [];
 }
 
 export function saveHouseholds(households: Household[]) {
@@ -373,13 +325,7 @@ export function addScan(barcode: string, containerName: string, material: string
 export function getDepots(): Depot[] {
   if (typeof window === "undefined") return [];
   const data = localStorage.getItem(STORAGE_KEYS.depots);
-  if (data) return safeParse<Depot[]>(data, []);
-
-  const demo: Depot[] = [
-    { id: "depot-1", name: "Tomra South Brisbane", address: "201 Montague Rd, West End", lat: -27.4790, lng: 153.0080 },
-  ];
-  safeSet(STORAGE_KEYS.depots, JSON.stringify(demo));
-  return demo;
+  return data ? safeParse<Depot[]>(data, []) : [];
 }
 
 // ── Routes ──
