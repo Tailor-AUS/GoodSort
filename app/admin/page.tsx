@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Users, Package, Truck, DollarSign, Download } from "lucide-react";
+import Link from "next/link";
+import { Users, Package, Truck, DollarSign, Download, MapPin } from "lucide-react";
 import { apiUrl } from "@/lib/config";
 
 interface Stats {
@@ -111,6 +112,14 @@ export default function AdminPage() {
 
         {/* Actions */}
         <div className="space-y-3">
+          <Link href="/admin/users"
+            className="flex items-center gap-3 w-full bg-white rounded-xl p-4 border border-slate-200 hover:border-green-300 transition-colors text-left">
+            <MapPin className="w-5 h-5 text-green-600" />
+            <div>
+              <p className="text-[14px] font-semibold text-slate-900">Users & Map</p>
+              <p className="text-[12px] text-slate-400">See all users, their households, and bin locations on a map</p>
+            </div>
+          </Link>
           <button onClick={exportAba}
             className="flex items-center gap-3 w-full bg-white rounded-xl p-4 border border-slate-200 hover:border-green-300 transition-colors text-left">
             <Download className="w-5 h-5 text-green-600" />
