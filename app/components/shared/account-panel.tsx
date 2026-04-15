@@ -180,6 +180,7 @@ function InviteFriends({ user }: { user: User }) {
 
 function CashoutSection({ clearedCents }: { clearedCents: number }) {
   const [showForm, setShowForm] = useState(false);
+  const [showMinPrompt, setShowMinPrompt] = useState(false);
   const [bsb, setBsb] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [accountName, setAccountName] = useState("");
@@ -189,6 +190,8 @@ function CashoutSection({ clearedCents }: { clearedCents: number }) {
 
   const minCashout = 2000; // $20 in cents
   const canCashout = clearedCents >= minCashout;
+  const remainingCents = Math.max(0, minCashout - clearedCents);
+  const remainingContainers = Math.ceil(remainingCents / 5);
 
   async function handleCashout() {
     if (!canCashout || !bsb || !accountNumber || !accountName) return;
@@ -241,20 +244,32 @@ function CashoutSection({ clearedCents }: { clearedCents: number }) {
 
   if (!showForm) {
     return (
-      <button
-        onClick={() => canCashout ? setShowForm(true) : null}
-        className={`mt-6 w-full py-3 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-2 transition-all ${
-          canCashout
-            ? "bg-gradient-to-b from-green-500 to-green-600 text-white shadow-lg shadow-green-600/20"
-            : "bg-slate-100 border border-slate-200 text-slate-400 cursor-not-allowed"
-        }`}
-      >
-        <Wallet className="w-4 h-4" />
-        {canCashout
-          ? `Cash Out $${(clearedCents / 100).toFixed(2)}`
-          : `Cash Out (min $20 · ${clearedCents >= 100 ? `$${(clearedCents / 100).toFixed(2)}` : `${clearedCents}c`} available)`
-        }
-      </button>
+      <div className="mt-6">
+        <button
+          onClick={() => canCashout ? setShowForm(true) : setShowMinPrompt(true)}
+          className={`w-full py-3 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-2 transition-all ${
+            canCashout
+              ? "bg-gradient-to-b from-green-500 to-green-600 text-white shadow-lg shadow-green-600/20"
+              : "bg-gradient-to-b from-green-500 to-green-600 text-white/90 shadow-lg shadow-green-600/20 opacity-80"
+          }`}
+        >
+          <Wallet className="w-4 h-4" />
+          {canCashout
+            ? `Cash Out $${(clearedCents / 100).toFixed(2)}`
+            : `Cash Out`
+          }
+        </button>
+        {!canCashout && showMinPrompt && (
+          <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <p className="text-[13px] font-semibold text-amber-900">You need $20 to cash out</p>
+            <p className="text-[12px] text-amber-800 mt-1">
+              You have ${(clearedCents / 100).toFixed(2)} — just ${(remainingCents / 100).toFixed(2)} to go
+              {remainingContainers > 0 ? ` (~${remainingContainers} more container${remainingContainers !== 1 ? "s" : ""})` : ""}.
+            </p>
+            <p className="text-[11px] text-amber-700 mt-2">Keep scanning to reach the minimum.</p>
+          </div>
+        )}
+      </div>
     );
   }
 

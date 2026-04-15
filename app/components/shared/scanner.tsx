@@ -286,7 +286,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
           {totalItems > 0 && (
             <div className="flex justify-between items-center mb-3">
               <span className="text-[13px] text-slate-500">{totalItems} items</span>
-              <span className="text-[17px] font-display font-extrabold text-green-600">+${(totalCents / 100).toFixed(2)} pending</span>
+              <span className="text-[17px] font-display font-extrabold text-green-600">+${(totalCents / 100).toFixed(2)} in your account</span>
             </div>
           )}
           <div className="flex gap-2">
@@ -329,7 +329,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
           </div>
           <p className="text-white/50 text-sm mb-2">{name}</p>
           <p className="text-white text-2xl font-display font-extrabold mb-2">Put in the {bag.label}</p>
-          <p className="text-green-400 text-lg font-bold">+{SORTER_PAYOUT_CENTS}c pending</p>
+          <p className="text-green-400 text-lg font-bold">+{SORTER_PAYOUT_CENTS}¢ in your account</p>
           <div className={`mt-8 mx-auto w-48 h-2 ${bag.color} rounded-full opacity-60`} />
         </div>
       </div>
