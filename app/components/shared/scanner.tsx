@@ -39,6 +39,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
   const [results, setResults] = useState<IdentifiedItem[] | null>(null);
   const [resultSummary, setResultSummary] = useState("");
   const [confirming, setConfirming] = useState(false);
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
 
   // Barcode mode state
   const [manualBarcode, setManualBarcode] = useState("");
@@ -121,7 +122,9 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext("2d")!;
     ctx.drawImage(video, 0, 0);
-    const base64 = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+    setCapturedImage(dataUrl);
+    const base64 = dataUrl.split(",")[1];
 
     stopCamera();
 
@@ -224,6 +227,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
   function retake() {
     setResults(null);
     setResultSummary("");
+    setCapturedImage(null);
     processedRef.current = false;
     startCamera();
   }
@@ -336,17 +340,36 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     );
   }
 
-  // ── Analyzing overlay ──
+  // ── Analyzing overlay (shows captured photo with scan-line effect) ──
   if (analyzing) {
     return (
       <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
-        <div className="text-center px-8">
-          <div className="w-24 h-24 bg-green-600/20 rounded-3xl flex items-center justify-center mx-auto mb-6">
-            <Camera className="w-10 h-10 text-green-400 animate-pulse" />
+        {capturedImage ? (
+          <div className="relative w-[85vw] max-w-sm aspect-[3/4] rounded-2xl overflow-hidden shadow-2xl">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={capturedImage} alt="Scanning" className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-black/30" />
+            <div className="absolute inset-x-0 h-[3px] bg-gradient-to-r from-transparent via-green-400 to-transparent shadow-[0_0_15px_rgba(74,222,128,0.6)] animate-scan-line" />
+            <div className="absolute top-4 left-4 w-8 h-8 border-t-2 border-l-2 border-green-400 rounded-tl-lg" />
+            <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-green-400 rounded-tr-lg" />
+            <div className="absolute bottom-4 left-4 w-8 h-8 border-b-2 border-l-2 border-green-400 rounded-bl-lg" />
+            <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-green-400 rounded-br-lg" />
+            <div className="absolute bottom-8 inset-x-0 text-center">
+              <div className="inline-flex items-center gap-2 bg-black/60 backdrop-blur-sm rounded-full px-4 py-2">
+                <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                <p className="text-white text-[13px] font-semibold">Identifying containers...</p>
+              </div>
+            </div>
           </div>
-          <p className="text-white text-xl font-display font-extrabold mb-2">Analyzing...</p>
-          <p className="text-white/40 text-[13px]">Identifying containers in your photo</p>
-        </div>
+        ) : (
+          <div className="text-center px-8">
+            <div className="w-24 h-24 bg-green-600/20 rounded-3xl flex items-center justify-center mx-auto mb-6">
+              <Camera className="w-10 h-10 text-green-400 animate-pulse" />
+            </div>
+            <p className="text-white text-xl font-display font-extrabold mb-2">Analyzing...</p>
+            <p className="text-white/40 text-[13px]">Identifying containers in your photo</p>
+          </div>
+        )}
       </div>
     );
   }
