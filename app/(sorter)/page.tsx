@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { type User, type SortBin, type Depot, type BagInfo } from "@/lib/store";
 import { getUserApi, getDepotsApi, getBinsApi } from "@/lib/store-api";
+import { apiUrl } from "@/lib/config";
 import { getOrCreateDefaultUser, getDepots } from "@/lib/store";
 import { MapView } from "@/app/components/shared/map-view";
 import { SorterSheet } from "./components/sorter-sheet";
@@ -35,12 +36,21 @@ export default function SorterApp() {
   }, []);
 
   useEffect(() => {
-    refreshData().then(() => {
-      // Enforce address capture — users without a household finish onboarding
+    refreshData().then(async () => {
+      // Enforce onboarding completeness: no household OR no council day.
       const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
       if (profile.id && !profile.householdId) {
         router.push("/onboard");
         return;
+      }
+      if (profile.householdId) {
+        try {
+          const hh = await fetch(apiUrl(`/api/households/${profile.householdId}`)).then(r => r.ok ? r.json() : null);
+          if (hh && hh.type === "residential" && hh.councilCollectionDay == null) {
+            router.push("/onboard");
+            return;
+          }
+        } catch { /* ignore, let user in */ }
       }
       setLoading(false);
     });

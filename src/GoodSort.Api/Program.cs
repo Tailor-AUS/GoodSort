@@ -17,6 +17,7 @@ builder.Services.AddScoped<PricingService>();
 builder.Services.AddScoped<RunnerService>();
 builder.Services.AddScoped<BinDayService>();
 builder.Services.AddHostedService<RunGenerationService>();
+builder.Services.AddHostedService<PickupReminderService>();
 builder.Services.AddHttpClient();
 
 // Tailor Vision (TV) — api.tailor.au/api/vision/classify
