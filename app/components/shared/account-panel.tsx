@@ -273,22 +273,31 @@ function CashoutSection({ clearedCents }: { clearedCents: number }) {
     );
   }
 
+  const remaining = Math.max(0, minCashout - clearedCents);
+  const moreContainers = Math.ceil(remaining / 5); // 5c per eligible container
+  const [showHint, setShowHint] = useState(false);
   if (!showForm) {
     return (
-      <button
-        onClick={() => canCashout ? setShowForm(true) : null}
-        className={`mt-6 w-full py-3 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-2 transition-all ${
-          canCashout
-            ? "bg-gradient-to-b from-green-500 to-green-600 text-white shadow-lg shadow-green-600/20"
-            : "bg-slate-100 border border-slate-200 text-slate-400 cursor-not-allowed"
-        }`}
-      >
-        <Wallet className="w-4 h-4" />
-        {canCashout
-          ? `Cash Out $${(clearedCents / 100).toFixed(2)}`
-          : `Cash Out (min $20 · ${clearedCents >= 100 ? `$${(clearedCents / 100).toFixed(2)}` : `${clearedCents}c`} available)`
-        }
-      </button>
+      <div className="mt-6">
+        <button
+          onClick={() => canCashout ? setShowForm(true) : setShowHint(v => !v)}
+          className={`w-full py-3 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-2 transition-all ${
+            canCashout
+              ? "bg-gradient-to-b from-green-500 to-green-600 text-white shadow-lg shadow-green-600/20"
+              : "bg-white border border-slate-200 text-slate-700 hover:border-green-300"
+          }`}
+        >
+          <Wallet className="w-4 h-4" />
+          {canCashout
+            ? `Cash Out $${(clearedCents / 100).toFixed(2)}`
+            : `Cash Out  ·  $${(clearedCents / 100).toFixed(2)} available`}
+        </button>
+        {!canCashout && showHint && (
+          <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl p-3 text-[12px] text-amber-900 leading-relaxed">
+            You need <b>$20</b> to cash out — keep scanning! You have <b>${(clearedCents / 100).toFixed(2)}</b>, just <b>${(remaining / 100).toFixed(2)}</b> to go (≈ {moreContainers} more container{moreContainers === 1 ? "" : "s"}).
+          </div>
+        )}
+      </div>
     );
   }
 

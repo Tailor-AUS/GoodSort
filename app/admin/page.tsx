@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Users, Package, Truck, DollarSign, Download, MapPin } from "lucide-react";
+import { Users, Package, Truck, DollarSign, Download, MapPin, Mail } from "lucide-react";
 import { apiUrl } from "@/lib/config";
 
 interface Stats {
@@ -149,6 +149,14 @@ export default function AdminPage() {
             <div>
               <p className="text-[14px] font-semibold text-slate-900">Users & Map</p>
               <p className="text-[12px] text-slate-400">See all users, their households, and bin locations on a map</p>
+            </div>
+          </Link>
+          <Link href="/admin/pickups"
+            className="flex items-center gap-3 w-full bg-white rounded-xl p-4 border border-slate-200 hover:border-green-300 transition-colors text-left">
+            <Truck className="w-5 h-5 text-green-600" />
+            <div>
+              <p className="text-[14px] font-semibold text-slate-900">Tomorrow's pickups</p>
+              <p className="text-[12px] text-slate-400">Households, runner coverage, manual reminder trigger</p>
             </div>
           </Link>
           <Link href="/admin/bins"

@@ -16,8 +16,10 @@ builder.Services.AddScoped<CashoutService>();
 builder.Services.AddScoped<PricingService>();
 builder.Services.AddScoped<RunnerService>();
 builder.Services.AddScoped<BinDayService>();
+builder.Services.AddScoped<NotificationService>();
 builder.Services.AddHostedService<RunGenerationService>();
-builder.Services.AddHostedService<PickupReminderService>();
+builder.Services.AddScoped<PickupReminderService>();
+builder.Services.AddHostedService<PickupReminderHost>();
 builder.Services.AddHttpClient();
 
 // Tailor Vision (TV) — api.tailor.au/api/vision/classify
@@ -356,6 +358,17 @@ app.MapGet("/api/households/{id:guid}/next-pickup", async (Guid id, GoodSortDbCo
     });
 });
 
+// ── Household: toggle "bin is out on the kerb" ──
+app.MapPost("/api/households/{id:guid}/bin-out", async (Guid id, BinOutRequest req, GoodSortDbContext db) =>
+{
+    var h = await db.Households.FindAsync(id);
+    if (h is null) return Results.NotFound();
+    h.BinIsOut = req.Out;
+    h.BinIsOutAt = req.Out ? DateTime.UtcNow : null;
+    await db.SaveChangesAsync();
+    return Results.Ok(new { h.Id, h.BinIsOut, h.BinIsOutAt });
+});
+
 // ── Waitlist for unit_complex customers (phase 2) ──
 app.MapPost("/api/waitlist/unit-complex", async (UnitComplexWaitlistRequest req, GoodSortDbContext db) =>
 {
@@ -659,6 +672,56 @@ app.MapGet("/api/admin/users", async (GoodSortDbContext db) =>
     Results.Ok(await db.Profiles.Include(p => p.Household).OrderByDescending(p => p.CreatedAt).Take(100).ToListAsync()))
     .RequireAuthorization();
 
+// ── Admin: Tomorrow's pickups + runner status ──
+app.MapGet("/api/admin/pickups/tomorrow", async (GoodSortDbContext db) =>
+{
+    var brisbane = DateTime.UtcNow.AddHours(10);
+    var tomorrowDow = (int)brisbane.AddDays(1).DayOfWeek;
+
+    var households = await db.Households
+        .Include(h => h.Members)
+        .Where(h => h.Type == "residential" && h.CouncilCollectionDay == tomorrowDow)
+        .ToListAsync();
+
+    var hhIds = households.Select(h => h.Id).ToHashSet();
+    var bins = await db.Bins.Where(b => b.HouseholdId != null && hhIds.Contains(b.HouseholdId.Value)).ToListAsync();
+    var binIds = bins.Select(b => b.Id).ToHashSet();
+
+    var claimingRuns = await db.Runs
+        .Include(r => r.Runner).ThenInclude(rp => rp!.Profile)
+        .Include(r => r.Stops)
+        .Where(r => (r.Status == "available" || r.Status == "claimed" || r.Status == "in_progress")
+                    && r.Stops.Any(s => binIds.Contains(s.BinId)))
+        .ToListAsync();
+
+    return Results.Ok(new
+    {
+        tomorrowDayOfWeek = tomorrowDow,
+        totalHouseholds = households.Count,
+        householdsWithBinOut = households.Count(h => h.BinIsOut),
+        runsCovering = claimingRuns.Count,
+        runsClaimed = claimingRuns.Count(r => r.Status != "available"),
+        householdsUncovered = households.Count(h => !claimingRuns.Any(r => r.Stops.Any(s => bins.Any(b => b.Id == s.BinId && b.HouseholdId == h.Id)))),
+        households = households.Select(h => new {
+            h.Id, h.Name, h.Address, h.PendingContainers, h.UsesDivider, h.BinIsOut,
+            memberEmails = h.Members.Select(m => m.Email).Where(e => e != null),
+        }),
+        runs = claimingRuns.Select(r => new {
+            r.Id, r.Status, r.AreaName, r.EstimatedContainers, r.PerContainerCents,
+            runnerName = r.Runner != null ? r.Runner.Profile!.Name : null,
+            runnerEmail = r.Runner != null ? r.Runner.Profile!.Email : null,
+            stops = r.Stops.Count,
+        }),
+    });
+}).RequireAuthorization();
+
+// ── Admin: manually trigger the pickup reminder service (for dry-run testing) ──
+app.MapPost("/api/admin/trigger-pickup-reminders", async (PickupReminderService svc) =>
+{
+    var (households, runners) = await svc.TriggerNow();
+    return Results.Ok(new { households, runners });
+}).RequireAuthorization();
+
 // ── Admin: List all cashout requests (auth required) ──
 app.MapGet("/api/admin/cashouts", async (GoodSortDbContext db) =>
     Results.Ok(await db.Set<GoodSort.Api.Services.CashoutRequest>().Include(c => c.User).OrderByDescending(c => c.CreatedAt).Take(100).ToListAsync()))
@@ -938,22 +1001,66 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (Guid id, GoodSortDb
             runner.Profile.ClearedCents += run.ActualPayoutCents;
     }
 
-    // Clear bin pending counts for picked-up stops
+    // For each picked-up stop: clear the bin counts AND move user/household credit
+    // from "pending" (scanned but not yet collected) to "cleared" (cashout-eligible).
+    var creditedHouseholds = new List<Household>();
     foreach (var stop in run.Stops.Where(s => s.Status == "picked_up"))
     {
         var bin = await db.Bins.FindAsync(stop.BinId);
-        if (bin is not null)
+        if (bin is null) continue;
+
+        var count = stop.ActualContainers ?? stop.EstimatedContainers;
+        bin.PendingContainers = Math.Max(0, bin.PendingContainers - count);
+        bin.PendingValueCents = bin.PendingContainers * 5;
+        bin.LastCollectedAt = DateTime.UtcNow;
+        if (bin.PendingContainers == 0) bin.Materials = new MaterialBreakdown();
+
+        // If this bin belongs to a household, clear that household's pending scans
+        if (bin.HouseholdId.HasValue)
         {
-            var count = stop.ActualContainers ?? stop.EstimatedContainers;
-            bin.PendingContainers = Math.Max(0, bin.PendingContainers - count);
-            bin.PendingValueCents = bin.PendingContainers * 5;
-            bin.LastCollectedAt = DateTime.UtcNow;
-            if (bin.PendingContainers == 0) bin.Materials = new MaterialBreakdown();
+            var hh = await db.Households.Include(h => h.Members).FirstOrDefaultAsync(h => h.Id == bin.HouseholdId);
+            if (hh is null) continue;
+
+            var pendingScans = await db.Scans
+                .Where(s => s.HouseholdId == hh.Id && s.Status == "pending")
+                .ToListAsync();
+
+            foreach (var scan in pendingScans)
+            {
+                scan.Status = "cleared";
+                var user = hh.Members.FirstOrDefault(m => m.Id == scan.UserId)
+                           ?? await db.Profiles.FindAsync(scan.UserId);
+                if (user is not null)
+                {
+                    user.PendingCents = Math.Max(0, user.PendingCents - scan.RefundCents);
+                    user.ClearedCents += scan.RefundCents;
+                }
+            }
+
+            hh.PendingContainers = Math.Max(0, hh.PendingContainers - count);
+            hh.PendingValueCents = hh.PendingContainers * 5;
+            hh.EstimatedBags = (int)Math.Ceiling(hh.PendingContainers / 150.0);
+            hh.LastPickupAt = DateTime.UtcNow;
+            if (hh.PendingContainers == 0) hh.Materials = new MaterialBreakdown();
+            creditedHouseholds.Add(hh);
         }
     }
 
     await db.SaveChangesAsync();
-    return Results.Ok(new { run.Id, run.ActualPayoutCents, run.ActualContainers, rating = rating.Stars });
+
+    // Fire-and-forget post-pickup emails
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            using var scope = app.Services.CreateScope();
+            var notif = scope.ServiceProvider.GetRequiredService<NotificationService>();
+            foreach (var hh in creditedHouseholds) await notif.SendPickupConfirmation(hh.Id);
+        }
+        catch (Exception ex) { app.Logger.LogError(ex, "Post-pickup email burst failed"); }
+    });
+
+    return Results.Ok(new { run.Id, run.ActualPayoutCents, run.ActualContainers, rating = rating.Stars, householdsCredited = creditedHouseholds.Count });
 }).RequireAuthorization();
 
 // ── Runner: My runs ──
@@ -1101,6 +1208,7 @@ record PickupRequest(int ActualCount);
 record RunnerRegisterRequest(Guid ProfileId, string? VehicleType, string? VehicleMake, string? VehicleRego, int? CapacityBags, double? ServiceRadiusKm);
 record UnitComplexWaitlistRequest(string BuildingName, string Address, double Lat, double Lng);
 record BinDayLookupRequest(double Lat, double Lng, string? Address);
+record BinOutRequest(bool Out);
 record RunnerProfileUpdateRequest(string? VehicleType, int? CapacityBags, double? ServiceRadiusKm);
 record RunnerHeartbeatRequest(Guid ProfileId, double Lat, double Lng, bool IsOnline);
 record MarketplaceClaimRequest(Guid ProfileId);

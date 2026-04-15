@@ -5,74 +5,52 @@ using Microsoft.EntityFrameworkCore;
 namespace GoodSort.Api.Services;
 
 /// <summary>
-/// Every hour, check if the clock has crossed the "reminder window" (default 18:00
-/// local Brisbane time) for the day BEFORE a household's council collection day.
-/// If so, send two emails:
-///   - to every household member whose council pickup is tomorrow: "we're coming
-///     for your yellow bin tonight / tomorrow morning"
-///   - to every runner with a claimed run due tomorrow: "here are your stops"
-///
-/// Idempotent via Household.LastPickupAt — once we've notified for a given date,
-/// we don't re-notify.
+/// Scoped worker that sends day-before pickup reminders to households and
+/// their claiming runners. Intended to be run:
+///  - automatically at 6pm Brisbane local (via the hosted PickupReminderHost)
+///  - manually via POST /api/admin/trigger-pickup-reminders for dry-run testing
+/// Idempotent via Household.LastPickupAt.
 /// </summary>
-public class PickupReminderService : BackgroundService
+public class PickupReminderService
 {
-    private readonly IServiceProvider _services;
-    private readonly ILogger<PickupReminderService> _log;
+    private readonly GoodSortDbContext _db;
     private readonly IConfiguration _config;
-
-    // Brisbane is UTC+10 year-round (no DST)
+    private readonly ILogger<PickupReminderService> _log;
     private static readonly TimeSpan Brisbane = TimeSpan.FromHours(10);
-    private const int ReminderHourLocal = 18; // 6pm Brisbane
 
-    public PickupReminderService(IServiceProvider services, ILogger<PickupReminderService> log, IConfiguration config)
+    public PickupReminderService(GoodSortDbContext db, IConfiguration config, ILogger<PickupReminderService> log)
+    { _db = db; _config = config; _log = log; }
+
+    /// <summary>Force a reminder pass now, regardless of the time-of-day gate.</summary>
+    public async Task<(int households, int runners)> TriggerNow()
     {
-        _services = services; _log = log; _config = config;
-    }
-
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            try
-            {
-                var localNow = DateTime.UtcNow + Brisbane;
-                if (localNow.Hour >= ReminderHourLocal) await RunReminderPass(localNow.Date);
-            }
-            catch (Exception ex)
-            {
-                _log.LogError(ex, "PickupReminderService pass failed");
-            }
-            await Task.Delay(TimeSpan.FromMinutes(60), stoppingToken);
-        }
-    }
-
-    private async Task RunReminderPass(DateTime localToday)
-    {
-        using var scope = _services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
-
-        // Tomorrow's day-of-week (0=Sun..6=Sat) in Brisbane local time
+        var localToday = (DateTime.UtcNow + Brisbane).Date;
         var tomorrow = localToday.AddDays(1);
         var tomorrowDow = (int)tomorrow.DayOfWeek;
-
-        await NotifyHouseholds(db, tomorrowDow, tomorrow);
-        await NotifyRunners(db, tomorrowDow, tomorrow);
+        var hhSent = await NotifyHouseholds(tomorrowDow, tomorrow, forceResend: true);
+        var runSent = await NotifyRunners(tomorrowDow, tomorrow);
+        return (hhSent, runSent);
     }
 
-    private async Task NotifyHouseholds(GoodSortDbContext db, int tomorrowDow, DateTime tomorrowLocal)
+    /// <summary>Called by the hosted loop — respects idempotency by date.</summary>
+    public async Task<(int households, int runners)> RunIfDue()
     {
-        // Find residential households whose council pickup is tomorrow and we
-        // haven't already notified for that date.
-        var todayLocal = tomorrowLocal.AddDays(-1);
-        var candidates = await db.Households
-            .Where(h => h.Type == "residential"
-                     && h.CouncilCollectionDay == tomorrowDow
-                     && (h.LastPickupAt == null || h.LastPickupAt < todayLocal))
-            .Include(h => h.Members)
-            .ToListAsync();
+        var localNow = DateTime.UtcNow + Brisbane;
+        if (localNow.Hour < 18) return (0, 0);
+        var tomorrow = localNow.Date.AddDays(1);
+        var tomorrowDow = (int)tomorrow.DayOfWeek;
+        var hhSent = await NotifyHouseholds(tomorrowDow, tomorrow, forceResend: false);
+        var runSent = await NotifyRunners(tomorrowDow, tomorrow);
+        return (hhSent, runSent);
+    }
 
-        if (candidates.Count == 0) return;
+    private async Task<int> NotifyHouseholds(int tomorrowDow, DateTime tomorrowLocal, bool forceResend)
+    {
+        var todayLocal = tomorrowLocal.AddDays(-1);
+        var q = _db.Households.Where(h => h.Type == "residential" && h.CouncilCollectionDay == tomorrowDow);
+        if (!forceResend) q = q.Where(h => h.LastPickupAt == null || h.LastPickupAt < todayLocal);
+        var candidates = await q.Include(h => h.Members).ToListAsync();
+        if (candidates.Count == 0) return 0;
 
         var client = MakeEmailClient();
         var sender = _config["ACS_EMAIL_SENDER"] ?? "DoNotReply@thegoodsort.org";
@@ -97,6 +75,7 @@ public class PickupReminderService : BackgroundService
                             <li>We extract the 10c items; the truck takes the rest</li>
                           </ul>
                         </div>
+                        <p style='font-size:14px;margin:12px 0'><a href='https://www.thegoodsort.org/household' style='color:#16a34a;font-weight:600'>Tap here once your bin is on the kerb →</a></p>
                         <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {hh.Address}</p>
                       </div>";
                     await SendEmail(client, sender, member.Email!, subject, body);
@@ -108,23 +87,24 @@ public class PickupReminderService : BackgroundService
                 _log.LogError(ex, "Failed to notify household {HouseholdId}", hh.Id);
             }
         }
-        await db.SaveChangesAsync();
+        await _db.SaveChangesAsync();
         _log.LogInformation("Sent pickup reminders to {Count} households for {Date}", candidates.Count, tomorrowLocal.Date);
+        return candidates.Count;
     }
 
-    private async Task NotifyRunners(GoodSortDbContext db, int tomorrowDow, DateTime tomorrowLocal)
+    private async Task<int> NotifyRunners(int tomorrowDow, DateTime tomorrowLocal)
     {
-        // Runs claimed by a runner with stops whose households collect tomorrow
-        var runs = await db.Runs
+        var runs = await _db.Runs
             .Where(r => r.Status == "claimed" && r.RunnerId != null)
             .Include(r => r.Runner).ThenInclude(rp => rp!.Profile)
             .Include(r => r.Stops)
             .Include(r => r.DropPoint)
             .ToListAsync();
-        if (runs.Count == 0) return;
+        if (runs.Count == 0) return 0;
 
         var client = MakeEmailClient();
         var sender = _config["ACS_EMAIL_SENDER"] ?? "DoNotReply@thegoodsort.org";
+        var sent = 0;
 
         foreach (var run in runs)
         {
@@ -144,11 +124,11 @@ public class PickupReminderService : BackgroundService
                 <p style='font-size:13px;color:#64748b'>Drop off at: <b>{run.DropPoint?.Name}</b> — {run.DropPoint?.Address}</p>
                 <p style='font-size:12px;color:#94a3b8;margin-top:24px'>Start in the app when you're ready to roll.</p>
               </div>";
-
-            try { await SendEmail(client, sender, email, subject, body); }
+            try { await SendEmail(client, sender, email, subject, body); sent++; }
             catch (Exception ex) { _log.LogError(ex, "Failed to email runner {RunnerId}", run.RunnerId); }
         }
-        _log.LogInformation("Sent runner briefings for {Count} claimed runs on {Date}", runs.Count, tomorrowLocal.Date);
+        _log.LogInformation("Sent runner briefings for {Count} claimed runs on {Date}", sent, tomorrowLocal.Date);
+        return sent;
     }
 
     private EmailClient? MakeEmailClient()
@@ -164,5 +144,28 @@ public class PickupReminderService : BackgroundService
         var content = new EmailContent(subject) { Html = html };
         var msg = new EmailMessage(from, to, content);
         await client.SendAsync(Azure.WaitUntil.Started, msg);
+    }
+}
+
+/// <summary>Hosted loop that calls PickupReminderService.RunIfDue every hour.</summary>
+public class PickupReminderHost : BackgroundService
+{
+    private readonly IServiceProvider _services;
+    private readonly ILogger<PickupReminderHost> _log;
+    public PickupReminderHost(IServiceProvider services, ILogger<PickupReminderHost> log) { _services = services; _log = log; }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                using var scope = _services.CreateScope();
+                var svc = scope.ServiceProvider.GetRequiredService<PickupReminderService>();
+                await svc.RunIfDue();
+            }
+            catch (Exception ex) { _log.LogError(ex, "PickupReminderHost pass failed"); }
+            await Task.Delay(TimeSpan.FromMinutes(60), stoppingToken);
+        }
     }
 }

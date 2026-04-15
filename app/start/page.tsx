@@ -59,7 +59,12 @@ export default function StartPage() {
       localStorage.setItem("goodsort_token", data.token);
       localStorage.setItem("goodsort_profile", JSON.stringify(data.profile));
       document.cookie = `goodsort_token=${data.token}; path=/; max-age=${30*24*60*60}; SameSite=Lax; Secure`;
-      setStep("bins");
+      // If they already have a household with council day, skip onboarding
+      if (data.profile.householdId) {
+        router.push("/");
+      } else {
+        router.push("/onboard");
+      }
     } catch { setAuthError("Verification failed"); }
     setAuthLoading(false);
   }
@@ -156,7 +161,8 @@ export default function StartPage() {
                 <div className="flex justify-center mb-5">
                   <Logo size="lg" />
                 </div>
-                <p className="text-slate-400 text-[14px]">Turn your empty cans and bottles into cash</p>
+                <p className="text-slate-400 text-[14px]">We pick up cans & bottles straight from your yellow bin.</p>
+                <p className="text-slate-400 text-[12px] mt-1">5c per container · right to your bank · you do nothing different</p>
               </div>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter your email"
                 onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}

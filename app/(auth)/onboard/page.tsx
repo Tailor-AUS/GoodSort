@@ -23,6 +23,7 @@ export default function OnboardPage() {
   const [councilArea, setCouncilArea] = useState<string | null>(null);
   const [dayAuto, setDayAuto] = useState(false);
   const [usesDivider, setUsesDivider] = useState(true);
+  const [accessConsent, setAccessConsent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
@@ -65,6 +66,7 @@ export default function OnboardPage() {
 
   async function handleResidentialSubmit() {
     if (!address || lat == null || lng == null || collectionDay == null) { setError("Pick your address and collection day."); return; }
+    if (!accessConsent) { setError("Please tick the consent box so we can access your yellow bin."); return; }
     setLoading(true); setError("");
 
     try {
@@ -77,6 +79,8 @@ export default function OnboardPage() {
           councilCollectionDay: collectionDay,
           councilArea,
           usesDivider,
+          accessConsent: true,
+          accessConsentAt: new Date().toISOString(),
         }),
       });
       if (!hhRes.ok) { setError("Failed to create household"); setLoading(false); return; }
@@ -189,11 +193,21 @@ export default function OnboardPage() {
         ))}
       </div>
 
-      <label className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl mb-6 cursor-pointer">
+      <label className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl mb-3 cursor-pointer">
         <input type="checkbox" checked={usesDivider} onChange={e => setUsesDivider(e.target.checked)} className="w-4 h-4 accent-green-600" />
         <div className="flex-1">
           <p className="text-[13px] font-semibold text-slate-900">Send me a cardboard divider</p>
           <p className="text-[11px] text-slate-400">Keeps your cans & bottles on one side of the bin so our runner can grab them fast.</p>
+        </div>
+      </label>
+
+      <label className="flex items-start gap-3 p-3 bg-white border border-slate-200 rounded-xl mb-6 cursor-pointer">
+        <input type="checkbox" checked={accessConsent} onChange={e => setAccessConsent(e.target.checked)} className="w-4 h-4 accent-green-600 mt-0.5" />
+        <div className="flex-1">
+          <p className="text-[13px] font-semibold text-slate-900">I authorise The Good Sort to access my yellow bin</p>
+          <p className="text-[11px] text-slate-500">
+            On the day before my council collection, a GoodSort runner may open my yellow recycling bin (on the kerb or property) and remove eligible CDS containers. Anything else is left for the council truck. See our <a href="/terms" target="_blank" className="underline text-green-600">Terms</a> and <a href="/privacy" target="_blank" className="underline text-green-600">Privacy Policy</a>.
+          </p>
         </div>
       </label>
 

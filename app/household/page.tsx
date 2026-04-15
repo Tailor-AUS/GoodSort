@@ -13,6 +13,7 @@ interface HouseholdDetail {
   type: string;
   councilCollectionDay: number | null;
   usesDivider: boolean;
+  binIsOut: boolean;
   pendingContainers: number;
   pendingValueCents: number;
   materials?: { aluminium: number; pet: number; glass: number; other: number };
@@ -58,6 +59,9 @@ export default function HouseholdPage() {
         {hh && (
           <>
             <p className="text-[13px] text-slate-500 mb-6">{hh.name} · {hh.address}</p>
+
+            {/* Bin-out toggle */}
+            <BinOutToggle hh={hh} onChange={(v) => setHh({ ...hh, binIsOut: v })} />
 
             {/* Next pickup banner — the heart of the yellow-bin model */}
             {nextPickup && (
@@ -131,6 +135,37 @@ function Card({ icon: Icon, label, value }: { icon: React.ElementType; label: st
       <p className="text-xl font-display font-extrabold text-slate-900">{value}</p>
       <p className="text-[10px] uppercase tracking-wider text-slate-400 mt-0.5">{label}</p>
     </div>
+  );
+}
+
+function BinOutToggle({ hh, onChange }: { hh: HouseholdDetail; onChange: (v: boolean) => void }) {
+  const [saving, setSaving] = useState(false);
+  async function toggle() {
+    setSaving(true);
+    const next = !hh.binIsOut;
+    try {
+      await fetch(apiUrl(`/api/households/${hh.id}/bin-out`), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ out: next }),
+      });
+      onChange(next);
+    } finally { setSaving(false); }
+  }
+  return (
+    <button onClick={toggle} disabled={saving}
+      className={`w-full rounded-2xl p-4 mb-4 border-2 flex items-center justify-between transition-colors ${hh.binIsOut ? "bg-green-50 border-green-500" : "bg-white border-slate-300"}`}>
+      <div className="text-left">
+        <p className={`text-[14px] font-semibold ${hh.binIsOut ? "text-green-800" : "text-slate-900"}`}>
+          {hh.binIsOut ? "Bin is on the kerb ✓" : "Put your yellow bin on the kerb?"}
+        </p>
+        <p className="text-[12px] text-slate-500 mt-0.5">
+          {hh.binIsOut ? "Tap to mark bin as back inside." : "Tap once your bin is out so the runner knows it's ready."}
+        </p>
+      </div>
+      <div className={`w-12 h-6 rounded-full relative transition-colors ${hh.binIsOut ? "bg-green-500" : "bg-slate-300"}`}>
+        <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${hh.binIsOut ? "translate-x-6" : "translate-x-0.5"}`} />
+      </div>
+    </button>
   );
 }
 

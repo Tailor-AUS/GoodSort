@@ -15,6 +15,10 @@ public class Household
     public int? CouncilCollectionDay { get; set; } // 0=Sun .. 6=Sat; null until user sets
     public string? CouncilArea { get; set; }        // "BCC", "Logan", "Redlands", "Moreton Bay", "Gold Coast"
     public bool UsesDivider { get; set; } = true;   // cardboard divider in the yellow bin
+    public bool AccessConsent { get; set; } = false; // explicit consent to access the yellow bin on collection day
+    public DateTime? AccessConsentAt { get; set; }
+    public bool BinIsOut { get; set; } = false;      // user has confirmed they've put the yellow bin on the kerb
+    public DateTime? BinIsOutAt { get; set; }
     public DateTime? LastPickupAt { get; set; }
 
     // For unit complex (phase 2) — deferred, users waitlist for now
