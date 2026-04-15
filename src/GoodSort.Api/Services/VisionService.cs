@@ -1,8 +1,11 @@
 using System.ClientModel;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Azure.AI.OpenAI;
+using GoodSort.Api.Data;
+using GoodSort.Api.Data.Entities;
 using OpenAI.Chat;
 
 namespace GoodSort.Api.Services;
@@ -12,12 +15,14 @@ public class VisionService
     private readonly IConfiguration _config;
     private readonly ILogger<VisionService> _logger;
     private readonly IHttpClientFactory _httpFactory;
+    private readonly GoodSortDbContext _db;
 
-    public VisionService(IConfiguration config, ILogger<VisionService> logger, IHttpClientFactory httpFactory)
+    public VisionService(IConfiguration config, ILogger<VisionService> logger, IHttpClientFactory httpFactory, GoodSortDbContext db)
     {
         _config = config;
         _logger = logger;
         _httpFactory = httpFactory;
+        _db = db;
     }
 
     public async Task<VisionResult> IdentifyContainers(string base64Image)
@@ -31,10 +36,30 @@ public class VisionService
         return await IdentifyViaAzureOpenAI(base64Image);
     }
 
+    private async Task LogCall(string provider, bool success, int containerCount, long durationMs)
+    {
+        try
+        {
+            _db.VisionCalls.Add(new VisionCall
+            {
+                Provider = provider,
+                Success = success,
+                ContainerCount = containerCount,
+                DurationMs = (int)durationMs,
+            });
+            await _db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to log vision call");
+        }
+    }
+
     // ── Tailor Vision API (api.tailor.au/api/vision/classify) ─────────────
 
     private async Task<VisionResult> IdentifyViaTailorVision(string base64Image)
     {
+        var sw = Stopwatch.StartNew();
         try
         {
             var client = _httpFactory.CreateClient("TailorVision");
@@ -58,6 +83,7 @@ public class VisionService
             {
                 var errorBody = await response.Content.ReadAsStringAsync();
                 _logger.LogWarning("Tailor Vision returned {Status}: {Body}", (int)response.StatusCode, errorBody);
+                await LogCall("tailor", success: false, containerCount: 0, sw.ElapsedMilliseconds);
                 _logger.LogInformation("Falling back to Azure OpenAI");
                 return await IdentifyViaAzureOpenAI(base64Image);
             }
@@ -71,6 +97,7 @@ public class VisionService
             if (tvResponse?.Classification == null)
             {
                 _logger.LogWarning("Tailor Vision returned null classification");
+                await LogCall("tailor", success: true, containerCount: 0, sw.ElapsedMilliseconds);
                 return new VisionResult { Message = "Hmm, couldn't quite figure that one out. Try a clearer photo!" };
             }
 
@@ -94,11 +121,13 @@ public class VisionService
                 ? $"Found a {container.Name}! That's 5 cents sorted 🎉"
                 : $"Spotted a {container.Name}, but it's not CDS eligible unfortunately.";
 
+            await LogCall("tailor", success: true, containerCount: 1, sw.ElapsedMilliseconds);
             return new VisionResult { Containers = [container], Message = msg };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Tailor Vision API call failed — falling back to Azure");
+            await LogCall("tailor", success: false, containerCount: 0, sw.ElapsedMilliseconds);
             return await IdentifyViaAzureOpenAI(base64Image);
         }
     }
@@ -171,10 +200,12 @@ No containers (blurry):
         var endpoint = _config["AZURE_OPENAI_ENDPOINT"] ?? "";
         var apiKey = _config["AZURE_OPENAI_KEY"] ?? "";
         var deploymentName = _config["AZURE_OPENAI_DEPLOYMENT"] ?? "gpt-4.1";
+        var sw = Stopwatch.StartNew();
 
         if (string.IsNullOrEmpty(apiKey))
         {
             _logger.LogWarning("No vision API configured — returning mock data");
+            await LogCall("mock", success: false, containerCount: 1, sw.ElapsedMilliseconds);
             return new VisionResult
             {
                 Containers = [new IdentifiedContainer { Name = "Unknown Container", Material = "aluminium", Count = 1, Eligible = true }],
@@ -220,6 +251,7 @@ No containers (blurry):
             {
                 _logger.LogInformation("Azure OpenAI identified {Count} container types, message: {Message}",
                     result.Containers.Count, result.Message);
+                await LogCall("openai", success: true, containerCount: result.Containers.Sum(c => c.Count), sw.ElapsedMilliseconds);
                 return result;
             }
 
@@ -230,6 +262,7 @@ No containers (blurry):
             });
 
             _logger.LogInformation("Azure OpenAI identified {Count} container types (legacy format)", containers?.Count ?? 0);
+            await LogCall("openai", success: true, containerCount: containers?.Sum(c => c.Count) ?? 0, sw.ElapsedMilliseconds);
             return new VisionResult
             {
                 Containers = containers ?? [],
@@ -241,6 +274,7 @@ No containers (blurry):
         catch (Exception ex)
         {
             _logger.LogError(ex, "Azure OpenAI call failed");
+            await LogCall("openai", success: false, containerCount: 0, sw.ElapsedMilliseconds);
             return new VisionResult { Message = "Something went wrong analysing that photo. Give it another go!" };
         }
     }

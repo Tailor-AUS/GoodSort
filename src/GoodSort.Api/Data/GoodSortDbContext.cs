@@ -21,6 +21,7 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
     public DbSet<RunStop> RunStops => Set<RunStop>();
     public DbSet<RunnerRating> RunnerRatings => Set<RunnerRating>();
     public DbSet<PricingConfig> PricingConfigs => Set<PricingConfig>();
+    public DbSet<VisionCall> VisionCalls => Set<VisionCall>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -216,6 +217,13 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
         modelBuilder.Entity<PricingConfig>(e =>
         {
             e.HasIndex(pc => pc.IsActive);
+        });
+
+        // VisionCall — one row per Tailor Vision / Azure OpenAI call for cost tracking
+        modelBuilder.Entity<VisionCall>(e =>
+        {
+            e.HasIndex(v => v.CreatedAt);
+            e.HasIndex(v => v.Provider);
         });
 
         // Seed default pricing config (static CreatedAt)

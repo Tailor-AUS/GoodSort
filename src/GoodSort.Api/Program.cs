@@ -27,7 +27,7 @@ builder.Services.AddHttpClient("TailorVision", client =>
     client.BaseAddress = new Uri(url);
     if (!string.IsNullOrEmpty(key))
         client.DefaultRequestHeaders.Add("X-Api-Key", key);
-    client.Timeout = TimeSpan.FromSeconds(30);
+    client.Timeout = TimeSpan.FromSeconds(8); // Fast fail — fallback to Azure OpenAI if Tailor Vision is slow
 });
 
 // JSON serialization — handle circular references (Run ↔ RunnerProfile)
@@ -539,7 +539,30 @@ app.MapGet("/api/admin/stats", async (GoodSortDbContext db) =>
     var totalContainers = await db.Profiles.SumAsync(p => p.TotalContainers);
     var totalPending = await db.Profiles.SumAsync(p => p.PendingCents);
     var totalCleared = await db.Profiles.SumAsync(p => p.ClearedCents);
-    return Results.Ok(new { users, bins, scans, routes, totalContainers, totalPending, totalCleared });
+
+    // Vision API call counter — for Tailor Vision cost tracking
+    var since30d = DateTime.UtcNow.AddDays(-30);
+    var since7d = DateTime.UtcNow.AddDays(-7);
+    var visionTotal = await db.VisionCalls.CountAsync();
+    var visionLast30d = await db.VisionCalls.CountAsync(v => v.CreatedAt >= since30d);
+    var visionLast7d = await db.VisionCalls.CountAsync(v => v.CreatedAt >= since7d);
+    var visionTailor = await db.VisionCalls.CountAsync(v => v.Provider == "tailor" && v.Success);
+    var visionOpenAi = await db.VisionCalls.CountAsync(v => v.Provider == "openai" && v.Success);
+    var visionFailed = await db.VisionCalls.CountAsync(v => !v.Success);
+
+    return Results.Ok(new
+    {
+        users, bins, scans, routes, totalContainers, totalPending, totalCleared,
+        vision = new
+        {
+            total = visionTotal,
+            last30d = visionLast30d,
+            last7d = visionLast7d,
+            tailor = visionTailor,
+            openai = visionOpenAi,
+            failed = visionFailed,
+        },
+    });
 }).RequireAuthorization();
 
 // ── Admin: List all users (auth required) ──
