@@ -60,7 +60,7 @@ export default function SorterApp() {
     (containerName: string, cents: number, bag: BagInfo) => {
       setShowScanner(false);
       refreshData();
-      setToast({ text: `+${cents}c · ${bag.label} · ${containerName}`, visible: true });
+      setToast({ text: `+${cents}¢ added to your account · ${bag.label}`, visible: true });
       setTimeout(() => setToast((t) => (t ? { ...t, visible: false } : null)), 2500);
       setTimeout(() => setToast(null), 3000);
     },
@@ -71,7 +71,7 @@ export default function SorterApp() {
     (totalItems: number, totalCents: number) => {
       setShowScanner(false);
       refreshData();
-      setToast({ text: `+$${(totalCents / 100).toFixed(2)} pending · ${totalItems} containers`, visible: true });
+      setToast({ text: `+$${(totalCents / 100).toFixed(2)} added to your account · ${totalItems} containers`, visible: true });
       setTimeout(() => setToast((t) => (t ? { ...t, visible: false } : null)), 3500);
       setTimeout(() => setToast(null), 4000);
     },
