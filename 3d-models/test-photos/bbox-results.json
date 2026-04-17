@@ -1,0 +1,250 @@
+{
+  "test1_single_can.jpg": {
+    "containers": [
+      {
+        "name": "Coca-Cola 375ml can",
+        "material": "aluminium",
+        "count": 1,
+        "eligible": true,
+        "bbox": [
+          38,
+          27,
+          24,
+          41
+        ]
+      }
+    ],
+    "message": "Found 1 can"
+  },
+  "test2_three_cans.jpg": {
+    "containers": [
+      {
+        "name": "Coke can",
+        "material": "aluminium",
+        "count": 1,
+        "eligible": true,
+        "bbox": [
+          15,
+          30,
+          20,
+          40
+        ]
+      },
+      {
+        "name": "Pepsi can",
+        "material": "aluminium",
+        "count": 1,
+        "eligible": true,
+        "bbox": [
+          40,
+          30,
+          20,
+          40
+        ]
+      },
+      {
+        "name": "VB can",
+        "material": "aluminium",
+        "count": 1,
+        "eligible": true,
+        "bbox": [
+          65,
+          30,
+          20,
+          40
+        ]
+      }
+    ],
+    "message": "Found 3 aluminium cans: Coke, Pepsi, and VB."
+  },
+  "test3_mixed_pile.jpg": {
+    "containers": [
+      {
+        "name": "Beer can",
+        "material": "aluminium",
+        "count": 1,
+        "eligible": true,
+        "bbox": [
+          11,
+          33,
+          23,
+          41
+        ]
+      },
+      {
+        "name": "Water bottle",
+        "material": "pet",
+        "count": 1,
+        "eligible": true,
+        "bbox": [
+          36,
+          18,
+          23,
+          62
+        ]
+      },
+      {
+        "name": "Wine",
+        "material": "glass",
+        "count": 1,
+        "eligible": false,
+        "bbox": [
+          60,
+          28,
+          18,
+          48
+        ]
+      },
+      {
+        "name": "OJ",
+        "material": "liquid_paperboard",
+        "count": 1,
+        "eligible": true,
+        "bbox": [
+          79,
+          16,
+          17,
+          29
+        ]
+      },
+      {
+        "name": "xxxx",
+        "material": "liquid_paperboard",
+        "count": 1,
+        "eligible": true,
+        "bbox": [
+          72,
+          41,
+          19,
+          32
+        ]
+      }
+    ],
+    "message": "Found 5 beverage containers."
+  },
+  "test4_cluttered.jpg": {
+    "containers": [
+      {
+        "name": "Can1",
+        "material": "aluminium",
+        "count": 1,
+        "eligible": true,
+        "bbox": [
+          3,
+          11,
+          19,
+          44
+        ]
+      },
+      {
+        "name": "Coke",
+        "material": "aluminium",
+        "count": 1,
+        "eligible": true,
+        "bbox": [
+          18,
+          16,
+          17,
+          38
+        ]
+      },
+      {
+        "name": "PET",
+        "material": "pet",
+        "count": 1,
+        "eligible": true,
+        "bbox": [
+          36,
+          2,
+          18,
+          51
+        ]
+      },
+      {
+        "name": "Glass",
+        "material": "glass",
+        "count": 1,
+        "eligible": true,
+        "bbox": [
+          47,
+          18,
+          19,
+          51
+        ]
+      },
+      {
+        "name": "Can2",
+        "material": "aluminium",
+        "count": 1,
+        "eligible": true,
+        "bbox": [
+          68,
+          7,
+          18,
+          48
+        ]
+      },
+      {
+        "name": "Can3",
+        "material": "aluminium",
+        "count": 1,
+        "eligible": true,
+        "bbox": [
+          80,
+          16,
+          18,
+          39
+        ]
+      },
+      {
+        "name": "PET2",
+        "material": "pet",
+        "count": 1,
+        "eligible": true,
+        "bbox": [
+          90,
+          4,
+          17,
+          52
+        ]
+      },
+      {
+        "name": "XXXX",
+        "material": "aluminium",
+        "count": 1,
+        "eligible": true,
+        "bbox": [
+          9,
+          56,
+          19,
+          34
+        ]
+      },
+      {
+        "name": "Stub",
+        "material": "glass",
+        "count": 1,
+        "eligible": true,
+        "bbox": [
+          37,
+          66,
+          13,
+          29
+        ]
+      },
+      {
+        "name": "Juice",
+        "material": "liquid_paperboard",
+        "count": 1,
+        "eligible": true,
+        "bbox": [
+          61,
+          60,
+          21,
+          35
+        ]
+      }
+    ],
+    "message": "Found 10 beverage containers."
+  }
+}

@@ -232,22 +232,47 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     startCamera();
   }
 
-  // ── Material colour mapping for the 4-quadrant bin ──
-  const QUADRANT: Record<string, { color: string; bg: string; border: string; label: string; emoji: string }> = {
-    aluminium: { color: "text-blue-600",   bg: "bg-blue-500",   border: "border-blue-400", label: "CANS",    emoji: "🔵" },
-    pet:       { color: "text-red-500",    bg: "bg-red-500",    border: "border-red-400",  label: "PLASTIC", emoji: "🔴" },
-    glass:     { color: "text-green-600",  bg: "bg-green-500",  border: "border-green-400",label: "GLASS",   emoji: "🟢" },
-    other:     { color: "text-amber-500",  bg: "bg-amber-500",  border: "border-amber-400",label: "OTHER",   emoji: "🟡" },
+  // ── 8-stream sorting system ──
+  // Import would be cleaner but keeping inline to avoid build issues with existing code
+  const STREAM_MAP: Record<string, { bg: string; label: string; shortLabel: string; emoji: string; section: number }> = {
+    aluminium:        { bg: "bg-blue-500",    label: "Aluminium Cans",  shortLabel: "ALU",      emoji: "🔵", section: 1 },
+    pet_clear:        { bg: "bg-sky-400",     label: "PET Clear",       shortLabel: "PET CLR",  emoji: "💧", section: 2 },
+    pet_coloured:     { bg: "bg-rose-500",    label: "PET Coloured",    shortLabel: "PET COL",  emoji: "🔴", section: 3 },
+    glass_clear:      { bg: "bg-emerald-400", label: "Glass Clear",     shortLabel: "GLS CLR",  emoji: "🟢", section: 4 },
+    glass_brown:      { bg: "bg-amber-700",   label: "Glass Brown",     shortLabel: "GLS BRN",  emoji: "🟤", section: 5 },
+    glass_green:      { bg: "bg-green-700",   label: "Glass Green",     shortLabel: "GLS GRN",  emoji: "🟩", section: 6 },
+    steel:            { bg: "bg-slate-500",   label: "Steel Cans",      shortLabel: "STEEL",    emoji: "⚪", section: 7 },
+    hdpe_lpb:         { bg: "bg-orange-400",  label: "HDPE & Cartons",  shortLabel: "HDPE/LPB", emoji: "🟠", section: 8 },
   };
-  function getQuadrant(material: string) {
-    return QUADRANT[mapToMaterialType(material)] || QUADRANT.other;
+  function getStream(material: string, name: string) {
+    const mat = material.toLowerCase();
+    const desc = name.toLowerCase();
+    if (mat === "aluminium" || mat === "aluminum") return STREAM_MAP.aluminium;
+    if (mat === "steel") return STREAM_MAP.steel;
+    if (mat === "pet") {
+      if (desc.includes("green") || desc.includes("colour") || desc.includes("sprite") ||
+          desc.includes("fanta") || desc.includes("brown") || desc.includes("dark") || desc.includes("tinted"))
+        return STREAM_MAP.pet_coloured;
+      return STREAM_MAP.pet_clear;
+    }
+    if (mat === "glass") {
+      if (desc.includes("brown") || desc.includes("amber") || desc.includes("stubby") ||
+          desc.includes("beer") || desc.includes("vb") || desc.includes("xxxx") || desc.includes("carlton"))
+        return STREAM_MAP.glass_brown;
+      if (desc.includes("green") || desc.includes("heineken"))
+        return STREAM_MAP.glass_green;
+      return STREAM_MAP.glass_clear;
+    }
+    if (mat === "hdpe" || mat === "liquid_paperboard") return STREAM_MAP.hdpe_lpb;
+    return STREAM_MAP.hdpe_lpb; // fallback
   }
 
   // ── Results Screen — photo overlay with colour-coded sorting ──
   if (results !== null) {
     const eligible = results.filter((r) => r.eligible);
     const totalItems = eligible.reduce((s, r) => s + r.count, 0);
-    const totalCents = totalItems * SORTER_PAYOUT_CENTS;
+    const centsPerItem = 10; // CDS refund rate — going direct to recycler
+    const totalCents = totalItems * centsPerItem;
 
     return (
       <div className="fixed inset-0 z-50 bg-black flex flex-col" style={{ paddingTop: "env(safe-area-inset-top, 0px)", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
@@ -279,18 +304,19 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
               <div className="space-y-1.5">
                 {/* Colour-coded item tags — like AR labels */}
                 {results.map((item, i) => {
-                  const q = getQuadrant(item.material);
+                  const stream = getStream(item.material, item.name);
                   return (
                     <div key={i} className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl backdrop-blur-md ${item.eligible ? "bg-white/15 border border-white/20" : "bg-white/5 border border-white/10 opacity-50"}`}>
-                      {/* Quadrant colour dot */}
-                      <div className={`w-8 h-8 ${q.bg} rounded-lg flex items-center justify-center flex-shrink-0 shadow-lg`}>
-                        <span className="text-white text-[11px] font-extrabold">{q.label.slice(0, 3)}</span>
+                      {/* Stream section indicator */}
+                      <div className={`w-10 h-10 ${stream.bg} rounded-xl flex flex-col items-center justify-center flex-shrink-0 shadow-lg`}>
+                        <span className="text-white text-[9px] font-extrabold leading-none">{stream.shortLabel}</span>
+                        <span className="text-white/80 text-[7px] font-bold">#{stream.section}</span>
                       </div>
                       {/* Item info */}
                       <div className="flex-1 min-w-0">
                         <p className="text-[13px] text-white font-semibold truncate">{item.name}</p>
                         <p className="text-[11px] text-white/50">
-                          {item.eligible ? `${q.label} quadrant · 5¢ each` : "Not CDS eligible"}
+                          {item.eligible ? `Section ${stream.section} · ${stream.label} · 10¢` : "Not CDS eligible"}
                         </p>
                       </div>
                       {/* Count stepper — also acts as "how many more?" */}
@@ -309,19 +335,35 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
                   );
                 })}
 
-                {/* Mini bin guide — shows the 4-quadrant layout */}
+                {/* 8-stream bin guide */}
                 {eligible.length > 0 && (
-                  <div className="grid grid-cols-4 gap-1 mt-2 px-1">
-                    {(["aluminium", "glass", "pet", "other"] as const).map(mat => {
-                      const q = QUADRANT[mat];
-                      const count = eligible.filter(e => mapToMaterialType(e.material) === mat).reduce((s, e) => s + e.count, 0);
-                      return (
-                        <div key={mat} className={`rounded-lg py-1.5 text-center ${count > 0 ? `${q.bg} shadow-lg` : "bg-white/10"}`}>
-                          <p className="text-[10px] font-extrabold text-white">{q.label}</p>
-                          {count > 0 && <p className="text-[12px] font-bold text-white/80">×{count}</p>}
-                        </div>
-                      );
-                    })}
+                  <div className="mt-2 px-1">
+                    {/* Top row — 3 high-volume sections */}
+                    <div className="grid grid-cols-3 gap-1 mb-1">
+                      {(["aluminium", "pet_clear", "pet_coloured"] as const).map(key => {
+                        const st = STREAM_MAP[key];
+                        const count = eligible.filter(e => getStream(e.material, e.name).section === st.section).reduce((s, e) => s + e.count, 0);
+                        return (
+                          <div key={key} className={`rounded-lg py-1 text-center ${count > 0 ? `${st.bg} shadow-lg` : "bg-white/10"}`}>
+                            <p className="text-[8px] font-extrabold text-white">{st.shortLabel}</p>
+                            {count > 0 && <p className="text-[10px] font-bold text-white/80">×{count}</p>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* Bottom row — 5 smaller sections */}
+                    <div className="grid grid-cols-5 gap-1">
+                      {(["glass_clear", "glass_brown", "glass_green", "steel", "hdpe_lpb"] as const).map(key => {
+                        const st = STREAM_MAP[key];
+                        const count = eligible.filter(e => getStream(e.material, e.name).section === st.section).reduce((s, e) => s + e.count, 0);
+                        return (
+                          <div key={key} className={`rounded-lg py-1 text-center ${count > 0 ? `${st.bg} shadow-lg` : "bg-white/10"}`}>
+                            <p className="text-[7px] font-extrabold text-white">{st.shortLabel}</p>
+                            {count > 0 && <p className="text-[9px] font-bold text-white/80">×{count}</p>}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
