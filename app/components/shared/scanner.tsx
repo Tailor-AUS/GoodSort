@@ -232,76 +232,120 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     startCamera();
   }
 
-  // ── Results Screen ──
+  // ── Material colour mapping for the 4-quadrant bin ──
+  const QUADRANT: Record<string, { color: string; bg: string; border: string; label: string; emoji: string }> = {
+    aluminium: { color: "text-blue-600",   bg: "bg-blue-500",   border: "border-blue-400", label: "CANS",    emoji: "🔵" },
+    pet:       { color: "text-red-500",    bg: "bg-red-500",    border: "border-red-400",  label: "PLASTIC", emoji: "🔴" },
+    glass:     { color: "text-green-600",  bg: "bg-green-500",  border: "border-green-400",label: "GLASS",   emoji: "🟢" },
+    other:     { color: "text-amber-500",  bg: "bg-amber-500",  border: "border-amber-400",label: "OTHER",   emoji: "🟡" },
+  };
+  function getQuadrant(material: string) {
+    return QUADRANT[mapToMaterialType(material)] || QUADRANT.other;
+  }
+
+  // ── Results Screen — photo overlay with colour-coded sorting ──
   if (results !== null) {
     const eligible = results.filter((r) => r.eligible);
     const totalItems = eligible.reduce((s, r) => s + r.count, 0);
     const totalCents = totalItems * SORTER_PAYOUT_CENTS;
 
     return (
-      <div className="fixed inset-0 z-50 bg-white flex flex-col" style={{ paddingTop: "env(safe-area-inset-top, 0px)", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
-        <div className="flex justify-between items-center px-5 py-3">
-          <h2 className="text-[17px] font-display font-extrabold text-slate-900">
-            {totalItems > 0 ? `${totalItems} container${totalItems !== 1 ? "s" : ""} found` : "No containers found"}
-          </h2>
-          <button onClick={handleClose} className="p-2.5 text-slate-400 hover:text-slate-600 min-w-[44px] min-h-[44px] flex items-center justify-center">
+      <div className="fixed inset-0 z-50 bg-black flex flex-col" style={{ paddingTop: "env(safe-area-inset-top, 0px)", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+
+        {/* Photo backdrop with darkened overlay */}
+        <div className="relative flex-1 overflow-hidden">
+          {capturedImage && (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={capturedImage} alt="" className="absolute inset-0 w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-black/60" />
+            </>
+          )}
+
+          {/* Close button */}
+          <button onClick={handleClose} className="absolute top-3 right-3 z-10 p-2.5 text-white/70 hover:text-white min-w-[44px] min-h-[44px] flex items-center justify-center">
             <X className="w-5 h-5" />
           </button>
-        </div>
 
-        <div className="flex-1 overflow-y-auto px-5">
-          {results.length === 0 ? (
-            <div className="text-center py-12">
-              <Camera className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-slate-400 text-[13px]">No containers detected. Try again with better lighting.</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {results.map((item, i) => {
-                const bagMat = mapToMaterialType(item.material);
-                const bag = getBagForMaterial(bagMat);
-                return (
-                  <div key={i} className={`flex items-center gap-3 p-3 rounded-2xl border ${item.eligible ? "bg-white border-slate-200" : "bg-slate-50 border-slate-100 opacity-50"}`}>
-                    <div className={`w-8 h-8 ${bag.color} rounded-lg flex-shrink-0`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13px] text-slate-900 font-medium truncate">{item.name}</p>
-                      <p className="text-[11px] text-slate-400">{bag.label} &middot; {item.eligible ? "5c credit" : "Not eligible"}</p>
-                    </div>
-                    {item.eligible && (
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => updateCount(i, -1)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center min-w-[32px]">
-                          <Minus className="w-3.5 h-3.5 text-slate-500" />
-                        </button>
-                        <span className="text-[15px] font-bold text-slate-900 w-6 text-center">{item.count}</span>
-                        <button onClick={() => updateCount(i, 1)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center min-w-[32px]">
-                          <Plus className="w-3.5 h-3.5 text-slate-500" />
-                        </button>
+          {/* Results overlay on the photo */}
+          <div className="relative z-10 flex flex-col h-full justify-end p-4">
+            {results.length === 0 ? (
+              <div className="text-center py-12">
+                <Camera className="w-12 h-12 text-white/30 mx-auto mb-3" />
+                <p className="text-white/60 text-[15px] font-semibold mb-1">{resultSummary || "No containers detected"}</p>
+                <p className="text-white/40 text-[13px]">Try a clearer photo with better lighting</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {/* Colour-coded item tags — like AR labels */}
+                {results.map((item, i) => {
+                  const q = getQuadrant(item.material);
+                  return (
+                    <div key={i} className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl backdrop-blur-md ${item.eligible ? "bg-white/15 border border-white/20" : "bg-white/5 border border-white/10 opacity-50"}`}>
+                      {/* Quadrant colour dot */}
+                      <div className={`w-8 h-8 ${q.bg} rounded-lg flex items-center justify-center flex-shrink-0 shadow-lg`}>
+                        <span className="text-white text-[11px] font-extrabold">{q.label.slice(0, 3)}</span>
                       </div>
-                    )}
+                      {/* Item info */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] text-white font-semibold truncate">{item.name}</p>
+                        <p className="text-[11px] text-white/50">
+                          {item.eligible ? `${q.label} quadrant · 5¢ each` : "Not CDS eligible"}
+                        </p>
+                      </div>
+                      {/* Count stepper — also acts as "how many more?" */}
+                      {item.eligible && (
+                        <div className="flex items-center gap-1.5">
+                          <button onClick={() => updateCount(i, -1)} className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center active:bg-white/30">
+                            <Minus className="w-3 h-3 text-white" />
+                          </button>
+                          <span className="text-[16px] font-extrabold text-white w-6 text-center">{item.count}</span>
+                          <button onClick={() => updateCount(i, 1)} className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center active:bg-white/30">
+                            <Plus className="w-3 h-3 text-white" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Mini bin guide — shows the 4-quadrant layout */}
+                {eligible.length > 0 && (
+                  <div className="grid grid-cols-4 gap-1 mt-2 px-1">
+                    {(["aluminium", "glass", "pet", "other"] as const).map(mat => {
+                      const q = QUADRANT[mat];
+                      const count = eligible.filter(e => mapToMaterialType(e.material) === mat).reduce((s, e) => s + e.count, 0);
+                      return (
+                        <div key={mat} className={`rounded-lg py-1.5 text-center ${count > 0 ? `${q.bg} shadow-lg` : "bg-white/10"}`}>
+                          <p className="text-[10px] font-extrabold text-white">{q.label}</p>
+                          {count > 0 && <p className="text-[12px] font-bold text-white/80">×{count}</p>}
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
-          )}
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Bottom actions */}
-        <div className="px-5 py-4 border-t border-slate-100">
+        {/* Bottom actions — always visible */}
+        <div className="bg-black px-5 py-4 border-t border-white/10">
           {totalItems > 0 && (
             <div className="flex justify-between items-center mb-3">
-              <span className="text-[13px] text-slate-500">{totalItems} items</span>
-              <span className="text-[17px] font-display font-extrabold text-green-600">+${(totalCents / 100).toFixed(2)} added to your account</span>
+              <span className="text-[13px] text-white/50">{totalItems} item{totalItems !== 1 ? "s" : ""}</span>
+              <span className="text-[17px] font-display font-extrabold text-green-400">+${(totalCents / 100).toFixed(2)}</span>
             </div>
           )}
           <div className="flex gap-2">
             <button onClick={retake}
-              className="flex-1 py-3.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-[13px] flex items-center justify-center gap-2 min-h-[48px]">
+              className="flex-1 py-3.5 rounded-xl border border-white/20 text-white/70 font-bold text-[13px] flex items-center justify-center gap-2 min-h-[48px] active:bg-white/10">
               <RotateCcw className="w-4 h-4" /> Retake
             </button>
             {totalItems > 0 && (
               <button onClick={confirmBatch} disabled={confirming}
-                className="flex-[2] bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20 disabled:opacity-50 flex items-center justify-center gap-2 min-h-[48px]">
-                <Check className="w-5 h-5" /> {confirming ? "Saving..." : "Confirm"}
+                className="flex-[2] bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/30 disabled:opacity-50 flex items-center justify-center gap-2 min-h-[48px]">
+                <Check className="w-5 h-5" /> {confirming ? "Saving..." : `Confirm +$${(totalCents / 100).toFixed(2)}`}
               </button>
             )}
           </div>
