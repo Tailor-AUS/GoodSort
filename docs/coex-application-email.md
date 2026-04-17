@@ -2,7 +2,7 @@
 
 **To:** expansion@coex.com.au
 **From:** Knox Hart (knox.hart@gmail.com)
-**Subject:** Expression of Interest — The Good Sort — Residential Container Collection CRP (Brisbane South)
+**Subject:** Expression of Interest — The Good Sort — Kerbside Container Collection CRP (Brisbane South)
 
 ---
 
@@ -14,52 +14,53 @@ I'm writing to express interest in registering as a **Container Refund Point (CR
 
 ## What We Do
 
-The Good Sort provides households with a simple way to sort and recycle eligible containers from home:
+The Good Sort intercepts CDS-eligible containers from residential yellow recycling bins *before* the council truck arrives:
 
-1. Residents sort containers into 4 material streams (aluminium, PET, glass, other) using our AI-powered mobile app
-2. Our app uses Azure OpenAI vision to identify containers via photo and guide residents to the correct sorting bin
-3. We collect pre-sorted containers via optimised routes and deliver directly to approved depots
-4. Residents earn sorting credits tracked through the app
+1. Residents sign up at [thegoodsort.org](https://www.thegoodsort.org) — we auto-detect their council collection day (via Brisbane City Council's open data)
+2. Optionally, we provide a recyclable cardboard divider insert for their yellow bin — cans and bottles on one side, everything else on the other
+3. The night before the council truck, a GoodSort runner does a street sweep: opens each signed-up household's yellow bin and extracts eligible CDS containers
+4. The council truck collects whatever is left as normal
+5. Residents earn 5c per container credited to their account (tracked via our AI-powered app)
 
 **Our app is live at [thegoodsort.org](https://www.thegoodsort.org)**
 
 ## Why This Model Works
 
-- **Addresses the SEQ access gap** — we bring the refund point to the resident, not the other way around
-- **Pre-sorted material** — containers arrive at depots already separated into 4 streams, reducing processing time
-- **Technology-driven** — AI container identification, route optimisation, real-time bin tracking
-- **Captures the yellow bin gap** — we intercept containers that currently go in kerbside recycling (the ~37% unreturned)
+- **Zero behaviour change for residents** — they throw cans and bottles in the yellow bin as they always have. We add the layer that extracts refund value.
+- **Captures the yellow bin gap** — Queensland has ~37% of CDS-eligible containers going into kerbside recycling unclaimed. That's ~$100M/year in unreturned refunds.
+- **Density-driven economics** — every house on a street shares the same bin day. A runner hits 30-50 houses in one pass. No appointment booking, no depot trips for the resident.
+- **Complementary to council, not competitive** — we reduce the volume in yellow bins. Councils could potentially extend collection cycles (fortnightly → 3-weekly) as a result.
+- **Technology-driven** — AI container identification (via Tailor Vision), auto-routing by council bin-day, real-time admin dashboard with runner coverage.
 
 ## Current Status
 
-- **Live pilot** with 5 residential locations in Moorooka/South Brisbane
-- **Full technology stack** built and deployed on Azure (Container Apps, Azure SQL, Azure OpenAI, Azure Communication Services)
-- **App features**: AI photo scanning, 4-bag material sorting guide, QR bin codes, email OTP authentication, collection route optimisation
+- **Live pilot** commencing with residential households in Moorooka / South Brisbane
+- **9 registered users**, council bin-day auto-detection for all 544,000 BCC residential properties
+- **Full technology stack** deployed on Azure: Container Apps, Azure SQL, Tailor Vision AI, Azure Communication Services
+- **App features**: AI photo scanning, household dashboard with next-pickup countdown, runner marketplace with route optimisation, post-pickup confirmation emails, admin ops dashboard
 - **ABN**: 85 680 798 770 (Crispr Projects Pty Ltd, trading as The Good Sort)
 
 ## What We're Seeking
 
-1. **CRP registration** — we believe our model could fit as a **Bag Drop** or **Community Collection** CRP type. We'd welcome guidance on which model best suits a residential collection network.
+1. **CRP registration** — our model is closest to a **Community Collection / Bag Drop** CRP type. We'd welcome guidance on which registration category best suits kerbside pre-collection.
 
-2. **Understanding the handling fee structure** — we'd like to understand what handling fees would apply to our collection model and how container counting/verification would work.
+2. **Handling fee structure** — we need to understand what handling fees apply when we deliver counted, sorted containers to an approved depot (e.g. Tomra Yeerongpilly or Salisbury).
 
-3. **Potential partnership** — we're also interested in whether The Good Sort could operate as a **Container Collect** service provider in the Brisbane South region.
+3. **Container counting/verification** — our app tracks per-container scans with AI-verified identification. We'd like to discuss whether this digital evidence chain could simplify depot processing.
 
-4. **Any available support** — information about the RVM Hire Program, community CRP models, or any innovation/pilot funding that could support our rollout.
+4. **Any available support** — innovation/pilot funding, community CRP models, or the RVM Hire Program.
 
 ## Coverage Area
 
-Our initial focus is **inner south Brisbane**:
-- Moorooka, Annerley, Yeronga, Fairfield, Rocklea, Tarragindi
-- Closest existing depots: Yeerongpilly (RECAN, 1.5km) and Salisbury (TOMRA, 4km)
-
-We plan to expand across Brisbane South over the next 12 months, with a target of 50-100 residential collection points.
+Initial focus: **inner south Brisbane** (Moorooka, Annerley, Yeronga, Fairfield, Rocklea, Tarragindi).
+Closest existing depots: Yeerongpilly (RECAN, 1.5km) and Salisbury (TOMRA, 4km).
+12-month target: 500+ residential households across Brisbane South.
 
 ## About Me
 
-I'm a Brisbane-based technologist and founder of [Tailor](https://tailor.au), an AI software company. The Good Sort is built on the same Azure infrastructure we use for our enterprise clients. I'm passionate about solving the recycling gap in SEQ — there are over 1 billion containers going to landfill annually in Queensland, and I believe technology-enabled residential collection is a scalable solution.
+I'm a Brisbane-based technologist and founder of [Tailor](https://tailor.au), an AI software company. The Good Sort is built on the same Azure infrastructure we use for our enterprise clients. I'm passionate about closing the recycling gap in SEQ.
 
-I'd love to arrange a call or meeting to discuss how The Good Sort can support COEX's network expansion objectives in SEQ.
+I'd love to arrange a call to discuss how The Good Sort can support COEX's network expansion in SEQ.
 
 Thank you for your time.
 
@@ -68,7 +69,3 @@ Founder, The Good Sort
 knox.hart@gmail.com
 thegoodsort.org
 Moorooka QLD 4105
-
----
-
-*Note: Review and personalise before sending. Add ABN once registered. Consider registering The Good Sort Pty Ltd or as an incorporated association first.*
