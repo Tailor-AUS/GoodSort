@@ -736,6 +736,41 @@ app.MapPost("/api/admin/trigger-pickup-reminders", async (PickupReminderService 
     return Results.Ok(new { households, runners });
 }).RequireAuthorization();
 
+// ── Recyclers — material destination endpoints ──
+app.MapGet("/api/recyclers", async (string? stream, GoodSortDbContext db) =>
+{
+    var q = db.Recyclers.Where(r => r.Status == "active" || r.Status == "agreed");
+    if (!string.IsNullOrEmpty(stream))
+        q = q.Where(r => r.AcceptedStreams.Contains(stream));
+    return Results.Ok(await q.ToListAsync());
+});
+
+app.MapGet("/api/recyclers/all", async (GoodSortDbContext db) =>
+    Results.Ok(await db.Recyclers.OrderBy(r => r.Name).ToListAsync()))
+    .RequireAuthorization();
+
+app.MapPost("/api/recyclers", async (Recycler recycler, GoodSortDbContext db) =>
+{
+    db.Recyclers.Add(recycler);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/recyclers/{recycler.Id}", recycler);
+}).RequireAuthorization();
+
+app.MapPatch("/api/recyclers/{id:guid}", async (Guid id, Recycler update, GoodSortDbContext db) =>
+{
+    var r = await db.Recyclers.FindAsync(id);
+    if (r is null) return Results.NotFound();
+    if (update.Name is not null) r.Name = update.Name;
+    if (update.Status is not null) r.Status = update.Status;
+    if (update.PricePerKgCents > 0) r.PricePerKgCents = update.PricePerKgCents;
+    if (update.ContactName is not null) r.ContactName = update.ContactName;
+    if (update.ContactEmail is not null) r.ContactEmail = update.ContactEmail;
+    if (update.ContactPhone is not null) r.ContactPhone = update.ContactPhone;
+    if (update.Notes is not null) r.Notes = update.Notes;
+    await db.SaveChangesAsync();
+    return Results.Ok(r);
+}).RequireAuthorization();
+
 // ── Admin: List all cashout requests (auth required) ──
 app.MapGet("/api/admin/cashouts", async (GoodSortDbContext db) =>
     Results.Ok(await db.Set<GoodSort.Api.Services.CashoutRequest>().Include(c => c.User).OrderByDescending(c => c.CreatedAt).Take(100).ToListAsync()))

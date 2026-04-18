@@ -22,6 +22,7 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
     public DbSet<RunnerRating> RunnerRatings => Set<RunnerRating>();
     public DbSet<PricingConfig> PricingConfigs => Set<PricingConfig>();
     public DbSet<VisionCall> VisionCalls => Set<VisionCall>();
+    public DbSet<Recycler> Recyclers => Set<Recycler>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

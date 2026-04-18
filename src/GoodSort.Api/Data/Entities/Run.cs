@@ -11,9 +11,14 @@ public class Run
     public Guid? RunnerId { get; set; }
     public RunnerProfile? Runner { get; set; }
 
-    // Drop point (YOUR premises, not the depot)
+    // Drop point — legacy depot or a specific recycler endpoint
     public Guid DropPointId { get; set; }
     public Depot DropPoint { get; set; } = null!;
+
+    // Recycler destination — the specific recycler this run delivers to
+    // (null for legacy/mixed runs that go to a generic depot)
+    public Guid? RecyclerId { get; set; }
+    public Recycler? Recycler { get; set; }
 
     // Privacy — centroid only, no addresses in listing
     public double CentroidLat { get; set; }
