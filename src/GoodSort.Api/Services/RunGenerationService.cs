@@ -180,9 +180,14 @@ public class RunGenerationService : BackgroundService
             // Time per stop: 1min for yellow bin extraction (faster than old 3min bag swap)
             var durationMin = (int)(cluster.Count * 1 + routeDistance * 2 + 25);
 
+            // Only post to marketplace if payout meets minimum threshold.
+            // Below-threshold runs are still created but marked "below_threshold"
+            // — visible to admin (you) but hidden from marketplace runners.
+            var minPayoutCents = int.TryParse(
+                System.Environment.GetEnvironmentVariable("MINIMUM_RUN_PAYOUT_CENTS"), out var mp) ? mp : 2000; // $20 default
+
             var run = new Run
             {
-                Status = "available",
                 DropPointId = dropPoint.Id,
                 CentroidLat = centroidLat,
                 CentroidLng = centroidLng,
@@ -226,9 +231,15 @@ public class RunGenerationService : BackgroundService
             run.PricingTier = result.PricingTier;
             run.LastPricedAt = DateTime.UtcNow;
 
+            // Only post to marketplace if payout meets minimum
+            run.Status = run.EstimatedPayoutCents >= minPayoutCents
+                ? "available"       // visible to runners in marketplace
+                : "below_threshold"; // visible to admin only — not enough volume yet
+
             _logger.LogInformation(
-                "Generated run {RunId}: {Stops} stops, {Containers} containers, {Rate}c/container in {Area}",
-                run.Id, cluster.Count, totalContainers, result.PerContainerCents, areaName);
+                "Generated run {RunId}: {Status} {Focus} — {Stops} stops, {Containers} containers, ${Payout} payout, {Weight:F1}kg in {Area}",
+                run.Id, run.Status, materialFocus, cluster.Count, totalContainers,
+                run.EstimatedPayoutCents / 100.0, weightKg, areaName);
         }
 
         await db.SaveChangesAsync();

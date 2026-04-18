@@ -889,7 +889,8 @@ app.MapGet("/api/marketplace/runs", async (double lat, double lng, double? radiu
 app.MapPost("/api/marketplace/runs/{id:guid}/claim", async (Guid id, MarketplaceClaimRequest req, GoodSortDbContext db, PricingService pricing) =>
 {
     var run = await db.Runs.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == id);
-    if (run is null || run.Status != "available") return Results.BadRequest("Run not available");
+    if (run is null || (run.Status != "available" && run.Status != "below_threshold"))
+        return Results.BadRequest("Run not available");
     if (run.ExpiresAt <= DateTime.UtcNow) return Results.BadRequest("Run expired");
 
     var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == req.ProfileId);
@@ -1199,7 +1200,10 @@ app.MapPost("/api/admin/pricing/simulate", async (PricingSimulateRequest req, Pr
 app.MapGet("/api/admin/marketplace/runs", async (string? status, GoodSortDbContext db) =>
 {
     var q = db.Runs.Include(r => r.Stops).Include(r => r.Runner).AsQueryable();
-    if (!string.IsNullOrEmpty(status)) q = q.Where(r => r.Status == status);
+    if (!string.IsNullOrEmpty(status))
+        q = q.Where(r => r.Status == status);
+    else
+        q = q.Where(r => r.Status != "expired"); // show everything except expired
     return Results.Ok(await q.OrderByDescending(r => r.CreatedAt).Take(100).ToListAsync());
 }).RequireAuthorization();
 
