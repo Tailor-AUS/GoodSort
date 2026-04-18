@@ -64,6 +64,18 @@ export default function OnboardPage() {
     });
   }, [step]);
 
+  async function geocodeAddress(addr: string): Promise<{ lat: number; lng: number } | null> {
+    try {
+      const geocoder = new google.maps.Geocoder();
+      const result = await geocoder.geocode({ address: addr, componentRestrictions: { country: "au" } });
+      if (result.results.length > 0) {
+        const loc = result.results[0].geometry.location;
+        return { lat: loc.lat(), lng: loc.lng() };
+      }
+    } catch { /* fall through */ }
+    return null;
+  }
+
   async function handleResidentialSubmit() {
     if (!address || lat == null || lng == null || collectionDay == null) { setError("Pick your address and collection day."); return; }
     if (!accessConsent) { setError("Please tick the consent box so we can access your yellow bin."); return; }
@@ -100,13 +112,15 @@ export default function OnboardPage() {
     }
   }
 
-  async function handleUnitWaitlist() {
-    if (!address || lat == null || lng == null || !buildingName) { setError("Enter your building name and address."); return; }
+  async function handleUnitWaitlist(overrideLat?: number, overrideLng?: number) {
+    const la = overrideLat ?? lat;
+    const ln = overrideLng ?? lng;
+    if (!address || la == null || ln == null || !buildingName) { setError("Enter your building name and address."); return; }
     setLoading(true); setError("");
     try {
       await fetch(apiUrl("/api/waitlist/unit-complex"), {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ buildingName, address, lat, lng }),
+        body: JSON.stringify({ buildingName, address, lat: la, lng: ln }),
       });
       setStep("unit_waitlist");
     } finally { setLoading(false); }
@@ -168,14 +182,31 @@ export default function OnboardPage() {
       </div>
       {error && <p className="text-red-500 text-[13px] mb-3">{error}</p>}
       <Continue
-        onClick={() => {
-          if (!address || lat == null || lng == null) { setError("Pick an address from the dropdown."); return; }
+        onClick={async () => {
+          if (!address.trim()) { setError("Enter your address."); return; }
+          if (lat == null || lng == null) {
+            setLoading(true); setError("");
+            const geo = await geocodeAddress(address);
+            setLoading(false);
+            if (!geo) { setError("Couldn't find that address. Try selecting from the dropdown."); return; }
+            setLat(geo.lat); setLng(geo.lng);
+            // Fire bin-day lookup for geocoded address
+            fetch(apiUrl("/api/households/lookup-bin-day"), {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ lat: geo.lat, lng: geo.lng, address }),
+            }).then(r => r.json()).then(d => {
+              if (d.found) { setCollectionDay(d.dayOfWeek); setCouncilArea(d.councilArea); setDayAuto(true); }
+            }).catch(() => {});
+            if (type === "unit_complex") handleUnitWaitlist(geo.lat, geo.lng);
+            else setStep("bin_day");
+            return;
+          }
           setError("");
           if (type === "unit_complex") handleUnitWaitlist();
           else setStep("bin_day");
         }}
         disabled={loading || !address.trim()}
-        label={type === "unit_complex" ? (loading ? "Joining waitlist..." : "Join waitlist") : "Continue"}
+        label={loading ? "Looking up..." : type === "unit_complex" ? "Join waitlist" : "Continue"}
       />
       <BackLink onClick={() => setStep("type")} />
     </Shell>
