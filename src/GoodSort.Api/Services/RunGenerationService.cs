@@ -5,10 +5,16 @@ using Microsoft.EntityFrameworkCore;
 namespace GoodSort.Api.Services;
 
 /// <summary>
-/// Background service that runs every 5 minutes to:
-/// 1. Cluster "ready" bins into new Runs
-/// 2. Re-price unclaimed runs every 30 minutes
-/// 3. Expire old unclaimed runs
+/// Background service that runs every 30 minutes to:
+/// 1. Cluster households with pending containers into potential Runs
+/// 2. Post runs to marketplace when payout ≥ $20 threshold
+/// 3. Add "bin full" flagged households to nearby profitable runs
+/// 4. Re-price unclaimed runs every 30 minutes
+/// 5. Expire old unclaimed runs after 24hrs
+///
+/// DECOUPLED from council schedule — runs are demand-driven, not
+/// calendar-driven. Containers accumulate in the GoodSort bin until
+/// there's enough volume for a profitable run.
 /// </summary>
 public class RunGenerationService : BackgroundService
 {
@@ -32,13 +38,10 @@ public class RunGenerationService : BackgroundService
                 var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
                 var pricing = scope.ServiceProvider.GetRequiredService<PricingService>();
 
-                // 1. Expire old runs
                 await ExpireOldRuns(db);
-
-                // 2. Generate new runs from ready bins
                 await GenerateRuns(db, pricing);
+                await AbsorbFullBinHouseholds(db);
 
-                // 3. Re-price unclaimed runs every 30min
                 if ((DateTime.UtcNow - _lastRepriceAt).TotalMinutes >= 30)
                 {
                     await pricing.RepriceAvailableRuns();
@@ -50,14 +53,15 @@ public class RunGenerationService : BackgroundService
                 _logger.LogError(ex, "RunGenerationService error");
             }
 
-            await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
+            await Task.Delay(TimeSpan.FromMinutes(30), stoppingToken);
         }
     }
 
     private async Task ExpireOldRuns(GoodSortDbContext db)
     {
         var expired = await db.Runs
-            .Where(r => r.Status == "available" && r.ExpiresAt <= DateTime.UtcNow)
+            .Where(r => (r.Status == "available" || r.Status == "below_threshold")
+                     && r.ExpiresAt <= DateTime.UtcNow)
             .ToListAsync();
 
         foreach (var run in expired)
@@ -72,47 +76,27 @@ public class RunGenerationService : BackgroundService
 
     private async Task GenerateRuns(GoodSortDbContext db, PricingService pricing)
     {
-        // Find bins that are "ready" and NOT already in an active run.
-        //
-        // Yellow-bin model: a residential household's bin is ready when council
-        // pickup is TOMORROW (local time). We run the night before and extract
-        // CDS containers before the truck arrives. Non-residential / legacy bins
-        // fall back to the old "50+ containers" threshold.
+        var minPayoutCents = int.TryParse(
+            Environment.GetEnvironmentVariable("MINIMUM_RUN_PAYOUT_CENTS"), out var mp) ? mp : 2000;
+
+        // Find all bins with pending containers NOT already in an active run
         var activeBinIds = await db.RunStops
-            .Where(s => s.Run.Status == "available" || s.Run.Status == "claimed" || s.Run.Status == "in_progress" || s.Run.Status == "delivering")
+            .Where(s => s.Run.Status == "available" || s.Run.Status == "below_threshold"
+                     || s.Run.Status == "claimed" || s.Run.Status == "in_progress"
+                     || s.Run.Status == "delivering")
             .Select(s => s.BinId)
             .Distinct()
             .ToListAsync();
 
-        // Day-of-week that we should be collecting for (the council truck comes tomorrow)
-        var tomorrowDow = (int)DateTime.UtcNow.AddDays(1).DayOfWeek; // 0=Sun..6=Sat
-
-        var allCandidates = await db.Bins
-            .Where(b => b.Status == "active" && !activeBinIds.Contains(b.Id))
+        var readyBins = await db.Bins
+            .Where(b => b.Status == "active"
+                     && b.PendingContainers >= 1
+                     && !activeBinIds.Contains(b.Id))
+            .OrderByDescending(b => b.PendingContainers)
             .ToListAsync();
-
-        // Fetch household data for residential bins
-        var householdIds = allCandidates.Where(b => b.HouseholdId.HasValue).Select(b => b.HouseholdId!.Value).Distinct().ToList();
-        var households = await db.Households.Where(h => householdIds.Contains(h.Id)).ToDictionaryAsync(h => h.Id);
-
-        var readyBins = allCandidates.Where(b =>
-        {
-            if (b.HouseholdId.HasValue && households.TryGetValue(b.HouseholdId.Value, out var h))
-            {
-                // Residential: ready when the council comes tomorrow (and household has at least 1 pending container)
-                return h.Type == "residential"
-                    && h.CouncilCollectionDay == tomorrowDow
-                    && b.PendingContainers >= 1;
-            }
-            // Non-household bins: old threshold-based model
-            return b.PendingContainers >= 50;
-        })
-        .OrderByDescending(b => b.PendingContainers)
-        .ToList();
 
         if (readyBins.Count == 0) return;
 
-        // Get default drop point (first depot — YOUR premises)
         var dropPoint = await db.Depots.FirstOrDefaultAsync();
         if (dropPoint == null) return;
 
@@ -130,9 +114,7 @@ public class RunGenerationService : BackgroundService
             foreach (var other in readyBins)
             {
                 if (used.Contains(other.Id)) continue;
-
-                var distance = Haversine(bin.Lat, bin.Lng, other.Lat, other.Lng);
-                if (distance <= 3.0)
+                if (Haversine(bin.Lat, bin.Lng, other.Lat, other.Lng) <= 3.0)
                 {
                     cluster.Add(other);
                     used.Add(other.Id);
@@ -142,7 +124,6 @@ public class RunGenerationService : BackgroundService
             clusters.Add(cluster);
         }
 
-        // Create Runs for each cluster — split by material when volume warrants it
         foreach (var cluster in clusters)
         {
             var totalContainers = cluster.Sum(b => b.PendingContainers);
@@ -160,10 +141,9 @@ public class RunGenerationService : BackgroundService
 
             var areaName = ExtractSuburb(cluster.First().Address);
 
-            // Determine material focus: if one stream is >60% of total, make it
-            // a material-specific run. Otherwise "mixed".
-            var materialFocus = "mixed";
+            // Material focus
             var total = materials.Aluminium + materials.Pet + materials.Glass + materials.Other;
+            var materialFocus = "mixed";
             if (total > 0)
             {
                 if (materials.Aluminium > total * 0.6) materialFocus = "aluminium";
@@ -171,20 +151,12 @@ public class RunGenerationService : BackgroundService
                 else if (materials.Glass > total * 0.6) materialFocus = "glass";
             }
 
-            // Estimate weight (helps runners decide vehicle needs)
-            var weightKg = materials.Aluminium * 0.015   // 15g per can
-                         + materials.Pet * 0.025          // 25g per bottle
-                         + materials.Glass * 0.300        // 300g per bottle
-                         + materials.Other * 0.020;       // 20g avg
+            var weightKg = materials.Aluminium * 0.015
+                         + materials.Pet * 0.025
+                         + materials.Glass * 0.300
+                         + materials.Other * 0.020;
 
-            // Time per stop: 1min for yellow bin extraction (faster than old 3min bag swap)
             var durationMin = (int)(cluster.Count * 1 + routeDistance * 2 + 25);
-
-            // Only post to marketplace if payout meets minimum threshold.
-            // Below-threshold runs are still created but marked "below_threshold"
-            // — visible to admin (you) but hidden from marketplace runners.
-            var minPayoutCents = int.TryParse(
-                System.Environment.GetEnvironmentVariable("MINIMUM_RUN_PAYOUT_CENTS"), out var mp) ? mp : 2000; // $20 default
 
             var run = new Run
             {
@@ -198,10 +170,9 @@ public class RunGenerationService : BackgroundService
                 EstimatedDistanceKm = routeDistance,
                 EstimatedDurationMin = durationMin,
                 Materials = materials,
-                ExpiresAt = DateTime.UtcNow.AddHours(12), // 12hr window (evening before → morning)
+                ExpiresAt = DateTime.UtcNow.AddHours(24), // 24hr window — no council dependency
             };
 
-            // Add stops
             var sequence = 0;
             foreach (var bin in cluster)
             {
@@ -211,6 +182,7 @@ public class RunGenerationService : BackgroundService
                     Lat = bin.Lat,
                     Lng = bin.Lng,
                     EstimatedContainers = bin.PendingContainers,
+                    PickupInstruction = $"Collect from {bin.Name}",
                     Materials = new MaterialBreakdown
                     {
                         Aluminium = bin.Materials.Aluminium,
@@ -224,7 +196,6 @@ public class RunGenerationService : BackgroundService
 
             db.Runs.Add(run);
 
-            // Price the run
             var result = await pricing.CalculateRate(run);
             run.PerContainerCents = result.PerContainerCents;
             run.EstimatedPayoutCents = result.EstimatedPayoutCents;
@@ -233,11 +204,11 @@ public class RunGenerationService : BackgroundService
 
             // Only post to marketplace if payout meets minimum
             run.Status = run.EstimatedPayoutCents >= minPayoutCents
-                ? "available"       // visible to runners in marketplace
-                : "below_threshold"; // visible to admin only — not enough volume yet
+                ? "available"
+                : "below_threshold";
 
             _logger.LogInformation(
-                "Generated run {RunId}: {Status} {Focus} — {Stops} stops, {Containers} containers, ${Payout} payout, {Weight:F1}kg in {Area}",
+                "Run {RunId}: {Status} {Focus} — {Stops} stops, {Containers} containers, ${Payout} payout, {Weight:F1}kg in {Area}",
                 run.Id, run.Status, materialFocus, cluster.Count, totalContainers,
                 run.EstimatedPayoutCents / 100.0, weightKg, areaName);
         }
@@ -245,22 +216,104 @@ public class RunGenerationService : BackgroundService
         await db.SaveChangesAsync();
     }
 
+    /// <summary>
+    /// Households that flagged "my bin is full" get absorbed into the nearest
+    /// existing profitable run, even if it slightly dilutes the run's $/hr.
+    /// This ensures full-bin households don't wait indefinitely.
+    /// </summary>
+    private async Task AbsorbFullBinHouseholds(GoodSortDbContext db)
+    {
+        // Find households with BinIsOut=true (user flagged "bin is full")
+        // whose bin is NOT already in an active run
+        var activeBinIds = await db.RunStops
+            .Where(s => s.Run.Status == "available" || s.Run.Status == "below_threshold"
+                     || s.Run.Status == "claimed" || s.Run.Status == "in_progress")
+            .Select(s => s.BinId)
+            .Distinct()
+            .ToListAsync();
+
+        var fullBins = await db.Bins
+            .Where(b => b.Status == "active"
+                     && b.HouseholdId.HasValue
+                     && b.PendingContainers >= 1
+                     && !activeBinIds.Contains(b.Id))
+            .ToListAsync();
+
+        var fullHouseholdIds = fullBins.Select(b => b.HouseholdId!.Value).ToList();
+        var flaggedHouseholds = await db.Households
+            .Where(h => fullHouseholdIds.Contains(h.Id) && h.BinIsOut)
+            .ToListAsync();
+
+        if (flaggedHouseholds.Count == 0) return;
+
+        // Find nearby available/below_threshold runs to absorb them into
+        var openRuns = await db.Runs
+            .Include(r => r.Stops)
+            .Where(r => r.Status == "available" || r.Status == "below_threshold")
+            .ToListAsync();
+
+        var absorbed = 0;
+        foreach (var hh in flaggedHouseholds)
+        {
+            var bin = fullBins.FirstOrDefault(b => b.HouseholdId == hh.Id);
+            if (bin is null) continue;
+
+            // Find the nearest open run within 5km
+            var nearestRun = openRuns
+                .Select(r => new { Run = r, Dist = Haversine(hh.Lat, hh.Lng, r.CentroidLat, r.CentroidLng) })
+                .Where(x => x.Dist <= 5.0)
+                .OrderBy(x => x.Dist)
+                .FirstOrDefault();
+
+            if (nearestRun is null) continue;
+
+            // Add this bin as a new stop on the run
+            nearestRun.Run.Stops.Add(new RunStop
+            {
+                BinId = bin.Id,
+                Lat = bin.Lat,
+                Lng = bin.Lng,
+                EstimatedContainers = bin.PendingContainers,
+                PickupInstruction = $"Added: {hh.Name} (bin full)",
+                Materials = new MaterialBreakdown
+                {
+                    Aluminium = bin.Materials.Aluminium,
+                    Pet = bin.Materials.Pet,
+                    Glass = bin.Materials.Glass,
+                    Other = bin.Materials.Other,
+                },
+                Sequence = nearestRun.Run.Stops.Count,
+            });
+
+            nearestRun.Run.EstimatedContainers += bin.PendingContainers;
+            nearestRun.Run.EstimatedDurationMin += 1; // +1 min for the extra stop
+
+            // Reset the flag
+            hh.BinIsOut = false;
+            hh.BinIsOutAt = null;
+            absorbed++;
+
+            _logger.LogInformation(
+                "Absorbed full-bin household {HouseholdId} into run {RunId} ({Area})",
+                hh.Id, nearestRun.Run.Id, nearestRun.Run.AreaName);
+        }
+
+        if (absorbed > 0)
+            await db.SaveChangesAsync();
+    }
+
     private static double EstimateRouteDistance(List<Bin> bins, Depot dropPoint)
     {
         if (bins.Count == 0) return 0;
-
-        // Simple: sum distances between bins in order + to/from drop point
         var total = Haversine(dropPoint.Lat, dropPoint.Lng, bins[0].Lat, bins[0].Lng);
         for (var i = 0; i < bins.Count - 1; i++)
             total += Haversine(bins[i].Lat, bins[i].Lng, bins[i + 1].Lat, bins[i + 1].Lng);
         total += Haversine(bins[^1].Lat, bins[^1].Lng, dropPoint.Lat, dropPoint.Lng);
-
-        return Math.Round(total * 1.4, 1); // ×1.4 road factor
+        return Math.Round(total * 1.4, 1);
     }
 
     private static string ExtractSuburb(string address)
     {
-        // Try to get suburb from address like "42 Smith St, Moorooka QLD 4105"
         var parts = address.Split(',');
         if (parts.Length >= 2)
         {

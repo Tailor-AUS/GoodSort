@@ -358,7 +358,21 @@ app.MapGet("/api/households/{id:guid}/next-pickup", async (Guid id, GoodSortDbCo
     });
 });
 
-// ── Household: toggle "bin is out on the kerb" ──
+// ── Household: toggle "bin is out / bin is full" ──
+// In the yellow-bin model this meant "bin is on the kerb for council."
+// In the GoodSort-bin model this means "my bin is full, come get it."
+// The RunGenerationService absorbs full-bin households into nearby runs.
+app.MapPost("/api/households/{id:guid}/bin-full", async (Guid id, BinOutRequest req, GoodSortDbContext db) =>
+{
+    var h = await db.Households.FindAsync(id);
+    if (h is null) return Results.NotFound();
+    h.BinIsOut = req.Out; // reusing the field — BinIsOut = "bin is full, ready for pickup"
+    h.BinIsOutAt = req.Out ? DateTime.UtcNow : null;
+    await db.SaveChangesAsync();
+    return Results.Ok(new { h.Id, binIsFull = h.BinIsOut, flaggedAt = h.BinIsOutAt });
+}).RequireAuthorization();
+
+// Legacy endpoint alias
 app.MapPost("/api/households/{id:guid}/bin-out", async (Guid id, BinOutRequest req, GoodSortDbContext db) =>
 {
     var h = await db.Households.FindAsync(id);
