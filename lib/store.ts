@@ -163,7 +163,7 @@ export interface Depot {
 // ── Constants ──
 
 const CONTAINERS_PER_BAG = 150;
-export const SORTER_PAYOUT_CENTS = 10; // 10c CDS refund — direct to recycler model
+export const SORTER_PAYOUT_CENTS = 5; // 5c sorting credit per container (household earns this)
 export const RUNNER_PAYOUT_CENTS = 5; // Runner credit per container (from operator margin)
 export const DRIVER_BASE_PAYOUT_CENTS = 0; // No base — pure per-container
 export const DRIVER_PER_CONTAINER_CENTS = 5; // 5c per container delivered

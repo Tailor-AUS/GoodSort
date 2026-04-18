@@ -160,9 +160,11 @@ export function getStreamById(id: number): Stream | undefined {
 /**
  * Refund value per container in cents (CDS rate).
  */
+/** CDS refund from government per eligible container. */
 export const CDS_REFUND_CENTS = 10;
 
-/**
- * Sorter credit per container in cents (what the household earns).
- */
+/** What the household earns per sorted container. */
 export const SORTER_CREDIT_CENTS = 5;
+
+/** What the runner earns per collected container (variable via PricingService, this is the default). */
+export const RUNNER_CREDIT_CENTS = 3;

@@ -232,12 +232,12 @@ app.MapPost("/api/scan/photo/confirm", async (PhotoConfirmRequest req, GoodSortD
                 Barcode = "PHOTO",
                 ContainerName = item.Name,
                 Material = item.Material,
-                RefundCents = 10, // CDS refund rate — direct to recycler
+                RefundCents = 5, // CDS refund rate — direct to recycler
                 Status = "pending",
             };
             db.Scans.Add(scan);
             totalContainers++;
-            totalCents += 10;
+            totalCents += 5;
         }
     }
 
@@ -409,11 +409,11 @@ app.MapPost("/api/scans", async (ScanRequest req, GoodSortDbContext db) =>
         UserId = profile.Id,
         HouseholdId = profile.HouseholdId, // nullable — works without household
         Barcode = req.Barcode, ContainerName = req.ContainerName,
-        Material = req.Material, RefundCents = 10, Status = "pending",
+        Material = req.Material, RefundCents = 5, Status = "pending",
     };
     db.Scans.Add(scan);
 
-    profile.PendingCents += 10;
+    profile.PendingCents += 5;
     profile.TotalContainers += 1;
     profile.TotalCo2SavedKg += 0.035;
 

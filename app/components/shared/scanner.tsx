@@ -228,7 +228,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     setScanResult({ name: container.name, bag: streamAsBag });
     timeoutRef.current = setTimeout(() => {
       setScanResult(null);
-      onScanComplete(container!.name, 10, streamAsBag);
+      onScanComplete(container!.name, 5, streamAsBag);
     }, 2000);
   }
 
@@ -281,7 +281,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
   if (results !== null) {
     const eligible = results.filter((r) => r.eligible);
     const totalItems = eligible.reduce((s, r) => s + r.count, 0);
-    const centsPerItem = 10; // CDS refund rate — going direct to recycler
+    const centsPerItem = 5; // 5¢ sorting credit per container
     const totalCents = totalItems * centsPerItem;
 
     return (
@@ -326,7 +326,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
                       <div className="flex-1 min-w-0">
                         <p className="text-[13px] text-white font-semibold truncate">{item.name}</p>
                         <p className="text-[11px] text-white/50">
-                          {item.eligible ? `Section ${stream.section} · ${stream.label} · 10¢` : "Not CDS eligible"}
+                          {item.eligible ? `Section ${stream.section} · ${stream.label} · 5¢` : "Not CDS eligible"}
                         </p>
                       </div>
                       {/* Count stepper — also acts as "how many more?" */}
@@ -429,7 +429,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
           </div>
           <p className="text-white/50 text-sm mb-2">{name}</p>
           <p className="text-white text-2xl font-display font-extrabold mb-2">Section {bag.id} · {bag.label}</p>
-          <p className="text-green-400 text-lg font-bold">+10¢ added to your account</p>
+          <p className="text-green-400 text-lg font-bold">+5¢ added to your account</p>
           <div className={`mt-8 mx-auto w-48 h-2 ${bag.color} rounded-full opacity-60`} />
         </div>
       </div>

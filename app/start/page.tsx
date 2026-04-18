@@ -162,7 +162,7 @@ export default function StartPage() {
                   <Logo size="lg" />
                 </div>
                 <p className="text-slate-400 text-[14px]">We pick up cans & bottles straight from your yellow bin.</p>
-                <p className="text-slate-400 text-[12px] mt-1">10¢ per container · right to your bank · you do nothing different</p>
+                <p className="text-slate-400 text-[12px] mt-1">5¢ per container · right to your bank · you do nothing different</p>
               </div>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter your email"
                 onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}

@@ -1,7 +1,7 @@
 # Email to COEX Expansion Team
 
 **To:** expansion@coex.com.au
-**From:** Knox Hart (knox.hart@gmail.com)
+**From:** Knox Hart (admin@thegoodsort.org)
 **Subject:** Expression of Interest — The Good Sort — Kerbside Container Collection CRP (Brisbane South)
 
 ---
@@ -66,6 +66,6 @@ Thank you for your time.
 
 **Knox Hart**
 Founder, The Good Sort
-knox.hart@gmail.com
+admin@thegoodsort.org
 thegoodsort.org
 Moorooka QLD 4105

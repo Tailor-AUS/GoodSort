@@ -118,7 +118,7 @@ public class VisionService
             };
 
             var msg = container.Eligible
-                ? $"Found a {container.Name}! That's 10 cents 🎉"
+                ? $"Found a {container.Name}! That's 5 cents 🎉"
                 : $"Spotted a {container.Name}, but it's not CDS eligible unfortunately.";
 
             await LogCall("tailor", success: true, containerCount: 1, sw.ElapsedMilliseconds);
