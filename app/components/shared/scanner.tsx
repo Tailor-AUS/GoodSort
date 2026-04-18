@@ -11,6 +11,14 @@ function getStoredUserId(): string {
   try { return JSON.parse(localStorage.getItem("goodsort_profile") || "{}").id || ""; } catch { return ""; }
 }
 
+function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem("goodsort_token");
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
 interface ScannerProps {
   onClose: () => void;
   onScanComplete: (containerName: string, cents: number, bag: BagInfo) => void;
@@ -131,7 +139,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     try {
       const res = await fetch(apiUrl("/api/scan/photo"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ image: base64 }),
       });
 
@@ -167,7 +175,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     try {
       const res = await fetch(apiUrl("/api/scan/photo/confirm"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           userId: getStoredUserId(),
           items: eligible,
