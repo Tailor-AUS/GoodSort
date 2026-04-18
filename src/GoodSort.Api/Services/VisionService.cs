@@ -118,7 +118,7 @@ public class VisionService
             };
 
             var msg = container.Eligible
-                ? $"Found a {container.Name}! That's 5 cents sorted 🎉"
+                ? $"Found a {container.Name}! That's 10 cents 🎉"
                 : $"Spotted a {container.Name}, but it's not CDS eligible unfortunately.";
 
             await LogCall("tailor", success: true, containerCount: 1, sw.ElapsedMilliseconds);
@@ -133,15 +133,19 @@ public class VisionService
     }
 
     /// <summary>
-    /// Map Tailor Vision material names to GoodSort's 4-bag system.
+    /// Map Tailor Vision material names to GoodSort's material system.
+    /// The 8-stream sub-classification (e.g. glass_clear vs glass_brown,
+    /// pet_clear vs pet_coloured) is done client-side based on the
+    /// container description text.
     /// </summary>
     private static string MapMaterial(string tvMaterial) => tvMaterial.ToLower() switch
     {
         "aluminium" => "aluminium",
         "pet" => "pet",
         "glass" => "glass",
-        "hdpe" => "other",
-        "liquid_paperboard" => "other",
+        "steel" => "steel",
+        "hdpe" => "hdpe",
+        "liquid_paperboard" => "liquid_paperboard",
         _ => "other",
     };
 
@@ -170,7 +174,7 @@ Material classification rules:
 If you cannot identify the specific product, describe what you see (e.g. ""silver aluminium can 375ml"").
 
 MESSAGE GUIDELINES:
-- If containers found: be encouraging. E.g. ""Nice haul! 3 cans ready to sort — that's 15 cents!"" or ""Spotted some VB stubbies — classic choice, even better recycled.""
+- If containers found: be encouraging. E.g. ""Nice haul! 3 cans ready to sort — that's 30 cents!"" or ""Spotted some VB stubbies — classic choice, even better recycled.""
 - If no containers but you can see what's in the photo: be witty and Australian. E.g.:
   - Person/selfie: ""Looking good, but I can't recycle you! Though if I could, you'd be worth way more than 10 cents 😄 Try pointing the camera at a can or bottle.""
   - Food: ""That looks delicious but I'm more of a cans-and-bottles sort of AI. Show me your empties!""
@@ -183,7 +187,7 @@ MESSAGE GUIDELINES:
 Return ONLY a JSON object, no explanation or markdown. Examples:
 
 With containers:
-{""containers"":[{""name"":""Coca-Cola 375ml can"",""material"":""aluminium"",""count"":3,""eligible"":true}],""message"":""3 Coke cans spotted! That's 15 cents heading your way 🎉""}
+{""containers"":[{""name"":""Coca-Cola 375ml can"",""material"":""aluminium"",""count"":3,""eligible"":true}],""message"":""3 Coke cans spotted! That's 30 cents heading your way 🎉""}
 
 No containers (selfie):
 {""containers"":[],""message"":""Can't recycle you mate, but you're definitely worth more than 10 cents! Try pointing at a can or bottle 😄""}

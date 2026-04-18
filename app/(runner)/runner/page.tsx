@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import {
-  getOrCreateDefaultUser,
   type User, type SortBin, type Depot,
 } from "@/lib/store";
 import { getUserApi, getDepotsApi, getBinsApi } from "@/lib/store-api";
@@ -42,7 +41,8 @@ export default function RunnerApp() {
       getDepotsApi().catch(() => []),
     ]);
 
-    const currentUser = apiUser || getOrCreateDefaultUser();
+    const currentUser = apiUser;
+    if (!currentUser) return;
     setUser(currentUser);
     setBins(apiBins);
     setDepot(apiDepots[0] || null);

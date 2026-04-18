@@ -4,7 +4,7 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import { X, Camera, ScanBarcode, Plus, Minus, Check, RotateCcw } from "lucide-react";
 import { lookupContainer, lookupContainerAsync } from "@/lib/containers";
 import { apiUrl } from "@/lib/config";
-import { addScan, getBagForMaterial, mapToMaterialType, SORTER_PAYOUT_CENTS, BAGS, type BagInfo } from "@/lib/store";
+import { mapToMaterialType, type BagInfo } from "@/lib/store";
 import { addScanApi } from "@/lib/store-api";
 
 function getStoredUserId(): string {
@@ -216,14 +216,19 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
       container = await lookupContainerAsync(cleaned);
     }
 
-    const materialType = mapToMaterialType(container.material);
-    const bag = getBagForMaterial(materialType);
+    const stream = getStream(container.material, container.name);
     addScanApi(cleaned, container.name, container.material);
 
-    setScanResult({ name: container.name, bag });
+    // Create a BagInfo-compatible object from the stream for the callback
+    const streamAsBag: BagInfo = {
+      id: stream.section, label: stream.label, color: stream.bg,
+      textColor: "text-white", borderColor: "border-white",
+      material: mapToMaterialType(container.material), emoji: stream.emoji,
+    };
+    setScanResult({ name: container.name, bag: streamAsBag });
     timeoutRef.current = setTimeout(() => {
       setScanResult(null);
-      onScanComplete(container!.name, SORTER_PAYOUT_CENTS, bag);
+      onScanComplete(container!.name, 10, streamAsBag);
     }, 2000);
   }
 
@@ -423,8 +428,8 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
             <span className="text-4xl">{bag.emoji}</span>
           </div>
           <p className="text-white/50 text-sm mb-2">{name}</p>
-          <p className="text-white text-2xl font-display font-extrabold mb-2">Put in the {bag.label}</p>
-          <p className="text-green-400 text-lg font-bold">+{SORTER_PAYOUT_CENTS}¢ added to your account</p>
+          <p className="text-white text-2xl font-display font-extrabold mb-2">Section {bag.id} · {bag.label}</p>
+          <p className="text-green-400 text-lg font-bold">+10¢ added to your account</p>
           <div className={`mt-8 mx-auto w-48 h-2 ${bag.color} rounded-full opacity-60`} />
         </div>
       </div>

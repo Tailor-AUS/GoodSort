@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Mail, ShieldCheck, Package, Tags, Camera, Check, ChevronRight } from "lucide-react";
 import { apiUrl } from "@/lib/config";
 import { Logo } from "@/app/components/shared/logo";
-import { BAGS, getBagForMaterial, mapToMaterialType } from "@/lib/store";
+// BAGS import removed — 4-bag steps are dead code (flow goes to /onboard after verify)
 
 type Step = "email" | "verify" | "bins" | "labels" | "firstsort" | "analyzing" | "sortresult" | "done";
 
@@ -162,7 +162,7 @@ export default function StartPage() {
                   <Logo size="lg" />
                 </div>
                 <p className="text-slate-400 text-[14px]">We pick up cans & bottles straight from your yellow bin.</p>
-                <p className="text-slate-400 text-[12px] mt-1">5c per container · right to your bank · you do nothing different</p>
+                <p className="text-slate-400 text-[12px] mt-1">10¢ per container · right to your bank · you do nothing different</p>
               </div>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter your email"
                 onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}
@@ -193,199 +193,18 @@ export default function StartPage() {
             </>
           )}
 
-          {/* ═══ STEP 1: GET YOUR BINS ═══ */}
-          {step === "bins" && (
-            <>
-              <div className="text-center mb-6">
-                <IconBubble><Package className="w-8 h-8 text-green-600" /></IconBubble>
-                <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-1">Get 4 containers</h1>
-                <p className="text-slate-400 text-[13px]">Any containers — buckets, boxes, tubs, bags</p>
-              </div>
+          {/* Old steps (bins/labels/firstsort/analyzing/sortresult/done) removed —
+               flow now goes verify → /onboard (yellow-bin + 8-stream model) */}
 
-              <div className="space-y-3 mb-6">
-                {BAGS.map((bag) => (
-                  <div key={bag.id} className="flex items-center gap-3 p-3.5 rounded-2xl border border-slate-200">
-                    <div className={`w-10 h-10 ${bag.color} rounded-xl flex items-center justify-center flex-shrink-0`}>
-                      <span className="text-lg">{bag.emoji}</span>
-                    </div>
-                    <div>
-                      <p className="text-[14px] text-slate-900 font-semibold">Container {bag.id}: {bag.label.split(" ")[0]}</p>
-                      <p className="text-[12px] text-slate-400">
-                        {bag.material === "aluminium" && "Beer cans, soft drink cans, energy drinks"}
-                        {bag.material === "pet" && "Water bottles, soft drink bottles, juice bottles"}
-                        {bag.material === "glass" && "Beer stubbies, wine bottles, spirit bottles"}
-                        {bag.material === "other" && "Cartons, poppers, flavoured milk"}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <GreenButton onClick={() => setStep("labels")}>
-                I've got my 4 containers <Check className="w-5 h-5 inline ml-1" />
-              </GreenButton>
-            </>
-          )}
-
-          {/* ═══ STEP 2: LABEL THEM ═══ */}
-          {step === "labels" && (
-            <>
-              <div className="text-center mb-6">
-                <IconBubble><Tags className="w-8 h-8 text-green-600" /></IconBubble>
-                <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-1">Label your containers</h1>
-                <p className="text-slate-400 text-[13px]">Write on them, stick a label, or use our printable designs</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                {BAGS.map((bag) => (
-                  <div key={bag.id} className={`rounded-2xl p-4 text-center border-2 ${bag.borderColor} bg-white`}>
-                    <div className={`w-14 h-14 ${bag.color} rounded-2xl mx-auto mb-2 flex items-center justify-center shadow-md`}>
-                      <span className="text-2xl">{bag.emoji}</span>
-                    </div>
-                    <p className="text-[15px] font-display font-extrabold text-slate-900">{bag.id}</p>
-                    <p className="text-[12px] text-slate-500 font-semibold uppercase tracking-wider mt-0.5">
-                      {bag.material === "aluminium" && "CANS"}
-                      {bag.material === "pet" && "PLASTIC"}
-                      {bag.material === "glass" && "GLASS"}
-                      {bag.material === "other" && "OTHER"}
-                    </p>
-                  </div>
-                ))}
-              </div>
-
-              <p className="text-center text-[12px] text-slate-400 mb-4">
-                Just write 1, 2, 3, 4 on your bins — or screenshot these labels
-              </p>
-
-              <GreenButton onClick={() => setStep("firstsort")}>
-                Bins are labeled <Check className="w-5 h-5 inline ml-1" />
-              </GreenButton>
-            </>
-          )}
-
-          {/* ═══ STEP 3: FIRST SORT (full camera view) ═══ */}
-          {step === "firstsort" && (
-            <div className="fixed inset-0 bg-black flex flex-col z-50" style={{ paddingBottom: "env(safe-area-inset-bottom,0)" }}>
-              <div className="px-5 pb-3" style={{ paddingTop: "calc(env(safe-area-inset-top,16px) + 0.25rem)" }}>
-                <h2 className="text-[15px] font-display font-bold text-white">Your first sort!</h2>
-                <p className="text-white/50 text-[12px]">Point at an empty can or bottle</p>
-              </div>
-
-              <div className="flex-1 relative">
-                <video ref={videoRef} className="w-full h-full object-cover" playsInline muted autoPlay />
-                <canvas ref={canvasRef} className="hidden" />
-
-                {cameraReady && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-[75%] h-[55%] border-2 border-white/20 rounded-3xl">
-                      <p className="text-white/40 text-[12px] text-center mt-4 font-medium">Place container in frame</p>
-                    </div>
-                  </div>
-                )}
-
-                {!cameraReady && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-center">
-                      <Camera className="w-10 h-10 text-white/30 mx-auto mb-2 animate-pulse" />
-                      <p className="text-white/40 text-[13px]">Starting camera...</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-black/80 px-5 py-5">
-                <div className="flex flex-col items-center gap-3">
-                  <button onClick={captureFirstSort} disabled={!cameraReady}
-                    className="w-16 h-16 rounded-full bg-white border-4 border-white/30 shadow-lg active:scale-90 transition-transform disabled:opacity-30" />
-                  <p className="text-white/30 text-[12px] text-center">Tap to photograph your container</p>
-                </div>
-              </div>
-
-              <button onClick={() => { stopCamera(); setStep("done"); }}
-                className="absolute top-4 right-4 text-white/50 text-[13px] font-medium p-2"
-                style={{ top: "calc(env(safe-area-inset-top,16px) + 0.25rem)" }}>
-                Skip
-              </button>
-            </div>
-          )}
-
-          {/* ═══ ANALYZING ═══ */}
-          {step === "analyzing" && (
-            <div className="fixed inset-0 bg-black flex items-center justify-center z-50">
-              {capturedImage ? (
-                <div className="relative w-[85vw] max-w-sm aspect-[3/4] rounded-2xl overflow-hidden shadow-2xl">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={capturedImage} alt="Scanning" className="w-full h-full object-cover" />
-                  <div className="absolute inset-0 bg-black/30" />
-                  <div className="absolute inset-x-0 h-[3px] bg-gradient-to-r from-transparent via-green-400 to-transparent shadow-[0_0_15px_rgba(74,222,128,0.6)] animate-scan-line" />
-                  <div className="absolute top-4 left-4 w-8 h-8 border-t-2 border-l-2 border-green-400 rounded-tl-lg" />
-                  <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-green-400 rounded-tr-lg" />
-                  <div className="absolute bottom-4 left-4 w-8 h-8 border-b-2 border-l-2 border-green-400 rounded-bl-lg" />
-                  <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-green-400 rounded-br-lg" />
-                  <div className="absolute bottom-8 inset-x-0 text-center">
-                    <div className="inline-flex items-center gap-2 bg-black/60 backdrop-blur-sm rounded-full px-4 py-2">
-                      <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                      <p className="text-white text-[13px] font-semibold">Identifying containers...</p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center">
-                  <Camera className="w-10 h-10 text-green-400 animate-pulse mx-auto mb-3" />
-                  <p className="text-white text-lg font-display font-bold">Identifying...</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ═══ SORT RESULT ═══ */}
-          {step === "sortresult" && (
-            <>
-              <div className="text-center mb-6">
-                <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-1">
-                  {results.length > 0 ? "Here's where it goes!" : "No container found"}
-                </h1>
-              </div>
-
-              {results.filter((r) => r.eligible).map((item, i) => {
-                const bag = getBagForMaterial(mapToMaterialType(item.material));
-                return (
-                  <div key={i} className="flex items-center gap-3 p-4 rounded-2xl border-2 border-green-200 bg-green-50 mb-3">
-                    <div className={`w-12 h-12 ${bag.color} rounded-xl flex items-center justify-center flex-shrink-0 shadow-md`}>
-                      <span className="text-xl">{bag.emoji}</span>
-                    </div>
-                    <div>
-                      <p className="text-[15px] text-slate-900 font-bold">{item.name}</p>
-                      <p className="text-[13px] text-green-700 font-semibold">
-                        → Put in Container {bag.id} ({bag.label.split(" ")[0]})
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {results.length === 0 && (
-                <div className="bg-slate-50 rounded-2xl p-6 text-center mb-4">
-                  <p className="text-slate-400 text-[13px]">Couldn't identify a container. Try again with better lighting!</p>
-                </div>
-              )}
-
-              <GreenButton onClick={() => setStep("done")}>
-                {results.length > 0 ? "Got it! " : "Skip for now "}
-                <ChevronRight className="w-5 h-5 inline" />
-              </GreenButton>
-            </>
-          )}
-
-          {/* ═══ DONE ═══ */}
-          {step === "done" && (
+          {/* ═══ DONE (fallback — shouldn't reach here but just in case) ═══ */}
+          {(step !== "email" && step !== "verify") && (
             <>
               <div className="text-center mb-6">
                 <div className="flex justify-center mb-5">
                   <Logo size="lg" />
                 </div>
                 <h1 className="text-3xl font-display font-extrabold text-slate-900 mb-2">You're all set!</h1>
-                <p className="text-slate-500 text-[14px] mb-1">Start sorting your containers into your 4 bins</p>
+                <p className="text-slate-500 text-[14px] mb-1">Your GoodSort bin does the sorting — we do the rest</p>
                 <p className="text-slate-400 text-[13px]">We'll email you <span className="font-semibold text-green-600">24 hours before collection</span></p>
               </div>
 

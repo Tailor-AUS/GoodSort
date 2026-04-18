@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { type User, type SortBin, type Depot, type BagInfo } from "@/lib/store";
 import { getUserApi, getDepotsApi, getBinsApi } from "@/lib/store-api";
 import { apiUrl } from "@/lib/config";
-import { getOrCreateDefaultUser, getDepots } from "@/lib/store";
+import { getDepots } from "@/lib/store";
 import { MapView } from "@/app/components/shared/map-view";
 import { SorterSheet } from "./components/sorter-sheet";
 import { Scanner } from "@/app/components/shared/scanner";
@@ -30,7 +30,7 @@ export default function SorterApp() {
       getDepotsApi().catch(() => []),
     ]);
 
-    setUser(apiUser || getOrCreateDefaultUser());
+    setUser(apiUser);
     setBins(apiBins);
     setDepot((apiDepots.length > 0 ? apiDepots : getDepots())[0] || null);
   }, []);

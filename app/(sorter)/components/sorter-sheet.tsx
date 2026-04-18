@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from "react";
 import { ScanBarcode, MapPin, X, QrCode, ChevronUp } from "lucide-react";
-import { type SortBin, type User, formatCents, BAGS } from "@/lib/store";
+import { type SortBin, type User, formatCents } from "@/lib/store";
 import { PoweredByTailor } from "@/app/components/shared/powered-by-tailor";
 import Link from "next/link";
 
@@ -177,16 +177,17 @@ export function SorterSheet({
                 <MiniStat label="Status" value={selectedBin.status} />
               </div>
 
-              {/* 4-bag breakdown */}
-              {selectedBin.pendingContainers > 0 && (
+              {/* Material breakdown */}
+              {selectedBin.pendingContainers > 0 && selectedBin.materials && (
                 <div className="grid grid-cols-4 gap-2 mb-4">
-                  {BAGS.map((bag) => {
-                    const count = selectedBin.materials?.[bag.material] || 0;
+                  {([{key:"aluminium",label:"ALU",color:"bg-blue-500"},{key:"pet",label:"PET",color:"bg-sky-400"},{key:"glass",label:"GLASS",color:"bg-emerald-400"},{key:"other",label:"OTHER",color:"bg-orange-400"}]).map(({key, label, color}) => {
+                    const mats = selectedBin.materials;
+                    const count = mats ? (mats as unknown as Record<string,number>)[key] || 0 : 0;
                     return (
-                      <div key={bag.id} className={`glass rounded-xl p-2.5 text-center border ${bag.borderColor}`}>
-                        <div className={`w-6 h-6 ${bag.color} rounded-lg mx-auto mb-1.5 shadow-sm`} />
+                      <div key={key} className="glass rounded-xl p-2.5 text-center border border-white/30">
+                        <div className={`w-6 h-6 ${color} rounded-lg mx-auto mb-1.5 shadow-sm`} />
                         <p className="text-[15px] font-display font-extrabold text-slate-900">{count}</p>
-                        <p className="text-[10px] text-slate-400 uppercase tracking-wider">{bag.label.split(" ")[0]}</p>
+                        <p className="text-[10px] text-slate-400 uppercase tracking-wider">{label}</p>
                       </div>
                     );
                   })}

@@ -155,7 +155,7 @@ app.MapPost("/api/bins", async (Bin bin, GoodSortDbContext db) =>
     db.Bins.Add(bin);
     await db.SaveChangesAsync();
     return Results.Created($"/api/bins/{bin.Id}", bin);
-});
+}).RequireAuthorization();
 
 app.MapGet("/api/bins/{id:guid}/qr", (Guid id, GoodSortDbContext db) =>
 {
@@ -207,7 +207,7 @@ app.MapPost("/api/scan/photo", async (PhotoScanRequest req, VisionService vision
             ? $"{totalItems} container{(totalItems != 1 ? "s" : "")} found — ${totalCents / 100.0:F2} pending"
             : result.Message,
     });
-});
+}).RequireAuthorization();
 
 // Confirm photo scan — actually creates the scan records
 app.MapPost("/api/scan/photo/confirm", async (PhotoConfirmRequest req, GoodSortDbContext db) =>
@@ -269,7 +269,7 @@ app.MapPost("/api/scan/photo/confirm", async (PhotoConfirmRequest req, GoodSortD
 
     await db.SaveChangesAsync();
     return Results.Ok(new { totalContainers, totalCents, pendingCents = profile.PendingCents });
-});
+}).RequireAuthorization();
 
 // ── Barcode Lookup (Open Food Facts proxy) ──
 app.MapGet("/api/barcode/{barcode}", async (string barcode, IHttpClientFactory httpFactory) =>
@@ -325,7 +325,7 @@ app.MapPost("/api/households", async (Household household, GoodSortDbContext db)
         await db.SaveChangesAsync();
     }
     return Results.Created($"/api/households/{household.Id}", household);
-});
+}).RequireAuthorization();
 
 // ── Bin-day lookup — auto-fills the yellow bin collection day from an address ──
 app.MapPost("/api/households/lookup-bin-day", async (BinDayLookupRequest req, BinDayService svc) =>
@@ -367,7 +367,7 @@ app.MapPost("/api/households/{id:guid}/bin-out", async (Guid id, BinOutRequest r
     h.BinIsOutAt = req.Out ? DateTime.UtcNow : null;
     await db.SaveChangesAsync();
     return Results.Ok(new { h.Id, h.BinIsOut, h.BinIsOutAt });
-});
+}).RequireAuthorization();
 
 // ── Waitlist for unit_complex customers (phase 2) ──
 app.MapPost("/api/waitlist/unit-complex", async (UnitComplexWaitlistRequest req, GoodSortDbContext db) =>
@@ -396,7 +396,7 @@ app.MapPost("/api/profiles", async (Profile profile, GoodSortDbContext db) =>
     db.Profiles.Add(profile);
     await db.SaveChangesAsync();
     return Results.Created($"/api/profiles/{profile.Id}", profile);
-});
+}).RequireAuthorization();
 
 // ── Scans ──
 app.MapPost("/api/scans", async (ScanRequest req, GoodSortDbContext db) =>
@@ -441,7 +441,7 @@ app.MapPost("/api/scans", async (ScanRequest req, GoodSortDbContext db) =>
 
     await db.SaveChangesAsync();
     return Results.Ok(new { scan.Id, profile.PendingCents, profile.TotalContainers });
-});
+}).RequireAuthorization();
 
 app.MapGet("/api/scans", async (Guid userId, int? limit, GoodSortDbContext db) =>
     Results.Ok(await db.Scans.Where(s => s.UserId == userId)
@@ -468,7 +468,7 @@ app.MapPost("/api/routes/{id:guid}/claim", async (Guid id, ClaimRequest req, Goo
     if (profile is not null) profile.Role = "both";
     await db.SaveChangesAsync();
     return Results.Ok(route);
-});
+}).RequireAuthorization();
 
 app.MapPost("/api/routes/{id:guid}/start", async (Guid id, GoodSortDbContext db) =>
 {
@@ -477,7 +477,7 @@ app.MapPost("/api/routes/{id:guid}/start", async (Guid id, GoodSortDbContext db)
     route.Status = "in_progress"; route.StartedAt = DateTime.UtcNow;
     await db.SaveChangesAsync();
     return Results.Ok(route);
-});
+}).RequireAuthorization();
 
 app.MapPost("/api/routes/{routeId:guid}/stops/{stopId:guid}/pickup",
     async (Guid routeId, Guid stopId, PickupRequest req, GoodSortDbContext db) =>
@@ -490,7 +490,7 @@ app.MapPost("/api/routes/{routeId:guid}/stops/{stopId:guid}/pickup",
     if (route.Stops.All(s => s.Status != "pending")) route.Status = "at_depot";
     await db.SaveChangesAsync();
     return Results.Ok(route);
-});
+}).RequireAuthorization();
 
 app.MapPost("/api/routes/{routeId:guid}/stops/{stopId:guid}/skip",
     async (Guid routeId, Guid stopId, GoodSortDbContext db) =>
@@ -503,7 +503,7 @@ app.MapPost("/api/routes/{routeId:guid}/stops/{stopId:guid}/skip",
     if (route.Stops.All(s => s.Status != "pending")) route.Status = "at_depot";
     await db.SaveChangesAsync();
     return Results.Ok(route);
-});
+}).RequireAuthorization();
 
 app.MapPost("/api/routes/{id:guid}/settle", async (Guid id, GoodSortDbContext db) =>
 {
@@ -546,7 +546,7 @@ app.MapPost("/api/routes/{id:guid}/settle", async (Guid id, GoodSortDbContext db
 
     await db.SaveChangesAsync();
     return Results.Ok(new { route.Id, driverPayout, totalCollected });
-});
+}).RequireAuthorization();
 
 // ── Depots ──
 app.MapGet("/api/depots", async (GoodSortDbContext db) =>
@@ -602,7 +602,7 @@ app.MapPost("/api/routes/{id:guid}/optimize", async (Guid id, GoodSortDbContext 
 
     await db.SaveChangesAsync();
     return Results.Ok(new { optimized = true, durationMin = route.EstimatedDurationMin, distanceKm = route.EstimatedDistanceKm });
-});
+}).RequireAuthorization();
 
 // ── Cash-out ──
 app.MapPost("/api/cashout", async (CashoutRequestDto req, CashoutService cashout) =>
@@ -736,7 +736,7 @@ app.MapPatch("/api/profiles/{id:guid}", async (Guid id, ProfileUpdateRequest req
     if (req.HouseholdId is not null) profile.HouseholdId = req.HouseholdId;
     await db.SaveChangesAsync();
     return Results.Ok(profile);
-});
+}).RequireAuthorization();
 
 // ── Profile DELETE — full account wipe (GDPR / privacy-policy right-to-erasure) ──
 app.MapDelete("/api/profiles/{id:guid}", async (Guid id, GoodSortDbContext db) =>
@@ -790,7 +790,7 @@ app.MapPost("/api/runner/register", async (RunnerRegisterRequest req, GoodSortDb
     db.RunnerProfiles.Add(runner);
     await db.SaveChangesAsync();
     return Results.Created($"/api/runner/profile", runner);
-});
+}).RequireAuthorization();
 
 // ── Runner: Get my profile ──
 app.MapGet("/api/runner/profile/{profileId:guid}", async (Guid profileId, GoodSortDbContext db) =>
@@ -807,7 +807,7 @@ app.MapPatch("/api/runner/profile/{profileId:guid}", async (Guid profileId, Runn
     if (req.ServiceRadiusKm.HasValue) runner.ServiceRadiusKm = req.ServiceRadiusKm.Value;
     await db.SaveChangesAsync();
     return Results.Ok(runner);
-});
+}).RequireAuthorization();
 
 // ── Runner: Location heartbeat ──
 app.MapPost("/api/runner/heartbeat", async (RunnerHeartbeatRequest req, GoodSortDbContext db) =>
@@ -820,7 +820,7 @@ app.MapPost("/api/runner/heartbeat", async (RunnerHeartbeatRequest req, GoodSort
     runner.LastLocationAt = DateTime.UtcNow;
     await db.SaveChangesAsync();
     return Results.Ok(new { online = runner.IsOnline });
-});
+}).RequireAuthorization();
 
 // ── Marketplace: Get available runs near location ──
 app.MapGet("/api/marketplace/runs", async (double lat, double lng, double? radiusKm, GoodSortDbContext db) =>
@@ -887,7 +887,7 @@ app.MapPost("/api/marketplace/runs/{id:guid}/claim", async (Guid id, Marketplace
 
     // Return run with stops (now includes lat/lng for navigation)
     return Results.Ok(run);
-});
+}).RequireAuthorization();
 
 // ── Marketplace: Start a run ──
 app.MapPost("/api/marketplace/runs/{id:guid}/start", async (Guid id, GoodSortDbContext db) =>
@@ -898,7 +898,7 @@ app.MapPost("/api/marketplace/runs/{id:guid}/start", async (Guid id, GoodSortDbC
     run.StartedAt = DateTime.UtcNow;
     await db.SaveChangesAsync();
     return Results.Ok(run);
-});
+}).RequireAuthorization();
 
 // ── Marketplace: Arrive at stop ──
 app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/arrive",
@@ -910,7 +910,7 @@ app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/arrive",
     stop.ArrivedAt = DateTime.UtcNow;
     await db.SaveChangesAsync();
     return Results.Ok(stop);
-});
+}).RequireAuthorization();
 
 // ── Marketplace: Complete pickup at stop (with photo) ──
 app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/pickup",
@@ -929,7 +929,7 @@ app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/pickup",
 
     await db.SaveChangesAsync();
     return Results.Ok(run);
-});
+}).RequireAuthorization();
 
 // ── Marketplace: Skip a stop ──
 app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/skip",
@@ -944,7 +944,7 @@ app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/skip",
     stop.Status = "skipped";
     await db.SaveChangesAsync();
     return Results.Ok(run);
-});
+}).RequireAuthorization();
 
 // ── Marketplace: Mark run as delivering (heading to drop point) ──
 app.MapPost("/api/marketplace/runs/{id:guid}/deliver", async (Guid id, GoodSortDbContext db) =>
@@ -959,7 +959,7 @@ app.MapPost("/api/marketplace/runs/{id:guid}/deliver", async (Guid id, GoodSortD
     run.Status = "delivering";
     await db.SaveChangesAsync();
     return Results.Ok(run);
-});
+}).RequireAuthorization();
 
 // ── Marketplace: Complete delivery at drop point ──
 app.MapPost("/api/marketplace/runs/{id:guid}/complete", async (Guid id, GoodSortDbContext db) =>
@@ -974,7 +974,7 @@ app.MapPost("/api/marketplace/runs/{id:guid}/complete", async (Guid id, GoodSort
 
     await db.SaveChangesAsync();
     return Results.Ok(run);
-});
+}).RequireAuthorization();
 
 // ── Marketplace: Settle a completed run (admin) ──
 app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (Guid id, GoodSortDbContext db, RunnerService runnerService) =>
