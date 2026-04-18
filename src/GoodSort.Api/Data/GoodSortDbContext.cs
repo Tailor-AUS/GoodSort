@@ -234,15 +234,26 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
             CreatedAt = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc),
         });
 
-        // Seed default depot (static CreatedAt to avoid PendingModelChangesWarning)
-        modelBuilder.Entity<Depot>().HasData(new Depot
-        {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
-            Name = "Tomra South Brisbane",
-            Address = "201 Montague Rd, West End",
-            Lat = -27.4790,
-            Lng = 153.0080,
-            CreatedAt = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc),
-        });
+        // Seed depots — COEX Containers for Change depots near Moorooka
+        modelBuilder.Entity<Depot>().HasData(
+            new Depot
+            {
+                Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
+                Name = "RECAN Yeerongpilly (Containers for Change)",
+                Address = "993 Fairfield Rd, Yeerongpilly QLD 4105",
+                Lat = -27.5310,
+                Lng = 153.0130,
+                CreatedAt = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc),
+            },
+            new Depot
+            {
+                Id = Guid.Parse("00000000-0000-0000-0000-000000000002"),
+                Name = "Containers for Change Salisbury",
+                Address = "9/655 Toohey Rd, Salisbury QLD 4107",
+                Lat = -27.5530,
+                Lng = 153.0340,
+                CreatedAt = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc),
+            }
+        );
     }
 }
