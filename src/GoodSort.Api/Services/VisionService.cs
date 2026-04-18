@@ -112,15 +112,10 @@ public class VisionService
                 Name = tvResponse.Classification.Description,
                 Material = MapMaterial(tvResponse.Classification.Material),
                 Count = 1,
-                Eligible = tvResponse.Cds?.Eligible ?? IsBeverageContainer(tvResponse.Classification.Material),
+                Eligible = tvResponse.Cds?.Eligible ?? false,
                 Confidence = tvResponse.Classification.Confidence,
                 Barcode = tvResponse.Barcode?.Value,
             };
-
-            // QLD CDS includes wine & spirit bottles (Nov 2023+).
-            // Override Tailor Vision if it incorrectly marks a beverage container as ineligible.
-            if (!container.Eligible && IsBeverageContainer(tvResponse.Classification.Material))
-                container.Eligible = true;
 
             var msg = container.Eligible
                 ? $"Found a {container.Name}! That's 5 cents 🎉"
@@ -136,12 +131,6 @@ public class VisionService
             return await IdentifyViaAzureOpenAI(base64Image);
         }
     }
-
-    private static bool IsBeverageContainer(string material) => material.ToLower() switch
-    {
-        "aluminium" or "pet" or "glass" or "steel" or "hdpe" or "liquid_paperboard" => true,
-        _ => false,
-    };
 
     /// <summary>
     /// Map Tailor Vision material names to GoodSort's material system.
