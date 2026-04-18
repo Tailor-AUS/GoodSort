@@ -823,15 +823,18 @@ app.MapPost("/api/runner/heartbeat", async (RunnerHeartbeatRequest req, GoodSort
 }).RequireAuthorization();
 
 // ── Marketplace: Get available runs near location ──
-app.MapGet("/api/marketplace/runs", async (double lat, double lng, double? radiusKm, GoodSortDbContext db) =>
+app.MapGet("/api/marketplace/runs", async (double lat, double lng, double? radiusKm, string? material, GoodSortDbContext db) =>
 {
     var radius = radiusKm ?? 15.0;
-    var runs = await db.Runs
-        .Include(r => r.Stops)
-        .Where(r => r.Status == "available" && r.ExpiresAt > DateTime.UtcNow)
-        .ToListAsync();
+    var q = db.Runs.Include(r => r.Stops)
+        .Where(r => r.Status == "available" && r.ExpiresAt > DateTime.UtcNow);
 
-    // Filter by distance from runner (haversine)
+    // Optional material filter — runners can browse by material type
+    if (!string.IsNullOrEmpty(material))
+        q = q.Where(r => r.MaterialFocus == material || r.MaterialFocus == "mixed");
+
+    var runs = await q.ToListAsync();
+
     var nearby = runs
         .Select(r => new
         {
@@ -840,23 +843,42 @@ app.MapGet("/api/marketplace/runs", async (double lat, double lng, double? radiu
         })
         .Where(x => x.DistanceKm <= radius)
         .OrderBy(x => x.DistanceKm)
-        .Select(x => new
+        .Select(x =>
         {
-            x.Run.Id,
-            x.Run.Status,
-            x.Run.AreaName,
-            x.Run.CentroidLat,
-            x.Run.CentroidLng,
-            x.Run.EstimatedContainers,
-            x.Run.PerContainerCents,
-            x.Run.EstimatedPayoutCents,
-            x.Run.PricingTier,
-            x.Run.EstimatedDistanceKm,
-            x.Run.EstimatedDurationMin,
-            StopCount = x.Run.Stops.Count,
-            x.DistanceKm,
-            x.Run.ExpiresAt,
-            x.Run.Materials,
+            var m = x.Run.Materials;
+            var total = m.Aluminium + m.Pet + m.Glass + m.Other;
+            return new
+            {
+                x.Run.Id,
+                x.Run.Status,
+                x.Run.AreaName,
+                x.Run.CentroidLat,
+                x.Run.CentroidLng,
+                x.Run.MaterialFocus,
+                x.Run.EstimatedContainers,
+                x.Run.EstimatedWeightKg,
+                x.Run.PerContainerCents,
+                x.Run.EstimatedPayoutCents,
+                x.Run.PricingTier,
+                x.Run.EstimatedDistanceKm,
+                x.Run.EstimatedDurationMin,
+                StopCount = x.Run.Stops.Count,
+                x.DistanceKm,
+                x.Run.ExpiresAt,
+                x.Run.Materials,
+                // Material percentages for the runner to see at a glance
+                MaterialPct = total > 0 ? new
+                {
+                    aluminium = Math.Round(100.0 * m.Aluminium / total),
+                    pet = Math.Round(100.0 * m.Pet / total),
+                    glass = Math.Round(100.0 * m.Glass / total),
+                    other = Math.Round(100.0 * m.Other / total),
+                } : null,
+                // Vehicle hint based on weight
+                VehicleHint = x.Run.EstimatedWeightKg > 20 ? "car_or_ute"
+                            : x.Run.EstimatedWeightKg > 5 ? "car_or_bike"
+                            : "any",
+            };
         })
         .ToList();
 

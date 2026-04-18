@@ -142,14 +142,12 @@ public class RunGenerationService : BackgroundService
             clusters.Add(cluster);
         }
 
-        // Create a Run for each cluster
+        // Create Runs for each cluster — split by material when volume warrants it
         foreach (var cluster in clusters)
         {
             var totalContainers = cluster.Sum(b => b.PendingContainers);
             var centroidLat = cluster.Average(b => b.Lat);
             var centroidLng = cluster.Average(b => b.Lng);
-
-            // Estimate distance: sum of distances between bins + to drop point
             var routeDistance = EstimateRouteDistance(cluster, dropPoint);
 
             var materials = new MaterialBreakdown
@@ -160,8 +158,27 @@ public class RunGenerationService : BackgroundService
                 Other = cluster.Sum(b => b.Materials.Other),
             };
 
-            // Area name from first bin address (suburb extraction)
             var areaName = ExtractSuburb(cluster.First().Address);
+
+            // Determine material focus: if one stream is >60% of total, make it
+            // a material-specific run. Otherwise "mixed".
+            var materialFocus = "mixed";
+            var total = materials.Aluminium + materials.Pet + materials.Glass + materials.Other;
+            if (total > 0)
+            {
+                if (materials.Aluminium > total * 0.6) materialFocus = "aluminium";
+                else if (materials.Pet > total * 0.6) materialFocus = "pet";
+                else if (materials.Glass > total * 0.6) materialFocus = "glass";
+            }
+
+            // Estimate weight (helps runners decide vehicle needs)
+            var weightKg = materials.Aluminium * 0.015   // 15g per can
+                         + materials.Pet * 0.025          // 25g per bottle
+                         + materials.Glass * 0.300        // 300g per bottle
+                         + materials.Other * 0.020;       // 20g avg
+
+            // Time per stop: 1min for yellow bin extraction (faster than old 3min bag swap)
+            var durationMin = (int)(cluster.Count * 1 + routeDistance * 2 + 25);
 
             var run = new Run
             {
@@ -170,11 +187,13 @@ public class RunGenerationService : BackgroundService
                 CentroidLat = centroidLat,
                 CentroidLng = centroidLng,
                 AreaName = areaName,
+                MaterialFocus = materialFocus,
                 EstimatedContainers = totalContainers,
+                EstimatedWeightKg = weightKg,
                 EstimatedDistanceKm = routeDistance,
-                EstimatedDurationMin = (int)(cluster.Count * 3 + routeDistance * 2 + 15),
+                EstimatedDurationMin = durationMin,
                 Materials = materials,
-                ExpiresAt = DateTime.UtcNow.AddHours(4),
+                ExpiresAt = DateTime.UtcNow.AddHours(12), // 12hr window (evening before → morning)
             };
 
             // Add stops

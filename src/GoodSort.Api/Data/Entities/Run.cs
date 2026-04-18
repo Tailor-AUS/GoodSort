@@ -20,9 +20,17 @@ public class Run
     public double CentroidLng { get; set; }
     public string AreaName { get; set; } = ""; // e.g. "Moorooka" — shown to browsing runners
 
+    // Material focus: "mixed" (all streams), or a specific stream when
+    // a suburb has enough of one material to justify a dedicated run.
+    // Values: "mixed", "aluminium", "pet", "glass", "steel", "hdpe_lpb"
+    public string MaterialFocus { get; set; } = "mixed";
+
     // Container estimates
     public int EstimatedContainers { get; set; }
     public int ActualContainers { get; set; }
+
+    // Estimated weight helps runners decide (glass = heavy = need a car)
+    public double EstimatedWeightKg { get; set; }
 
     // Dynamic pricing
     public int PerContainerCents { get; set; } = 5; // 3-8c dynamic
