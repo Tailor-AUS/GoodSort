@@ -47,3 +47,10 @@ az containerapp update -n $app -g $rg `
   --output none
 
 Write-Host "Env vars restored."
+
+# Re-link thegoodsort.org to ACS (keeps getting unlinked by M365 DNS changes)
+Write-Host "Re-linking thegoodsort.org email domain to ACS..."
+$commId = "/subscriptions/5745cb5e-8c39-470f-ab6f-8a5897b7f9af/resourceGroups/rg-tailor-app-prod/providers/Microsoft.Communication/communicationServices/tailor-prod-comm"
+$body = '{"properties":{"linkedDomains":["/subscriptions/5745cb5e-8c39-470f-ab6f-8a5897b7f9af/resourceGroups/rg-tailor-app-prod/providers/Microsoft.Communication/emailServices/tailor-prod-email/domains/AzureManagedDomain","/subscriptions/5745cb5e-8c39-470f-ab6f-8a5897b7f9af/resourceGroups/rg-tailor-app-prod/providers/Microsoft.Communication/emailServices/tailor-prod-email/domains/tailor.au","/subscriptions/5745cb5e-8c39-470f-ab6f-8a5897b7f9af/resourceGroups/rg-tailor-app-prod/providers/Microsoft.Communication/emailServices/tailor-prod-email/domains/thegoodsort.org"]}}'
+try { az rest --method patch --url "$commId`?api-version=2023-04-01" --body $body --output none 2>$null } catch { Write-Host "WARNING: ACS domain re-link failed (non-fatal)" }
+Write-Host "Done."

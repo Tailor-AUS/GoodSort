@@ -162,17 +162,10 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     let totalItems = 0;
     let totalCents = 0;
 
-    for (const item of eligible) {
-      for (let i = 0; i < item.count; i++) {
-        addScanApi("PHOTO", item.name, item.material);
-        totalItems++;
-        totalCents += SORTER_PAYOUT_CENTS;
-      }
-    }
-
-    // Also try to confirm via API
+    // Confirm via the photo/confirm API (creates scan records + credits)
+    // Do NOT also call addScanApi — that would double-count
     try {
-      await fetch(apiUrl("/api/scan/photo/confirm"), {
+      const res = await fetch(apiUrl("/api/scan/photo/confirm"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -180,7 +173,19 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
           items: eligible,
         }),
       });
-    } catch { /* localStorage already handled it */ }
+      if (res.ok) {
+        const data = await res.json();
+        totalItems = data.totalContainers || eligible.reduce((s, e) => s + e.count, 0);
+        totalCents = data.totalCents || totalItems * 10;
+      } else {
+        // Fallback: count from eligible items
+        totalItems = eligible.reduce((s, e) => s + e.count, 0);
+        totalCents = totalItems * 10;
+      }
+    } catch {
+      totalItems = eligible.reduce((s, e) => s + e.count, 0);
+      totalCents = totalItems * 10;
+    }
 
     setConfirming(false);
     if (onBatchComplete) {

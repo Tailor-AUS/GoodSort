@@ -232,7 +232,7 @@ app.MapPost("/api/scan/photo/confirm", async (PhotoConfirmRequest req, GoodSortD
                 Barcode = "PHOTO",
                 ContainerName = item.Name,
                 Material = item.Material,
-                RefundCents = 5,
+                RefundCents = 10, // CDS refund rate — direct to recycler
                 Status = "pending",
             };
             db.Scans.Add(scan);
@@ -409,11 +409,11 @@ app.MapPost("/api/scans", async (ScanRequest req, GoodSortDbContext db) =>
         UserId = profile.Id,
         HouseholdId = profile.HouseholdId, // nullable — works without household
         Barcode = req.Barcode, ContainerName = req.ContainerName,
-        Material = req.Material, RefundCents = 5, Status = "pending",
+        Material = req.Material, RefundCents = 10, Status = "pending",
     };
     db.Scans.Add(scan);
 
-    profile.PendingCents += 5;
+    profile.PendingCents += 10;
     profile.TotalContainers += 1;
     profile.TotalCo2SavedKg += 0.035;
 
@@ -609,7 +609,7 @@ app.MapPost("/api/cashout", async (CashoutRequestDto req, CashoutService cashout
 {
     var (success, error) = await cashout.RequestCashout(req.UserId, req.AmountCents, req.Bsb, req.AccountNumber, req.AccountName);
     return success ? Results.Ok(new { success = true }) : Results.BadRequest(new { error });
-});
+}).RequireAuthorization();
 
 // ── Admin: Generate ABA file (auth required) ──
 app.MapGet("/api/admin/aba-export", async (CashoutService cashout) =>
