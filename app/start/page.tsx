@@ -141,23 +141,20 @@ export default function StartPage() {
         </div>
       </section>
 
-      {/* ── The math ── */}
-      <section className="px-6 py-10 bg-slate-900 text-white">
+      {/* ── The problem ── */}
+      <section className="px-6 py-12 bg-slate-900 text-white">
         <div className="max-w-lg mx-auto text-center">
-          <p className="text-slate-400 text-[12px] uppercase tracking-[0.15em] mb-4">The average household</p>
-          <div className="flex items-baseline justify-center gap-2 mb-2">
-            <span className="text-[48px] font-display font-extrabold text-green-400">$65</span>
-            <span className="text-slate-400 text-[16px] font-medium">/year</span>
-          </div>
-          <p className="text-slate-400 text-[14px] leading-relaxed">
-            ~50 containers per fortnight &times; 5¢ each = $2.50 every two weeks
+          <p className="text-slate-400 text-[12px] uppercase tracking-[0.15em] mb-5">Right now</p>
+          <h2 className="text-[24px] sm:text-[28px] font-display font-extrabold leading-tight mb-4">
+            Every can you bin is<br /><span className="text-green-400">10¢ you&apos;re throwing away</span>
+          </h2>
+          <p className="text-slate-400 text-[14px] leading-relaxed max-w-xs mx-auto mb-8">
+            Queensland&apos;s Container Refund Scheme pays 10¢ for every eligible container. Most people never claim it because the depot is a 40-minute round trip.
           </p>
-          <div className="flex justify-center gap-6 mt-6 text-[12px] text-slate-500">
-            <span>🥫 Cans</span>
-            <span>🍺 Stubbies</span>
-            <span>🧃 Poppers</span>
-            <span>🍷 Wine bottles</span>
-            <span>💧 PET bottles</span>
+          <div className="grid grid-cols-3 gap-3 max-w-xs mx-auto">
+            <MiniStat value="10¢" label="per container" />
+            <MiniStat value="~50" label="per fortnight" />
+            <MiniStat value="0 min" label="effort with us" />
           </div>
         </div>
       </section>
@@ -314,6 +311,15 @@ function TrustItem({ icon, text }: { icon: React.ReactNode; text: string }) {
     <div className="flex items-center gap-2 text-slate-500">
       <div className="w-7 h-7 bg-white border border-slate-200 rounded-full flex items-center justify-center text-green-600">{icon}</div>
       <span className="text-[12px] font-medium">{text}</span>
+    </div>
+  );
+}
+
+function MiniStat({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="bg-white/5 border border-white/10 rounded-xl py-3 px-2">
+      <p className="text-[22px] font-display font-extrabold text-green-400">{value}</p>
+      <p className="text-[10px] text-slate-500 uppercase tracking-wider mt-0.5">{label}</p>
     </div>
   );
 }
