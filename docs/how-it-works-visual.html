@@ -124,6 +124,52 @@
 
   .summary p { font-size: 12px; color: #475569; line-height: 1.5; }
   .summary .tagline { font-size: 14px; font-weight: 700; color: #1e293b; margin-top: 12px; }
+
+  /* Revenue section */
+  .revenue {
+    margin-top: 40px;
+    padding: 24px;
+    border: 1px solid #e2e8f0;
+    border-radius: 20px;
+    background: #fafbfc;
+  }
+  .revenue h3 { font-size: 17px; font-weight: 800; margin-bottom: 6px; text-align: center; }
+  .revenue-intro { font-size: 12px; color: #64748b; text-align: center; margin-bottom: 20px; line-height: 1.5; }
+
+  .ledger { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 16px; }
+  .ledger th, .ledger td { padding: 8px 6px; text-align: left; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+  .ledger th { font-weight: 700; font-size: 11px; color: #334155; background: #f1f5f9; }
+  .ledger th span { font-weight: 400; font-size: 10px; color: #64748b; }
+  .ledger td.step-label { font-size: 11px; color: #475569; }
+  .ledger td.step-label strong { color: #1e293b; font-size: 12px; }
+  .ledger td.pos { color: #059669; font-weight: 600; }
+  .ledger td.neg { color: #dc2626; font-weight: 600; }
+  .ledger td.neutral { color: #64748b; font-weight: 500; font-style: italic; }
+  .ledger td.mixed { color: #334155; font-weight: 600; font-size: 10px; }
+  .ledger tr.total td { background: #ecfdf5; border-bottom: none; font-weight: 700; font-size: 12px; padding-top: 12px; padding-bottom: 12px; }
+
+  .revenue-note {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 11px;
+    color: #475569;
+    line-height: 1.7;
+    margin-bottom: 16px;
+  }
+  .revenue-note strong { color: #1e293b; }
+  .revenue-margin { display: block; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e2e8f0; color: #64748b; }
+
+  .risk-split { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; }
+  .risk-split h4 { font-size: 13px; font-weight: 700; margin-bottom: 10px; color: #1e293b; }
+  .risk-row { display: flex; align-items: center; gap: 10px; font-size: 11px; color: #475569; margin-bottom: 8px; line-height: 1.4; }
+  .risk-row:last-child { margin-bottom: 0; }
+  .risk-row strong { color: #1e293b; }
+  .risk-badge { padding: 3px 8px; border-radius: 8px; font-weight: 700; font-size: 11px; flex-shrink: 0; min-width: 80px; text-align: center; }
+  .risk-badge.you { background: #dcfce7; color: #166534; }
+  .risk-badge.runner { background: #fef3c7; color: #92400e; }
+  .risk-badge.goodsort { background: #dbeafe; color: #1e40af; }
 </style>
 </head>
 <body>
@@ -203,6 +249,71 @@
     </div>
     <p>Three checkpoints. Each handoff is reconciled. You earn on what physically arrives — no guesswork, no scales, no trucks.</p>
     <p class="tagline">Scan. Sort. Earn.</p>
+  </div>
+
+  <!-- Revenue flow -->
+  <div class="revenue">
+    <h3>Follow the money</h3>
+    <p class="revenue-intro">A worked example: Sarah scans 50 containers. 48 are eligible. 45 make it to pickup (5 pinched from the kerb). 42 are accepted at the depot (3 rejected for damage).</p>
+
+    <table class="ledger">
+      <thead>
+        <tr>
+          <th></th>
+          <th>🧍 Sarah<br><span>(sorter)</span></th>
+          <th>🚗 Dave<br><span>(runner)</span></th>
+          <th>🌱 GoodSort</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="step-label"><strong>Scan 50</strong><br>AI verifies 48 eligible</td>
+          <td class="pos">+$2.40 pending</td>
+          <td>—</td>
+          <td class="neg">–$1.50 (vision cost)</td>
+        </tr>
+        <tr>
+          <td class="step-label"><strong>Pickup at 45</strong><br>Sarah clears, Dave takes custody</td>
+          <td class="pos">+$2.25 cleared</td>
+          <td class="neutral">owns 45</td>
+          <td class="neg">–$2.25 (paid to Sarah)</td>
+        </tr>
+        <tr>
+          <td class="step-label"><strong>Depot accepts 42</strong><br>Dave earns, GoodSort collects refund</td>
+          <td>—</td>
+          <td class="pos">+$2.10 earned</td>
+          <td class="mixed">+$5.46 / –$2.10</td>
+        </tr>
+        <tr class="total">
+          <td class="step-label"><strong>Net per collection</strong></td>
+          <td class="pos">+$2.25</td>
+          <td class="pos">+$2.10</td>
+          <td class="pos">+$1.11</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="revenue-note">
+      <strong>GoodSort's income:</strong> 42 × 10¢ CDS refund ($4.20) + handling fee from COEX (~3¢ per container = $1.26) = <strong>$5.46</strong><br>
+      <strong>GoodSort's costs:</strong> Sarah's 5¢ × 45 ($2.25) + Dave's 5¢ × 42 ($2.10) + vision ($1.50) = <strong>$5.85</strong><br>
+      <span class="revenue-margin">Per-collection margin: thin. Business works on <strong>volume</strong> + <strong>material aggregation value</strong> (bulk aluminium/PET/glass sales on top of CDS refund).</span>
+    </div>
+
+    <div class="risk-split">
+      <h4>Who carries the risk?</h4>
+      <div class="risk-row">
+        <span class="risk-badge you">🧍 Sarah</span>
+        <span>Loses 3 containers × 5¢ = <strong>–15¢</strong> (kerbside theft between sealing and pickup)</span>
+      </div>
+      <div class="risk-row">
+        <span class="risk-badge runner">🚗 Dave</span>
+        <span>Loses 3 containers × 5¢ = <strong>–15¢</strong> (damage / loss in transit)</span>
+      </div>
+      <div class="risk-row">
+        <span class="risk-badge goodsort">🌱 GoodSort</span>
+        <span>Pays Tailor Vision even for ineligible scans and failed pickups. Absorbs structural losses.</span>
+      </div>
+    </div>
   </div>
 
 </div>
