@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ShieldCheck, ChevronRight, Scan, Recycle, Banknote, Truck, ArrowDown, Check, MapPin, Shield } from "lucide-react";
 import { apiUrl } from "@/lib/config";
 import { Logo } from "@/app/components/shared/logo";
+import { SortAnimation } from "@/app/components/shared/sort-animation";
 
 export default function StartPage() {
   const router = useRouter();
@@ -124,7 +125,11 @@ export default function StartPage() {
           <p className="text-slate-500 text-[16px] leading-relaxed mb-2 max-w-xs mx-auto">
             Scan your cans and bottles. We pick them up from your yellow bin. You earn <strong className="text-green-600 font-bold">5¢ per container</strong>.
           </p>
-          <p className="text-slate-400 text-[13px] mb-8">Containers for Change · cash to your bank</p>
+          <p className="text-slate-400 text-[13px] mb-6">Containers for Change · cash to your bank</p>
+
+          <div className="mb-8 rounded-2xl overflow-hidden border border-green-200/60 shadow-sm bg-white">
+            <SortAnimation />
+          </div>
 
           <div className="max-w-xs mx-auto">
             <GreenButton onClick={() => setShowAuth(true)}>
