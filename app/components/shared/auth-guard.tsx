@@ -21,7 +21,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
     const token = localStorage.getItem("goodsort_token");
     if (!token) {
-      router.replace("/login");
+      router.replace("/start");
       return;
     }
 
