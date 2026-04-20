@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How The Good Sort Works</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #fff; color: #1e293b; }
+
+  .container { max-width: 480px; margin: 0 auto; padding: 32px 24px; }
+
+  h1 { font-size: 28px; font-weight: 800; text-align: center; margin-bottom: 8px; }
+  .subtitle { text-align: center; color: #64748b; font-size: 14px; margin-bottom: 48px; }
+
+  /* Flow */
+  .step { position: relative; padding-left: 64px; margin-bottom: 40px; }
+  .step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 23px;
+    top: 52px;
+    bottom: -28px;
+    width: 2px;
+    background: linear-gradient(to bottom, #22c55e, #e2e8f0);
+  }
+
+  .step-icon {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 48px;
+    height: 48px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    font-weight: 800;
+    color: white;
+  }
+  .step-icon.scan { background: linear-gradient(135deg, #22c55e, #16a34a); }
+  .step-icon.sort { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+  .step-icon.collect { background: linear-gradient(135deg, #f59e0b, #d97706); }
+  .step-icon.depot { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
+  .step-icon.paid { background: linear-gradient(135deg, #10b981, #059669); }
+
+  .step-number {
+    position: absolute;
+    left: 0;
+    top: -8px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #1e293b;
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+  }
+
+  .step h2 { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+  .step p { font-size: 13px; color: #64748b; line-height: 1.5; }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 99px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-top: 6px;
+  }
+  .badge.you { background: #dcfce7; color: #166534; }
+  .badge.goodsort { background: #e0f2fe; color: #075985; }
+  .badge.runner { background: #fef3c7; color: #92400e; }
+  .badge.depot { background: #ede9fe; color: #5b21b6; }
+
+  /* Handoff arrows */
+  .handoff {
+    margin: -16px 0 24px 64px;
+    padding: 10px 14px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    font-size: 12px;
+    color: #475569;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .handoff .arrow { color: #22c55e; font-weight: 700; font-size: 14px; }
+  .handoff strong { color: #1e293b; }
+
+  /* Bottom summary */
+  .summary {
+    margin-top: 48px;
+    background: linear-gradient(135deg, #f0fdf4, #ecfdf5);
+    border: 1px solid #bbf7d0;
+    border-radius: 20px;
+    padding: 24px;
+    text-align: center;
+  }
+  .summary h3 { font-size: 15px; font-weight: 700; margin-bottom: 12px; color: #166534; }
+
+  .chain {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .chain-node {
+    padding: 6px 12px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: white;
+  }
+  .chain-arrow { color: #22c55e; font-weight: 700; font-size: 16px; }
+
+  .summary p { font-size: 12px; color: #475569; line-height: 1.5; }
+  .summary .tagline { font-size: 14px; font-weight: 700; color: #1e293b; margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1>How it works</h1>
+  <p class="subtitle">From your kitchen to cash — every container tracked.</p>
+
+  <!-- Step 1: Scan -->
+  <div class="step">
+    <div class="step-number">1</div>
+    <div class="step-icon scan">📸</div>
+    <h2>Scan your containers</h2>
+    <p>Take a photo or scan the barcode. Our AI identifies each container and checks it's eligible for the 10¢ refund.</p>
+    <span class="badge goodsort">GoodSort verifies eligibility</span>
+  </div>
+
+  <!-- Step 2: Sort -->
+  <div class="step">
+    <div class="step-number">2</div>
+    <div class="step-icon sort">🔵</div>
+    <h2>Sort into your bin</h2>
+    <p>The app tells you which compartment — Blue (aluminium), Teal (plastic), Amber (glass), or Green (other). Your pending balance updates instantly.</p>
+    <span class="badge you">You earn 5¢ per eligible container</span>
+  </div>
+
+  <!-- Step 3: Put out for collection -->
+  <div class="step">
+    <div class="step-number">3</div>
+    <div class="step-icon collect">🏠</div>
+    <h2>Put it on the kerb</h2>
+    <p>On collection day, put your yellow bin out as usual. A Runner comes to pick up your sorted containers.</p>
+    <span class="badge you">Your count until pickup</span>
+  </div>
+
+  <!-- Handoff 1 -->
+  <div class="handoff">
+    <span class="arrow">→</span>
+    <span><strong>Handoff 1:</strong> Runner counts each compartment at pickup. Your balance clears based on what's there.</span>
+  </div>
+
+  <!-- Step 4: Runner delivers -->
+  <div class="step">
+    <div class="step-number">4</div>
+    <div class="step-icon depot">🚗</div>
+    <h2>Runner delivers to depot</h2>
+    <p>The Runner drives your containers to an approved Containers for Change refund point. They earn 5¢ per container delivered.</p>
+    <span class="badge runner">Runner's count until depot</span>
+  </div>
+
+  <!-- Handoff 2 -->
+  <div class="handoff">
+    <span class="arrow">→</span>
+    <span><strong>Handoff 2:</strong> Depot counts and verifies. Runner earns based on what's accepted.</span>
+  </div>
+
+  <!-- Step 5: Paid -->
+  <div class="step">
+    <div class="step-number">5</div>
+    <div class="step-icon paid">💰</div>
+    <h2>You get paid</h2>
+    <p>Your cleared balance grows with every collection. Cash out via bank transfer once you hit $20.</p>
+    <span class="badge you">$20 minimum · bank transfer</span>
+  </div>
+
+  <!-- Summary -->
+  <div class="summary">
+    <h3>Every container is tracked</h3>
+    <div class="chain">
+      <span class="chain-node" style="background:#22c55e;">You scan</span>
+      <span class="chain-arrow">→</span>
+      <span class="chain-node" style="background:#3b82f6;">AI verifies</span>
+      <span class="chain-arrow">→</span>
+      <span class="chain-node" style="background:#f59e0b;">Runner counts</span>
+      <span class="chain-arrow">→</span>
+      <span class="chain-node" style="background:#8b5cf6;">Depot confirms</span>
+    </div>
+    <p>Three checkpoints. Each handoff is reconciled. You earn on what physically arrives — no guesswork, no scales, no trucks.</p>
+    <p class="tagline">Scan. Sort. Earn.</p>
+  </div>
+
+</div>
+</body>
+</html>
