@@ -28,6 +28,7 @@ export default function OnboardPage() {
   const [error, setError] = useState("");
   const router = useRouter();
   const addressInput = useRef<HTMLInputElement>(null);
+  const hasSelectedPlace = useRef(false);
 
   // Places Autocomplete
   useEffect(() => {
@@ -43,12 +44,15 @@ export default function OnboardPage() {
       });
       ac.addListener("place_changed", () => {
         const p = ac.getPlace();
-        if (p.formatted_address) setAddress(p.formatted_address);
+        if (p.formatted_address) {
+          setAddress(p.formatted_address);
+          hasSelectedPlace.current = true;
+          if (addressInput.current) addressInput.current.value = p.formatted_address;
+        }
         if (p.geometry?.location) {
           const la = p.geometry.location.lat();
           const ln = p.geometry.location.lng();
           setLat(la); setLng(ln);
-          // Fire off bin-day lookup in background — will show on next step if found
           fetch(apiUrl("/api/households/lookup-bin-day"), {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ lat: la, lng: ln, address: p.formatted_address }),
@@ -167,8 +171,15 @@ export default function OnboardPage() {
         )}
         <div>
           <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">Address</label>
-          <input ref={addressInput} type="text" value={address}
-            onChange={e => { setAddress(e.target.value); setLat(null); setLng(null); setCollectionDay(null); setDayAuto(false); }}
+          <input ref={addressInput} type="text" defaultValue={address}
+            onChange={e => {
+              const val = e.target.value;
+              setAddress(val);
+              if (hasSelectedPlace.current) {
+                hasSelectedPlace.current = false;
+                setLat(null); setLng(null); setCollectionDay(null); setDayAuto(false);
+              }
+            }}
             placeholder="Start typing your address..." autoFocus
             className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500" />
         </div>
@@ -183,17 +194,19 @@ export default function OnboardPage() {
       {error && <p className="text-red-500 text-[13px] mb-3">{error}</p>}
       <Continue
         onClick={async () => {
-          if (!address.trim()) { setError("Enter your address."); return; }
+          const addr = address || addressInput.current?.value || "";
+          if (!addr.trim()) { setError("Enter your address."); return; }
+          if (!address) setAddress(addr);
           if (lat == null || lng == null) {
             setLoading(true); setError("");
-            const geo = await geocodeAddress(address);
+            const geo = await geocodeAddress(addr);
             setLoading(false);
             if (!geo) { setError("Couldn't find that address. Try selecting from the dropdown."); return; }
             setLat(geo.lat); setLng(geo.lng);
             // Fire bin-day lookup for geocoded address
             fetch(apiUrl("/api/households/lookup-bin-day"), {
               method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ lat: geo.lat, lng: geo.lng, address }),
+              body: JSON.stringify({ lat: geo.lat, lng: geo.lng, address: addr }),
             }).then(r => r.json()).then(d => {
               if (d.found) { setCollectionDay(d.dayOfWeek); setCouncilArea(d.councilArea); setDayAuto(true); }
             }).catch(() => {});
