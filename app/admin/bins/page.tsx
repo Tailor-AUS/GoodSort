@@ -28,7 +28,9 @@ export default function AdminBinsPage() {
   const [lng, setLng] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const addressInput = useRef<HTMLInputElement>(null);
+  // Bumped after each successful save to remount the autocomplete and clear its input.
+  const [pacRev, setPacRev] = useState(0);
+  const addressBoxRef = useRef<HTMLDivElement>(null);
 
   function reload() {
     fetch(apiUrl("/api/bins")).then(r => r.json()).then(setBins).catch(() => {});
@@ -36,22 +38,43 @@ export default function AdminBinsPage() {
   useEffect(() => { reload(); }, []);
 
   useEffect(() => {
-    if (!MAPS_KEY || !addressInput.current) return;
+    if (!MAPS_KEY || !addressBoxRef.current) return;
     setOptions({ key: MAPS_KEY, v: "weekly" });
-    importLibrary("places").then(() => {
-      if (!addressInput.current) return;
-      const ac = new google.maps.places.Autocomplete(addressInput.current, {
+
+    const host = addressBoxRef.current;
+    let pac: HTMLElement | null = null;
+    let cancelled = false;
+
+    importLibrary("places").then(async () => {
+      if (cancelled) return;
+      const { PlaceAutocompleteElement } = (await google.maps.importLibrary(
+        "places",
+      )) as typeof google.maps.places;
+      pac = new PlaceAutocompleteElement({
         componentRestrictions: { country: "au" },
-        fields: ["formatted_address", "geometry"],
         types: ["address"],
-      });
-      ac.addListener("place_changed", () => {
-        const p = ac.getPlace();
-        if (p.formatted_address) setAddress(p.formatted_address);
-        if (p.geometry?.location) { setLat(p.geometry.location.lat()); setLng(p.geometry.location.lng()); }
+      }) as unknown as HTMLElement;
+      pac.style.width = "100%";
+      host.replaceChildren(pac);
+
+      pac.addEventListener("input", () => { setLat(null); setLng(null); });
+
+      pac.addEventListener("gmp-select", async (ev: Event) => {
+        const { placePrediction } = ev as unknown as {
+          placePrediction: { toPlace: () => google.maps.places.Place };
+        };
+        const place = placePrediction.toPlace();
+        await place.fetchFields({ fields: ["formattedAddress", "location"] });
+        const formatted = place.formattedAddress ?? "";
+        const loc = place.location;
+        if (!loc) return;
+        setAddress(formatted);
+        setLat(loc.lat()); setLng(loc.lng());
       });
     });
-  }, []);
+
+    return () => { cancelled = true; pac?.remove(); };
+  }, [pacRev]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -65,7 +88,7 @@ export default function AdminBinsPage() {
       });
       if (!res.ok) { setErr("Failed to create bin"); setLoading(false); return; }
       setCode(""); setName(""); setAddress(""); setLat(null); setLng(null);
-      if (addressInput.current) addressInput.current.value = "";
+      setPacRev(r => r + 1);
       reload();
     } finally { setLoading(false); }
   }
@@ -87,8 +110,7 @@ export default function AdminBinsPage() {
             <input value={name} onChange={e => setName(e.target.value)} placeholder="Name (e.g. 45 Boundary St)"
               className="border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/20" required />
           </div>
-          <input ref={addressInput} onChange={e => { setAddress(e.target.value); setLat(null); setLng(null); }} placeholder="Address (start typing, pick from dropdown)"
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/20" required />
+          <div ref={addressBoxRef} className="goodsort-pac" />
           {err && <p className="text-red-500 text-[12px]">{err}</p>}
           <button type="submit" disabled={loading} className="bg-green-600 hover:bg-green-700 text-white font-semibold text-[13px] px-4 py-2 rounded-lg disabled:opacity-50">
             {loading ? "Creating..." : "Create bin"}

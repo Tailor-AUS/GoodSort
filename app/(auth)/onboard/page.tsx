@@ -27,45 +27,68 @@ export default function OnboardPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
-  const addressInput = useRef<HTMLInputElement>(null);
-  const hasSelectedPlace = useRef(false);
+  const addressBoxRef = useRef<HTMLDivElement>(null);
 
-  // Places Autocomplete
+  // Places Autocomplete — uses PlaceAutocompleteElement. The legacy
+  // google.maps.places.Autocomplete widget was deprecated March 2025 and
+  // is unavailable on API keys created after that date.
   useEffect(() => {
     const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-    if (!key || !addressInput.current || step !== "address") return;
+    if (!key || !addressBoxRef.current || step !== "address") return;
     setOptions({ key, v: "weekly" });
+
+    const host = addressBoxRef.current;
+    let pac: HTMLElement | null = null;
+    let cancelled = false;
+
     importLibrary("places").then(async () => {
-      if (!addressInput.current) return;
-      const ac = new google.maps.places.Autocomplete(addressInput.current, {
+      if (cancelled) return;
+      const { PlaceAutocompleteElement } = (await google.maps.importLibrary(
+        "places",
+      )) as typeof google.maps.places;
+      pac = new PlaceAutocompleteElement({
         componentRestrictions: { country: "au" },
-        fields: ["formatted_address", "geometry"],
         types: ["address"],
+      }) as unknown as HTMLElement;
+      pac.style.width = "100%";
+      host.replaceChildren(pac);
+
+      // Mirror typed value to React state (so the Continue button enables and
+      // the geocode fallback can read it); typing also invalidates any prior
+      // selection until a new one is picked.
+      pac.addEventListener("input", (ev: Event) => {
+        const val = (ev.target as HTMLInputElement | null)?.value ?? "";
+        setAddress(val);
+        setLat(null); setLng(null); setCollectionDay(null); setDayAuto(false);
       });
-      ac.addListener("place_changed", () => {
-        const p = ac.getPlace();
-        if (p.formatted_address) {
-          setAddress(p.formatted_address);
-          hasSelectedPlace.current = true;
-          if (addressInput.current) addressInput.current.value = p.formatted_address;
-        }
-        if (p.geometry?.location) {
-          const la = p.geometry.location.lat();
-          const ln = p.geometry.location.lng();
-          setLat(la); setLng(ln);
-          fetch(apiUrl("/api/households/lookup-bin-day"), {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ lat: la, lng: ln, address: p.formatted_address }),
-          }).then(r => r.json()).then(d => {
-            if (d.found) {
-              setCollectionDay(d.dayOfWeek);
-              setCouncilArea(d.councilArea);
-              setDayAuto(true);
-            }
-          }).catch(() => {});
-        }
+
+      pac.addEventListener("gmp-select", async (ev: Event) => {
+        const { placePrediction } = ev as unknown as {
+          placePrediction: { toPlace: () => google.maps.places.Place };
+        };
+        const place = placePrediction.toPlace();
+        await place.fetchFields({ fields: ["formattedAddress", "location"] });
+        const formatted = place.formattedAddress ?? "";
+        const loc = place.location;
+        if (!loc) return;
+        const la = loc.lat();
+        const ln = loc.lng();
+        setAddress(formatted);
+        setLat(la); setLng(ln);
+        fetch(apiUrl("/api/households/lookup-bin-day"), {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lat: la, lng: ln, address: formatted }),
+        }).then(r => r.json()).then(d => {
+          if (d.found) {
+            setCollectionDay(d.dayOfWeek);
+            setCouncilArea(d.councilArea);
+            setDayAuto(true);
+          }
+        }).catch(() => {});
       });
     });
+
+    return () => { cancelled = true; pac?.remove(); };
   }, [step]);
 
   async function geocodeAddress(addr: string): Promise<{ lat: number; lng: number } | null> {
@@ -171,17 +194,7 @@ export default function OnboardPage() {
         )}
         <div>
           <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">Address</label>
-          <input ref={addressInput} type="text" defaultValue={address}
-            onChange={e => {
-              const val = e.target.value;
-              setAddress(val);
-              if (hasSelectedPlace.current) {
-                hasSelectedPlace.current = false;
-                setLat(null); setLng(null); setCollectionDay(null); setDayAuto(false);
-              }
-            }}
-            placeholder="Start typing your address..." autoFocus
-            className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500" />
+          <div ref={addressBoxRef} className="goodsort-pac" />
         </div>
         {type === "residential" && (
           <div>
@@ -194,7 +207,10 @@ export default function OnboardPage() {
       {error && <p className="text-red-500 text-[13px] mb-3">{error}</p>}
       <Continue
         onClick={async () => {
-          const addr = address || addressInput.current?.value || "";
+          // PlaceAutocompleteElement owns its own <input>; if the user typed
+          // but never picked a suggestion, grab the raw text for geocoding.
+          const typed = addressBoxRef.current?.querySelector("input")?.value ?? "";
+          const addr = address || typed || "";
           if (!addr.trim()) { setError("Enter your address."); return; }
           if (!address) setAddress(addr);
           if (lat == null || lng == null) {
