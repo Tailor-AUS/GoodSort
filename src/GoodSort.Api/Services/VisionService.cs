@@ -107,12 +107,22 @@ public class VisionService
                 tvResponse.Classification.Material,
                 tvResponse.Classification.Confidence);
 
+            var tvEligible = tvResponse.Cds?.Eligible ?? false;
+            // QLD expanded the Container Refund Scheme to include wine and spirit glass bottles
+            // in November 2023. Tailor Vision's CDS ruleset still excludes them, so we apply a
+            // downstream override: all glass beverage containers are CDS eligible.
+            var eligible = tvEligible || IsGlassBeverageContainer(tvResponse.Classification);
+            if (!tvEligible && eligible)
+                _logger.LogInformation(
+                    "CDS eligibility overridden to true for glass container '{Description}' (TV returned false; QLD glass expansion Nov 2023)",
+                    tvResponse.Classification.Description);
+
             var container = new IdentifiedContainer
             {
                 Name = tvResponse.Classification.Description,
                 Material = MapMaterial(tvResponse.Classification.Material),
                 Count = 1,
-                Eligible = tvResponse.Cds?.Eligible ?? false,
+                Eligible = eligible,
                 Confidence = tvResponse.Classification.Confidence,
                 Barcode = tvResponse.Barcode?.Value,
             };
@@ -131,6 +141,19 @@ public class VisionService
             return await IdentifyViaAzureOpenAI(base64Image);
         }
     }
+
+    /// <summary>
+    /// Returns true when the Tailor Vision classification is a glass container.
+    /// GoodSort only calls the TV classify endpoint for beverage scanning, so TV will only
+    /// ever return beverage containers (not jars, vases, etc.).  QLD expanded the Container
+    /// Refund Scheme in November 2023 to include wine and spirit bottles; all glass beverage
+    /// containers 150 ml–3 L are now CDS eligible, but Tailor Vision's ruleset still returns
+    /// Cds.Eligible = false for wine/spirits.  Volume range (150 ml–3 L) is not validated here
+    /// because TV does not expose a parsed volume field — containers outside that range are
+    /// rare in practice and TV's own classification would not return them as beverage containers.
+    /// </summary>
+    private static bool IsGlassBeverageContainer(TailorVisionClassification classification) =>
+        classification.Material.Equals("glass", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Map Tailor Vision material names to GoodSort's material system.
