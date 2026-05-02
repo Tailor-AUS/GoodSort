@@ -39,13 +39,56 @@ const MAP_STYLES: google.maps.MapTypeStyle[] = [
 
 // ── Maps API Loader ──
 
+// Module-level registry for Google's auth/quota errors. Google paints its own
+// grey "Sorry! Something went wrong" overlay when the key is rejected; we
+// intercept the underlying signals so the app can render a useful message
+// instead. gm_authFailure covers Invalid/Expired/Referer/Billing/Malformed key
+// errors; the console wrapper also catches ApiNotActivated and OverQuota,
+// which only log to console.
+let _mapsError: string | null = null;
+const _mapsErrorListeners = new Set<(e: string) => void>();
+function emitMapsError(code: string) {
+  _mapsError = code;
+  _mapsErrorListeners.forEach((l) => l(code));
+}
+function getMapsError() { return _mapsError; }
+function subscribeMapsError(l: (e: string) => void) {
+  _mapsErrorListeners.add(l);
+  return () => { _mapsErrorListeners.delete(l); };
+}
+
+let _interceptorsInstalled = false;
+function installMapsErrorInterceptors() {
+  if (_interceptorsInstalled || typeof window === "undefined") return;
+  _interceptorsInstalled = true;
+  (window as unknown as { gm_authFailure: () => void }).gm_authFailure = () => {
+    if (!_mapsError) emitMapsError("AuthFailure");
+  };
+  const original = console.error.bind(console);
+  console.error = (...args: unknown[]) => {
+    const first = args[0];
+    if (typeof first === "string" && first.startsWith("Google Maps JavaScript API error:")) {
+      const m = first.match(/error:\s*(\w+)/);
+      if (m) emitMapsError(m[1]);
+    }
+    original(...args);
+  };
+}
+
 let _loaderP: Promise<void> | null = null;
 function loadMapsApi() {
   if (!_loaderP && MAPS_KEY) {
+    installMapsErrorInterceptors();
     setMapsOptions({ key: MAPS_KEY, v: "weekly" });
     _loaderP = Promise.all([importLibrary("maps"), importLibrary("marker"), importLibrary("routes")]).then(() => {});
   }
   return _loaderP ?? Promise.resolve();
+}
+
+function useMapsError(): string | null {
+  const [err, setErr] = useState<string | null>(getMapsError());
+  useEffect(() => subscribeMapsError(setErr), []);
+  return err;
 }
 
 // ── Map Context ──
@@ -383,6 +426,31 @@ class MapErrorBoundary extends Component<{ children: ReactNode }, { error: Error
   }
 }
 
+const MAPS_ERROR_MESSAGES: Record<string, string> = {
+  RefererNotAllowedMapError: "This domain isn't on the Maps API key allowlist. Add https://thegoodsort.org/* to the key's HTTP referrer restrictions in Google Cloud Console.",
+  BillingNotEnabledMapError: "Billing isn't enabled on the Google Cloud project for this Maps key.",
+  ApiNotActivatedMapError: "The Maps JavaScript API isn't enabled on the Google Cloud project.",
+  InvalidKeyMapError: "The Maps API key is invalid. Regenerate in Google Cloud Console and update the NEXT_PUBLIC_GOOGLE_MAPS_API_KEY GitHub secret.",
+  ExpiredKeyMapError: "The Maps API key has expired. Regenerate in Google Cloud Console and update the NEXT_PUBLIC_GOOGLE_MAPS_API_KEY GitHub secret.",
+  MalformedMapError: "The Maps API key is malformed.",
+  OverQuotaMapError: "Maps API daily quota exceeded. Raise the quota in Google Cloud Console or wait for daily reset.",
+  AuthFailure: "Maps key authentication failed — check key validity and referrer restrictions.",
+};
+
+function MapsUnavailableFallback({ reason }: { reason: string }) {
+  const message = MAPS_ERROR_MESSAGES[reason];
+  return (
+    <div className="absolute inset-0 bg-white flex items-center justify-center">
+      <div className="text-center px-6 max-w-md">
+        <AlertTriangle size={48} className="text-amber-500 mx-auto mb-4" />
+        <p className="text-slate-900 font-display font-bold text-lg mb-2">Map unavailable</p>
+        <p className="text-slate-500 text-sm mb-3">{message ?? "Google Maps failed to load."}</p>
+        <code className="text-[11px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{reason}</code>
+      </div>
+    </div>
+  );
+}
+
 function NoApiKeyFallback() {
   return (
     <div className="absolute inset-0 bg-white flex items-center justify-center">
@@ -412,8 +480,10 @@ interface MapViewProps {
 export function MapView({ mode, bins, selectedBinId, activeRoute, depot, onBinSelect, onMapTap, runCentroids, activeRunStops }: MapViewProps) {
   const [userLoc, setUserLoc] = useState<LatLng | null>(null);
   const handleLocated = useCallback((loc: LatLng) => setUserLoc(loc), []);
+  const mapsError = useMapsError();
 
   if (!MAPS_KEY) return <NoApiKeyFallback />;
+  if (mapsError) return <MapsUnavailableFallback reason={mapsError} />;
 
   return (
     <MapErrorBoundary>
