@@ -38,11 +38,20 @@
 | Azure Communication Services | `ACS_CONNECTION_STRING`, sender `thegoodsort.org` domain | Current subscription | Move; domain verification needs to be re-done on new tenant |
 | Azure Container Apps Environment | `AZURE_CONTAINER_APP_ENV` | Current subscription | Move with container app |
 
+## 3a. Google Cloud Platform
+
+| Resource | Identifier | Current owner | Transfer path |
+|---|---|---|---|
+| GCP project | Owns Maps key `AIzaSyCyBKk6MJuB3ulpVS7_Vqu9tRBZGvfDtZI` (project ID TBC — check console) | Crispr / Knox personal Google account | New GoodSort GCP project, or transfer project + re-attach billing to GoodSort billing account |
+| GCP billing account | TBC | Crispr / Knox personal | Move to GoodSort billing account; this is the entity's recurring spend for Maps API |
+
+> **⚠️ Live incident (2026-05) — Maps down on production.** The GCP project has all APIs disabled because billing lapsed: direct probe of the Maps key returns `REQUEST_DENIED` / "Google has disabled the use of APIs from this API project." Fix: GCP Console → Billing → re-attach or un-suspend a billing account on the project; APIs re-enable within ~5 min. **Then lock down the key** — it's extractable from the static JS bundle (`NEXT_PUBLIC_*` vars are inlined), so set Application restrictions → HTTP referrers → `https://thegoodsort.org/*` + `https://www.thegoodsort.org/*` only. Both the billing fix and the key restriction should carry over to the new GoodSort GCP project.
+
 ## 4. Third-party API keys
 
 | Service | Used for | Current account holder | Action |
 |---|---|---|---|
-| Google Maps Platform | Places Autocomplete, Geocoding, Maps JS, Routes | Crispr / Knox | Create new key on GoodSort Google Cloud project; update `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` secret |
+| Google Maps Platform | Places Autocomplete, Geocoding, Maps JS, Routes | Crispr / Knox | Currently key `AIzaSyCyBKk6MJuB3ulpVS7_Vqu9tRBZGvfDtZI` (unrestricted). Restore billing on the GCP project (see §3a), add HTTP-referrer restrictions, then create a fresh key on the GoodSort GCP project and update `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` secret |
 | Tailor Vision API | Container classification | Crispr → re-issued under new commercial agreement | Re-issue key post-agreement; update `TAILOR_VISION_API_KEY` secret |
 | Open Food Facts | Barcode lookups | Public, no key needed | No action |
 | Azure Communication Services | Transactional email (OTP) | Inside Azure sub (see section 3) | Covered by Azure transfer |
