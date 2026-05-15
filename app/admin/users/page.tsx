@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
+import maplibregl, { Map as MLMap, Marker as MLMarker, LngLatBounds } from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
 import Link from "next/link";
 import { ArrowLeft, MapPin, Users } from "lucide-react";
 import { apiUrl } from "@/lib/config";
@@ -39,8 +40,26 @@ interface Bin {
   pendingValueCents: number;
 }
 
-const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
-const BRISBANE: google.maps.LatLngLiteral = { lat: -27.482, lng: 153.021 };
+const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
+const BRISBANE: [number, number] = [153.021, -27.482]; // [lng, lat]
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] ?? c));
+}
+
+function binMarkerEl(count: number): HTMLDivElement {
+  const el = document.createElement("div");
+  el.style.cssText = "line-height:0;cursor:pointer";
+  el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><circle cx="16" cy="16" r="14" fill="#16a34a" stroke="#fff" stroke-width="2"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-size="11" font-weight="700">${count}</text></svg>`;
+  return el;
+}
+
+function householdMarkerEl(): HTMLDivElement {
+  const el = document.createElement("div");
+  el.style.cssText = "line-height:0;cursor:pointer";
+  el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22"><circle cx="11" cy="11" r="9" fill="#2563eb" stroke="#fff" stroke-width="2"/></svg>`;
+  return el;
+}
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -48,6 +67,8 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const mapDiv = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<MLMap | null>(null);
+  const markersRef = useRef<MLMarker[]>([]);
 
   useEffect(() => {
     const token = localStorage.getItem("goodsort_token");
@@ -63,35 +84,39 @@ export default function AdminUsersPage() {
   }, []);
 
   useEffect(() => {
-    if (!mapDiv.current || !MAPS_KEY || (users.length === 0 && bins.length === 0)) return;
-    setOptions({ key: MAPS_KEY, v: "weekly" });
-    Promise.all([importLibrary("maps"), importLibrary("marker")]).then(() => {
-      const map = new google.maps.Map(mapDiv.current!, {
-        center: BRISBANE, zoom: 12, mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
+    if (!mapDiv.current || (users.length === 0 && bins.length === 0)) return;
+    if (!mapRef.current) {
+      mapRef.current = new maplibregl.Map({
+        container: mapDiv.current,
+        style: MAP_STYLE_URL,
+        center: BRISBANE,
+        zoom: 11,
+        attributionControl: { compact: true },
       });
-      const bounds = new google.maps.LatLngBounds();
+      mapRef.current.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+    }
+    const map = mapRef.current;
 
-      // Bin markers — green, labelled with pending container count
-      bins.forEach(b => {
-        const pos = { lat: b.lat, lng: b.lng };
-        const m = new google.maps.Marker({
-          position: pos, map, title: `${b.code} — ${b.name}\n${b.pendingContainers} containers pending`,
-          label: { text: String(b.pendingContainers), color: "white", fontSize: "11px", fontWeight: "700" },
-          icon: {
-            path: google.maps.SymbolPath.CIRCLE, scale: 14,
-            fillColor: "#16a34a", fillOpacity: 1, strokeColor: "white", strokeWeight: 2,
-          },
-        });
-        const info = new google.maps.InfoWindow({
-          content: `<div style="font-family:system-ui;font-size:13px"><b>${b.code} — ${b.name}</b><br/><span style="color:#666">${b.address}</span><br/><b style="color:#16a34a">${b.pendingContainers}</b> containers pending</div>`,
-        });
-        m.addListener("click", () => info.open(map, m));
-        bounds.extend(pos);
+    function render() {
+      // Clear previous markers
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
+      const bounds = new LngLatBounds();
+
+      // Bin markers
+      bins.forEach((b) => {
+        const popupHtml = `<div style="font-family:system-ui;font-size:13px"><b>${escapeHtml(b.code)} — ${escapeHtml(b.name)}</b><br/><span style="color:#666">${escapeHtml(b.address)}</span><br/><b style="color:#16a34a">${b.pendingContainers}</b> containers pending</div>`;
+        const marker = new maplibregl.Marker({ element: binMarkerEl(b.pendingContainers), anchor: "center" })
+          .setLngLat([b.lng, b.lat])
+          .setPopup(new maplibregl.Popup({ offset: 16 }).setHTML(popupHtml))
+          .addTo(map);
+        markersRef.current.push(marker);
+        bounds.extend([b.lng, b.lat]);
       });
 
-      // Household pins — blue, for users who've set up an address
+      // Household markers
       const households = new Map<string, { h: Household; emails: string[] }>();
-      users.forEach(u => {
+      users.forEach((u) => {
         if (!u.household) return;
         const k = u.household.id;
         if (!households.has(k)) households.set(k, { h: u.household, emails: [] });
@@ -99,24 +124,29 @@ export default function AdminUsersPage() {
       });
       households.forEach(({ h, emails }) => {
         if (!h.lat || !h.lng) return;
-        const pos = { lat: h.lat, lng: h.lng };
-        const m = new google.maps.Marker({
-          position: pos, map, title: `${h.name}\n${h.address}`,
-          icon: {
-            path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW, scale: 6,
-            fillColor: "#2563eb", fillOpacity: 1, strokeColor: "white", strokeWeight: 2,
-          },
-        });
-        const info = new google.maps.InfoWindow({
-          content: `<div style="font-family:system-ui;font-size:13px"><b>${h.name || "Household"}</b><br/><span style="color:#666">${h.address}</span><br/>${emails.join("<br/>")}<br/><b style="color:#2563eb">${h.pendingContainers}</b> containers pending</div>`,
-        });
-        m.addListener("click", () => info.open(map, m));
-        bounds.extend(pos);
+        const emailList = emails.map(escapeHtml).join("<br/>");
+        const popupHtml = `<div style="font-family:system-ui;font-size:13px"><b>${escapeHtml(h.name || "Household")}</b><br/><span style="color:#666">${escapeHtml(h.address)}</span><br/>${emailList}<br/><b style="color:#2563eb">${h.pendingContainers}</b> containers pending</div>`;
+        const marker = new maplibregl.Marker({ element: householdMarkerEl(), anchor: "center" })
+          .setLngLat([h.lng, h.lat])
+          .setPopup(new maplibregl.Popup({ offset: 12 }).setHTML(popupHtml))
+          .addTo(map);
+        markersRef.current.push(marker);
+        bounds.extend([h.lng, h.lat]);
       });
 
-      if (!bounds.isEmpty()) map.fitBounds(bounds, 60);
-    });
+      if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 60, maxZoom: 14, duration: 600 });
+    }
+
+    if (map.loaded()) render();
+    else map.once("load", render);
+
+    return () => {
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
+    };
   }, [users, bins]);
+
+  useEffect(() => () => { mapRef.current?.remove(); mapRef.current = null; }, []);
 
   return (
     <div className="min-h-dvh bg-slate-50">

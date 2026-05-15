@@ -11,7 +11,7 @@ This project uses **Next.js 16** with breaking changes from what you know. Read 
 ### Frontend (Next.js — static export)
 ```bash
 npm ci                    # install deps
-npm run build             # production build (requires NEXT_PUBLIC_GOOGLE_MAPS_API_KEY env var)
+npm run build             # production build (no map API keys required — OSS stack)
 npm run dev               # dev server
 npx tsc --noEmit          # typecheck (no test suite exists)
 ```
@@ -114,7 +114,6 @@ src/GoodSort.Api/
 
 ### Frontend (build-time, `NEXT_PUBLIC_` prefix)
 - `NEXT_PUBLIC_API_URL` — backend API base URL
-- `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` — Google Maps (Places, Geocoding, Routes)
 
 ### Backend (runtime)
 - `JWT_SECRET` — symmetric key for JWT signing
@@ -122,6 +121,13 @@ src/GoodSort.Api/
 - `TAILOR_VISION_API_KEY` / `TAILOR_VISION_API_URL` — Tailor Vision API
 - `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_KEY` / `AZURE_OPENAI_DEPLOYMENT` — fallback vision
 - `ACS_CONNECTION_STRING` / `ACS_EMAIL_SENDER` — Azure Communication Services (OTP emails)
+- `OSRM_URL` (optional) — defaults to `https://router.project-osrm.org` (public demo). Override with a self-hosted OSRM instance for production scale.
+
+### Mapping stack (open-source, no API keys)
+- **Map renderer**: `maplibre-gl` (MIT)
+- **Tiles**: OpenFreeMap (`https://tiles.openfreemap.org/styles/liberty`) — OSM-based, free forever, no key
+- **Geocoding + autocomplete**: Photon by komoot (`https://photon.komoot.io/api/`) — OSM-based, free, no key. Reasonable AU coverage but lower fidelity than Google Places.
+- **Routing/waypoint optimization**: OSRM (`https://router.project-osrm.org/trip/v1/driving/...`) — public demo endpoint for pilot, self-host on Azure for production scale.
 
 ## Deployment
 
@@ -134,7 +140,7 @@ src/GoodSort.Api/
 
 - **No SSR**: `next.config.ts` has `output: "export"` — everything is static. No server components, no API routes in Next.js, no `getServerSideProps`.
 - **Auth in direct fetch()**: If you add a new `fetch()` call to the backend outside of `lib/store-api.ts`, you must manually attach the Bearer token from `localStorage.getItem("goodsort_token")`. The `apiFetch()` wrapper does this automatically.
-- **CSP updates**: When adding new external script or API origins, update `staticwebapp.config.json` — not just the code. Google Maps requires both `maps.googleapis.com` and `maps.gstatic.com`.
+- **CSP updates**: When adding new external script or API origins, update `staticwebapp.config.json` — not just the code. Map stack needs `tiles.openfreemap.org`, `photon.komoot.io`, and `router.project-osrm.org` in `connect-src`.
 - **Auto-migrations**: The backend runs EF Core migrations on startup (with retry logic for SQL container readiness). No manual `database update` needed in prod.
 - **Postdeploy secrets**: `azd deploy` strips env vars not in the Aspire manifest. The `infra/restore-secrets.sh` postdeploy hook re-applies them from the azd environment.
 - **CORS origins**: Backend restricts to `thegoodsort.org` + the SWA staging domain. Add new origins in `Program.cs` if needed.

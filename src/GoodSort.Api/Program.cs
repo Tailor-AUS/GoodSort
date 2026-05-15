@@ -566,53 +566,57 @@ app.MapPost("/api/routes/{id:guid}/settle", async (Guid id, GoodSortDbContext db
 app.MapGet("/api/depots", async (GoodSortDbContext db) =>
     Results.Ok(await db.Depots.ToListAsync()));
 
-// ── Route Optimization (Google Directions API) ──
+// ── Route Optimization (OSRM trip service — open source, no API key) ──
 app.MapPost("/api/routes/{id:guid}/optimize", async (Guid id, GoodSortDbContext db, IConfiguration config, IHttpClientFactory httpFactory) =>
 {
     var route = await db.Routes.Include(r => r.Stops).Include(r => r.Depot).FirstOrDefaultAsync(r => r.Id == id);
     if (route is null) return Results.NotFound();
 
-    var mapsKey = config["GOOGLE_MAPS_SERVER_KEY"] ?? config["NEXT_PUBLIC_GOOGLE_MAPS_API_KEY"] ?? "";
-    if (string.IsNullOrEmpty(mapsKey)) return Results.Ok(new { optimized = false, reason = "No API key" });
-
     var stops = route.Stops.OrderBy(s => s.Sequence).ToList();
     if (stops.Count < 2) return Results.Ok(new { optimized = false, reason = "Too few stops" });
 
-    // Build waypoints for Directions API
-    var origin = $"{stops[0].Lat},{stops[0].Lng}";
-    var destination = $"{route.Depot.Lat},{route.Depot.Lng}";
-    var waypoints = string.Join("|", stops.Skip(1).Select(s => $"{s.Lat},{s.Lng}"));
+    // OSRM /trip/ solves the TSP across waypoints. We pin the first stop as
+    // the source and the depot as the destination so the runner ends at the
+    // dropoff. Public demo endpoint — fine for pilot scale; swap to a
+    // self-hosted instance once volume grows.
+    // Coordinates are lng,lat (OSRM convention).
+    var coords = new List<string> { $"{stops[0].Lng:F6},{stops[0].Lat:F6}" };
+    coords.AddRange(stops.Skip(1).Select(s => $"{s.Lng:F6},{s.Lat:F6}"));
+    coords.Add($"{route.Depot.Lng:F6},{route.Depot.Lat:F6}");
+
+    var osrmBase = config["OSRM_URL"] ?? "https://router.project-osrm.org";
+    var url = $"{osrmBase}/trip/v1/driving/{string.Join(';', coords)}?source=first&destination=last&roundtrip=false&overview=false";
 
     var client = httpFactory.CreateClient();
-    var url = $"https://maps.googleapis.com/maps/api/directions/json?origin={origin}&destination={destination}&waypoints=optimize:true|{waypoints}&key={mapsKey}";
-    var res = await client.GetAsync(url);
-    if (!res.IsSuccessStatusCode) return Results.Ok(new { optimized = false, reason = "API call failed" });
-
-    var json = await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
-    if (json.GetProperty("status").GetString() != "OK") return Results.Ok(new { optimized = false, reason = json.GetProperty("status").GetString() });
-
-    var leg = json.GetProperty("routes")[0].GetProperty("legs");
-    var totalDuration = 0;
-    var totalDistance = 0;
-    for (int i = 0; i < leg.GetArrayLength(); i++)
+    System.Text.Json.JsonElement json;
+    try
     {
-        totalDuration += leg[i].GetProperty("duration").GetProperty("value").GetInt32();
-        totalDistance += leg[i].GetProperty("distance").GetProperty("value").GetInt32();
+        var res = await client.GetAsync(url);
+        if (!res.IsSuccessStatusCode) return Results.Ok(new { optimized = false, reason = "OSRM call failed" });
+        json = await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { optimized = false, reason = $"OSRM error: {ex.Message}" });
     }
 
-    // Update route with real values
-    route.EstimatedDurationMin = totalDuration / 60;
-    route.EstimatedDistanceKm = Math.Round(totalDistance / 1000.0, 1);
+    if (json.GetProperty("code").GetString() != "Ok") return Results.Ok(new { optimized = false, reason = json.GetProperty("code").GetString() });
 
-    // Reorder stops based on optimized waypoint order
-    var order = json.GetProperty("routes")[0].GetProperty("waypoint_order");
-    for (int i = 0; i < order.GetArrayLength(); i++)
+    var trips = json.GetProperty("trips");
+    if (trips.GetArrayLength() == 0) return Results.Ok(new { optimized = false, reason = "No trip returned" });
+    var trip = trips[0];
+    route.EstimatedDurationMin = (int)Math.Round(trip.GetProperty("duration").GetDouble() / 60);
+    route.EstimatedDistanceKm = Math.Round(trip.GetProperty("distance").GetDouble() / 1000.0, 1);
+
+    // waypoint_index gives each input coordinate's position in the optimized
+    // trip. Input order was [stops[0], stops[1..n-1], depot]; we reorder only
+    // the household stops (depot's optimized position is fixed by source/destination).
+    var waypoints = json.GetProperty("waypoints");
+    for (int i = 0; i < stops.Count && i < waypoints.GetArrayLength(); i++)
     {
-        var originalIdx = order[i].GetInt32() + 1; // +1 because origin is stop[0]
-        if (originalIdx < stops.Count)
-            stops[originalIdx].Sequence = i + 1;
+        var optimizedIdx = waypoints[i].GetProperty("waypoint_index").GetInt32();
+        stops[i].Sequence = optimizedIdx;
     }
-    stops[0].Sequence = 0; // Origin stays first
 
     await db.SaveChangesAsync();
     return Results.Ok(new { optimized = true, durationMin = route.EstimatedDurationMin, distanceKm = route.EstimatedDistanceKm });

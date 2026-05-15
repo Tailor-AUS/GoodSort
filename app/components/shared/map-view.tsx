@@ -4,7 +4,8 @@ import {
   createContext, useContext, useRef, useEffect, useState, useCallback,
   Component, type ReactNode,
 } from "react";
-import { setOptions as setMapsOptions, importLibrary } from "@googlemaps/js-api-loader";
+import maplibregl, { Map as MLMap, Marker as MLMarker } from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
 import { AlertTriangle } from "lucide-react";
 import type { SortBin, Route, Depot } from "@/lib/store";
 import type { RunStopDetail } from "@/lib/marketplace";
@@ -22,29 +23,14 @@ export type AppMode = "sort" | "collect";
 
 interface LatLng { lat: number; lng: number; }
 
-const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 const BRISBANE_CENTER: LatLng = { lat: -27.482, lng: 153.021 };
 
-const MAP_STYLES: google.maps.MapTypeStyle[] = [
-  { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
-  { featureType: "transit", elementType: "labels", stylers: [{ visibility: "off" }] },
-  { featureType: "water", elementType: "geometry.fill", stylers: [{ color: "#d4e8f7" }] },
-  { featureType: "landscape", elementType: "geometry.fill", stylers: [{ color: "#f5f5f5" }] },
-  { featureType: "road", elementType: "geometry.fill", stylers: [{ color: "#ffffff" }] },
-  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#e0e0e0" }] },
-  { featureType: "road.highway", elementType: "geometry.fill", stylers: [{ color: "#f0f0f0" }] },
-  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#999999" }] },
-  { featureType: "administrative", elementType: "labels.text.fill", stylers: [{ color: "#999999" }] },
-];
+// OpenFreeMap "Liberty" style — OSM-based vector tiles, free, no API key.
+// Run by the OpenFreeMap project (founded by the MapTiler founder).
+const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 
-// ── Maps API Loader ──
+// ── Map error registry (shared across MapView instances) ──
 
-// Module-level registry for Google's auth/quota errors. Google paints its own
-// grey "Sorry! Something went wrong" overlay when the key is rejected; we
-// intercept the underlying signals so the app can render a useful message
-// instead. gm_authFailure covers Invalid/Expired/Referer/Billing/Malformed key
-// errors; the console wrapper also catches ApiNotActivated and OverQuota,
-// which only log to console.
 let _mapsError: string | null = null;
 const _mapsErrorListeners = new Set<(e: string) => void>();
 function emitMapsError(code: string) {
@@ -57,34 +43,6 @@ function subscribeMapsError(l: (e: string) => void) {
   return () => { _mapsErrorListeners.delete(l); };
 }
 
-let _interceptorsInstalled = false;
-function installMapsErrorInterceptors() {
-  if (_interceptorsInstalled || typeof window === "undefined") return;
-  _interceptorsInstalled = true;
-  (window as unknown as { gm_authFailure: () => void }).gm_authFailure = () => {
-    if (!_mapsError) emitMapsError("AuthFailure");
-  };
-  const original = console.error.bind(console);
-  console.error = (...args: unknown[]) => {
-    const first = args[0];
-    if (typeof first === "string" && first.startsWith("Google Maps JavaScript API error:")) {
-      const m = first.match(/error:\s*(\w+)/);
-      if (m) emitMapsError(m[1]);
-    }
-    original(...args);
-  };
-}
-
-let _loaderP: Promise<void> | null = null;
-function loadMapsApi() {
-  if (!_loaderP && MAPS_KEY) {
-    installMapsErrorInterceptors();
-    setMapsOptions({ key: MAPS_KEY, v: "weekly" });
-    _loaderP = Promise.all([importLibrary("maps"), importLibrary("marker"), importLibrary("routes")]).then(() => {});
-  }
-  return _loaderP ?? Promise.resolve();
-}
-
 function useMapsError(): string | null {
   const [err, setErr] = useState<string | null>(getMapsError());
   useEffect(() => subscribeMapsError(setErr), []);
@@ -93,26 +51,45 @@ function useMapsError(): string | null {
 
 // ── Map Context ──
 
-const MapContext = createContext<google.maps.Map | null>(null);
+const MapContext = createContext<MLMap | null>(null);
 function useMap() { return useContext(MapContext); }
 
-function GoogleMapsProvider({ children }: { children: ReactNode }) {
+function MapProvider({ children, onMapTap }: { children: ReactNode; onMapTap?: () => void }) {
   const divRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const [map, setMap] = useState<google.maps.Map | null>(null);
+  const mapRef = useRef<MLMap | null>(null);
+  const [map, setMap] = useState<MLMap | null>(null);
+  const tapRef = useRef(onMapTap);
+  tapRef.current = onMapTap;
 
   useEffect(() => {
-    loadMapsApi().then(() => {
-      if (!divRef.current || mapRef.current) return;
-      const m = new google.maps.Map(divRef.current, {
-        center: BRISBANE_CENTER, zoom: 14,
-        gestureHandling: "greedy", disableDefaultUI: true, zoomControl: true,
-        zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_TOP },
-        styles: MAP_STYLES, backgroundColor: "#f5f5f5",
-      });
+    if (!divRef.current || mapRef.current) return;
+    const m = new maplibregl.Map({
+      container: divRef.current,
+      style: MAP_STYLE_URL,
+      center: [BRISBANE_CENTER.lng, BRISBANE_CENTER.lat],
+      zoom: 13,
+      attributionControl: { compact: true },
+    });
+    m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+    m.on("click", () => tapRef.current?.());
+    m.on("error", (e) => {
+      // OpenFreeMap or network issue. Surface a generic failure code.
+      const message = (e?.error?.message ?? "").toLowerCase();
+      if (message.includes("failed to fetch") || message.includes("network")) {
+        emitMapsError("NetworkError");
+      } else if (message.includes("style")) {
+        emitMapsError("StyleLoadError");
+      }
+    });
+    m.once("load", () => {
       mapRef.current = m;
       setMap(m);
-    }).catch(() => {});
+    });
+
+    return () => {
+      m.remove();
+      mapRef.current = null;
+    };
   }, []);
 
   return (
@@ -133,7 +110,11 @@ function AutoLocate({ onLocated }: { onLocated: (loc: LatLng) => void }) {
     attempted.current = true;
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
-      (pos) => { const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude }; map.panTo(loc); map.setZoom(15); onLocated(loc); },
+      (pos) => {
+        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        map.flyTo({ center: [loc.lng, loc.lat], zoom: 15, duration: 800 });
+        onLocated(loc);
+      },
       () => {},
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 }
     );
@@ -141,21 +122,31 @@ function AutoLocate({ onLocated }: { onLocated: (loc: LatLng) => void }) {
   return null;
 }
 
+// ── Marker helpers ──
+
+function svgMarker(svg: string): HTMLDivElement {
+  const el = document.createElement("div");
+  el.style.cssText = "line-height:0; pointer-events:auto;";
+  el.innerHTML = svg;
+  return el;
+}
+
 // ── User Location Marker ──
 
 function UserLocationMarker({ loc }: { loc: LatLng }) {
   const map = useMap();
-  const markerRef = useRef<google.maps.Marker | null>(null);
+  const markerRef = useRef<MLMarker | null>(null);
   useEffect(() => {
     if (!map) return;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><circle cx="12" cy="12" r="10" fill="#3b82f6" opacity="0.2"/><circle cx="12" cy="12" r="6" fill="#3b82f6" stroke="#fff" stroke-width="2.5"/></svg>`;
     if (!markerRef.current) {
-      markerRef.current = new google.maps.Marker({
-        map, position: loc, zIndex: 9999,
-        icon: { url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`, scaledSize: new google.maps.Size(24, 24), anchor: new google.maps.Point(12, 12) },
-      });
-    } else { markerRef.current.setPosition(loc); }
-    return () => { if (markerRef.current) { markerRef.current.setMap(null); markerRef.current = null; } };
+      markerRef.current = new maplibregl.Marker({ element: svgMarker(svg), anchor: "center" })
+        .setLngLat([loc.lng, loc.lat])
+        .addTo(map);
+    } else {
+      markerRef.current.setLngLat([loc.lng, loc.lat]);
+    }
+    return () => { markerRef.current?.remove(); markerRef.current = null; };
   }, [map, loc]);
   return null;
 }
@@ -177,15 +168,13 @@ function binMarkerSvg(bin: SortBin, isSelected: boolean): string {
   const r = size / 2;
   const inner = r - borderWidth;
 
-  // Recycling icon + bin code
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size + 16}">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size + 16}">
     <circle cx="${r}" cy="${r}" r="${inner}" fill="${color}" stroke="${borderColor}" stroke-width="${borderWidth}"/>
     <text x="${r}" y="${r - 2}" text-anchor="middle" fill="#fff" font-size="16">♻</text>
     <text x="${r}" y="${r + 12}" text-anchor="middle" fill="#fff" font-size="8" font-weight="700" font-family="Inter,system-ui,sans-serif">${bin.pendingContainers}</text>
     <rect x="${r - 18}" y="${size + 1}" width="36" height="14" rx="7" fill="${color}" opacity="0.9"/>
     <text x="${r}" y="${size + 11}" text-anchor="middle" fill="#fff" font-size="8" font-weight="700" font-family="Inter,system-ui,sans-serif">${bin.code}</text>
   </svg>`;
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
 function BinMarkers({
@@ -196,7 +185,7 @@ function BinMarkers({
   onSelect: (id: string) => void;
 }) {
   const map = useMap();
-  const markersRef = useRef<Map<string, { marker: google.maps.Marker; url: string }>>(new Map());
+  const markersRef = useRef<Map<string, { marker: MLMarker; svg: string }>>(new Map());
 
   const visible = bins.filter((b) => b.status !== "disabled" && b.status !== "collected");
 
@@ -206,28 +195,26 @@ function BinMarkers({
     const nextIds = new Set(visible.map((b) => b.id));
 
     for (const [id, entry] of prev) {
-      if (!nextIds.has(id)) { entry.marker.setMap(null); prev.delete(id); }
+      if (!nextIds.has(id)) { entry.marker.remove(); prev.delete(id); }
     }
 
     for (const bin of visible) {
       const isSelected = bin.id === selectedId;
-      const url = binMarkerSvg(bin, isSelected);
+      const svg = binMarkerSvg(bin, isSelected);
       const existing = prev.get(bin.id);
-      if (existing && existing.url === url) continue;
-      if (existing) existing.marker.setMap(null);
+      if (existing && existing.svg === svg) continue;
+      if (existing) existing.marker.remove();
 
-      const size = isSelected ? 52 : 44;
-      const marker = new google.maps.Marker({
-        map,
-        position: { lat: bin.lat, lng: bin.lng },
-        zIndex: isSelected ? 1000 : bin.pendingContainers,
-        icon: { url, scaledSize: new google.maps.Size(size, size + 16), anchor: new google.maps.Point(size / 2, size / 2) },
-      });
-      marker.addListener("click", () => onSelect(bin.id));
-      prev.set(bin.id, { marker, url });
+      const el = svgMarker(svg);
+      el.style.cursor = "pointer";
+      el.addEventListener("click", (e) => { e.stopPropagation(); onSelect(bin.id); });
+      const marker = new maplibregl.Marker({ element: el, anchor: "center" })
+        .setLngLat([bin.lng, bin.lat])
+        .addTo(map);
+      prev.set(bin.id, { marker, svg });
     }
 
-    return () => { prev.forEach((e) => e.marker.setMap(null)); prev.clear(); };
+    return () => { prev.forEach((e) => e.marker.remove()); prev.clear(); };
   }, [map, visible, selectedId, onSelect]);
 
   return null;
@@ -235,30 +222,47 @@ function BinMarkers({
 
 // ── Route Line ──
 
+const ROUTE_SOURCE_ID = "goodsort-route";
+const ROUTE_LAYER_ID = "goodsort-route-line";
+
 function RouteLine({ route, depot }: { route: Route | null; depot: Depot | null }) {
   const map = useMap();
-  const polylineRef = useRef<google.maps.Polyline | null>(null);
-  const depotMarkerRef = useRef<google.maps.Marker | null>(null);
+  const depotMarkerRef = useRef<MLMarker | null>(null);
 
   useEffect(() => {
-    if (polylineRef.current) { polylineRef.current.setMap(null); polylineRef.current = null; }
-    if (depotMarkerRef.current) { depotMarkerRef.current.setMap(null); depotMarkerRef.current = null; }
-    if (!map || !route || !depot) return;
+    if (!map) return;
+    // Tear down any previous render.
+    if (map.getLayer(ROUTE_LAYER_ID)) map.removeLayer(ROUTE_LAYER_ID);
+    if (map.getSource(ROUTE_SOURCE_ID)) map.removeSource(ROUTE_SOURCE_ID);
+    if (depotMarkerRef.current) { depotMarkerRef.current.remove(); depotMarkerRef.current = null; }
+    if (!route || !depot) return;
 
-    const path = route.stops.sort((a, b) => a.sequence - b.sequence).map((s) => ({ lat: s.lat, lng: s.lng }));
-    path.push({ lat: depot.lat, lng: depot.lng });
+    const ordered = [...route.stops].sort((a, b) => a.sequence - b.sequence);
+    const coords: [number, number][] = ordered.map((s) => [s.lng, s.lat]);
+    coords.push([depot.lng, depot.lat]);
 
-    polylineRef.current = new google.maps.Polyline({ map, path, strokeColor: "#16a34a", strokeWeight: 4, strokeOpacity: 0.7 });
-
-    const depotSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect x="4" y="4" width="24" height="24" rx="4" fill="#16a34a" stroke="#fff" stroke-width="2"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-size="12" font-weight="800">D</text></svg>`;
-    depotMarkerRef.current = new google.maps.Marker({
-      map, position: { lat: depot.lat, lng: depot.lng }, zIndex: 2000,
-      icon: { url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(depotSvg)}`, scaledSize: new google.maps.Size(32, 32), anchor: new google.maps.Point(16, 16) },
+    map.addSource(ROUTE_SOURCE_ID, {
+      type: "geojson",
+      data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: coords } },
+    });
+    map.addLayer({
+      id: ROUTE_LAYER_ID,
+      type: "line",
+      source: ROUTE_SOURCE_ID,
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": "#16a34a", "line-width": 4, "line-opacity": 0.7 },
     });
 
+    const depotSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect x="4" y="4" width="24" height="24" rx="4" fill="#16a34a" stroke="#fff" stroke-width="2"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-size="12" font-weight="800">D</text></svg>`;
+    depotMarkerRef.current = new maplibregl.Marker({ element: svgMarker(depotSvg), anchor: "center" })
+      .setLngLat([depot.lng, depot.lat])
+      .addTo(map);
+
     return () => {
-      if (polylineRef.current) { polylineRef.current.setMap(null); polylineRef.current = null; }
-      if (depotMarkerRef.current) { depotMarkerRef.current.setMap(null); depotMarkerRef.current = null; }
+      if (map.getLayer(ROUTE_LAYER_ID)) map.removeLayer(ROUTE_LAYER_ID);
+      if (map.getSource(ROUTE_SOURCE_ID)) map.removeSource(ROUTE_SOURCE_ID);
+      depotMarkerRef.current?.remove();
+      depotMarkerRef.current = null;
     };
   }, [map, route, depot]);
 
@@ -267,76 +271,92 @@ function RouteLine({ route, depot }: { route: Route | null; depot: Depot | null 
 
 // ── Centroid Bubbles (privacy-safe area markers for marketplace runs) ──
 
+const CENTROID_SOURCE_ID = "goodsort-centroids";
+const CENTROID_LAYER_ID = "goodsort-centroids-fill";
+
+// Approximate a 500m radius circle as a 64-vertex polygon in GeoJSON.
+function circlePolygon(lng: number, lat: number, radiusMeters: number, steps = 64): [number, number][] {
+  const coords: [number, number][] = [];
+  const earthRadius = 6378137;
+  const latRad = (lat * Math.PI) / 180;
+  const dLat = (radiusMeters / earthRadius) * (180 / Math.PI);
+  const dLng = ((radiusMeters / earthRadius) * (180 / Math.PI)) / Math.cos(latRad);
+  for (let i = 0; i <= steps; i++) {
+    const theta = (i / steps) * 2 * Math.PI;
+    coords.push([lng + dLng * Math.cos(theta), lat + dLat * Math.sin(theta)]);
+  }
+  return coords;
+}
+
+function tierColor(tier: number): string {
+  return tier >= 4 ? "#f59e0b" : tier >= 3 ? "#16a34a" : "#3b82f6";
+}
+
 function CentroidBubbles({ centroids }: { centroids: RunCentroid[] }) {
   const map = useMap();
-  const markersRef = useRef<Map<string, google.maps.Marker>>(new Map());
-  const circlesRef = useRef<Map<string, google.maps.Circle>>(new Map());
+  const labelMarkersRef = useRef<Map<string, MLMarker>>(new Map());
 
   useEffect(() => {
     if (!map) return;
-    const prevMarkers = markersRef.current;
-    const prevCircles = circlesRef.current;
+
+    // Build a single FeatureCollection for all bubbles (one fill layer per render).
+    const features = centroids.map((c) => ({
+      type: "Feature" as const,
+      properties: { color: tierColor(c.pricingTier) },
+      geometry: {
+        type: "Polygon" as const,
+        coordinates: [circlePolygon(c.lng, c.lat, 500)],
+      },
+    }));
+    const data = { type: "FeatureCollection" as const, features };
+
+    const existing = map.getSource(CENTROID_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    if (existing) {
+      existing.setData(data);
+    } else {
+      map.addSource(CENTROID_SOURCE_ID, { type: "geojson", data });
+      map.addLayer({
+        id: CENTROID_LAYER_ID,
+        type: "fill",
+        source: CENTROID_SOURCE_ID,
+        paint: {
+          "fill-color": ["get", "color"],
+          "fill-opacity": 0.08,
+          "fill-outline-color": ["get", "color"],
+        },
+      });
+    }
+
+    // Label markers (one per centroid).
+    const prev = labelMarkersRef.current;
     const nextIds = new Set(centroids.map((c) => c.id));
-
-    // Remove old
-    for (const [id, marker] of prevMarkers) {
-      if (!nextIds.has(id)) { marker.setMap(null); prevMarkers.delete(id); }
+    for (const [id, marker] of prev) {
+      if (!nextIds.has(id)) { marker.remove(); prev.delete(id); }
     }
-    for (const [id, circle] of prevCircles) {
-      if (!nextIds.has(id)) { circle.setMap(null); prevCircles.delete(id); }
-    }
-
     for (const c of centroids) {
-      const tierColor = c.pricingTier >= 4 ? "#f59e0b" : c.pricingTier >= 3 ? "#16a34a" : "#3b82f6";
-
-      // Area bubble (blurred circle — no exact addresses)
-      if (!prevCircles.has(c.id)) {
-        const circle = new google.maps.Circle({
-          map,
-          center: { lat: c.lat, lng: c.lng },
-          radius: 500, // 500m blur radius
-          fillColor: tierColor,
-          fillOpacity: 0.08,
-          strokeColor: tierColor,
-          strokeOpacity: 0.3,
-          strokeWeight: 1.5,
-          clickable: false,
-        });
-        prevCircles.set(c.id, circle);
-      }
-
-      // Label marker
+      const color = tierColor(c.pricingTier);
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="44">
-        <rect x="0" y="0" width="80" height="30" rx="15" fill="${tierColor}" opacity="0.9"/>
+        <rect x="0" y="0" width="80" height="30" rx="15" fill="${color}" opacity="0.9"/>
         <text x="40" y="14" text-anchor="middle" fill="#fff" font-size="10" font-weight="800" font-family="Inter,system-ui,sans-serif">${c.containers}</text>
         <text x="40" y="24" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="7" font-family="Inter,system-ui,sans-serif">${c.label}</text>
       </svg>`;
-
-      if (!prevMarkers.has(c.id)) {
-        const marker = new google.maps.Marker({
-          map,
-          position: { lat: c.lat, lng: c.lng },
-          zIndex: 500,
-          icon: {
-            url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
-            scaledSize: new google.maps.Size(80, 44),
-            anchor: new google.maps.Point(40, 22),
-          },
-        });
-        prevMarkers.set(c.id, marker);
+      const m = prev.get(c.id);
+      if (m) {
+        m.setLngLat([c.lng, c.lat]);
+        const el = m.getElement();
+        el.innerHTML = svg;
       } else {
-        const existing = prevMarkers.get(c.id)!;
-        existing.setIcon({
-          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
-          scaledSize: new google.maps.Size(80, 44),
-          anchor: new google.maps.Point(40, 22),
-        });
+        const marker = new maplibregl.Marker({ element: svgMarker(svg), anchor: "center" })
+          .setLngLat([c.lng, c.lat])
+          .addTo(map);
+        prev.set(c.id, marker);
       }
     }
 
     return () => {
-      prevMarkers.forEach((m) => m.setMap(null)); prevMarkers.clear();
-      prevCircles.forEach((c) => c.setMap(null)); prevCircles.clear();
+      prev.forEach((m) => m.remove()); prev.clear();
+      if (map.getLayer(CENTROID_LAYER_ID)) map.removeLayer(CENTROID_LAYER_ID);
+      if (map.getSource(CENTROID_SOURCE_ID)) map.removeSource(CENTROID_SOURCE_ID);
     };
   }, [map, centroids]);
 
@@ -347,7 +367,7 @@ function CentroidBubbles({ centroids }: { centroids: RunCentroid[] }) {
 
 function ActiveRunStopMarkers({ stops }: { stops: RunStopDetail[] }) {
   const map = useMap();
-  const markersRef = useRef<Map<string, google.maps.Marker>>(new Map());
+  const markersRef = useRef<Map<string, MLMarker>>(new Map());
 
   useEffect(() => {
     if (!map) return;
@@ -355,7 +375,7 @@ function ActiveRunStopMarkers({ stops }: { stops: RunStopDetail[] }) {
     const nextIds = new Set(stops.map((s) => s.id));
 
     for (const [id, marker] of prev) {
-      if (!nextIds.has(id)) { marker.setMap(null); prev.delete(id); }
+      if (!nextIds.has(id)) { marker.remove(); prev.delete(id); }
     }
 
     for (const stop of stops) {
@@ -367,40 +387,21 @@ function ActiveRunStopMarkers({ stops }: { stops: RunStopDetail[] }) {
         <text x="16" y="21" text-anchor="middle" fill="#fff" font-size="12" font-weight="800" font-family="Inter,system-ui,sans-serif">${icon}</text>
       </svg>`;
 
-      if (!prev.has(stop.id)) {
-        const marker = new google.maps.Marker({
-          map,
-          position: { lat: stop.lat, lng: stop.lng },
-          zIndex: 1500,
-          icon: { url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`, scaledSize: new google.maps.Size(32, 32), anchor: new google.maps.Point(16, 16) },
-        });
-        prev.set(stop.id, marker);
+      const existing = prev.get(stop.id);
+      if (existing) {
+        existing.setLngLat([stop.lng, stop.lat]);
+        existing.getElement().innerHTML = svg;
       } else {
-        prev.get(stop.id)!.setIcon({
-          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
-          scaledSize: new google.maps.Size(32, 32),
-          anchor: new google.maps.Point(16, 16),
-        });
+        const marker = new maplibregl.Marker({ element: svgMarker(svg), anchor: "center" })
+          .setLngLat([stop.lng, stop.lat])
+          .addTo(map);
+        prev.set(stop.id, marker);
       }
     }
 
-    return () => { prev.forEach((m) => m.setMap(null)); prev.clear(); };
+    return () => { prev.forEach((m) => m.remove()); prev.clear(); };
   }, [map, stops]);
 
-  return null;
-}
-
-// ── Map Click Handler ──
-
-function MapClickHandler({ onMapTap }: { onMapTap: () => void }) {
-  const map = useMap();
-  const cbRef = useRef(onMapTap);
-  cbRef.current = onMapTap;
-  useEffect(() => {
-    if (!map) return;
-    const l = map.addListener("click", () => cbRef.current());
-    return () => google.maps.event.removeListener(l);
-  }, [map]);
   return null;
 }
 
@@ -427,36 +428,19 @@ class MapErrorBoundary extends Component<{ children: ReactNode }, { error: Error
 }
 
 const MAPS_ERROR_MESSAGES: Record<string, string> = {
-  RefererNotAllowedMapError: "This domain isn't on the Maps API key allowlist. Add https://thegoodsort.org/* to the key's HTTP referrer restrictions in Google Cloud Console.",
-  BillingNotEnabledMapError: "Billing isn't enabled on the Google Cloud project for this Maps key.",
-  ApiNotActivatedMapError: "The Maps JavaScript API isn't enabled on the Google Cloud project.",
-  InvalidKeyMapError: "The Maps API key is invalid. Regenerate in Google Cloud Console and update the NEXT_PUBLIC_GOOGLE_MAPS_API_KEY GitHub secret.",
-  ExpiredKeyMapError: "The Maps API key has expired. Regenerate in Google Cloud Console and update the NEXT_PUBLIC_GOOGLE_MAPS_API_KEY GitHub secret.",
-  MalformedMapError: "The Maps API key is malformed.",
-  OverQuotaMapError: "Maps API daily quota exceeded. Raise the quota in Google Cloud Console or wait for daily reset.",
-  AuthFailure: "Maps key authentication failed — check key validity and referrer restrictions.",
+  NetworkError: "Map tiles couldn't be reached. Check your internet connection.",
+  StyleLoadError: "Map style failed to load from OpenFreeMap. Try refreshing.",
 };
 
 function MapsUnavailableFallback({ reason }: { reason: string }) {
-  const message = MAPS_ERROR_MESSAGES[reason];
+  const message = MAPS_ERROR_MESSAGES[reason] ?? "Map failed to load.";
   return (
     <div className="absolute inset-0 bg-white flex items-center justify-center">
       <div className="text-center px-6 max-w-md">
         <AlertTriangle size={48} className="text-amber-500 mx-auto mb-4" />
         <p className="text-slate-900 font-display font-bold text-lg mb-2">Map unavailable</p>
-        <p className="text-slate-500 text-sm mb-3">{message ?? "Google Maps failed to load."}</p>
+        <p className="text-slate-500 text-sm mb-3">{message}</p>
         <code className="text-[11px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{reason}</code>
-      </div>
-    </div>
-  );
-}
-
-function NoApiKeyFallback() {
-  return (
-    <div className="absolute inset-0 bg-white flex items-center justify-center">
-      <div className="text-center px-6 max-w-sm">
-        <p className="text-slate-900 font-display font-bold text-lg mb-2">Map requires API key</p>
-        <p className="text-slate-500 text-sm">Set <code className="text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded text-xs">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code></p>
       </div>
     </div>
   );
@@ -472,7 +456,6 @@ interface MapViewProps {
   depot: Depot | null;
   onBinSelect?: (id: string) => void;
   onMapTap: () => void;
-  // Marketplace additions
   runCentroids?: RunCentroid[];
   activeRunStops?: RunStopDetail[];
 }
@@ -482,20 +465,18 @@ export function MapView({ mode, bins, selectedBinId, activeRoute, depot, onBinSe
   const handleLocated = useCallback((loc: LatLng) => setUserLoc(loc), []);
   const mapsError = useMapsError();
 
-  if (!MAPS_KEY) return <NoApiKeyFallback />;
   if (mapsError) return <MapsUnavailableFallback reason={mapsError} />;
 
   return (
     <MapErrorBoundary>
-      <GoogleMapsProvider>
-        <MapClickHandler onMapTap={onMapTap} />
+      <MapProvider onMapTap={onMapTap}>
         <AutoLocate onLocated={handleLocated} />
         {userLoc && <UserLocationMarker loc={userLoc} />}
         {onBinSelect && <BinMarkers bins={bins} selectedId={selectedBinId ?? null} onSelect={onBinSelect} />}
         {activeRoute && <RouteLine route={activeRoute} depot={depot} />}
         {runCentroids && runCentroids.length > 0 && <CentroidBubbles centroids={runCentroids} />}
         {activeRunStops && activeRunStops.length > 0 && <ActiveRunStopMarkers stops={activeRunStops} />}
-      </GoogleMapsProvider>
+      </MapProvider>
     </MapErrorBoundary>
   );
 }
