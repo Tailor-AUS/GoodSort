@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { Home, User, Building2, Recycle, Check } from "lucide-react";
 import { apiUrl } from "@/lib/config";
+import { AddressAutocomplete, geocodeAddress } from "@/app/components/shared/address-autocomplete";
 
 type Step = "name" | "type" | "address" | "bin_day" | "unit_waitlist";
 
@@ -27,80 +27,14 @@ export default function OnboardPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
-  const addressBoxRef = useRef<HTMLDivElement>(null);
 
-  // Places Autocomplete — uses PlaceAutocompleteElement. The legacy
-  // google.maps.places.Autocomplete widget was deprecated March 2025 and
-  // is unavailable on API keys created after that date.
-  useEffect(() => {
-    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-    if (!key || !addressBoxRef.current || step !== "address") return;
-    setOptions({ key, v: "weekly" });
-
-    const host = addressBoxRef.current;
-    let pac: HTMLElement | null = null;
-    let cancelled = false;
-
-    importLibrary("places").then(async () => {
-      if (cancelled) return;
-      const { PlaceAutocompleteElement } = (await google.maps.importLibrary(
-        "places",
-      )) as typeof google.maps.places;
-      pac = new PlaceAutocompleteElement({
-        componentRestrictions: { country: "au" },
-        types: ["address"],
-      }) as unknown as HTMLElement;
-      pac.style.width = "100%";
-      host.replaceChildren(pac);
-
-      // Mirror typed value to React state (so the Continue button enables and
-      // the geocode fallback can read it); typing also invalidates any prior
-      // selection until a new one is picked.
-      pac.addEventListener("input", (ev: Event) => {
-        const val = (ev.target as HTMLInputElement | null)?.value ?? "";
-        setAddress(val);
-        setLat(null); setLng(null); setCollectionDay(null); setDayAuto(false);
-      });
-
-      pac.addEventListener("gmp-select", async (ev: Event) => {
-        const { placePrediction } = ev as unknown as {
-          placePrediction: { toPlace: () => google.maps.places.Place };
-        };
-        const place = placePrediction.toPlace();
-        await place.fetchFields({ fields: ["formattedAddress", "location"] });
-        const formatted = place.formattedAddress ?? "";
-        const loc = place.location;
-        if (!loc) return;
-        const la = loc.lat();
-        const ln = loc.lng();
-        setAddress(formatted);
-        setLat(la); setLng(ln);
-        fetch(apiUrl("/api/households/lookup-bin-day"), {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ lat: la, lng: ln, address: formatted }),
-        }).then(r => r.json()).then(d => {
-          if (d.found) {
-            setCollectionDay(d.dayOfWeek);
-            setCouncilArea(d.councilArea);
-            setDayAuto(true);
-          }
-        }).catch(() => {});
-      });
-    });
-
-    return () => { cancelled = true; pac?.remove(); };
-  }, [step]);
-
-  async function geocodeAddress(addr: string): Promise<{ lat: number; lng: number } | null> {
-    try {
-      const geocoder = new google.maps.Geocoder();
-      const result = await geocoder.geocode({ address: addr, componentRestrictions: { country: "au" } });
-      if (result.results.length > 0) {
-        const loc = result.results[0].geometry.location;
-        return { lat: loc.lat(), lng: loc.lng() };
-      }
-    } catch { /* fall through */ }
-    return null;
+  function lookupBinDay(la: number, ln: number, addr: string) {
+    fetch(apiUrl("/api/households/lookup-bin-day"), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lat: la, lng: ln, address: addr }),
+    }).then((r) => r.json()).then((d) => {
+      if (d.found) { setCollectionDay(d.dayOfWeek); setCouncilArea(d.councilArea); setDayAuto(true); }
+    }).catch(() => {});
   }
 
   async function handleResidentialSubmit() {
@@ -194,7 +128,18 @@ export default function OnboardPage() {
         )}
         <div>
           <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">Address</label>
-          <div ref={addressBoxRef} className="goodsort-pac" />
+          <AddressAutocomplete
+            value={address}
+            onChange={(text) => {
+              setAddress(text);
+              setLat(null); setLng(null); setCollectionDay(null); setDayAuto(false);
+            }}
+            onSelect={(sel) => {
+              setAddress(sel.address); setLat(sel.lat); setLng(sel.lng);
+              lookupBinDay(sel.lat, sel.lng, sel.address);
+            }}
+            placeholder="Start typing your address…"
+          />
         </div>
         {type === "residential" && (
           <div>
@@ -207,25 +152,15 @@ export default function OnboardPage() {
       {error && <p className="text-red-500 text-[13px] mb-3">{error}</p>}
       <Continue
         onClick={async () => {
-          // PlaceAutocompleteElement owns its own <input>; if the user typed
-          // but never picked a suggestion, grab the raw text for geocoding.
-          const typed = addressBoxRef.current?.querySelector("input")?.value ?? "";
-          const addr = address || typed || "";
-          if (!addr.trim()) { setError("Enter your address."); return; }
-          if (!address) setAddress(addr);
+          const addr = address.trim();
+          if (!addr) { setError("Enter your address."); return; }
           if (lat == null || lng == null) {
             setLoading(true); setError("");
             const geo = await geocodeAddress(addr);
             setLoading(false);
             if (!geo) { setError("Couldn't find that address. Try selecting from the dropdown."); return; }
-            setLat(geo.lat); setLng(geo.lng);
-            // Fire bin-day lookup for geocoded address
-            fetch(apiUrl("/api/households/lookup-bin-day"), {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ lat: geo.lat, lng: geo.lng, address: addr }),
-            }).then(r => r.json()).then(d => {
-              if (d.found) { setCollectionDay(d.dayOfWeek); setCouncilArea(d.councilArea); setDayAuto(true); }
-            }).catch(() => {});
+            setAddress(geo.address); setLat(geo.lat); setLng(geo.lng);
+            lookupBinDay(geo.lat, geo.lng, geo.address);
             if (type === "unit_complex") handleUnitWaitlist(geo.lat, geo.lng);
             else setStep("bin_day");
             return;
