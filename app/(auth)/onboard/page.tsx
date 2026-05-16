@@ -10,6 +10,14 @@ type Step = "name" | "type" | "address" | "bin_day" | "unit_waitlist";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+function authHeaders(): Record<string, string> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("goodsort_token") : null;
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
 export default function OnboardPage() {
   const [step, setStep] = useState<Step>("name");
   const [name, setName] = useState("");
@@ -44,7 +52,7 @@ export default function OnboardPage() {
 
     try {
       const hhRes = await fetch(apiUrl("/api/households"), {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: authHeaders(),
         body: JSON.stringify({
           name: householdName || `${name}'s Place`,
           address, lat, lng,
@@ -61,7 +69,7 @@ export default function OnboardPage() {
       const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
       if (profile.id) {
         await fetch(apiUrl(`/api/profiles/${profile.id}`), {
-          method: "PATCH", headers: { "Content-Type": "application/json" },
+          method: "PATCH", headers: authHeaders(),
           body: JSON.stringify({ name, householdId: hh.id }),
         });
         profile.name = name; profile.householdId = hh.id;
