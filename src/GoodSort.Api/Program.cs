@@ -3,6 +3,7 @@ using GoodSort.Api.Data;
 using GoodSort.Api.Data.Entities;
 using GoodSort.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
@@ -20,6 +21,7 @@ builder.Services.AddScoped<NotificationService>();
 builder.Services.AddHostedService<RunGenerationService>();
 builder.Services.AddScoped<PickupReminderService>();
 builder.Services.AddHostedService<PickupReminderHost>();
+builder.Services.AddSingleton<ScanTokenService>();
 builder.Services.AddHttpClient();
 
 // Tailor Vision (TV) — api.tailor.au/api/vision/classify
@@ -71,7 +73,25 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
         };
     });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    // Admin endpoints check for the "admin" role claim. JWTs only get this
+    // claim when Profile.IsAdmin is true (see AuthService.GenerateJwt).
+    options.AddPolicy(AuthHelpers.AdminPolicy, policy =>
+        policy.RequireAssertion(ctx =>
+            ctx.User.HasClaim("role", "admin") || ctx.User.IsInRole("admin")));
+});
+
+// Cap request bodies. /api/scan/photo carries base64 photos — a clear
+// upper bound prevents both memory pressure and runaway BAINK spend if a
+// caller tries to fuzz the vision endpoint with huge payloads.
+builder.Services.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(o =>
+    o.SerializerOptions.MaxDepth = 32);
+builder.WebHost.ConfigureKestrel(k =>
+{
+    // 4 MB ceiling — base64 inflates by ~33%, so this caps raw image at ~3 MB.
+    k.Limits.MaxRequestBodySize = 4 * 1024 * 1024;
+});
 
 var app = builder.Build();
 
@@ -176,26 +196,53 @@ app.MapGet("/api/bins/{id:guid}/qr", (Guid id, GoodSortDbContext db) =>
     return Results.Text(svg, "image/svg+xml");
 });
 
-// ── Photo Scan (Azure OpenAI Vision) ──
-app.MapPost("/api/scan/photo", async (PhotoScanRequest req, VisionService vision, GoodSortDbContext db, IConfiguration cfg) =>
+// ── Photo Scan (Tailor Vision → Azure OpenAI fallback) ──
+// /api/scan/photo identifies containers in a photo and returns a signed
+// `scanToken` committing to the result. /api/scan/photo/confirm requires
+// that token — the client cannot fabricate eligible items between the
+// two calls, because the items list is read out of the verified token.
+app.MapPost("/api/scan/photo", async (HttpContext ctx, PhotoScanRequest req, VisionService vision,
+    GoodSortDbContext db, IConfiguration cfg, ScanTokenService tokens) =>
 {
+    var userId = ctx.GetCallerId();
+    if (userId is null) return Results.Unauthorized();
+
     if (string.IsNullOrEmpty(req.Image))
         return Results.BadRequest(new { error = "No image provided" });
 
-    // Cost guardrail — cap daily vision API calls (default 2000/day).
-    var dailyCap = int.TryParse(cfg["VISION_DAILY_CAP"], out var c) ? c : 2000;
-    var since = DateTime.UtcNow.AddHours(-24);
-    var callsToday = await db.VisionCalls.CountAsync(v => v.CreatedAt >= since);
-    if (callsToday >= dailyCap)
-        return Results.StatusCode(429);
-
-    // Strip data URL prefix if present
+    // Strip data URL prefix if present (also normalises before size check)
     var base64 = req.Image;
     if (base64.Contains(",")) base64 = base64.Split(',')[1];
 
-    var result = await vision.IdentifyContainers(base64);
+    // Hard size cap before we round-trip to Tailor Vision and burn BAINK credit.
+    // base64 inflates by ~33%, so 2_000_000 base64 chars ≈ 1.5 MB raw image.
+    if (base64.Length > 2_000_000)
+        return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+
+    // Cost guardrails — per-user AND global. Per-user is the critical one:
+    // without it, one client can drain the whole day's BAINK budget.
+    var since = DateTime.UtcNow.AddHours(-24);
+    var perUserCap = int.TryParse(cfg["VISION_PER_USER_DAILY_CAP"], out var pu) ? pu : 100;
+    var globalCap = int.TryParse(cfg["VISION_DAILY_CAP"], out var g) ? g : 2000;
+    var userCallsToday = await db.VisionCalls.CountAsync(v => v.CreatedAt >= since && v.UserId == userId);
+    if (userCallsToday >= perUserCap) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+    var globalCallsToday = await db.VisionCalls.CountAsync(v => v.CreatedAt >= since);
+    if (globalCallsToday >= globalCap) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+
+    var result = await vision.IdentifyContainers(base64, userId);
     var totalItems = result.Containers.Sum(c => c.Count);
     var totalCents = result.Containers.Where(c => c.Eligible).Sum(c => c.Count * 5);
+
+    // Issue a 10-minute signed commitment to the vision result. /confirm reads
+    // items from this — the client's POST body items list is ignored.
+    var scanToken = tokens.Issue(new ScanTokenPayload
+    {
+        Uid = userId.Value,
+        Items = result.Containers.Select(c => new ScanTokenItem
+        {
+            Name = c.Name, Material = c.Material, Count = c.Count, Eligible = c.Eligible,
+        }).ToList(),
+    }, TimeSpan.FromMinutes(10));
 
     return Results.Ok(new
     {
@@ -203,39 +250,55 @@ app.MapPost("/api/scan/photo", async (PhotoScanRequest req, VisionService vision
         totalItems,
         totalCents,
         message = result.Message,
+        scanToken,
         summary = totalItems > 0
             ? $"{totalItems} container{(totalItems != 1 ? "s" : "")} found — ${totalCents / 100.0:F2} pending"
             : result.Message,
     });
 }).RequireAuthorization();
 
-// Confirm photo scan — actually creates the scan records
-app.MapPost("/api/scan/photo/confirm", async (PhotoConfirmRequest req, GoodSortDbContext db) =>
+// Confirm photo scan — creates scan records + credits the user.
+// MUST use server-side items from the signed scanToken; otherwise a client
+// can post {items: [{eligible: true, count: 99999, ...}]} and grant itself
+// unlimited credit. The token also pins userId, so cross-user spoofing is
+// blocked even if /confirm is hit with the wrong token.
+app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmRequest req,
+    GoodSortDbContext db, ScanTokenService tokens) =>
 {
-    var profile = await db.Profiles.FindAsync(req.UserId);
+    var userId = ctx.GetCallerId();
+    if (userId is null) return Results.Unauthorized();
+
+    var payload = tokens.Verify(req.ScanToken);
+    if (payload is null) return Results.BadRequest(new { error = "Invalid or expired scan token. Re-take the photo." });
+    if (payload.Uid != userId.Value) return Results.Forbid();
+
+    var profile = await db.Profiles.FindAsync(userId.Value);
     if (profile is null) return Results.NotFound("User not found");
-    var household = await db.Households.FindAsync(profile.HouseholdId);
-    if (household is null) return Results.BadRequest("No household");
+    var household = profile.HouseholdId.HasValue
+        ? await db.Households.FindAsync(profile.HouseholdId.Value)
+        : null;
 
     var totalCents = 0;
     var totalContainers = 0;
 
-    foreach (var item in req.Items)
+    foreach (var item in payload.Items)
     {
         if (!item.Eligible) continue;
-        for (var i = 0; i < item.Count; i++)
+        // Cap per-scan count to a sane upper bound — defends against a
+        // poisoned vision response too (defence in depth, not just client trust).
+        var safeCount = Math.Clamp(item.Count, 0, 100);
+        for (var i = 0; i < safeCount; i++)
         {
-            var scan = new Scan
+            db.Scans.Add(new Scan
             {
                 UserId = profile.Id,
-                HouseholdId = household.Id,
+                HouseholdId = household?.Id,
                 Barcode = "PHOTO",
                 ContainerName = item.Name,
                 Material = item.Material,
-                RefundCents = 5, // CDS refund rate — direct to recycler
+                RefundCents = 5,
                 Status = "pending",
-            };
-            db.Scans.Add(scan);
+            });
             totalContainers++;
             totalCents += 5;
         }
@@ -245,25 +308,28 @@ app.MapPost("/api/scan/photo/confirm", async (PhotoConfirmRequest req, GoodSortD
     profile.TotalContainers += totalContainers;
     profile.TotalCo2SavedKg += totalContainers * 0.035;
 
-    household.PendingContainers += totalContainers;
-    household.PendingValueCents += totalCents;
-    household.EstimatedWeightKg = household.PendingContainers * 0.020;
-    household.EstimatedBags = (int)Math.Ceiling(household.PendingContainers / 150.0);
-    household.LastScanAt = DateTime.UtcNow;
-
-    // Update materials
-    household.Materials ??= new MaterialBreakdown();
-    foreach (var item in req.Items.Where(i => i.Eligible))
+    if (household is not null)
     {
-        for (var i = 0; i < item.Count; i++)
+        household.PendingContainers += totalContainers;
+        household.PendingValueCents += totalCents;
+        household.EstimatedWeightKg = household.PendingContainers * 0.020;
+        household.EstimatedBags = (int)Math.Ceiling(household.PendingContainers / 150.0);
+        household.LastScanAt = DateTime.UtcNow;
+
+        household.Materials ??= new MaterialBreakdown();
+        foreach (var item in payload.Items.Where(i => i.Eligible))
         {
-            _ = item.Material switch
+            var safeCount = Math.Clamp(item.Count, 0, 100);
+            for (var i = 0; i < safeCount; i++)
             {
-                "aluminium" => household.Materials.Aluminium++,
-                "pet" => household.Materials.Pet++,
-                "glass" => household.Materials.Glass++,
-                _ => household.Materials.Other++,
-            };
+                _ = item.Material switch
+                {
+                    "aluminium" => household.Materials.Aluminium++,
+                    "pet" => household.Materials.Pet++,
+                    "glass" => household.Materials.Glass++,
+                    _ => household.Materials.Other++,
+                };
+            }
         }
     }
 
@@ -401,21 +467,32 @@ app.MapPost("/api/waitlist/unit-complex", async (UnitComplexWaitlistRequest req,
 });
 
 // ── Profiles ──
-app.MapGet("/api/profiles/{id:guid}", async (Guid id, GoodSortDbContext db) =>
-    await db.Profiles.Include(p => p.Household).FirstOrDefaultAsync(p => p.Id == id)
-    is { } p ? Results.Ok(p) : Results.NotFound());
-
-app.MapPost("/api/profiles", async (Profile profile, GoodSortDbContext db) =>
+// Profile contains email + household address. Gate to owner or admin to avoid
+// PII enumeration (anyone with an id could pull email/address before).
+app.MapGet("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
+    if (!ctx.IsOwnerOrAdmin(id)) return Results.Forbid();
+    return await db.Profiles.Include(p => p.Household).FirstOrDefaultAsync(p => p.Id == id)
+        is { } p ? Results.Ok(p) : Results.NotFound();
+}).RequireAuthorization();
+
+app.MapPost("/api/profiles", async (HttpContext ctx, Profile profile, GoodSortDbContext db) =>
+{
+    // Self-create only — profile creation should normally happen via /verify-otp.
+    // Force IsAdmin=false; admin flag is set out-of-band only.
+    profile.Id = ctx.GetCallerId() ?? profile.Id;
+    profile.IsAdmin = false;
     db.Profiles.Add(profile);
     await db.SaveChangesAsync();
     return Results.Created($"/api/profiles/{profile.Id}", profile);
 }).RequireAuthorization();
 
 // ── Scans ──
-app.MapPost("/api/scans", async (ScanRequest req, GoodSortDbContext db) =>
+app.MapPost("/api/scans", async (HttpContext ctx, ScanRequest req, GoodSortDbContext db) =>
 {
-    var profile = await db.Profiles.FindAsync(req.UserId);
+    var userId = ctx.GetCallerId();
+    if (userId is null) return Results.Unauthorized();
+    var profile = await db.Profiles.FindAsync(userId.Value);
     if (profile is null) return Results.NotFound("User not found");
 
     var scan = new Scan
@@ -457,9 +534,13 @@ app.MapPost("/api/scans", async (ScanRequest req, GoodSortDbContext db) =>
     return Results.Ok(new { scan.Id, profile.PendingCents, profile.TotalContainers });
 }).RequireAuthorization();
 
-app.MapGet("/api/scans", async (Guid userId, int? limit, GoodSortDbContext db) =>
-    Results.Ok(await db.Scans.Where(s => s.UserId == userId)
-        .OrderByDescending(s => s.CreatedAt).Take(limit ?? 20).ToListAsync()));
+app.MapGet("/api/scans", async (HttpContext ctx, Guid userId, int? limit, GoodSortDbContext db) =>
+{
+    // Owner or admin only — scans contain barcode + container history.
+    if (!ctx.IsOwnerOrAdmin(userId)) return Results.Forbid();
+    return Results.Ok(await db.Scans.Where(s => s.UserId == userId)
+        .OrderByDescending(s => s.CreatedAt).Take(limit ?? 20).ToListAsync());
+}).RequireAuthorization();
 
 // ── Routes ──
 app.MapGet("/api/routes", async (string? status, GoodSortDbContext db) =>
@@ -623,19 +704,23 @@ app.MapPost("/api/routes/{id:guid}/optimize", async (Guid id, GoodSortDbContext 
 }).RequireAuthorization();
 
 // ── Cash-out ──
-app.MapPost("/api/cashout", async (CashoutRequestDto req, CashoutService cashout) =>
+app.MapPost("/api/cashout", async (HttpContext ctx, CashoutRequestDto req, CashoutService cashout) =>
 {
-    var (success, error) = await cashout.RequestCashout(req.UserId, req.AmountCents, req.Bsb, req.AccountNumber, req.AccountName);
+    // Caller-supplied UserId in the body is ignored — JWT sub is the source of truth.
+    // Without this, an authenticated user could drain anyone's cleared balance.
+    var userId = ctx.GetCallerId();
+    if (userId is null) return Results.Unauthorized();
+    var (success, error) = await cashout.RequestCashout(userId.Value, req.AmountCents, req.Bsb, req.AccountNumber, req.AccountName);
     return success ? Results.Ok(new { success = true }) : Results.BadRequest(new { error });
 }).RequireAuthorization();
 
-// ── Admin: Generate ABA file (auth required) ──
+// ── Admin: Generate ABA file (admin only — file contains every payee's BSB+account) ──
 app.MapGet("/api/admin/aba-export", async (CashoutService cashout) =>
 {
     var aba = await cashout.GenerateAbaFile();
     if (string.IsNullOrEmpty(aba)) return Results.Ok(new { message = "No pending cashouts" });
     return Results.Text(aba, "text/plain");
-}).RequireAuthorization();
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
 
 // ── Admin: Dashboard stats (auth required) ──
 app.MapGet("/api/admin/stats", async (GoodSortDbContext db) =>
@@ -683,12 +768,92 @@ app.MapGet("/api/admin/stats", async (GoodSortDbContext db) =>
             failed = visionFailed,
         },
     });
-}).RequireAuthorization();
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
 
-// ── Admin: List all users (auth required) ──
+// ── Admin: Tailor Vision (BAINK) health ──
+// We can't query BAINK directly from here (it's the upstream billing system at
+// baink.tailor.au) but we surface enough side-channel signal to know if Tailor
+// Vision is healthy and being billed:
+//   - last successful tailor call timestamp (proves end-to-end is working)
+//   - tailor success rate over the last hour and day
+//   - count of OpenAI fallbacks (each fallback = a Tailor Vision miss = we
+//     should NOT be billed for, but worth watching the ratio)
+//   - last failure with truncated error (so a 401 = revoked BAINK key is
+//     obvious without trawling logs)
+app.MapGet("/api/admin/vision/health", async (GoodSortDbContext db, IConfiguration cfg) =>
+{
+    var sinceHour = DateTime.UtcNow.AddHours(-1);
+    var sinceDay = DateTime.UtcNow.AddDays(-1);
+
+    var hourCalls = await db.VisionCalls.Where(v => v.CreatedAt >= sinceHour).ToListAsync();
+    var dayTotals = await db.VisionCalls.Where(v => v.CreatedAt >= sinceDay)
+        .GroupBy(v => new { v.Provider, v.Success })
+        .Select(g => new { g.Key.Provider, g.Key.Success, Count = g.Count() })
+        .ToListAsync();
+
+    var lastTailorOk = await db.VisionCalls
+        .Where(v => v.Provider == "tailor" && v.Success)
+        .OrderByDescending(v => v.CreatedAt)
+        .Select(v => (DateTime?)v.CreatedAt)
+        .FirstOrDefaultAsync();
+
+    var lastTailorFail = await db.VisionCalls
+        .Where(v => v.Provider == "tailor" && !v.Success)
+        .OrderByDescending(v => v.CreatedAt)
+        .Select(v => new { v.CreatedAt, v.ErrorSummary })
+        .FirstOrDefaultAsync();
+
+    var avgDurationMs = hourCalls.Count > 0
+        ? (int)hourCalls.Where(v => v.Provider == "tailor" && v.Success).Select(v => (int?)v.DurationMs).DefaultIfEmpty(0).Average()!.Value
+        : 0;
+
+    int Cnt(string provider, bool success) =>
+        dayTotals.Where(t => t.Provider == provider && t.Success == success).Sum(t => t.Count);
+
+    var tailorOk24h = Cnt("tailor", true);
+    var tailorFail24h = Cnt("tailor", false);
+    var openaiOk24h = Cnt("openai", true);
+    var fallbackPct24h = (tailorOk24h + tailorFail24h) > 0
+        ? Math.Round(100.0 * openaiOk24h / (tailorOk24h + openaiOk24h), 1)
+        : 0;
+
+    var keyConfigured = !string.IsNullOrEmpty(cfg["TAILOR_VISION_API_KEY"]);
+
+    // Coarse health verdict: green if we've had a tailor success in the last hour,
+    // amber if the key is configured but no recent success, red if no key.
+    var verdict = !keyConfigured
+        ? "red:no-key"
+        : (lastTailorOk.HasValue && lastTailorOk.Value >= sinceHour)
+            ? "green"
+            : (lastTailorOk.HasValue ? "amber:stale" : "amber:never-succeeded");
+
+    return Results.Ok(new
+    {
+        verdict,
+        keyConfigured,
+        lastTailorSuccess = lastTailorOk,
+        lastTailorFailure = lastTailorFail,
+        last24h = new
+        {
+            tailorOk = tailorOk24h,
+            tailorFailed = tailorFail24h,
+            openaiFallback = openaiOk24h,
+            fallbackPct = fallbackPct24h,
+        },
+        lastHour = new
+        {
+            calls = hourCalls.Count,
+            tailorSuccess = hourCalls.Count(v => v.Provider == "tailor" && v.Success),
+            tailorFailure = hourCalls.Count(v => v.Provider == "tailor" && !v.Success),
+            avgTailorDurationMs = avgDurationMs,
+        },
+    });
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
+
+// ── Admin: List all users (admin only — PII) ──
 app.MapGet("/api/admin/users", async (GoodSortDbContext db) =>
     Results.Ok(await db.Profiles.Include(p => p.Household).OrderByDescending(p => p.CreatedAt).Take(100).ToListAsync()))
-    .RequireAuthorization();
+    .RequireAuthorization(AuthHelpers.AdminPolicy);
 
 // ── Admin: Tomorrow's pickups + runner status ──
 app.MapGet("/api/admin/pickups/tomorrow", async (GoodSortDbContext db) =>
@@ -731,14 +896,14 @@ app.MapGet("/api/admin/pickups/tomorrow", async (GoodSortDbContext db) =>
             stops = r.Stops.Count,
         }),
     });
-}).RequireAuthorization();
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
 
 // ── Admin: manually trigger the pickup reminder service (for dry-run testing) ──
 app.MapPost("/api/admin/trigger-pickup-reminders", async (PickupReminderService svc) =>
 {
     var (households, runners) = await svc.TriggerNow();
     return Results.Ok(new { households, runners });
-}).RequireAuthorization();
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
 
 // ── Recyclers — material destination endpoints ──
 app.MapGet("/api/recyclers", async (string? stream, GoodSortDbContext db) =>
@@ -775,14 +940,15 @@ app.MapPatch("/api/recyclers/{id:guid}", async (Guid id, Recycler update, GoodSo
     return Results.Ok(r);
 }).RequireAuthorization();
 
-// ── Admin: List all cashout requests (auth required) ──
+// ── Admin: List all cashout requests (admin only — BSBs + account numbers) ──
 app.MapGet("/api/admin/cashouts", async (GoodSortDbContext db) =>
     Results.Ok(await db.Set<GoodSort.Api.Services.CashoutRequest>().Include(c => c.User).OrderByDescending(c => c.CreatedAt).Take(100).ToListAsync()))
-    .RequireAuthorization();
+    .RequireAuthorization(AuthHelpers.AdminPolicy);
 
 // ── Profile PATCH (update name + household) ──
-app.MapPatch("/api/profiles/{id:guid}", async (Guid id, ProfileUpdateRequest req, GoodSortDbContext db) =>
+app.MapPatch("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, ProfileUpdateRequest req, GoodSortDbContext db) =>
 {
+    if (!ctx.IsOwnerOrAdmin(id)) return Results.Forbid();
     var profile = await db.Profiles.FindAsync(id);
     if (profile is null) return Results.NotFound();
     if (req.Name is not null) profile.Name = req.Name;
@@ -792,8 +958,9 @@ app.MapPatch("/api/profiles/{id:guid}", async (Guid id, ProfileUpdateRequest req
 }).RequireAuthorization();
 
 // ── Profile DELETE — full account wipe (GDPR / privacy-policy right-to-erasure) ──
-app.MapDelete("/api/profiles/{id:guid}", async (Guid id, GoodSortDbContext db) =>
+app.MapDelete("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
+    if (!ctx.IsOwnerOrAdmin(id)) return Results.Forbid();
     var profile = await db.Profiles.Include(p => p.Scans).Include(p => p.Collections).FirstOrDefaultAsync(p => p.Id == id);
     if (profile is null) return Results.NotFound();
 
@@ -822,12 +989,14 @@ app.MapDelete("/api/profiles/{id:guid}", async (Guid id, GoodSortDbContext db) =
 // ══════════════════════════════════════════════════════════════════════
 
 // ── Runner: Register as runner ──
-app.MapPost("/api/runner/register", async (RunnerRegisterRequest req, GoodSortDbContext db) =>
+app.MapPost("/api/runner/register", async (HttpContext ctx, RunnerRegisterRequest req, GoodSortDbContext db) =>
 {
-    var profile = await db.Profiles.FindAsync(req.ProfileId);
+    var profileId = ctx.GetCallerId();
+    if (profileId is null) return Results.Unauthorized();
+    var profile = await db.Profiles.FindAsync(profileId.Value);
     if (profile is null) return Results.NotFound("Profile not found");
 
-    var existing = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == req.ProfileId);
+    var existing = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == profileId.Value);
     if (existing is not null) return Results.Ok(existing);
 
     var runner = new RunnerProfile
@@ -846,13 +1015,17 @@ app.MapPost("/api/runner/register", async (RunnerRegisterRequest req, GoodSortDb
 }).RequireAuthorization();
 
 // ── Runner: Get my profile ──
-app.MapGet("/api/runner/profile/{profileId:guid}", async (Guid profileId, GoodSortDbContext db) =>
-    await db.RunnerProfiles.Include(rp => rp.Profile).FirstOrDefaultAsync(rp => rp.ProfileId == profileId)
-    is { } rp ? Results.Ok(rp) : Results.NotFound());
+app.MapGet("/api/runner/profile/{profileId:guid}", async (HttpContext ctx, Guid profileId, GoodSortDbContext db) =>
+{
+    if (!ctx.IsOwnerOrAdmin(profileId)) return Results.Forbid();
+    return await db.RunnerProfiles.Include(rp => rp.Profile).FirstOrDefaultAsync(rp => rp.ProfileId == profileId)
+        is { } rp ? Results.Ok(rp) : Results.NotFound();
+}).RequireAuthorization();
 
 // ── Runner: Update profile ──
-app.MapPatch("/api/runner/profile/{profileId:guid}", async (Guid profileId, RunnerProfileUpdateRequest req, GoodSortDbContext db) =>
+app.MapPatch("/api/runner/profile/{profileId:guid}", async (HttpContext ctx, Guid profileId, RunnerProfileUpdateRequest req, GoodSortDbContext db) =>
 {
+    if (!ctx.IsOwnerOrAdmin(profileId)) return Results.Forbid();
     var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == profileId);
     if (runner is null) return Results.NotFound();
     if (req.VehicleType is not null) runner.VehicleType = req.VehicleType;
@@ -863,9 +1036,13 @@ app.MapPatch("/api/runner/profile/{profileId:guid}", async (Guid profileId, Runn
 }).RequireAuthorization();
 
 // ── Runner: Location heartbeat ──
-app.MapPost("/api/runner/heartbeat", async (RunnerHeartbeatRequest req, GoodSortDbContext db) =>
+app.MapPost("/api/runner/heartbeat", async (HttpContext ctx, RunnerHeartbeatRequest req, GoodSortDbContext db) =>
 {
-    var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == req.ProfileId);
+    // Caller-supplied ProfileId in body is ignored — spoofable, would let
+    // anyone toggle another runner's online/location.
+    var profileId = ctx.GetCallerId();
+    if (profileId is null) return Results.Unauthorized();
+    var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == profileId.Value);
     if (runner is null) return Results.NotFound();
     runner.IsOnline = req.IsOnline;
     runner.LastLat = req.Lat;
@@ -939,14 +1116,16 @@ app.MapGet("/api/marketplace/runs", async (double lat, double lng, double? radiu
 });
 
 // ── Marketplace: Claim a run ──
-app.MapPost("/api/marketplace/runs/{id:guid}/claim", async (Guid id, MarketplaceClaimRequest req, GoodSortDbContext db, PricingService pricing) =>
+app.MapPost("/api/marketplace/runs/{id:guid}/claim", async (HttpContext ctx, Guid id, MarketplaceClaimRequest req, GoodSortDbContext db, PricingService pricing) =>
 {
+    var profileId = ctx.GetCallerId();
+    if (profileId is null) return Results.Unauthorized();
     var run = await db.Runs.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == id);
     if (run is null || (run.Status != "available" && run.Status != "below_threshold"))
         return Results.BadRequest("Run not available");
     if (run.ExpiresAt <= DateTime.UtcNow) return Results.BadRequest("Run expired");
 
-    var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == req.ProfileId);
+    var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == profileId.Value);
     if (runner is null) return Results.BadRequest("Not registered as runner");
 
     // Re-price with runner's level bonus
@@ -1204,7 +1383,7 @@ app.MapGet("/api/runner/leaderboard", async (string? period, int? limit, RunnerS
 
 // ── Admin: Pricing config ──
 app.MapGet("/api/admin/pricing", async (PricingService pricing) =>
-    Results.Ok(await pricing.GetActiveConfig())).RequireAuthorization();
+    Results.Ok(await pricing.GetActiveConfig())).RequireAuthorization(AuthHelpers.AdminPolicy);
 
 app.MapPatch("/api/admin/pricing", async (PricingConfig update, GoodSortDbContext db) =>
 {
@@ -1224,7 +1403,7 @@ app.MapPatch("/api/admin/pricing", async (PricingConfig update, GoodSortDbContex
     config.UpdatedAt = DateTime.UtcNow;
     await db.SaveChangesAsync();
     return Results.Ok(config);
-}).RequireAuthorization();
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
 
 // ── Admin: Simulate pricing for a run ──
 app.MapPost("/api/admin/pricing/simulate", async (PricingSimulateRequest req, PricingService pricing) =>
@@ -1247,7 +1426,7 @@ app.MapPost("/api/admin/pricing/simulate", async (PricingSimulateRequest req, Pr
 
     var result = await pricing.CalculateRate(simulatedRun);
     return Results.Ok(result);
-}).RequireAuthorization();
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
 
 // ── Admin: All marketplace runs ──
 app.MapGet("/api/admin/marketplace/runs", async (string? status, GoodSortDbContext db) =>
@@ -1258,7 +1437,7 @@ app.MapGet("/api/admin/marketplace/runs", async (string? status, GoodSortDbConte
     else
         q = q.Where(r => r.Status != "expired"); // show everything except expired
     return Results.Ok(await q.OrderByDescending(r => r.CreatedAt).Take(100).ToListAsync());
-}).RequireAuthorization();
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
 
 app.Run();
 
@@ -1275,9 +1454,11 @@ static double HaversineKm(double lat1, double lng1, double lat2, double lng2)
 }
 
 record ProfileUpdateRequest(string? Name, Guid? HouseholdId);
+// NOTE: caller-supplied UserId fields are ignored; endpoints read the caller from the JWT.
+// Kept on the record for frontend backwards compatibility — safe to remove once frontend stops sending them.
 record CashoutRequestDto(Guid UserId, int AmountCents, string Bsb, string AccountNumber, string AccountName);
 record PhotoScanRequest(string Image, string? BinCode = null);
-record PhotoConfirmRequest(Guid UserId, List<PhotoConfirmItem> Items, string? BinCode = null);
+record PhotoConfirmRequest(string ScanToken, Guid? UserId = null, List<PhotoConfirmItem>? Items = null, string? BinCode = null);
 record PhotoConfirmItem(string Name, string Material, int Count, bool Eligible);
 record SendOtpRequest(string Email);
 record VerifyOtpRequest(string Email, string Code, Guid? ReferrerId = null);

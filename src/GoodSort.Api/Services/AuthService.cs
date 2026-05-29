@@ -30,13 +30,20 @@ public class AuthService
         if (recentCount >= 5)
             return (false, "Too many requests. Try again in an hour.");
 
-        var code = Random.Shared.Next(100000, 999999).ToString();
+        // 6-digit code, cryptographically random — Random.Shared is not secure
+        // enough for an auth credential. RandomNumberGenerator gives us a
+        // uniform distribution over [100000, 1000000).
+        var code = System.Security.Cryptography.RandomNumberGenerator
+            .GetInt32(100000, 1000000).ToString();
 
-        // Store in database
+        // Store only the HMAC of the code. JWT_SECRET keys the HMAC so a
+        // DB-only leak can't be brute-forced against the 10^6 OTP space.
+        var jwtSecret = _config["JWT_SECRET"]
+            ?? throw new InvalidOperationException("JWT_SECRET must be configured");
         _db.OtpCodes.Add(new OtpCode
         {
             Email = email,
-            Code = code,
+            CodeHash = OtpHash.Compute(code, jwtSecret),
             ExpiresAt = DateTime.UtcNow.AddMinutes(5),
         });
         await _db.SaveChangesAsync();
@@ -103,7 +110,9 @@ public class AuthService
             return (null, null);
         }
 
-        if (otp.Code != code)
+        var jwtSecret = _config["JWT_SECRET"]
+            ?? throw new InvalidOperationException("JWT_SECRET must be configured");
+        if (!OtpHash.Verify(code, otp.CodeHash, jwtSecret))
         {
             await _db.SaveChangesAsync();
             return (null, null);
@@ -142,14 +151,16 @@ public class AuthService
         var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key));
         var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
 
-        var claims = new[]
+        var claims = new List<Claim>
         {
-            new Claim(JwtRegisteredClaimNames.Sub, profile.Id.ToString()),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new Claim("email", profile.Phone ?? ""),
-            new Claim("name", profile.Name),
-            new Claim("role", profile.Role),
+            new(JwtRegisteredClaimNames.Sub, profile.Id.ToString()),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new("email", profile.Email ?? profile.Phone ?? ""),
+            new("name", profile.Name),
+            new("role", profile.Role),
         };
+        // Admin is its own claim — admin endpoints check this, not the user-facing Role.
+        if (profile.IsAdmin) claims.Add(new Claim("role", "admin"));
 
         var token = new JwtSecurityToken(
             issuer: "goodsort-api",

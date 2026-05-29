@@ -9,6 +9,7 @@ public class Profile
     public Guid? HouseholdId { get; set; }
     public Household? Household { get; set; }
     public string Role { get; set; } = "sorter"; // sorter, driver, both
+    public bool IsAdmin { get; set; } = false; // gated separately — admin endpoints check this, NOT Role
     public int PendingCents { get; set; }
     public int ClearedCents { get; set; }
     public int TotalContainers { get; set; }
