@@ -58,6 +58,83 @@ This is the diagnostic surface for "is BAINK billing working?" — we can't quer
 - **Photo size cap.** 4 MB Kestrel body limit + 2,000,000 base64 char check pre-vision (≈1.5 MB raw image). Returns 413.
 - **`/api/profiles/:id` GET locked.** Was unauthenticated → leaked email + household address to anyone who guessed an id.
 
+## ⚠️ BAINK status as of 2026-05-29 — environment_not_ready
+
+Verified end-to-end against prod. The new `/api/admin/vision/health` endpoint returned:
+
+```json
+{
+  "verdict": "amber:stale",
+  "keyConfigured": true,
+  "lastTailorSuccess": "2026-04-19T06:16:30",
+  "lastTailorFailure": {
+    "createdAt": "2026-05-29T07:25:50",
+    "errorSummary": "HTTP 402: {\"error\":\"environment_not_ready\",\"title\":\"Your environment isn't ready yet.\",\"message\":\"We'll let you know when it is.\"}"
+  },
+  "last24h": { "tailorOk": 0, "tailorFailed": 2, "openaiFallback": 1, "fallbackPct": 33.3 }
+}
+```
+
+**Tailor Vision has not worked since April 19, 2026** (~40 days). Every call since returns HTTP 402 with `environment_not_ready`. This is a BAINK-side message — GoodSort's BAINK tenant has been deactivated or never re-provisioned after some upstream change.
+
+**Action required from Tailor team:** re-provision the GoodSort BAINK environment so vision calls bill correctly. The current API key (`tailor_sk_mp83aI74...`) is configured and being sent; the rejection is at the tenant level, not the key level.
+
+### Azure OpenAI fallback was also broken — now fixed
+
+The fallback path was failing with `HTTP 404 DeploymentNotFound` because `AZURE_OPENAI_DEPLOYMENT=gpt-4.1` doesn't exist in `oai-tailor-app-prod`. I changed it to `gpt-5-mini` (verified it works — successfully identified a test can image).
+
+**Note:** the env var change was applied directly to the Container App. The next `azd deploy` will strip it because the Aspire manifest doesn't declare it. Persist it by running:
+
+```bash
+azd env set AZURE_OPENAI_DEPLOYMENT gpt-5-mini
+```
+
+And then update `infra/restore-secrets.sh` if the default needs to change.
+
+Available deployments in `oai-tailor-app-prod`: `gpt-5`, `gpt-5-mini`, `gpt-5-pro`, `tailor-brain` (gpt-4.1-mini), `tailor-image` (dall-e-3), `text-embedding-3-small`.
+
+## Admin bootstrap endpoint (escape hatch)
+
+Added `POST /api/admin/bootstrap` for promoting an account to admin without DB access. Gated by `ADMIN_BOOTSTRAP_SECRET` env var — when unset, the endpoint 404s, so leaving the code shipped is safe.
+
+Usage (one-shot):
+```bash
+# Set the secret on Container App
+az containerapp update -n api -g rg-GoodSort --set-env-vars "ADMIN_BOOTSTRAP_SECRET=$(openssl rand -hex 24)"
+# POST to promote (create-if-missing — works even when the account hasn't signed up)
+curl -X POST https://api.livelyfield-64227152.eastasia.azurecontainerapps.io/api/admin/bootstrap \
+  -H "Content-Type: application/json" \
+  -H "X-Bootstrap-Secret: <secret>" \
+  -d '{"email":"admin@tailorco.au"}'
+# Response includes a JWT for the new admin
+# CLEAR THE SECRET when done:
+az containerapp update -n api -g rg-GoodSort --remove-env-vars ADMIN_BOOTSTRAP_SECRET
+```
+
+Used today to create the admin@tailorco.au profile + JWT. **The secret has been cleared** so the endpoint is dormant. The profile `1f37ac92-9121-486e-842d-cd716155da1c` (admin@tailorco.au) has `IsAdmin=1` in prod.
+
+## CI/CD note: backend deploy via action is broken
+
+`azure/container-apps-deploy-action@v2` is hitting a known Azure CLI bug (`'NoneType' object has no attribute 'linux'` in azext_containerapp). Build itself succeeds; the action's deploy step fails. Workaround used today:
+
+```bash
+az acr build --registry acrnyjfw2pdfsrie --image api:<tag> --file Dockerfile .
+az containerapp update -n api -g rg-GoodSort --image acrnyjfw2pdfsrie.azurecr.io/api:<tag>
+```
+
+Worth either pinning the action's azure-cli version, switching to `azure/CLI@v2` action with manual `az acr build` + `az containerapp update`, or filing/tracking the upstream bug. Current `main` is deployed via this manual path; the next push to `main` will fail CI again until the workflow is fixed.
+
+## Security note discovered during this work
+
+The Container App stores secrets as **plaintext env vars**, including:
+- `JWT_SECRET`
+- `ConnectionStrings__goodsortdb` (full connection string including admin password)
+- `TAILOR_VISION_API_KEY`
+- `AZURE_OPENAI_KEY`
+- `ACS_CONNECTION_STRING`
+
+Anyone with `Reader` on `rg-GoodSort` can read these via `az containerapp show`. Should migrate to Container App `secretref` env vars backed by Key Vault references (`tailor-prod-kv-ae01` already exists in `rg-tailor-app-prod`).
+
 ## How to verify BAINK is working
 
 Once deployed:

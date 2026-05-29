@@ -138,6 +138,56 @@ for (var i = 0; i < 10; i++)
 // ── Health ──
 app.MapGet("/api/health", () => Results.Ok(new { status = "healthy", service = "goodsort-api" }));
 
+// ── Admin bootstrap ──
+// One-shot escape hatch for setting Profile.IsAdmin without DB access. Gated by
+// a shared secret in the ADMIN_BOOTSTRAP_SECRET env var — when the env var is
+// unset or empty the endpoint returns 404, so leaving the code shipped is safe.
+// Use case: initial admin onboarding, or rescue if all admins are locked out.
+// Rotate the env var (clear it) immediately after use.
+app.MapPost("/api/admin/bootstrap", async (HttpContext ctx, AdminBootstrapRequest req,
+    GoodSortDbContext db, IConfiguration cfg, AuthService auth, ILogger<Program> log) =>
+{
+    var expected = cfg["ADMIN_BOOTSTRAP_SECRET"];
+    if (string.IsNullOrEmpty(expected)) return Results.NotFound();
+    var provided = ctx.Request.Headers["X-Bootstrap-Secret"].ToString();
+    if (!System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+            System.Text.Encoding.UTF8.GetBytes(provided),
+            System.Text.Encoding.UTF8.GetBytes(expected)))
+    {
+        log.LogWarning("Bootstrap attempt with wrong secret for {Email}", req.Email);
+        return Results.Unauthorized();
+    }
+
+    var email = req.Email.Trim().ToLowerInvariant();
+    var profile = await db.Profiles.FirstOrDefaultAsync(p => p.Email == email);
+    var created = false;
+    if (profile is null)
+    {
+        // Create-if-missing — allows bootstrapping an admin without first
+        // going through the OTP flow. Acceptable because the secret-gate IS
+        // the trust boundary here.
+        var prefix = email.Split('@')[0].Replace('.', ' ').Replace('_', ' ').Replace('-', ' ');
+        var displayName = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(prefix);
+        profile = new Profile
+        {
+            Name = displayName,
+            Email = email,
+            Phone = email,
+            Role = "sorter",
+        };
+        db.Profiles.Add(profile);
+        created = true;
+    }
+
+    profile.IsAdmin = true;
+    await db.SaveChangesAsync();
+    log.LogWarning("Bootstrap: {Action} {Email} ({Id}) as admin", created ? "created" : "promoted", email, profile.Id);
+    // Also mint a JWT so the caller can immediately exercise admin endpoints
+    // without a separate OTP round-trip.
+    var token = auth.GenerateJwt(profile);
+    return Results.Ok(new { promoted = true, created, profileId = profile.Id, email, token });
+});
+
 // ── Auth (Azure Communication Services Email OTP) ──
 app.MapPost("/api/auth/send-otp", async (SendOtpRequest req, AuthService auth) =>
 {
@@ -803,8 +853,12 @@ app.MapGet("/api/admin/vision/health", async (GoodSortDbContext db, IConfigurati
         .Select(v => new { v.CreatedAt, v.ErrorSummary })
         .FirstOrDefaultAsync();
 
-    var avgDurationMs = hourCalls.Count > 0
-        ? (int)hourCalls.Where(v => v.Provider == "tailor" && v.Success).Select(v => (int?)v.DurationMs).DefaultIfEmpty(0).Average()!.Value
+    var tailorOkDurations = hourCalls
+        .Where(v => v.Provider == "tailor" && v.Success)
+        .Select(v => v.DurationMs)
+        .ToList();
+    var avgDurationMs = tailorOkDurations.Count > 0
+        ? (int)tailorOkDurations.Average()
         : 0;
 
     int Cnt(string provider, bool success) =>
@@ -813,8 +867,11 @@ app.MapGet("/api/admin/vision/health", async (GoodSortDbContext db, IConfigurati
     var tailorOk24h = Cnt("tailor", true);
     var tailorFail24h = Cnt("tailor", false);
     var openaiOk24h = Cnt("openai", true);
-    var fallbackPct24h = (tailorOk24h + tailorFail24h) > 0
-        ? Math.Round(100.0 * openaiOk24h / (tailorOk24h + openaiOk24h), 1)
+    // Denominator covers ALL provider attempts in last 24h to avoid NaN when
+    // every call failed.
+    var totalAttempts24h = tailorOk24h + tailorFail24h + openaiOk24h;
+    var fallbackPct24h = totalAttempts24h > 0
+        ? Math.Round(100.0 * openaiOk24h / totalAttempts24h, 1)
         : 0;
 
     var keyConfigured = !string.IsNullOrEmpty(cfg["TAILOR_VISION_API_KEY"]);
@@ -1474,3 +1531,4 @@ record RunnerHeartbeatRequest(Guid ProfileId, double Lat, double Lng, bool IsOnl
 record MarketplaceClaimRequest(Guid ProfileId);
 record RunStopPickupRequest(int ActualContainers, string? PhotoUrl);
 record PricingSimulateRequest(int Containers, double DistanceKm, int StopCount);
+record AdminBootstrapRequest(string Email);
