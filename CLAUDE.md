@@ -51,49 +51,69 @@ Never hand-author migration files — always use `dotnet ef migrations add`.
 
 ```
 app/
+├── layout.tsx       # Wraps everything in <AuthGuard>; bump app-version meta on each ship
 ├── (auth)/          # login, verify (OTP), onboard
-├── (sorter)/        # main app — map view, scanner, sorting
+├── (sorter)/        # main app — map view, scanner, sorting (sorter-sheet.tsx is the bottom sheet)
 ├── (runner)/        # runner pickup flow
 ├── admin/           # admin dashboard, bins, users, pickups
-├── components/shared/  # scanner.tsx, map-view.tsx, account-panel.tsx, logo.tsx
+├── components/shared/  # scanner.tsx, map-view.tsx, account-panel.tsx, logo.tsx,
+│                       # auth-guard.tsx, install-prompt.tsx, address-autocomplete.tsx,
+│                       # sort-animation.tsx, powered-by-tailor.tsx, account-button.tsx
 ├── scan/            # unauthenticated demo scan page
 ├── start/           # landing/marketing page
 ├── household/       # household management
+├── privacy/ terms/  # static legal pages
 lib/
-├── config.ts        # API_URL from NEXT_PUBLIC_API_URL env var
-├── store.ts         # Types, constants (SORTER_PAYOUT_CENTS=5), localStorage state, 4-bag system
-├── store-api.ts     # API wrapper with auth (apiFetch adds Bearer token from goodsort_token)
-├── containers.ts    # Barcode → container name lookup
-├── routes.ts        # Route optimization helpers
-├── marketplace-api.ts  # Runner marketplace API calls
+├── config.ts          # API_URL from NEXT_PUBLIC_API_URL env var
+├── store.ts           # Types, constants (SORTER_PAYOUT_CENTS=5), localStorage state, 4-bag system
+├── store-api.ts       # API wrapper — apiFetch() adds Bearer token; offline-first (writes local first, then syncs)
+├── containers.ts      # Barcode → container name lookup
+├── routes.ts          # Route optimization helpers
+├── clustering.ts      # Household clustering for run generation
+├── streams.ts         # Material stream metadata (aluminium/PET/glass/other)
+├── marketplace.ts     # Runner marketplace types/helpers
+└── marketplace-api.ts # Runner marketplace API calls
 ```
 
 ### Backend structure
 
 ```
 src/GoodSort.Api/
-├── Program.cs           # ALL endpoints defined here (minimal API style, ~750 lines)
+├── Program.cs           # ALL ~67 endpoints defined here (minimal API style, ~1300 lines)
 ├── Services/
-│   ├── VisionService.cs     # Tailor Vision API → Azure OpenAI fallback
-│   ├── AuthService.cs       # OTP via Azure Communication Services, JWT issuance
-│   ├── CashoutService.cs    # ABA bank file generation
-│   ├── BinDayService.cs     # Council bin day lookup
-│   ├── RunnerService.cs     # Runner matching and assignment
-│   ├── RunGenerationService.cs  # Background service: generates collection runs
-│   └── PricingService.cs    # Per-container payout rates
+│   ├── VisionService.cs            # Tailor Vision API → Azure OpenAI fallback
+│   ├── AuthService.cs              # OTP via Azure Communication Services, JWT issuance
+│   ├── CashoutService.cs           # ABA bank file generation
+│   ├── BinDayService.cs            # Council bin day lookup
+│   ├── RunnerService.cs            # Runner matching and assignment
+│   ├── RunGenerationService.cs     # IHostedService: generates collection runs
+│   ├── PickupReminderService.cs    # Scoped service + PickupReminderHost background loop
+│   ├── NotificationService.cs      # Push/email notifications via ACS
+│   └── PricingService.cs           # Per-container payout rates
 ├── Data/
 │   ├── GoodSortDbContext.cs # EF Core context (Azure SQL)
-│   └── Entities/            # Profile, Household, Scan, Run, Bin, etc.
+│   └── Entities/            # Profile, Household, Scan, Run, RunStop, Bin,
+│                            # Depot, Recycler, Route, RunnerProfile,
+│                            # RunnerRating, Collection, OtpCode,
+│                            # PricingConfig, VisionCall
 └── Migrations/              # EF Core migrations (auto-generated only)
 ```
+
+**Aspire AppHost** (`src/GoodSort.AppHost/Program.cs`) is local-dev only. In `IsRunMode` it spins up SQL Server in Docker and the Next.js dev server (`npm run dev`) wired to the API's endpoint; in publish mode it just declares the API project so `azd deploy` knows what to push.
+
+**Service defaults** (`src/GoodSort.ServiceDefaults/`) supplies the shared `AddServiceDefaults()` / `MapDefaultEndpoints()` (health, OpenTelemetry, resilience) used by `Program.cs`.
 
 ### Auth flow
 
 1. User enters email/phone → `POST /api/auth/send-otp` (sends 6-digit OTP via Azure Communication Services)
 2. User enters OTP → `POST /api/auth/verify-otp` (returns JWT token)
-3. Token stored in `localStorage` as `goodsort_token`, profile as `goodsort_profile`
+3. Three localStorage keys: `goodsort_token` (JWT), `goodsort_profile` (server profile — `getStoredUserId()` reads `.id` from this), `goodsort_user` (full local User mirror written by `saveUser()` in `lib/store.ts`)
 4. All API calls attach `Authorization: Bearer <token>` via `apiFetch()` in `lib/store-api.ts`
 5. Direct `fetch()` calls (e.g. in scanner) must manually include the auth header
+
+### Offline-first writes
+
+`store-api.ts` mutations (e.g. `addScanApi`) write to localStorage **first**, then fire-and-forget sync to the API. `apiFetch` returns `null` on any failure (network or non-2xx) and reads fall back to local data. Don't add throw-on-error to `apiFetch` without rethinking the offline story.
 
 ### Vision / scanning flow
 
@@ -144,7 +164,11 @@ src/GoodSort.Api/
 - **Auto-migrations**: The backend runs EF Core migrations on startup (with retry logic for SQL container readiness). No manual `database update` needed in prod.
 - **Postdeploy secrets**: `azd deploy` strips env vars not in the Aspire manifest. The `infra/restore-secrets.sh` postdeploy hook re-applies them from the azd environment.
 - **CORS origins**: Backend restricts to `thegoodsort.org` + the SWA staging domain. Add new origins in `Program.cs` if needed.
-- **Single-file API**: All ~60 endpoints live in `Program.cs`. When adding endpoints, follow the existing minimal API pattern there — don't create controllers.
+- **Single-file API**: All ~67 endpoints live in `Program.cs`. When adding endpoints, follow the existing minimal API pattern there — don't create controllers.
+- **No test suite or linter**: CI (`.github/workflows/ci.yml`) only runs `npm run build` and `dotnet build -c Release`. `npx tsc --noEmit` is the only frontend check. Don't claim "tests pass" — there are none.
+- **App version meta**: `app/layout.tsx` has `<meta name="app-version" content="YYYYMMDD-HHMM">`. `debug-prod` reads this to confirm a deploy actually landed; bump it when shipping user-visible changes.
+- **JSON cycle handling**: `Program.cs` sets `ReferenceHandler.IgnoreCycles` because `Run ↔ RunnerProfile` (and similar EF nav properties) would otherwise blow up serialization. Keep this in mind when adding entities with circular relationships.
+- **ACS domain re-link in postdeploy**: `infra/restore-secrets.sh` doesn't just restore env vars — it also re-links `thegoodsort.org` to the shared `tailor-prod-comm` Communication Service in `rg-tailor-app-prod`, because M365 DNS changes periodically unlink it. The subscription ID and resource group are hardcoded.
 
 ## Production URLs
 

@@ -48,6 +48,10 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
   const [resultSummary, setResultSummary] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  // Server-issued HMAC over the vision result. /confirm requires this token
+  // and reads items out of it; we can't bypass the server's view of what was
+  // identified by editing the items array on the client.
+  const [scanToken, setScanToken] = useState<string | null>(null);
 
   // Barcode mode state
   const [manualBarcode, setManualBarcode] = useState("");
@@ -153,6 +157,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
       const data = await res.json();
       setResults(data.containers || []);
       setResultSummary(data.summary || "No containers found");
+      setScanToken(data.scanToken || null);
     } catch {
       setResults([]);
       setResultSummary("Failed to connect to server");
@@ -170,13 +175,16 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     let totalItems = 0;
     let totalCents = 0;
 
-    // Confirm via the photo/confirm API (creates scan records + credits)
-    // Do NOT also call addScanApi — that would double-count
+    // Confirm via the photo/confirm API (creates scan records + credits).
+    // The server reads items from the signed scanToken — `items` in the body
+    // is sent for backwards compatibility only and is ignored server-side.
+    // Do NOT also call addScanApi — that would double-count.
     try {
       const res = await fetch(apiUrl("/api/scan/photo/confirm"), {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify({
+          scanToken,
           userId: getStoredUserId(),
           items: eligible,
         }),
@@ -246,6 +254,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     setResults(null);
     setResultSummary("");
     setCapturedImage(null);
+    setScanToken(null);
     processedRef.current = false;
     startCamera();
   }
