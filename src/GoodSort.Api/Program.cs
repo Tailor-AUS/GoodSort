@@ -95,6 +95,14 @@ builder.WebHost.ConfigureKestrel(k =>
 
 var app = builder.Build();
 
+// Upper bound on self-reported containers per pickup stop. Runner pickup counts
+// are self-reported and flow straight into cash-out-eligible ClearedCents at
+// settle time, so an unbounded value is a direct self-credit fraud vector
+// (mirrors the 100/item clamp on the photo-scan path). A single household bin
+// holds ~150 containers, so this is generously above any legitimate stop.
+// Tune via RUNNER_STOP_MAX_CONTAINERS; the default is intentionally lenient.
+var maxContainersPerStop = int.TryParse(builder.Configuration["RUNNER_STOP_MAX_CONTAINERS"], out var mc) ? mc : 2000;
+
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -604,44 +612,52 @@ app.MapGet("/api/routes/{id:guid}", async (Guid id, GoodSortDbContext db) =>
     await db.Routes.Include(r => r.Stops.OrderBy(s => s.Sequence)).Include(r => r.Depot)
         .FirstOrDefaultAsync(r => r.Id == id) is { } r ? Results.Ok(r) : Results.NotFound());
 
-app.MapPost("/api/routes/{id:guid}/claim", async (Guid id, ClaimRequest req, GoodSortDbContext db) =>
+app.MapPost("/api/routes/{id:guid}/claim", async (HttpContext ctx, Guid id, ClaimRequest req, GoodSortDbContext db) =>
 {
+    // Body DriverId is ignored — the claimer is the authenticated caller.
+    // Trusting the body would let anyone assign a route to another user.
+    var callerId = ctx.GetCallerId();
+    if (callerId is null) return Results.Unauthorized();
     var route = await db.Routes.FindAsync(id);
     if (route is null || route.Status != "pending") return Results.BadRequest("Not available");
-    route.Status = "claimed"; route.DriverId = req.DriverId; route.ClaimedAt = DateTime.UtcNow;
-    var profile = await db.Profiles.FindAsync(req.DriverId);
+    route.Status = "claimed"; route.DriverId = callerId.Value; route.ClaimedAt = DateTime.UtcNow;
+    var profile = await db.Profiles.FindAsync(callerId.Value);
     if (profile is not null) profile.Role = "both";
     await db.SaveChangesAsync();
     return Results.Ok(route);
 }).RequireAuthorization();
 
-app.MapPost("/api/routes/{id:guid}/start", async (Guid id, GoodSortDbContext db) =>
+app.MapPost("/api/routes/{id:guid}/start", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
     var route = await db.Routes.FindAsync(id);
     if (route is null || route.Status != "claimed") return Results.BadRequest();
+    if (route.DriverId != ctx.GetCallerId() && !ctx.IsAdmin()) return Results.Forbid();
     route.Status = "in_progress"; route.StartedAt = DateTime.UtcNow;
     await db.SaveChangesAsync();
     return Results.Ok(route);
 }).RequireAuthorization();
 
 app.MapPost("/api/routes/{routeId:guid}/stops/{stopId:guid}/pickup",
-    async (Guid routeId, Guid stopId, PickupRequest req, GoodSortDbContext db) =>
+    async (HttpContext ctx, Guid routeId, Guid stopId, PickupRequest req, GoodSortDbContext db) =>
 {
     var route = await db.Routes.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == routeId);
     if (route is null || route.Status != "in_progress") return Results.BadRequest();
+    if (route.DriverId != ctx.GetCallerId() && !ctx.IsAdmin()) return Results.Forbid();
     var stop = route.Stops.FirstOrDefault(s => s.Id == stopId);
     if (stop is null || stop.Status != "pending") return Results.BadRequest();
-    stop.Status = "picked_up"; stop.PickedUpAt = DateTime.UtcNow; stop.ActualContainerCount = req.ActualCount;
+    stop.Status = "picked_up"; stop.PickedUpAt = DateTime.UtcNow;
+    stop.ActualContainerCount = Math.Clamp(req.ActualCount, 0, maxContainersPerStop);
     if (route.Stops.All(s => s.Status != "pending")) route.Status = "at_depot";
     await db.SaveChangesAsync();
     return Results.Ok(route);
 }).RequireAuthorization();
 
 app.MapPost("/api/routes/{routeId:guid}/stops/{stopId:guid}/skip",
-    async (Guid routeId, Guid stopId, GoodSortDbContext db) =>
+    async (HttpContext ctx, Guid routeId, Guid stopId, GoodSortDbContext db) =>
 {
     var route = await db.Routes.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == routeId);
     if (route is null || route.Status != "in_progress") return Results.BadRequest();
+    if (route.DriverId != ctx.GetCallerId() && !ctx.IsAdmin()) return Results.Forbid();
     var stop = route.Stops.FirstOrDefault(s => s.Id == stopId);
     if (stop is null || stop.Status != "pending") return Results.BadRequest();
     stop.Status = "skipped";
@@ -650,11 +666,12 @@ app.MapPost("/api/routes/{routeId:guid}/stops/{stopId:guid}/skip",
     return Results.Ok(route);
 }).RequireAuthorization();
 
-app.MapPost("/api/routes/{id:guid}/settle", async (Guid id, GoodSortDbContext db) =>
+app.MapPost("/api/routes/{id:guid}/settle", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
     var route = await db.Routes.Include(r => r.Stops).Include(r => r.Depot)
         .FirstOrDefaultAsync(r => r.Id == id);
     if (route is null || route.Status != "at_depot") return Results.BadRequest();
+    if (route.DriverId != ctx.GetCallerId() && !ctx.IsAdmin()) return Results.Forbid();
 
     var pickedUp = route.Stops.Where(s => s.Status == "picked_up").ToList();
     var totalCollected = pickedUp.Sum(s => s.ActualContainerCount ?? s.ContainerCount);
@@ -698,10 +715,11 @@ app.MapGet("/api/depots", async (GoodSortDbContext db) =>
     Results.Ok(await db.Depots.ToListAsync()));
 
 // ── Route Optimization (OSRM trip service — open source, no API key) ──
-app.MapPost("/api/routes/{id:guid}/optimize", async (Guid id, GoodSortDbContext db, IConfiguration config, IHttpClientFactory httpFactory) =>
+app.MapPost("/api/routes/{id:guid}/optimize", async (HttpContext ctx, Guid id, GoodSortDbContext db, IConfiguration config, IHttpClientFactory httpFactory) =>
 {
     var route = await db.Routes.Include(r => r.Stops).Include(r => r.Depot).FirstOrDefaultAsync(r => r.Id == id);
     if (route is null) return Results.NotFound();
+    if (route.DriverId != ctx.GetCallerId() && !ctx.IsAdmin()) return Results.Forbid();
 
     var stops = route.Stops.OrderBy(s => s.Sequence).ToList();
     if (stops.Count < 2) return Results.Ok(new { optimized = false, reason = "Too few stops" });
@@ -973,14 +991,14 @@ app.MapGet("/api/recyclers", async (string? stream, GoodSortDbContext db) =>
 
 app.MapGet("/api/recyclers/all", async (GoodSortDbContext db) =>
     Results.Ok(await db.Recyclers.OrderBy(r => r.Name).ToListAsync()))
-    .RequireAuthorization();
+    .RequireAuthorization(AuthHelpers.AdminPolicy);
 
 app.MapPost("/api/recyclers", async (Recycler recycler, GoodSortDbContext db) =>
 {
     db.Recyclers.Add(recycler);
     await db.SaveChangesAsync();
     return Results.Created($"/api/recyclers/{recycler.Id}", recycler);
-}).RequireAuthorization();
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
 
 app.MapPatch("/api/recyclers/{id:guid}", async (Guid id, Recycler update, GoodSortDbContext db) =>
 {
@@ -995,7 +1013,7 @@ app.MapPatch("/api/recyclers/{id:guid}", async (Guid id, Recycler update, GoodSo
     if (update.Notes is not null) r.Notes = update.Notes;
     await db.SaveChangesAsync();
     return Results.Ok(r);
-}).RequireAuthorization();
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
 
 // ── Admin: List all cashout requests (admin only — BSBs + account numbers) ──
 app.MapGet("/api/admin/cashouts", async (GoodSortDbContext db) =>
@@ -1202,10 +1220,11 @@ app.MapPost("/api/marketplace/runs/{id:guid}/claim", async (HttpContext ctx, Gui
 }).RequireAuthorization();
 
 // ── Marketplace: Start a run ──
-app.MapPost("/api/marketplace/runs/{id:guid}/start", async (Guid id, GoodSortDbContext db) =>
+app.MapPost("/api/marketplace/runs/{id:guid}/start", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
     var run = await db.Runs.FindAsync(id);
     if (run is null || run.Status != "claimed") return Results.BadRequest();
+    if (!await CallerOwnsRun(ctx, run, db)) return Results.Forbid();
     run.Status = "in_progress";
     run.StartedAt = DateTime.UtcNow;
     await db.SaveChangesAsync();
@@ -1214,8 +1233,11 @@ app.MapPost("/api/marketplace/runs/{id:guid}/start", async (Guid id, GoodSortDbC
 
 // ── Marketplace: Arrive at stop ──
 app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/arrive",
-    async (Guid runId, Guid stopId, GoodSortDbContext db) =>
+    async (HttpContext ctx, Guid runId, Guid stopId, GoodSortDbContext db) =>
 {
+    var run = await db.Runs.FindAsync(runId);
+    if (run is null) return Results.NotFound();
+    if (!await CallerOwnsRun(ctx, run, db)) return Results.Forbid();
     var stop = await db.RunStops.FirstOrDefaultAsync(s => s.RunId == runId && s.Id == stopId);
     if (stop is null || stop.Status != "pending") return Results.BadRequest();
     stop.Status = "arrived";
@@ -1226,17 +1248,18 @@ app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/arrive",
 
 // ── Marketplace: Complete pickup at stop (with photo) ──
 app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/pickup",
-    async (Guid runId, Guid stopId, RunStopPickupRequest req, GoodSortDbContext db) =>
+    async (HttpContext ctx, Guid runId, Guid stopId, RunStopPickupRequest req, GoodSortDbContext db) =>
 {
     var run = await db.Runs.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == runId);
     if (run is null || run.Status != "in_progress") return Results.BadRequest();
+    if (!await CallerOwnsRun(ctx, run, db)) return Results.Forbid();
 
     var stop = run.Stops.FirstOrDefault(s => s.Id == stopId);
     if (stop is null || (stop.Status != "pending" && stop.Status != "arrived")) return Results.BadRequest();
 
     stop.Status = "picked_up";
     stop.PickedUpAt = DateTime.UtcNow;
-    stop.ActualContainers = req.ActualContainers;
+    stop.ActualContainers = Math.Clamp(req.ActualContainers, 0, maxContainersPerStop);
     if (req.PhotoUrl is not null) stop.PhotoUrl = req.PhotoUrl;
 
     await db.SaveChangesAsync();
@@ -1245,10 +1268,11 @@ app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/pickup",
 
 // ── Marketplace: Skip a stop ──
 app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/skip",
-    async (Guid runId, Guid stopId, GoodSortDbContext db) =>
+    async (HttpContext ctx, Guid runId, Guid stopId, GoodSortDbContext db) =>
 {
     var run = await db.Runs.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == runId);
     if (run is null || run.Status != "in_progress") return Results.BadRequest();
+    if (!await CallerOwnsRun(ctx, run, db)) return Results.Forbid();
 
     var stop = run.Stops.FirstOrDefault(s => s.Id == stopId);
     if (stop is null || (stop.Status != "pending" && stop.Status != "arrived")) return Results.BadRequest();
@@ -1259,10 +1283,11 @@ app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/skip",
 }).RequireAuthorization();
 
 // ── Marketplace: Mark run as delivering (heading to drop point) ──
-app.MapPost("/api/marketplace/runs/{id:guid}/deliver", async (Guid id, GoodSortDbContext db) =>
+app.MapPost("/api/marketplace/runs/{id:guid}/deliver", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
     var run = await db.Runs.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == id);
     if (run is null || run.Status != "in_progress") return Results.BadRequest();
+    if (!await CallerOwnsRun(ctx, run, db)) return Results.Forbid();
 
     // Auto-check: all stops must be picked_up or skipped
     if (run.Stops.Any(s => s.Status == "pending" || s.Status == "arrived"))
@@ -1274,10 +1299,11 @@ app.MapPost("/api/marketplace/runs/{id:guid}/deliver", async (Guid id, GoodSortD
 }).RequireAuthorization();
 
 // ── Marketplace: Complete delivery at drop point ──
-app.MapPost("/api/marketplace/runs/{id:guid}/complete", async (Guid id, GoodSortDbContext db) =>
+app.MapPost("/api/marketplace/runs/{id:guid}/complete", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
     var run = await db.Runs.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == id);
     if (run is null || run.Status != "delivering") return Results.BadRequest();
+    if (!await CallerOwnsRun(ctx, run, db)) return Results.Forbid();
 
     run.Status = "completed";
     run.CompletedAt = DateTime.UtcNow;
@@ -1288,11 +1314,12 @@ app.MapPost("/api/marketplace/runs/{id:guid}/complete", async (Guid id, GoodSort
     return Results.Ok(run);
 }).RequireAuthorization();
 
-// ── Marketplace: Settle a completed run (admin) ──
-app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (Guid id, GoodSortDbContext db, RunnerService runnerService) =>
+// ── Marketplace: Settle a completed run (run's runner or admin) ──
+app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Guid id, GoodSortDbContext db, RunnerService runnerService) =>
 {
     var run = await db.Runs.Include(r => r.Stops).Include(r => r.DropPoint).FirstOrDefaultAsync(r => r.Id == id);
     if (run is null || run.Status != "completed") return Results.BadRequest();
+    if (!await CallerOwnsRun(ctx, run, db)) return Results.Forbid();
 
     // Calculate actual payout
     run.ActualPayoutCents = run.ActualContainers * run.PerContainerCents;
@@ -1497,6 +1524,18 @@ app.MapGet("/api/admin/marketplace/runs", async (string? status, GoodSortDbConte
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
 app.Run();
+
+// Caller owns a marketplace run when their JWT profile id matches the run's
+// assigned runner (run.RunnerId is a RunnerProfile.Id, not a profile id), or
+// when they're an admin. Used to gate the run lifecycle so a runner can only
+// drive/settle their own runs — settle credits cash-out-eligible balance.
+static async Task<bool> CallerOwnsRun(HttpContext ctx, Run run, GoodSortDbContext db)
+{
+    if (ctx.IsAdmin()) return true;
+    var callerId = ctx.GetCallerId();
+    if (callerId is null || run.RunnerId is null) return false;
+    return await db.RunnerProfiles.AnyAsync(rp => rp.Id == run.RunnerId && rp.ProfileId == callerId.Value);
+}
 
 // ── Haversine helper ──
 static double HaversineKm(double lat1, double lng1, double lat2, double lng2)
