@@ -35,7 +35,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full antialiased">
       <head>
-        <meta name="app-version" content="20260530-review-fixes" />
+        <meta name="app-version" content="20260530-session-expiry" />
         <link
           href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
           rel="stylesheet"

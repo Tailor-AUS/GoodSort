@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Home, User, Building2, Recycle, Check } from "lucide-react";
-import { apiUrl, authHeaders } from "@/lib/config";
+import { apiUrl, authHeaders, hasValidToken, clearAuth } from "@/lib/config";
 import { AddressAutocomplete, geocodeAddress } from "@/app/components/shared/address-autocomplete";
 
 type Step = "name" | "type" | "address" | "bin_day" | "unit_waitlist";
@@ -40,6 +40,10 @@ export default function OnboardPage() {
   async function handleResidentialSubmit() {
     if (!address || lat == null || lng == null || collectionDay == null) { setError("Pick your address and collection day."); return; }
     if (!accessConsent) { setError("Please tick the consent box so we can access your yellow bin."); return; }
+    // A returning user can land here with an expired 30-day token (it isn't
+    // revalidated client-side), which would 401 the create below and surface as
+    // a dead-end "Failed to create household". Send them to re-verify instead.
+    if (!hasValidToken()) { clearAuth(); setError("Your session expired — please sign in again."); router.push("/login"); return; }
     setLoading(true); setError("");
 
     try {
@@ -56,6 +60,7 @@ export default function OnboardPage() {
           accessConsentAt: new Date().toISOString(),
         }),
       });
+      if (hhRes.status === 401) { clearAuth(); setError("Your session expired — please sign in again."); router.push("/login"); return; }
       if (!hhRes.ok) { setError("Failed to create household"); setLoading(false); return; }
       const hh = await hhRes.json();
       const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");

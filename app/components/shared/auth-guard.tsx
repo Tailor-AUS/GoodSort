@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { hasValidToken, clearAuth } from "@/lib/config";
 
 const PUBLIC_PATHS = ["/login", "/verify", "/onboard", "/privacy", "/terms", "/scan", "/start"];
 
@@ -19,8 +20,11 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const token = localStorage.getItem("goodsort_token");
-    if (!token) {
+    // Presence isn't enough — an expired token sails past the guard and then
+    // 401s every API call (e.g. "Failed to create household" on onboarding for
+    // returning users whose 30-day JWT lapsed). Reject expired tokens too.
+    if (!hasValidToken()) {
+      clearAuth();
       router.replace("/start");
       return;
     }
