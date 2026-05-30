@@ -43,8 +43,11 @@ public class PricingService
         // ratio > 1 (more runners than runs) = lower price, < 1 = higher price
         var supplyDemandFactor = Math.Max(0.5, Math.Min(2.0, 2.0 - ratio));
 
-        // Factor 4: Time of day
-        var hour = DateTime.Now.Hour;
+        // Factor 4: Time of day — windows below are local (Brisbane) hours, so we
+        // must convert from UTC. The container clock is UTC, so DateTime.Now.Hour
+        // was 10h off, firing the "morning surge" at ~4pm AEST. QLD observes no
+        // DST, so a fixed +10 offset is correct year-round.
+        var hour = DateTime.UtcNow.AddHours(10).Hour;
         var timeFactor = hour switch
         {
             >= 6 and < 10 => config.MorningSurge,
