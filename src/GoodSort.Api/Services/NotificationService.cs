@@ -26,15 +26,9 @@ public class NotificationService
         if (client is null) return;
         var sender = _config["ACS_EMAIL_SENDER"] ?? "DoNotReply@thegoodsort.org";
 
-        // Show each member their share of the newly-cleared earnings (based on scans they contributed)
+        // Show each member their cleared (cash-out-eligible) balance.
         foreach (var member in hh.Members.Where(m => !string.IsNullOrWhiteSpace(m.Email)))
         {
-            var recentCleared = await _db.Scans
-                .Where(s => s.UserId == member.Id && s.HouseholdId == hh.Id && s.Status == "cleared")
-                .OrderByDescending(s => s.CreatedAt)
-                .Take(200)
-                .ToListAsync();
-            var memberCleared = recentCleared.Sum(s => s.RefundCents);
             var body = $@"
               <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
                 <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Bin collected ✨</h1>

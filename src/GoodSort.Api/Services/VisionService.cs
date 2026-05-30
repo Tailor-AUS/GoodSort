@@ -223,8 +223,11 @@ No containers (blurry):
             var client = new AzureOpenAIClient(new Uri(endpoint), new ApiKeyCredential(apiKey));
             var chatClient = client.GetChatClient(deploymentName);
 
+            // Defensively strip any data-URI prefix (the Tailor path does this too)
+            // so Convert.FromBase64String doesn't choke on a "data:image/jpeg;..." head.
+            var rawBase64 = base64Image.Contains(',') ? base64Image.Split(',')[1] : base64Image;
             var imageContent = ChatMessageContentPart.CreateImagePart(
-                BinaryData.FromBytes(Convert.FromBase64String(base64Image)),
+                BinaryData.FromBytes(Convert.FromBase64String(rawBase64)),
                 "image/jpeg"
             );
             var promptPart = ChatMessageContentPart.CreateTextPart(ContainerPrompt);

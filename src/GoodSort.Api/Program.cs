@@ -540,6 +540,10 @@ app.MapPost("/api/profiles", async (HttpContext ctx, Profile profile, GoodSortDb
     // Force IsAdmin=false; admin flag is set out-of-band only.
     profile.Id = ctx.GetCallerId() ?? profile.Id;
     profile.IsAdmin = false;
+    // Idempotent: the authenticated caller almost always already has a profile
+    // (minted at verify-otp), so a naive Add would throw a primary-key conflict.
+    var existing = await db.Profiles.FindAsync(profile.Id);
+    if (existing is not null) return Results.Ok(existing);
     db.Profiles.Add(profile);
     await db.SaveChangesAsync();
     return Results.Created($"/api/profiles/{profile.Id}", profile);

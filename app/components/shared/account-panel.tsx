@@ -229,7 +229,7 @@ function CashoutSection({ clearedCents }: { clearedCents: number }) {
     const cleanBsb = bsb.replace(/\D/g, "");
     const cleanAccount = accountNumber.replace(/\D/g, "");
     if (cleanBsb.length !== 6) { setError("BSB must be 6 digits"); return; }
-    if (cleanAccount.length < 6 || cleanAccount.length > 10) { setError("Account number must be 6-10 digits"); return; }
+    if (cleanAccount.length < 6 || cleanAccount.length > 9) { setError("Account number must be 6-9 digits"); return; }
     if (accountName.trim().length < 2) { setError("Please enter the account holder name"); return; }
     setLoading(true);
     setError("");

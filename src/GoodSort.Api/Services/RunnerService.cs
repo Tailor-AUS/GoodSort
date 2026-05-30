@@ -118,11 +118,10 @@ public class RunnerService
             }
         }
 
-        // Update rolling average rating
-        var latestRating = await _db.RunnerRatings
-            .Where(rr => rr.RunnerId == runner.Id)
-            .OrderByDescending(rr => rr.CreatedAt)
-            .FirstOrDefaultAsync();
+        // Update rolling average rating using the rating just generated for THIS
+        // run. GenerateRating added it to the context but hasn't saved it yet, so
+        // a DB query would miss it and lag the average a full run behind.
+        var latestRating = _db.RunnerRatings.Local.FirstOrDefault(rr => rr.RunId == run.Id);
 
         if (latestRating != null)
         {
