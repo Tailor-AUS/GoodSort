@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Camera, MapPin, RotateCcw, Check, Mail, ShieldCheck, ImagePlus, X, Home } from "lucide-react";
-import { apiUrl } from "@/lib/config";
+import { apiUrl, authHeaders } from "@/lib/config";
 
 interface BinInfo {
   id: string; code: string; name: string; address: string; hostedBy: string | null;
@@ -40,6 +40,9 @@ function ScanPageContent() {
   const [aiMessage, setAiMessage] = useState("");
   const [totalItems, setTotalItems] = useState(0);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  // Signed token committing to the vision result — /confirm reads the items
+  // out of this server-side, so the client can't fabricate eligible counts.
+  const [scanToken, setScanToken] = useState<string | null>(null);
 
   // ── Init ──
   useEffect(() => {
@@ -174,13 +177,14 @@ function ScanPageContent() {
     try {
       const res = await fetch(apiUrl("/api/scan/photo"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(),
         body: JSON.stringify({ image: base64, binCode }),
       });
       if (!res.ok) throw new Error("API error");
       const data = await res.json();
       setResults(data.containers || []);
       setAiMessage(data.message || "");
+      setScanToken(data.scanToken || null);
     } catch {
       setResults([]);
       setApiError(true);
@@ -197,8 +201,8 @@ function ScanPageContent() {
     const userId = (() => { try { return JSON.parse(localStorage.getItem("goodsort_profile") || "{}").id || ""; } catch { return ""; } })();
     try {
       await fetch(apiUrl("/api/scan/photo/confirm"), {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, items: eligible, binCode }),
+        method: "POST", headers: authHeaders(),
+        body: JSON.stringify({ scanToken, userId, items: eligible, binCode }),
       });
     } catch { /* best effort */ }
     setStep("done");

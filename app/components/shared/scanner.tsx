@@ -3,20 +3,12 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { X, Camera, ScanBarcode, Plus, Minus, Check, RotateCcw } from "lucide-react";
 import { lookupContainer, lookupContainerAsync } from "@/lib/containers";
-import { apiUrl } from "@/lib/config";
+import { apiUrl, authHeaders } from "@/lib/config";
 import { mapToMaterialType, type BagInfo } from "@/lib/store";
 import { addScanApi } from "@/lib/store-api";
 
 function getStoredUserId(): string {
   try { return JSON.parse(localStorage.getItem("goodsort_profile") || "{}").id || ""; } catch { return ""; }
-}
-
-function getAuthHeaders(): Record<string, string> {
-  const token = localStorage.getItem("goodsort_token");
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
 }
 
 interface ScannerProps {
@@ -143,7 +135,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     try {
       const res = await fetch(apiUrl("/api/scan/photo"), {
         method: "POST",
-        headers: getAuthHeaders(),
+        headers: authHeaders(),
         body: JSON.stringify({ image: base64 }),
       });
 
@@ -182,7 +174,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     try {
       const res = await fetch(apiUrl("/api/scan/photo/confirm"), {
         method: "POST",
-        headers: getAuthHeaders(),
+        headers: authHeaders(),
         body: JSON.stringify({
           scanToken,
           userId: getStoredUserId(),

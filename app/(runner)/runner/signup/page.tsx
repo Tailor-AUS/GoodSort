@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Car } from "lucide-react";
-import { apiUrl } from "@/lib/config";
+import { apiUrl, authHeaders } from "@/lib/config";
 
 export default function RunnerSignupPage() {
   const router = useRouter();
@@ -25,7 +25,7 @@ export default function RunnerSignupPage() {
     try {
       const res = await fetch(apiUrl("/api/runner/register"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(),
         body: JSON.stringify({
           profileId: profile.id,
           vehicleType,

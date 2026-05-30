@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { X, Package, Leaf, Truck, Wallet, LogOut, DollarSign, CheckCircle, Share2, Users, Gift, Trash2, Car } from "lucide-react";
-import { apiUrl } from "@/lib/config";
+import { apiUrl, authHeaders } from "@/lib/config";
 import { formatCents, type User } from "@/lib/store";
 
 interface AccountPanelProps {
@@ -238,7 +238,7 @@ function CashoutSection({ clearedCents }: { clearedCents: number }) {
       const userId = (() => { try { return JSON.parse(localStorage.getItem("goodsort_profile") || "{}").id; } catch { return ""; } })();
       const res = await fetch(apiUrl("/api/cashout"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(),
         body: JSON.stringify({
           userId,
           amountCents: clearedCents,

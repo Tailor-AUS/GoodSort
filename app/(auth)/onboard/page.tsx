@@ -3,20 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Home, User, Building2, Recycle, Check } from "lucide-react";
-import { apiUrl } from "@/lib/config";
+import { apiUrl, authHeaders } from "@/lib/config";
 import { AddressAutocomplete, geocodeAddress } from "@/app/components/shared/address-autocomplete";
 
 type Step = "name" | "type" | "address" | "bin_day" | "unit_waitlist";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-function authHeaders(): Record<string, string> {
-  const token = typeof window !== "undefined" ? localStorage.getItem("goodsort_token") : null;
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
 
 export default function OnboardPage() {
   const [step, setStep] = useState<Step>("name");

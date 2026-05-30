@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Home, Package, Users, Weight, Truck, Recycle } from "lucide-react";
-import { apiUrl } from "@/lib/config";
+import { apiUrl, authHeaders } from "@/lib/config";
 import { formatCents } from "@/lib/store";
 
 interface HouseholdDetail {
@@ -145,7 +145,7 @@ function BinOutToggle({ hh, onChange }: { hh: HouseholdDetail; onChange: (v: boo
     const next = !hh.binIsOut;
     try {
       await fetch(apiUrl(`/api/households/${hh.id}/bin-out`), {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: authHeaders(),
         body: JSON.stringify({ out: next }),
       });
       onChange(next);

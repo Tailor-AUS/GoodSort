@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus } from "lucide-react";
-import { apiUrl } from "@/lib/config";
+import { apiUrl, authHeaders } from "@/lib/config";
 import { AddressAutocomplete } from "@/app/components/shared/address-autocomplete";
 
 interface Bin {
@@ -39,7 +39,7 @@ export default function AdminBinsPage() {
     setLoading(true);
     try {
       const res = await fetch(apiUrl("/api/bins"), {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: authHeaders(),
         body: JSON.stringify({ code: code || null, name, address, lat, lng }),
       });
       if (!res.ok) { setErr("Failed to create bin"); setLoading(false); return; }
