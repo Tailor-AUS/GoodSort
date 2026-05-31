@@ -291,6 +291,14 @@ app.MapPost("/api/scan/photo", async (HttpContext ctx, PhotoScanRequest req, Vis
     var totalItems = result.Containers.Sum(c => c.Count);
     var totalCents = result.Containers.Where(c => c.Eligible).Sum(c => c.Count * 5);
 
+    // If this scan is at a known GoodSort bin, resolve it now so the token can
+    // commit to the bin + its location. /confirm then enforces a geofence (the
+    // member must physically be at the bin), which defeats remote credit-farming
+    // for the unattended-deposit flow. Unknown/missing bin code → not bin-bound.
+    Bin? depositBin = string.IsNullOrEmpty(req.BinCode)
+        ? null
+        : await db.Bins.FirstOrDefaultAsync(b => b.Code == req.BinCode);
+
     // Issue a 10-minute signed commitment to the vision result. /confirm reads
     // items from this — the client's POST body items list is ignored.
     var scanToken = tokens.Issue(new ScanTokenPayload
@@ -300,6 +308,9 @@ app.MapPost("/api/scan/photo", async (HttpContext ctx, PhotoScanRequest req, Vis
         {
             Name = c.Name, Material = c.Material, Count = c.Count, Eligible = c.Eligible,
         }).ToList(),
+        BinCode = depositBin?.Code,
+        BinLat = depositBin?.Lat,
+        BinLng = depositBin?.Lng,
     }, TimeSpan.FromMinutes(10));
 
     return Results.Ok(new
@@ -321,7 +332,7 @@ app.MapPost("/api/scan/photo", async (HttpContext ctx, PhotoScanRequest req, Vis
 // unlimited credit. The token also pins userId, so cross-user spoofing is
 // blocked even if /confirm is hit with the wrong token.
 app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmRequest req,
-    GoodSortDbContext db, ScanTokenService tokens) =>
+    GoodSortDbContext db, ScanTokenService tokens, IConfiguration cfg) =>
 {
     var userId = ctx.GetCallerId();
     if (userId is null) return Results.Unauthorized();
@@ -335,6 +346,27 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
     var household = profile.HouseholdId.HasValue
         ? await db.Households.FindAsync(profile.HouseholdId.Value)
         : null;
+
+    // ── Unattended-deposit geofence (anti-fraud) ──
+    // When the token is bound to a physical bin, the member must actually be at
+    // that bin to claim credit — otherwise anyone could farm 5¢ deposits from
+    // their couch. Distance is computed from the bin location committed in the
+    // signed token (not client-supplied) to the device location at confirm.
+    // Tunable radius; absent device location is treated as out-of-fence when a
+    // bin is bound. Non-bin scans (household/runner) skip this entirely.
+    var geofenceRadiusM = double.TryParse(cfg["DEPOSIT_GEOFENCE_RADIUS_M"], out var gr) ? gr : 150.0;
+    var binBound = payload.BinLat.HasValue && payload.BinLng.HasValue;
+    double? depositDistanceM = null;
+    var geofenceVerified = false;
+    if (binBound)
+    {
+        if (req.Lat is null || req.Lng is null)
+            return Results.BadRequest(new { error = "Location required to deposit at this bin. Enable location and try again." });
+        depositDistanceM = HaversineKm(payload.BinLat!.Value, payload.BinLng!.Value, req.Lat.Value, req.Lng.Value) * 1000.0;
+        geofenceVerified = depositDistanceM <= geofenceRadiusM;
+        if (!geofenceVerified)
+            return Results.BadRequest(new { error = $"You appear to be {depositDistanceM:F0}m from the bin. Move closer to deposit." });
+    }
 
     var totalCents = 0;
     var totalContainers = 0;
@@ -351,11 +383,16 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
             {
                 UserId = profile.Id,
                 HouseholdId = household?.Id,
+                BinCode = payload.BinCode,
                 Barcode = "PHOTO",
                 ContainerName = item.Name,
                 Material = item.Material,
                 RefundCents = 5,
                 Status = "pending",
+                DepositLat = req.Lat,
+                DepositLng = req.Lng,
+                DepositDistanceM = depositDistanceM,
+                GeofenceVerified = geofenceVerified,
             });
             totalContainers++;
             totalCents += 5;
@@ -1558,7 +1595,7 @@ record ProfileUpdateRequest(string? Name, Guid? HouseholdId);
 // Kept on the record for frontend backwards compatibility — safe to remove once frontend stops sending them.
 record CashoutRequestDto(Guid UserId, int AmountCents, string Bsb, string AccountNumber, string AccountName);
 record PhotoScanRequest(string Image, string? BinCode = null);
-record PhotoConfirmRequest(string ScanToken, Guid? UserId = null, List<PhotoConfirmItem>? Items = null, string? BinCode = null);
+record PhotoConfirmRequest(string ScanToken, Guid? UserId = null, List<PhotoConfirmItem>? Items = null, string? BinCode = null, double? Lat = null, double? Lng = null);
 record PhotoConfirmItem(string Name, string Material, int Count, bool Eligible);
 record SendOtpRequest(string Email);
 record VerifyOtpRequest(string Email, string Code, Guid? ReferrerId = null);

@@ -15,5 +15,20 @@ public class Scan
     public int RefundCents { get; set; } = 5; // Sorting credit, not CDS refund
     public string Status { get; set; } = "pending"; // pending, in_route, settled
     public Guid? RouteId { get; set; }
+
+    // ── Unattended-deposit verification context (anti-fraud) ──
+    // Where the deposit was physically made, captured at /confirm. Lets us prove
+    // the member was at the bin (geofence) rather than farming credit remotely,
+    // and gives reconciliation a location trail. Null for the household/runner
+    // photo-scan path that isn't a bin deposit.
+    public double? DepositLat { get; set; }
+    public double? DepositLng { get; set; }
+    public double? DepositDistanceM { get; set; } // metres from the bin at confirm time
+    public bool GeofenceVerified { get; set; }     // deposit was within the bin geofence
+    // Future-proofing for serialised 2D codes (DDRS). When AU containers carry a
+    // per-unit code, this holds it — the gold-standard single-use proof. Until
+    // then it stays null and we rely on the event-verification layers.
+    public string? SerialId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

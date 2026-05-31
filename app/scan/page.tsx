@@ -133,6 +133,20 @@ function ScanPageContent() {
     return () => { if (step === "camera") stopCamera(); };
   }, [step, startCamera, stopCamera]);
 
+  // Best-effort device location for the deposit geofence. Resolves null if the
+  // user denies permission or the browser can't fix a position in time — the
+  // server decides whether that's acceptable (it isn't, for a bin-bound scan).
+  function getDeviceLocation(): Promise<{ lat: number; lng: number } | null> {
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) { resolve(null); return; }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+      );
+    });
+  }
+
   // ── Capture from camera ──
   async function capture() {
     if (!videoRef.current || !canvasRef.current) return;
@@ -199,12 +213,24 @@ function ScanPageContent() {
     setTotalItems(total);
 
     const userId = (() => { try { return JSON.parse(localStorage.getItem("goodsort_profile") || "{}").id || ""; } catch { return ""; } })();
+    // Capture device location so the server can geofence the deposit against the
+    // bin (anti-fraud for unattended bins). If the scan is bound to a bin, the
+    // server requires this; for non-bin scans it's ignored.
+    const loc = await getDeviceLocation();
     try {
-      await fetch(apiUrl("/api/scan/photo/confirm"), {
+      const res = await fetch(apiUrl("/api/scan/photo/confirm"), {
         method: "POST", headers: authHeaders(),
-        body: JSON.stringify({ scanToken, userId, items: eligible, binCode }),
+        body: JSON.stringify({ scanToken, userId, items: eligible, binCode, lat: loc?.lat, lng: loc?.lng }),
       });
-    } catch { /* best effort */ }
+      if (!res.ok) {
+        // Surface geofence / verification failures instead of silently "done".
+        const data = await res.json().catch(() => ({}));
+        setApiError(true);
+        setAiMessage(data.error || "Couldn't confirm this deposit. Please try again at the bin.");
+        setStep("results");
+        return;
+      }
+    } catch { /* best effort — offline */ }
     setStep("done");
   }
 

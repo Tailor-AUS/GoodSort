@@ -114,6 +114,15 @@ public class ScanTokenPayload
     public Guid Uid { get; set; }
     public List<ScanTokenItem> Items { get; set; } = [];
     public long Exp { get; set; }
+
+    // Deposit binding (unattended-bin anti-fraud). When a scan happens at a
+    // specific GoodSort bin, the token commits to that bin code and the bin's
+    // known location, so /confirm can require the deposit to be physically at
+    // the bin (geofence) and the token can't be replayed against a different
+    // bin. Null for the household/runner photo-scan path that isn't bin-bound.
+    public string? BinCode { get; set; }
+    public double? BinLat { get; set; }
+    public double? BinLng { get; set; }
 }
 
 public class ScanTokenItem
