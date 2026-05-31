@@ -25,6 +25,11 @@ public class Scan
     public double? DepositLng { get; set; }
     public double? DepositDistanceM { get; set; } // metres from the bin at confirm time
     public bool GeofenceVerified { get; set; }     // deposit was within the bin geofence
+    // Perceptual (dHash) fingerprint of the deposit photo, as 16-char hex. Used
+    // to reject replayed/duplicate photos: a confirm whose hash is within a small
+    // Hamming distance of a recent accepted deposit (same bin or same user) is
+    // refused. Null for the household/runner scan path.
+    public string? PhotoHash { get; set; }
     // Future-proofing for serialised 2D codes (DDRS). When AU containers carry a
     // per-unit code, this holds it — the gold-standard single-use proof. Until
     // then it stays null and we rely on the event-verification layers.

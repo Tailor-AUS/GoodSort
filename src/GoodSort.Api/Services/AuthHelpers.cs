@@ -123,6 +123,11 @@ public class ScanTokenPayload
     public string? BinCode { get; set; }
     public double? BinLat { get; set; }
     public double? BinLng { get; set; }
+
+    // Perceptual (dHash) hex of the scanned photo, committed server-side so the
+    // client can't swap the image between /photo and /confirm. /confirm uses it
+    // to reject replays of a recently-accepted deposit photo.
+    public string? PhotoHash { get; set; }
 }
 
 public class ScanTokenItem

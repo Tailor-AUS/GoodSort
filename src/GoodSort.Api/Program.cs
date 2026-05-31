@@ -299,6 +299,12 @@ app.MapPost("/api/scan/photo", async (HttpContext ctx, PhotoScanRequest req, Vis
         ? null
         : await db.Bins.FirstOrDefaultAsync(b => b.Code == req.BinCode);
 
+    // Perceptual hash of the photo, committed in the token so /confirm can reject
+    // a replay of a recently-accepted deposit photo (the simplest farm: snap one
+    // can, resubmit forever). Computed here where the raw image already is — the
+    // image isn't carried to /confirm. Fail-open to null if it can't be decoded.
+    var photoHash = PerceptualHash.TryCompute(base64);
+
     // Issue a 10-minute signed commitment to the vision result. /confirm reads
     // items from this — the client's POST body items list is ignored.
     var scanToken = tokens.Issue(new ScanTokenPayload
@@ -311,6 +317,7 @@ app.MapPost("/api/scan/photo", async (HttpContext ctx, PhotoScanRequest req, Vis
         BinCode = depositBin?.Code,
         BinLat = depositBin?.Lat,
         BinLng = depositBin?.Lng,
+        PhotoHash = photoHash.HasValue ? PerceptualHash.ToHex(photoHash.Value) : null,
     }, TimeSpan.FromMinutes(10));
 
     return Results.Ok(new
@@ -368,6 +375,41 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
             return Results.BadRequest(new { error = $"You appear to be {depositDistanceM:F0}m from the bin. Move closer to deposit." });
     }
 
+    // ── Photo-replay defence (anti-fraud) ──
+    // The simplest farm is "snap one can, resubmit the same photo forever". A
+    // perceptual hash (committed in the token) lets us catch it: if this photo is
+    // within a small Hamming distance of a deposit photo we recently accepted —
+    // from the same bin OR the same user — it's a replay, so refuse credit. The
+    // threshold is small (visually-identical only); honest re-photographs of a
+    // new haul differ by far more. Skipped when the photo couldn't be hashed.
+    if (PerceptualHash.TryFromHex(payload.PhotoHash, out var thisHash))
+    {
+        var replayThreshold = int.TryParse(cfg["DEPOSIT_REPLAY_HAMMING_MAX"], out var rt) ? rt : 6;
+        var replayWindow = DateTime.UtcNow.AddHours(
+            double.TryParse(cfg["DEPOSIT_REPLAY_WINDOW_HOURS"], out var rw) ? -rw : -24);
+
+        // Only compare against deposits that could plausibly be the same farm:
+        // same physical bin, or same depositor. Bounded scan keeps it cheap.
+        var recentHashes = await db.Scans
+            .Where(s => s.PhotoHash != null && s.CreatedAt >= replayWindow
+                        && (s.UserId == userId.Value
+                            || (payload.BinCode != null && s.BinCode == payload.BinCode)))
+            .OrderByDescending(s => s.CreatedAt)
+            .Select(s => s.PhotoHash!)
+            .Take(500)
+            .ToListAsync();
+
+        foreach (var hex in recentHashes)
+        {
+            if (PerceptualHash.TryFromHex(hex, out var prior)
+                && PerceptualHash.HammingDistance(thisHash, prior) <= replayThreshold)
+            {
+                return Results.BadRequest(new { error = "That looks like a photo you've already deposited. Take a fresh photo of the containers in the bin." });
+            }
+        }
+    }
+
+    var photoHashHex = PerceptualHash.TryFromHex(payload.PhotoHash, out _) ? payload.PhotoHash : null;
     var totalCents = 0;
     var totalContainers = 0;
 
@@ -393,6 +435,7 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
                 DepositLng = req.Lng,
                 DepositDistanceM = depositDistanceM,
                 GeofenceVerified = geofenceVerified,
+                PhotoHash = photoHashHex,
             });
             totalContainers++;
             totalCents += 5;

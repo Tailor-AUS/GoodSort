@@ -51,15 +51,20 @@ does.
 
 Ranked by value-per-effort. (1)–(3) need no hardware and no producer buy-in.
 
-### 1. Photo-replay defence: perceptual image hash  *(cheap, ship first)*
-Compute a perceptual hash (pHash/dHash) of every deposit photo server-side. Reject
-a confirm whose hash is within a small Hamming distance of any recent accepted
-photo (per bin, and globally per user). Kills threat #2 outright and raises the
-cost of #1 (you must re-photograph from a new angle each time).
-- Storage: a `PhotoHash` column on `Scan` (or a small `DepositPhoto` table) +
-  an index for nearest-neighbour lookup over a rolling window.
+### 1. Photo-replay defence: perceptual image hash  *(cheap, ship first)*  ✅ IMPLEMENTED
+Compute a perceptual hash (dHash) of every deposit photo server-side. Reject a
+confirm whose hash is within a small Hamming distance of any recent accepted
+photo (per bin, and per user). Kills threat #2 outright and raises the cost of #1
+(you must re-photograph from a new angle each time).
+- **Implemented in** `Services/PerceptualHash.cs` (dHash via ImageSharp 2.1.x,
+  Apache-2.0). Hash committed in the signed scan token at `/api/scan/photo`,
+  enforced at `/api/scan/photo/confirm` against recent `Scan.PhotoHash` rows
+  (same bin OR same user, within `DEPOSIT_REPLAY_WINDOW_HOURS`, default 24h).
+  Threshold `DEPOSIT_REPLAY_HAMMING_MAX` (default 6).
+- Verified: identical / recompressed(q40) / resized photos → distance 0
+  (rejected); a different scene → distance ~54 (allowed).
 - Note: a *cryptographic* hash is useless here (one-pixel change defeats it) —
-  must be perceptual.
+  must be perceptual. Confirmed: re-saving the JPEG does NOT defeat dHash.
 
 ### 2. Bin-bound deposit token + geofence  *(strong, no hardware)*
 Today `/scan?bin=GS-XXXX` already pins a bin code. Harden it:
