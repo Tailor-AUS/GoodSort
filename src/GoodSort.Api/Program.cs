@@ -354,6 +354,15 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
         ? await db.Households.FindAsync(profile.HouseholdId.Value)
         : null;
 
+    // Resolve the physical bin this deposit went into, if bin-bound. For a
+    // standalone placed divider bin (no household), the bin's own pending counts
+    // are what RunGenerationService keys off to dispatch a runner — so a deposit
+    // MUST increment them, or the bin stays invisible at 0 and never gets a
+    // pickup. (The household path below covers member-yellow-bin deposits.)
+    Bin? depositBin = string.IsNullOrEmpty(payload.BinCode)
+        ? null
+        : await db.Bins.FirstOrDefaultAsync(b => b.Code == payload.BinCode);
+
     // ── Unattended-deposit geofence (anti-fraud) ──
     // When the token is bound to a physical bin, the member must actually be at
     // that bin to claim credit — otherwise anyone could farm 5¢ deposits from
@@ -425,6 +434,7 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
             {
                 UserId = profile.Id,
                 HouseholdId = household?.Id,
+                BinId = depositBin?.Id,
                 BinCode = payload.BinCode,
                 Barcode = "PHOTO",
                 ContainerName = item.Name,
@@ -446,7 +456,13 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
     profile.TotalContainers += totalContainers;
     profile.TotalCo2SavedKg += totalContainers * 0.035;
 
-    if (household is not null)
+    // A deposit lives in exactly ONE physical place. If it went into a standalone
+    // placed bin, attribute it to that bin (below) — NOT the depositor's own
+    // household, or we'd double-count pending and conjure a phantom household
+    // pickup for containers that aren't in their yellow bin.
+    var depositedToStandaloneBin = depositBin is not null && depositBin.HouseholdId is null;
+
+    if (household is not null && !depositedToStandaloneBin)
     {
         household.PendingContainers += totalContainers;
         household.PendingValueCents += totalCents;
@@ -466,6 +482,34 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
                     "pet" => household.Materials.Pet++,
                     "glass" => household.Materials.Glass++,
                     _ => household.Materials.Other++,
+                };
+            }
+        }
+    }
+
+    // Standalone placed divider bin: increment the bin's own pending counts and
+    // per-material (divider) breakdown so RunGenerationService picks it up for a
+    // runner. Tamper handling is passive by design: if the bin is stolen, these
+    // stay pending and simply never clear (no void/reversal).
+    if (depositedToStandaloneBin)
+    {
+        depositBin!.PendingContainers += totalContainers;
+        depositBin.PendingValueCents += totalCents;
+        depositBin.EstimatedWeightKg = depositBin.PendingContainers * 0.020;
+        depositBin.LastScanAt = DateTime.UtcNow;
+
+        depositBin.Materials ??= new MaterialBreakdown();
+        foreach (var item in payload.Items.Where(i => i.Eligible))
+        {
+            var safeCount = Math.Clamp(item.Count, 0, 100);
+            for (var i = 0; i < safeCount; i++)
+            {
+                _ = item.Material switch
+                {
+                    "aluminium" => depositBin.Materials.Aluminium++,
+                    "pet" => depositBin.Materials.Pet++,
+                    "glass" => depositBin.Materials.Glass++,
+                    _ => depositBin.Materials.Other++,
                 };
             }
         }
@@ -1466,6 +1510,27 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
             hh.LastPickupAt = DateTime.UtcNow;
             if (hh.PendingContainers == 0) hh.Materials = new MaterialBreakdown();
             creditedHouseholds.Add(hh);
+        }
+        else
+        {
+            // Standalone placed divider bin (no household): clear pending scans by
+            // bin. Without this, depositors at a public bin would be credited at
+            // deposit time but never move pending->cleared on collection — the
+            // runner gets paid and their 5c stays stuck pending forever.
+            var pendingScans = await db.Scans
+                .Where(s => s.BinId == bin.Id && s.Status == "pending")
+                .ToListAsync();
+
+            foreach (var scan in pendingScans)
+            {
+                scan.Status = "cleared";
+                var user = await db.Profiles.FindAsync(scan.UserId);
+                if (user is not null)
+                {
+                    user.PendingCents = Math.Max(0, user.PendingCents - scan.RefundCents);
+                    user.ClearedCents += scan.RefundCents;
+                }
+            }
         }
     }
 
