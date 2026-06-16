@@ -10,6 +10,12 @@ public class Profile
     public Household? Household { get; set; }
     public string Role { get; set; } = "sorter"; // sorter, driver, both
     public bool IsAdmin { get; set; } = false; // gated separately — admin endpoints check this, NOT Role
+
+    // Revocation handle. Issued JWTs carry this as the "ss" claim; the auth layer
+    // rejects a token whose "ss" no longer matches. Rotating it (sign-out-everywhere)
+    // force-logs-out all of a profile's existing tokens. Tokens minted before this
+    // column existed carry no "ss" claim and are grandfathered until they expire.
+    public string SecurityStamp { get; set; } = Guid.NewGuid().ToString("N");
     public int PendingCents { get; set; }
     public int ClearedCents { get; set; }
     public int TotalContainers { get; set; }

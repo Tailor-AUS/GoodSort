@@ -158,6 +158,7 @@ public class AuthService
             new("email", profile.Email ?? profile.Phone ?? ""),
             new("name", profile.Name),
             new("role", profile.Role),
+            new("ss", profile.SecurityStamp), // revocation handle — see OnTokenValidated
         };
         // Admin is its own claim — admin endpoints check this, not the user-facing Role.
         if (profile.IsAdmin) claims.Add(new Claim("role", "admin"));
@@ -166,7 +167,7 @@ public class AuthService
             issuer: "goodsort-api",
             audience: "goodsort-app",
             claims: claims,
-            expires: DateTime.UtcNow.AddDays(30),
+            expires: DateTime.UtcNow.AddDays(14), // shorter TTL limits exposure of a leaked token
             signingCredentials: credentials
         );
 

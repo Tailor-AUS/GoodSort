@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text;
 using GoodSort.Api.Data;
 using GoodSort.Api.Data.Entities;
@@ -71,6 +72,32 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidIssuer = "goodsort-api",
             ValidAudience = "goodsort-app",
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+        };
+        // Revocation: a token carries the profile's security stamp ("ss"). If the
+        // stored stamp has since changed (sign-out-everywhere), reject the token.
+        // Tokens with no "ss" claim (minted before this existed) are grandfathered.
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async ctx =>
+            {
+                var ss = ctx.Principal?.FindFirst("ss")?.Value;
+                if (string.IsNullOrEmpty(ss)) return; // grandfather pre-revocation tokens
+                var sub = ctx.Principal?.FindFirst("sub")?.Value
+                          ?? ctx.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (!Guid.TryParse(sub, out var uid)) return;
+                try
+                {
+                    var db = ctx.HttpContext.RequestServices.GetRequiredService<GoodSortDbContext>();
+                    var current = await db.Profiles.Where(p => p.Id == uid)
+                        .Select(p => p.SecurityStamp).FirstOrDefaultAsync();
+                    // Reject only on a definitive mismatch. A missing profile or a
+                    // transient DB error fails open — availability over best-effort
+                    // revocation (the rest of the request needs the DB anyway).
+                    if (current is not null && current != ss)
+                        ctx.Fail("Token revoked");
+                }
+                catch { /* fail open on transient DB error */ }
+            },
         };
     });
 builder.Services.AddAuthorization(options =>
@@ -212,6 +239,20 @@ app.MapPost("/api/auth/verify-otp", async (VerifyOtpRequest req, AuthService aut
     if (token == null) return Results.Unauthorized();
     return Results.Ok(new { token, profile });
 });
+
+// Force-logout every existing session for the caller by rotating the security
+// stamp — all previously-issued tokens (carrying the old stamp) stop validating.
+// Returns a fresh token so the current device stays signed in.
+app.MapPost("/api/auth/sign-out-everywhere", async (HttpContext ctx, GoodSortDbContext db, AuthService auth) =>
+{
+    var uid = ctx.GetCallerId();
+    if (uid is null) return Results.Unauthorized();
+    var profile = await db.Profiles.FindAsync(uid.Value);
+    if (profile is null) return Results.NotFound();
+    profile.SecurityStamp = Guid.NewGuid().ToString("N");
+    await db.SaveChangesAsync();
+    return Results.Ok(new { signedOut = true, token = auth.GenerateJwt(profile) });
+}).RequireAuthorization();
 
 // ── Bins (QR-coded drop points) ──
 app.MapGet("/api/bins", async (GoodSortDbContext db) =>
