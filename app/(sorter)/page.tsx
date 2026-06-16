@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { type User, type SortBin, type Depot, type BagInfo } from "@/lib/store";
 import { getUserApi, getDepotsApi, getBinsApi } from "@/lib/store-api";
-import { apiUrl } from "@/lib/config";
+import { apiUrl, authHeaders } from "@/lib/config";
 import { getDepots } from "@/lib/store";
 import { MapView } from "@/app/components/shared/map-view";
 import { SorterSheet } from "./components/sorter-sheet";
@@ -45,7 +45,7 @@ export default function SorterApp() {
       }
       if (profile.householdId) {
         try {
-          const hh = await fetch(apiUrl(`/api/households/${profile.householdId}`)).then(r => r.ok ? r.json() : null);
+          const hh = await fetch(apiUrl(`/api/households/${profile.householdId}`), { headers: authHeaders() }).then(r => r.ok ? r.json() : null);
           if (hh && hh.type === "residential" && hh.councilCollectionDay == null) {
             router.push("/onboard");
             return;

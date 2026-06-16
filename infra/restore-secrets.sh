@@ -50,6 +50,21 @@ az containerapp update -n "$APP" -g "$RG" \
 
 echo "Env vars restored."
 
+# Optional: ABA bank-settlement details. Only needed to generate cash-out payout
+# files; the API fails loud at file-generation time if they're unset, so they're
+# not required for the app to run. Set the ones you have with e.g.:
+#   azd env set ABA_USER_ID "..."   ABA_TRACE_BSB "032-000"   ABA_TRACE_ACCOUNT "..."
+# See infra/aba-settlement.md.
+ABA_ARGS=()
+for k in ABA_USER_ID ABA_TRACE_BSB ABA_TRACE_ACCOUNT ABA_BANK_CODE ABA_USER_NAME ABA_REMITTER CASHOUT_MAX_CENTS; do
+  v="${!k:-}"
+  if [ -n "$v" ]; then ABA_ARGS+=("$k=$v"); fi
+done
+if [ ${#ABA_ARGS[@]} -gt 0 ]; then
+  echo "Applying settlement vars: ${ABA_ARGS[*]%%=*}"
+  az containerapp update -n "$APP" -g "$RG" --set-env-vars "${ABA_ARGS[@]}" --output none
+fi
+
 # Re-link thegoodsort.org to ACS (keeps getting unlinked by M365 DNS changes)
 echo "Re-linking thegoodsort.org email domain to ACS..."
 COMM_ID="/subscriptions/5745cb5e-8c39-470f-ab6f-8a5897b7f9af/resourceGroups/rg-tailor-app-prod/providers/Microsoft.Communication/communicationServices/tailor-prod-comm"
