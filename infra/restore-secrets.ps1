@@ -48,6 +48,18 @@ az containerapp update -n $app -g $rg `
 
 Write-Host "Env vars restored."
 
+# Optional: ABA bank-settlement details. Only needed to generate cash-out payout
+# files; the API fails loud at file-generation time if unset. See infra/aba-settlement.md.
+$abaArgs = @()
+foreach ($k in @("ABA_USER_ID","ABA_TRACE_BSB","ABA_TRACE_ACCOUNT","ABA_BANK_CODE","ABA_USER_NAME","ABA_REMITTER","CASHOUT_MAX_CENTS")) {
+  $v = [Environment]::GetEnvironmentVariable($k)
+  if ($v) { $abaArgs += "$k=$v" }
+}
+if ($abaArgs.Count -gt 0) {
+  Write-Host "Applying settlement vars: $(($abaArgs | ForEach-Object { $_.Split('=')[0] }) -join ', ')"
+  az containerapp update -n $app -g $rg --set-env-vars $abaArgs --output none
+}
+
 # Re-link thegoodsort.org to ACS (keeps getting unlinked by M365 DNS changes)
 Write-Host "Re-linking thegoodsort.org email domain to ACS..."
 $commId = "/subscriptions/5745cb5e-8c39-470f-ab6f-8a5897b7f9af/resourceGroups/rg-tailor-app-prod/providers/Microsoft.Communication/communicationServices/tailor-prod-comm"

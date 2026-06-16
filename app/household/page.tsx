@@ -35,11 +35,11 @@ export default function HouseholdPage() {
   useEffect(() => {
     const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
     if (!profile.householdId) { setErr("You haven't set up a household yet."); return; }
-    fetch(apiUrl(`/api/households/${profile.householdId}`))
+    fetch(apiUrl(`/api/households/${profile.householdId}`), { headers: authHeaders() })
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(setHh)
       .catch(() => setErr("Couldn't load household."));
-    fetch(apiUrl(`/api/households/${profile.householdId}/next-pickup`))
+    fetch(apiUrl(`/api/households/${profile.householdId}/next-pickup`), { headers: authHeaders() })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.nextPickup) setNextPickup(d.nextPickup); })
       .catch(() => {});

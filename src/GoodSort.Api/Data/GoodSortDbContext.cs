@@ -49,6 +49,10 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
 
             e.HasIndex(p => p.Email).IsUnique().HasFilter("[Email] IS NOT NULL");
             e.HasIndex(p => p.Phone).HasFilter("[Phone] IS NOT NULL");
+
+            // Backfill existing rows with a unique stamp when the column is added,
+            // so no two pre-existing profiles share one. New rows use the C# default.
+            e.Property(p => p.SecurityStamp).HasDefaultValueSql("CONVERT(varchar(36), NEWID())");
         });
 
         // Scan

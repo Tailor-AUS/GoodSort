@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text;
 using GoodSort.Api.Data;
 using GoodSort.Api.Data.Entities;
@@ -71,6 +72,32 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidIssuer = "goodsort-api",
             ValidAudience = "goodsort-app",
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+        };
+        // Revocation: a token carries the profile's security stamp ("ss"). If the
+        // stored stamp has since changed (sign-out-everywhere), reject the token.
+        // Tokens with no "ss" claim (minted before this existed) are grandfathered.
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async ctx =>
+            {
+                var ss = ctx.Principal?.FindFirst("ss")?.Value;
+                if (string.IsNullOrEmpty(ss)) return; // grandfather pre-revocation tokens
+                var sub = ctx.Principal?.FindFirst("sub")?.Value
+                          ?? ctx.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (!Guid.TryParse(sub, out var uid)) return;
+                try
+                {
+                    var db = ctx.HttpContext.RequestServices.GetRequiredService<GoodSortDbContext>();
+                    var current = await db.Profiles.Where(p => p.Id == uid)
+                        .Select(p => p.SecurityStamp).FirstOrDefaultAsync();
+                    // Reject only on a definitive mismatch. A missing profile or a
+                    // transient DB error fails open — availability over best-effort
+                    // revocation (the rest of the request needs the DB anyway).
+                    if (current is not null && current != ss)
+                        ctx.Fail("Token revoked");
+                }
+                catch { /* fail open on transient DB error */ }
+            },
         };
     });
 builder.Services.AddAuthorization(options =>
@@ -212,6 +239,20 @@ app.MapPost("/api/auth/verify-otp", async (VerifyOtpRequest req, AuthService aut
     if (token == null) return Results.Unauthorized();
     return Results.Ok(new { token, profile });
 });
+
+// Force-logout every existing session for the caller by rotating the security
+// stamp — all previously-issued tokens (carrying the old stamp) stop validating.
+// Returns a fresh token so the current device stays signed in.
+app.MapPost("/api/auth/sign-out-everywhere", async (HttpContext ctx, GoodSortDbContext db, AuthService auth) =>
+{
+    var uid = ctx.GetCallerId();
+    if (uid is null) return Results.Unauthorized();
+    var profile = await db.Profiles.FindAsync(uid.Value);
+    if (profile is null) return Results.NotFound();
+    profile.SecurityStamp = Guid.NewGuid().ToString("N");
+    await db.SaveChangesAsync();
+    return Results.Ok(new { signedOut = true, token = auth.GenerateJwt(profile) });
+}).RequireAuthorization();
 
 // ── Bins (QR-coded drop points) ──
 app.MapGet("/api/bins", async (GoodSortDbContext db) =>
@@ -476,7 +517,7 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
 }).RequireAuthorization();
 
 // ── Barcode Lookup (Open Food Facts proxy) ──
-app.MapGet("/api/barcode/{barcode}", async (string barcode, IHttpClientFactory httpFactory) =>
+app.MapGet("/api/barcode/{barcode}", async (string barcode, IHttpClientFactory httpFactory, ILoggerFactory loggerFactory) =>
 {
     // Validate barcode format
     if (barcode.Length < 8 || barcode.Length > 13 || !barcode.All(char.IsDigit))
@@ -492,18 +533,29 @@ app.MapGet("/api/barcode/{barcode}", async (string barcode, IHttpClientFactory h
         var json = await res.Content.ReadAsStringAsync();
         return Results.Ok(new { found = true, barcode, data = System.Text.Json.JsonSerializer.Deserialize<object>(json) });
     }
-    catch
+    catch (Exception ex)
     {
+        loggerFactory.CreateLogger("BarcodeLookup").LogWarning(ex, "Open Food Facts lookup failed for {Barcode}", barcode);
         return Results.Ok(new { found = false, barcode });
     }
 });
 
 // ── Households ──
+// Full household list (names + addresses + geo of every household) is an
+// operational/admin view — never exposed to ordinary users. A regular user
+// only ever reads their OWN household via /api/households/{id} below.
 app.MapGet("/api/households", async (GoodSortDbContext db) =>
-    Results.Ok(await db.Households.OrderByDescending(h => h.PendingContainers).ToListAsync()));
+    Results.Ok(await db.Households.OrderByDescending(h => h.PendingContainers).ToListAsync()))
+    .RequireAuthorization(AuthHelpers.AdminPolicy);
 
-app.MapGet("/api/households/{id:guid}", async (Guid id, GoodSortDbContext db) =>
-    await db.Households.FindAsync(id) is { } h ? Results.Ok(h) : Results.NotFound());
+// A single household leaks address + geo + balances, so gate it: caller must be
+// a member of the household (profile.HouseholdId == id) or an admin. Previously
+// unauthenticated — anyone who guessed an id could enumerate residential addresses.
+app.MapGet("/api/households/{id:guid}", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
+{
+    if (!await CallerOwnsHousehold(ctx, id, db)) return Results.Forbid();
+    return await db.Households.FindAsync(id) is { } h ? Results.Ok(h) : Results.NotFound();
+}).RequireAuthorization();
 
 app.MapPost("/api/households", async (Household household, GoodSortDbContext db) =>
 {
@@ -540,8 +592,9 @@ app.MapPost("/api/households/lookup-bin-day", async (BinDayLookupRequest req, Bi
 });
 
 // ── Next pickup — tells the household exactly when we're coming for their bin ──
-app.MapGet("/api/households/{id:guid}/next-pickup", async (Guid id, GoodSortDbContext db) =>
+app.MapGet("/api/households/{id:guid}/next-pickup", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
+    if (!await CallerOwnsHousehold(ctx, id, db)) return Results.Forbid();
     var h = await db.Households.FindAsync(id);
     if (h is null) return Results.NotFound();
     if (h.Type != "residential" || h.CouncilCollectionDay is null)
@@ -560,14 +613,15 @@ app.MapGet("/api/households/{id:guid}/next-pickup", async (Guid id, GoodSortDbCo
         councilArea = h.CouncilArea,
         usesDivider = h.UsesDivider,
     });
-});
+}).RequireAuthorization();
 
 // ── Household: toggle "bin is out / bin is full" ──
 // In the yellow-bin model this meant "bin is on the kerb for council."
 // In the GoodSort-bin model this means "my bin is full, come get it."
 // The RunGenerationService absorbs full-bin households into nearby runs.
-app.MapPost("/api/households/{id:guid}/bin-full", async (Guid id, BinOutRequest req, GoodSortDbContext db) =>
+app.MapPost("/api/households/{id:guid}/bin-full", async (HttpContext ctx, Guid id, BinOutRequest req, GoodSortDbContext db) =>
 {
+    if (!await CallerOwnsHousehold(ctx, id, db)) return Results.Forbid();
     var h = await db.Households.FindAsync(id);
     if (h is null) return Results.NotFound();
     h.BinIsOut = req.Out; // reusing the field — BinIsOut = "bin is full, ready for pickup"
@@ -577,8 +631,9 @@ app.MapPost("/api/households/{id:guid}/bin-full", async (Guid id, BinOutRequest 
 }).RequireAuthorization();
 
 // Legacy endpoint alias
-app.MapPost("/api/households/{id:guid}/bin-out", async (Guid id, BinOutRequest req, GoodSortDbContext db) =>
+app.MapPost("/api/households/{id:guid}/bin-out", async (HttpContext ctx, Guid id, BinOutRequest req, GoodSortDbContext db) =>
 {
+    if (!await CallerOwnsHousehold(ctx, id, db)) return Results.Forbid();
     var h = await db.Households.FindAsync(id);
     if (h is null) return Results.NotFound();
     h.BinIsOut = req.Out;
@@ -685,16 +740,20 @@ app.MapGet("/api/scans", async (HttpContext ctx, Guid userId, int? limit, GoodSo
 }).RequireAuthorization();
 
 // ── Routes ──
+// Routes carry full stop addresses + driver assignments. Browsing claimable
+// routes is a runner action, so require auth (was previously anonymous — anyone
+// could dump every household address on every route).
 app.MapGet("/api/routes", async (string? status, GoodSortDbContext db) =>
 {
     var q = db.Routes.Include(r => r.Stops).AsQueryable();
     if (!string.IsNullOrEmpty(status)) q = q.Where(r => r.Status == status);
     return Results.Ok(await q.OrderByDescending(r => r.CreatedAt).ToListAsync());
-});
+}).RequireAuthorization();
 
 app.MapGet("/api/routes/{id:guid}", async (Guid id, GoodSortDbContext db) =>
     await db.Routes.Include(r => r.Stops.OrderBy(s => s.Sequence)).Include(r => r.Depot)
-        .FirstOrDefaultAsync(r => r.Id == id) is { } r ? Results.Ok(r) : Results.NotFound());
+        .FirstOrDefaultAsync(r => r.Id == id) is { } r ? Results.Ok(r) : Results.NotFound())
+    .RequireAuthorization();
 
 app.MapPost("/api/routes/{id:guid}/claim", async (HttpContext ctx, Guid id, ClaimRequest req, GoodSortDbContext db) =>
 {
@@ -1188,8 +1247,10 @@ app.MapPatch("/api/runner/profile/{profileId:guid}", async (HttpContext ctx, Gui
     var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == profileId);
     if (runner is null) return Results.NotFound();
     if (req.VehicleType is not null) runner.VehicleType = req.VehicleType;
-    if (req.CapacityBags.HasValue) runner.CapacityBags = req.CapacityBags.Value;
-    if (req.ServiceRadiusKm.HasValue) runner.ServiceRadiusKm = req.ServiceRadiusKm.Value;
+    // Clamp to sane bounds — these feed pricing/efficiency math, so a negative or
+    // zero capacity/radius would distort payouts or risk a divide-by-zero.
+    if (req.CapacityBags.HasValue) runner.CapacityBags = Math.Clamp(req.CapacityBags.Value, 1, 100);
+    if (req.ServiceRadiusKm.HasValue) runner.ServiceRadiusKm = Math.Clamp(req.ServiceRadiusKm.Value, 0.5, 100.0);
     await db.SaveChangesAsync();
     return Results.Ok(runner);
 }).RequireAuthorization();
@@ -1487,19 +1548,23 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
 }).RequireAuthorization();
 
 // ── Runner: My runs ──
-app.MapGet("/api/runner/runs/{profileId:guid}", async (Guid profileId, string? status, GoodSortDbContext db) =>
+// profileId comes from the URL — gate it to the caller (or admin), else any
+// authenticated user could read another runner's run history (incl. addresses).
+app.MapGet("/api/runner/runs/{profileId:guid}", async (HttpContext ctx, Guid profileId, string? status, GoodSortDbContext db) =>
 {
+    if (!ctx.IsOwnerOrAdmin(profileId)) return Results.Forbid();
     var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == profileId);
     if (runner is null) return Results.NotFound();
 
     var q = db.Runs.Include(r => r.Stops).Where(r => r.RunnerId == runner.Id);
     if (!string.IsNullOrEmpty(status)) q = q.Where(r => r.Status == status);
     return Results.Ok(await q.OrderByDescending(r => r.CreatedAt).Take(50).ToListAsync());
-});
+}).RequireAuthorization();
 
 // ── Runner: My active run ──
-app.MapGet("/api/runner/active/{profileId:guid}", async (Guid profileId, GoodSortDbContext db) =>
+app.MapGet("/api/runner/active/{profileId:guid}", async (HttpContext ctx, Guid profileId, GoodSortDbContext db) =>
 {
+    if (!ctx.IsOwnerOrAdmin(profileId)) return Results.Forbid();
     var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == profileId);
     if (runner is null) return Results.NotFound();
 
@@ -1510,11 +1575,12 @@ app.MapGet("/api/runner/active/{profileId:guid}", async (Guid profileId, GoodSor
         .FirstOrDefaultAsync();
 
     return active is not null ? Results.Ok(active) : Results.NotFound();
-});
+}).RequireAuthorization();
 
 // ── Gamification: Earnings summary ──
-app.MapGet("/api/runner/earnings/{profileId:guid}", async (Guid profileId, GoodSortDbContext db) =>
+app.MapGet("/api/runner/earnings/{profileId:guid}", async (HttpContext ctx, Guid profileId, GoodSortDbContext db) =>
 {
+    if (!ctx.IsOwnerOrAdmin(profileId)) return Results.Forbid();
     var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == profileId);
     if (runner is null) return Results.NotFound();
 
@@ -1543,7 +1609,7 @@ app.MapGet("/api/runner/earnings/{profileId:guid}", async (Guid profileId, GoodS
         runner.EfficiencyScore,
         runner.Badges,
     });
-});
+}).RequireAuthorization();
 
 // ── Gamification: Leaderboard ──
 app.MapGet("/api/runner/leaderboard", async (string? period, int? limit, RunnerService runnerService) =>
@@ -1619,6 +1685,18 @@ static async Task<bool> CallerOwnsRun(HttpContext ctx, Run run, GoodSortDbContex
     var callerId = ctx.GetCallerId();
     if (callerId is null || run.RunnerId is null) return false;
     return await db.RunnerProfiles.AnyAsync(rp => rp.Id == run.RunnerId && rp.ProfileId == callerId.Value);
+}
+
+// Caller owns a household when their JWT profile is a member of it (or admin).
+// Gates the per-household read/flag endpoints so addresses + geo + balances
+// aren't enumerable by guessing ids.
+static async Task<bool> CallerOwnsHousehold(HttpContext ctx, Guid householdId, GoodSortDbContext db)
+{
+    if (ctx.IsAdmin()) return true;
+    var callerId = ctx.GetCallerId();
+    if (callerId is null) return false;
+    var profile = await db.Profiles.FindAsync(callerId.Value);
+    return profile?.HouseholdId == householdId;
 }
 
 // ── Haversine helper ──
