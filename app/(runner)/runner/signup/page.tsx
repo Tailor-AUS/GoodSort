@@ -45,7 +45,7 @@ export default function RunnerSignupPage() {
   return (
     <div className="min-h-dvh bg-white">
       <div className="max-w-sm mx-auto px-6 py-8">
-        <Link href="/" className="inline-flex items-center gap-1 text-[13px] text-slate-500 mb-6">
+        <Link href="/sort" className="inline-flex items-center gap-1 text-[13px] text-slate-500 mb-6">
           <ArrowLeft className="w-4 h-4" /> Back
         </Link>
 

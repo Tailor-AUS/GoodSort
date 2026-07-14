@@ -64,8 +64,8 @@ export function Logo({ size = "md", showText = true, dark = false, className = "
       </svg>
       {showText && (
         <span
-          className={`font-display font-extrabold tracking-tight ${s.text} ${dark ? "text-white" : "text-slate-900"}`}
-          style={{ letterSpacing: "-0.04em" }}
+          className={`font-display font-extrabold ${s.text} ${dark ? "text-white" : "text-slate-900"}`}
+          style={{ letterSpacing: 0 }}
         >
           the good sort
         </span>

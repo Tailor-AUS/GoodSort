@@ -47,7 +47,7 @@ export default function VerifyPage() {
       if (!data.profile.householdId) {
         router.push("/onboard");
       } else {
-        router.push("/");
+        router.push("/sort");
       }
     } catch {
       setError("Verification failed. Please try again.");

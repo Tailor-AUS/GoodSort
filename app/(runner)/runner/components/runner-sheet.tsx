@@ -145,7 +145,7 @@ export function RunnerSheet({
               )}
 
               {/* Switch to Sort */}
-              <Link href="/"
+              <Link href="/sort"
                 className="block text-center text-[13px] text-slate-400 hover:text-green-600 font-medium py-3 mt-3 transition-colors duration-200">
                 ← Switch to Sorter mode
               </Link>

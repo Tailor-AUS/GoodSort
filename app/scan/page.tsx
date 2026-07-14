@@ -305,7 +305,7 @@ function ScanPageContent() {
       )}
 
       <GreenButton onClick={retake}>Scan Another</GreenButton>
-      <button onClick={() => window.location.href = "/"}
+      <button onClick={() => window.location.href = "/sort"}
         className="w-full mt-2 py-3 text-slate-400 font-medium text-[13px] hover:text-slate-600 transition-colors">
         Go Home
       </button>
@@ -412,7 +412,7 @@ function ScanPageContent() {
                 <Check className="w-5 h-5" /> Done &middot; +{total * 5}c
               </button>
             ) : (
-              <button onClick={() => window.location.href = "/"}
+              <button onClick={() => window.location.href = "/sort"}
                 className="flex-1 py-3.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-[13px] flex items-center justify-center gap-2 min-h-[48px]"
                 style={{ touchAction: "manipulation" }}>
                 <Home className="w-4 h-4" /> Home
@@ -470,7 +470,7 @@ function ScanPageContent() {
           )}
 
           {/* Home button */}
-          <button onClick={() => window.location.href = "/"}
+          <button onClick={() => window.location.href = "/sort"}
             className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center"
             style={{ touchAction: "manipulation" }}>
             <X className="w-5 h-5 text-white/60" />

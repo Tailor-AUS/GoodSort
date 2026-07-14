@@ -72,7 +72,7 @@ export default function OnboardPage() {
         profile.name = name; profile.householdId = hh.id;
         localStorage.setItem("goodsort_profile", JSON.stringify(profile));
       }
-      router.push("/");
+      router.push("/sort");
     } catch {
       setError("Something went wrong"); setLoading(false);
     }
@@ -222,7 +222,7 @@ export default function OnboardPage() {
   if (step === "unit_waitlist") return (
     <Shell icon={Check} title="You're on the list" sub="We'll email you when we launch unit-complex pickups in your area.">
       <p className="text-[13px] text-slate-500 mb-6">Unit pickups need bin drop-offs in common areas, which we're rolling out through body corporates. Expect an update soon.</p>
-      <button onClick={() => router.push("/")}
+      <button onClick={() => router.push("/sort")}
         className="w-full bg-slate-100 hover:bg-slate-200 text-slate-900 font-semibold py-3.5 rounded-xl text-[15px] min-h-[48px]">Done</button>
     </Shell>
   );
