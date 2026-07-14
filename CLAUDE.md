@@ -139,7 +139,8 @@ src/GoodSort.Api/
 - `JWT_SECRET` — symmetric key for JWT signing
 - `GOODSORTDB_CONNECTION_STRING` — Azure SQL connection
 - `TAILOR_VISION_API_KEY` / `TAILOR_VISION_API_URL` — Tailor Vision API
-- `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_KEY` / `AZURE_OPENAI_DEPLOYMENT` — fallback vision
+- `SOVRGN_API_KEY` / `SOVRGN_API_URL` / `SOVRGN_MODEL` — Sovrgn sovereign inference gateway (api.sovrgn.ai, OpenAI-compatible). When the key is set, LLM inference routes through Sovrgn ahead of Azure OpenAI. `SOVRGN_API_URL` defaults to `https://api.sovrgn.ai/v1`; `SOVRGN_MODEL` is required alongside the key.
+- `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_KEY` / `AZURE_OPENAI_DEPLOYMENT` — fallback vision (last resort after Sovrgn)
 - `ACS_CONNECTION_STRING` / `ACS_EMAIL_SENDER` — Azure Communication Services (OTP emails)
 - `OSRM_URL` (optional) — defaults to `https://router.project-osrm.org` (public demo). Override with a self-hosted OSRM instance for production scale.
 

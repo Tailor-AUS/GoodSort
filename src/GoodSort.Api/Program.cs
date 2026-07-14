@@ -969,11 +969,12 @@ app.MapGet("/api/admin/vision/health", async (GoodSortDbContext db, IConfigurati
     var tailorOk24h = Cnt("tailor", true);
     var tailorFail24h = Cnt("tailor", false);
     var openaiOk24h = Cnt("openai", true);
+    var sovrgnOk24h = Cnt("sovrgn", true);
     // Denominator covers ALL provider attempts in last 24h to avoid NaN when
     // every call failed.
-    var totalAttempts24h = tailorOk24h + tailorFail24h + openaiOk24h;
+    var totalAttempts24h = tailorOk24h + tailorFail24h + openaiOk24h + sovrgnOk24h;
     var fallbackPct24h = totalAttempts24h > 0
-        ? Math.Round(100.0 * openaiOk24h / totalAttempts24h, 1)
+        ? Math.Round(100.0 * (openaiOk24h + sovrgnOk24h) / totalAttempts24h, 1)
         : 0;
 
     var keyConfigured = !string.IsNullOrEmpty(cfg["TAILOR_VISION_API_KEY"]);
@@ -997,6 +998,7 @@ app.MapGet("/api/admin/vision/health", async (GoodSortDbContext db, IConfigurati
             tailorOk = tailorOk24h,
             tailorFailed = tailorFail24h,
             openaiFallback = openaiOk24h,
+            sovrgnFallback = sovrgnOk24h,
             fallbackPct = fallbackPct24h,
         },
         lastHour = new
