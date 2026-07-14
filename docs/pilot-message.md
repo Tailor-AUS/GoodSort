@@ -4,7 +4,7 @@
 
 Hey! I'm testing a new recycling service and need 5 houses to try it. You earn 5c for every can and bottle you recycle through us. Takes 10 minutes to set up. Here's everything:
 
-👉 **https://www.thegoodsort.org/start**
+👉 **https://thegoodsort.org**
 
 Click that link and it walks you through everything:
 
@@ -27,6 +27,6 @@ You don't need to do anything. We'll **email you 24 hours before** someone is co
 
 **Why?** Over 1 billion recyclable containers go to landfill every year in QLD. That's $100M in unclaimed refunds sitting in yellow bins. We're fixing that.
 
-**Get started:** https://www.thegoodsort.org/start
+**Get started:** https://thegoodsort.org
 
 Any questions just message me! ♻️

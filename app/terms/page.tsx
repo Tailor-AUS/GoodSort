@@ -1,3 +1,14 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Terms of Service",
+  description:
+    "Terms for using The Good Sort's container sorting, pickup, runner, and sorting credit services in Queensland.",
+  alternates: {
+    canonical: "/terms",
+  },
+};
+
 export default function TermsPage() {
   return (
     <div className="min-h-dvh bg-white px-6 py-12 max-w-2xl mx-auto">

@@ -5,12 +5,12 @@ import { Logo } from "./logo";
 
 /**
  * Branding footer — matches Spark's pattern:
- * [logo + brand name](/) [powered by tailor](https://tailor.au)
+ * [logo + brand name](/sort) [powered by tailor](https://tailor.au)
  */
 export function PoweredByTailor() {
   return (
     <div className="flex items-center justify-center gap-3">
-      <Link href="/" className="hover:opacity-80 transition-opacity duration-200">
+      <Link href="/sort" className="hover:opacity-80 transition-opacity duration-200">
         <Logo size="sm" />
       </Link>
       <a href="https://tailor.au" target="_blank" rel="noopener noreferrer"

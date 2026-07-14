@@ -1,3 +1,14 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Privacy Policy",
+  description:
+    "How The Good Sort collects, uses, stores, and protects account, address, location, scan, and earnings information.",
+  alternates: {
+    canonical: "/privacy",
+  },
+};
+
 export default function PrivacyPage() {
   return (
     <div className="min-h-dvh bg-white px-6 py-12 max-w-2xl mx-auto">

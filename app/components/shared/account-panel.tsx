@@ -158,7 +158,7 @@ function InviteFriends({ user }: { user: User }) {
   const profileId = (() => {
     try { return JSON.parse(localStorage.getItem("goodsort_profile") || "{}").id as string | undefined; } catch { return undefined; }
   })();
-  const inviteUrl = `https://www.thegoodsort.org/start${profileId ? `?r=${profileId}` : ""}`;
+  const inviteUrl = `https://thegoodsort.org${profileId ? `?r=${profileId}` : ""}`;
   const inviteText = user.totalContainers > 0
     ? `I've recycled ${user.totalContainers} container${user.totalContainers !== 1 ? "s" : ""} and earned ${formatCents(user.pendingCents + user.clearedCents)} with The Good Sort! Scan your cans and bottles, earn 5c each. Join me:`
     : "I just joined The Good Sort — scan your empty cans and bottles to earn 5c each. Give it a go:";

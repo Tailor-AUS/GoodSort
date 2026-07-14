@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { usePathname } from "next/navigation";
 import { X, Share, PlusSquare, MoreVertical, Download } from "lucide-react";
 import { Logo } from "./logo";
 
@@ -24,14 +25,25 @@ function isStandalone(): boolean {
 
 const DISMISS_KEY = "goodsort_install_dismissed";
 const DISMISS_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days
+const INSTALL_PROMPT_PATHS = ["/sort", "/runner", "/household"];
+
+function canShowInstallPrompt(pathname: string) {
+  return INSTALL_PROMPT_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+}
 
 export function InstallPrompt() {
   const [show, setShow] = useState(false);
   const [platform, setPlatform] = useState<Platform>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showSteps, setShowSteps] = useState(false);
+  const pathname = usePathname();
 
   useEffect(() => {
+    if (!canShowInstallPrompt(pathname)) {
+      setShow(false);
+      return;
+    }
+
     // Don't show if already installed as PWA
     if (isStandalone()) return;
 
@@ -56,7 +68,7 @@ export function InstallPrompt() {
       clearTimeout(timer);
       window.removeEventListener("beforeinstallprompt", handler);
     };
-  }, []);
+  }, [pathname]);
 
   const dismiss = useCallback(() => {
     setShow(false);
