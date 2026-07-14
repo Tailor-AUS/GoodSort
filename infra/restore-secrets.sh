@@ -16,6 +16,10 @@
 
 set -euo pipefail
 
+# gpt-5-mini is the only deployment in oai-tailor-app-prod verified to work
+# for the vision fallback (gpt-4.1 does not exist there).
+AZURE_OPENAI_DEPLOYMENT="${AZURE_OPENAI_DEPLOYMENT:-gpt-5-mini}"
+
 REQUIRED=(JWT_SECRET TAILOR_VISION_API_KEY TAILOR_VISION_API_URL
           ACS_CONNECTION_STRING ACS_EMAIL_SENDER
           AZURE_OPENAI_ENDPOINT AZURE_OPENAI_KEY AZURE_OPENAI_DEPLOYMENT

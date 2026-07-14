@@ -26,12 +26,17 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      # container-apps-deploy-action@v2 is broken by an Azure CLI bug in
+      # azext_containerapp ("'NoneType' object has no attribute 'linux'").
+      # Build in ACR and point the app at the new image instead.
       - name: Deploy to Container Apps
-        uses: azure/container-apps-deploy-action@v2
+        uses: azure/cli@v2
         with:
-          appSourcePath: ${{ github.workspace }}
-          dockerfilePath: Dockerfile
-          resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
-          containerAppName: ${{ secrets.AZURE_CONTAINER_APP_NAME }}
-          containerAppEnvironment: ${{ secrets.AZURE_CONTAINER_APP_ENV }}
-          targetPort: 8080
+          inlineScript: |
+            az acr build --registry acrnyjfw2pdfsrie \
+              --image api:${{ github.sha }} \
+              --file Dockerfile .
+            az containerapp update \
+              -n ${{ secrets.AZURE_CONTAINER_APP_NAME }} \
+              -g ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --image acrnyjfw2pdfsrie.azurecr.io/api:${{ github.sha }}
