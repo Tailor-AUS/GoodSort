@@ -54,6 +54,18 @@ az containerapp update -n "$APP" -g "$RG" \
 
 echo "Env vars restored."
 
+# Optional: Sovrgn sovereign inference gateway (api.sovrgn.ai). Only applied
+# when a key is set — the app falls back to Azure OpenAI without it.
+if [ -n "${SOVRGN_API_KEY:-}" ]; then
+  az containerapp update -n "$APP" -g "$RG" \
+    --set-env-vars \
+      "SOVRGN_API_KEY=$SOVRGN_API_KEY" \
+      "SOVRGN_API_URL=${SOVRGN_API_URL:-https://api.sovrgn.ai/v1}" \
+      "SOVRGN_MODEL=${SOVRGN_MODEL:-}" \
+    --output none
+  echo "Sovrgn env vars restored."
+fi
+
 # Re-link thegoodsort.org to ACS (keeps getting unlinked by M365 DNS changes)
 echo "Re-linking thegoodsort.org email domain to ACS..."
 COMM_ID="/subscriptions/5745cb5e-8c39-470f-ab6f-8a5897b7f9af/resourceGroups/rg-tailor-app-prod/providers/Microsoft.Communication/communicationServices/tailor-prod-comm"

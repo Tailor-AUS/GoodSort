@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using Azure.AI.OpenAI;
 using GoodSort.Api.Data;
 using GoodSort.Api.Data.Entities;
+using OpenAI;
 using OpenAI.Chat;
 
 namespace GoodSort.Api.Services;
@@ -27,13 +28,14 @@ public class VisionService
 
     public async Task<VisionResult> IdentifyContainers(string base64Image, Guid? userId = null)
     {
-        // Tailor Vision (TV) takes priority, Azure OpenAI as fallback
+        // Tailor Vision (TV) takes priority; LLM fallback routes via Sovrgn
+        // when configured, then Azure OpenAI.
         var tvApiKey = _config["TAILOR_VISION_API_KEY"] ?? "";
 
         if (!string.IsNullOrEmpty(tvApiKey))
             return await IdentifyViaTailorVision(base64Image, userId);
 
-        return await IdentifyViaAzureOpenAI(base64Image, userId);
+        return await IdentifyViaLlmFallback(base64Image, userId);
     }
 
     private async Task LogCall(string provider, bool success, int containerCount, long durationMs, Guid? userId, string? errorSummary = null)
@@ -91,7 +93,7 @@ public class VisionService
                 await LogCall("tailor", success: false, containerCount: 0, sw.ElapsedMilliseconds, userId,
                     errorSummary: $"HTTP {(int)response.StatusCode}: {errorBody}");
                 _logger.LogInformation("Falling back to Azure OpenAI");
-                return await IdentifyViaAzureOpenAI(base64Image, userId);
+                return await IdentifyViaLlmFallback(base64Image, userId);
             }
 
             var responseJson = await response.Content.ReadAsStringAsync();
@@ -135,7 +137,7 @@ public class VisionService
             _logger.LogError(ex, "Tailor Vision API call failed — falling back to Azure");
             await LogCall("tailor", success: false, containerCount: 0, sw.ElapsedMilliseconds, userId,
                 errorSummary: ex.Message);
-            return await IdentifyViaAzureOpenAI(base64Image, userId);
+            return await IdentifyViaLlmFallback(base64Image, userId);
         }
     }
 
@@ -153,7 +155,7 @@ public class VisionService
         _ => "other",
     };
 
-    // ── Azure OpenAI — Direct fallback ────────────────────────────────────
+    // ── LLM fallback: Sovrgn (preferred) → Azure OpenAI ───────────────────
 
     private static readonly string ContainerPrompt = @"You are a fun, friendly container recycling identification system for the QLD Container Refund Scheme (Containers for Change), called The Good Sort.
 
@@ -203,26 +205,64 @@ No containers (blurry):
 {""containers"":[],""message"":""Bit blurry — try getting closer with the camera steady. I'll sort it once I can see it!""}
 ";
 
+    private async Task<VisionResult> IdentifyViaLlmFallback(string base64Image, Guid? userId)
+    {
+        var sovrgnKey = _config["SOVRGN_API_KEY"] ?? "";
+        if (!string.IsNullOrEmpty(sovrgnKey))
+        {
+            var sovrgnResult = await IdentifyViaSovrgn(base64Image, userId, sovrgnKey);
+            if (sovrgnResult is not null) return sovrgnResult;
+            _logger.LogWarning("Sovrgn inference failed — falling back to Azure OpenAI");
+        }
+        return await IdentifyViaAzureOpenAI(base64Image, userId);
+    }
+
+    // Sovrgn (api.sovrgn.ai) is an OpenAI-compatible sovereign inference
+    // gateway. When SOVRGN_API_KEY is set, LLM inference routes through it in
+    // preference to Azure OpenAI. Returns null on any failure so the caller
+    // can fall through.
+    private async Task<VisionResult?> IdentifyViaSovrgn(string base64Image, Guid? userId, string apiKey)
+    {
+        var endpoint = _config["SOVRGN_API_URL"] ?? "https://api.sovrgn.ai/v1";
+        var model = _config["SOVRGN_MODEL"] ?? "";
+        if (string.IsNullOrEmpty(model))
+        {
+            _logger.LogWarning("SOVRGN_API_KEY is set but SOVRGN_MODEL is missing — skipping Sovrgn");
+            return null;
+        }
+
+        var client = new OpenAIClient(new ApiKeyCredential(apiKey),
+            new OpenAIClientOptions { Endpoint = new Uri(endpoint) });
+        return await RunChatVision(client.GetChatClient(model), "sovrgn", base64Image, userId);
+    }
+
     private async Task<VisionResult> IdentifyViaAzureOpenAI(string base64Image, Guid? userId)
     {
         var endpoint = _config["AZURE_OPENAI_ENDPOINT"] ?? "";
         var apiKey = _config["AZURE_OPENAI_KEY"] ?? "";
         var deploymentName = _config["AZURE_OPENAI_DEPLOYMENT"] ?? "gpt-4.1";
-        var sw = Stopwatch.StartNew();
 
         if (string.IsNullOrEmpty(apiKey))
         {
-            _logger.LogError("No vision API configured (neither Tailor Vision nor Azure OpenAI)");
-            await LogCall("none", success: false, containerCount: 0, sw.ElapsedMilliseconds, userId,
+            _logger.LogError("No vision API configured (neither Tailor Vision, Sovrgn, nor Azure OpenAI)");
+            await LogCall("none", success: false, containerCount: 0, 0, userId,
                 errorSummary: "No vision provider configured");
             return new VisionResult { Message = "Photo scan is temporarily unavailable. Please try again later." };
         }
 
+        var client = new AzureOpenAIClient(new Uri(endpoint), new ApiKeyCredential(apiKey));
+        var result = await RunChatVision(client.GetChatClient(deploymentName), "openai", base64Image, userId);
+        return result ?? new VisionResult { Message = "Something went wrong analysing that photo. Give it another go!" };
+    }
+
+    // Shared chat-vision path for OpenAI-compatible providers (Sovrgn, Azure
+    // OpenAI). Returns null on failure; the failure is logged to VisionCalls
+    // under the given provider name.
+    private async Task<VisionResult?> RunChatVision(ChatClient chatClient, string provider, string base64Image, Guid? userId)
+    {
+        var sw = Stopwatch.StartNew();
         try
         {
-            var client = new AzureOpenAIClient(new Uri(endpoint), new ApiKeyCredential(apiKey));
-            var chatClient = client.GetChatClient(deploymentName);
-
             // Defensively strip any data-URI prefix (the Tailor path does this too)
             // so Convert.FromBase64String doesn't choke on a "data:image/jpeg;..." head.
             var rawBase64 = base64Image.Contains(',') ? base64Image.Split(',')[1] : base64Image;
@@ -237,7 +277,7 @@ No containers (blurry):
                 new UserChatMessage(promptPart, imageContent)
             };
 
-            _logger.LogInformation("Calling Azure OpenAI directly (fallback path)");
+            _logger.LogInformation("Calling {Provider} chat vision (fallback path)", provider);
             var response = await chatClient.CompleteChatAsync(messages);
             var content = response.Value.Content[0].Text.Trim();
 
@@ -257,9 +297,9 @@ No containers (blurry):
 
             if (result != null)
             {
-                _logger.LogInformation("Azure OpenAI identified {Count} container types, message: {Message}",
-                    result.Containers.Count, result.Message);
-                await LogCall("openai", success: true, containerCount: result.Containers.Sum(c => c.Count), sw.ElapsedMilliseconds, userId);
+                _logger.LogInformation("{Provider} identified {Count} container types, message: {Message}",
+                    provider, result.Containers.Count, result.Message);
+                await LogCall(provider, success: true, containerCount: result.Containers.Sum(c => c.Count), sw.ElapsedMilliseconds, userId);
                 return result;
             }
 
@@ -269,8 +309,8 @@ No containers (blurry):
                 PropertyNameCaseInsensitive = true,
             });
 
-            _logger.LogInformation("Azure OpenAI identified {Count} container types (legacy format)", containers?.Count ?? 0);
-            await LogCall("openai", success: true, containerCount: containers?.Sum(c => c.Count) ?? 0, sw.ElapsedMilliseconds, userId);
+            _logger.LogInformation("{Provider} identified {Count} container types (legacy format)", provider, containers?.Count ?? 0);
+            await LogCall(provider, success: true, containerCount: containers?.Sum(c => c.Count) ?? 0, sw.ElapsedMilliseconds, userId);
             return new VisionResult
             {
                 Containers = containers ?? [],
@@ -281,10 +321,10 @@ No containers (blurry):
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Azure OpenAI call failed");
-            await LogCall("openai", success: false, containerCount: 0, sw.ElapsedMilliseconds, userId,
+            _logger.LogError(ex, "{Provider} chat vision call failed", provider);
+            await LogCall(provider, success: false, containerCount: 0, sw.ElapsedMilliseconds, userId,
                 errorSummary: ex.Message);
-            return new VisionResult { Message = "Something went wrong analysing that photo. Give it another go!" };
+            return null;
         }
     }
 }
