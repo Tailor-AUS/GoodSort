@@ -1,81 +1,73 @@
-# GoodSort — handoff (2026-07-14)
+# GoodSort — handoff (2026-07-31)
 
-Previous handoff (2026-05-24 hardening pass) is in git history; everything in
-it landed on main. This handoff covers the marketing launch + ops pass.
+Previous handoff (2026-07-14 marketing + Sovrgn) is in git history. This pass
+is **get-to-market**: email control + COEX/CDS follow-up.
 
-## Open PRs (deliverables of this pass)
+## What landed this pass
 
-1. **PR #4 — `feat/marketing-launch`**: public landing page at `/`, SEO
-   (sitemap/robots/OG images, schema.org), `(sorter)` → `/sort`, auth-guard
-   redirects to `/`, next 16.2.9. Copy is written around the B2B model
-   (~$149/mo per building subscription = the MRR line; households = supply
-   flywheel).
-2. **PR #5 — `fix/marketplace-ownership-ci-vision`**: CI backend deploy
-   replaced `container-apps-deploy-action@v2` (broken azext_containerapp CLI
-   bug) with `azure/cli@v2` running `az acr build` + `az containerapp update`;
-   restore-secrets defaults `AZURE_OPENAI_DEPLOYMENT=gpt-5-mini`.
-3. **PR (this branch) — `feat/sovrgn-inference`**: LLM inference routes
-   through Sovrgn (`api.sovrgn.ai`, OpenAI-compatible) when `SOVRGN_API_KEY`
-   is set; falls back to Azure OpenAI. Vision health endpoint now reports
-   `sovrgnFallback`.
+1. **Admin outreach email API** — `POST /api/admin/outreach/send` sends via ACS
+   from `@thegoodsort.org`, Reply-To defaults to `knox@tailor.au`.
+2. **COEX follow-up pack** — `docs/coex-followup-2026-07.md` +
+   `docs/coex-followup-payload.json` + `scripts/send-coex-followup.sh` /
+   `scripts/acs-send-outreach.sh`.
+3. **Email ops playbook** — `docs/gtm-email-ops.md` (outbound ACS MailFroms,
+   inbound MX cutover, CDS funding reality for FY26–27).
+4. **Inbound cutover script** — `infra/email-inbound-cutover.sh` (dry-run by
+   default; needs forwarder MX hosts + `az login`).
 
-## Sovrgn rollout — blocked on a key
+## BLOCKED on Azure login (Knox)
 
-`api.sovrgn.ai` is live (`/health` 200, `/v1/*` returns OpenAI-style 401
-`invalid_api_key`). No Sovrgn API key exists in any local env. To flip prod:
+This cloud agent has **no Azure credentials**. Device-code login was started;
+complete it so the agent (or you) can:
+
+1. Pull `ACS_CONNECTION_STRING` from Container App `api` / `rg-GoodSort`
+2. Send the COEX follow-up **today** via `./scripts/acs-send-outreach.sh`
+3. Add ACS MailFrom usernames `hello` + `admin` on `thegoodsort.org`
+4. Cut over inbound MX off the stranded M365 tenant
 
 ```bash
-azd env set SOVRGN_API_KEY <key>
-azd env set SOVRGN_MODEL <model>     # required alongside the key
-# then either azd deploy (postdeploy hook restores) or directly:
-az containerapp update -n api -g rg-GoodSort --set-env-vars \
-  SOVRGN_API_KEY=<key> SOVRGN_API_URL=https://api.sovrgn.ai/v1 SOVRGN_MODEL=<model>
+# On a machine where Knox can complete device login:
+az login
+./scripts/acs-send-outreach.sh docs/coex-followup-payload.json
 ```
 
-No Sovrgn model catalogue is published; get the model name from the Sovrgn
-side (Knox owns it — see the AloomU/Sovrgn SAFE thread).
+## Email situation (unchanged root cause)
 
-## ⚠️ thegoodsort.org email is a SEPARATE M365 tenant
+- `thegoodsort.org` DNS is on **Azure DNS** (controllable once logged in).
+- MX still points at Outlook tenant **NETORG20627853**
+  (`1945399a-0691-45fb-8534-73a0c8919c69`) — not in Tailor `az account list`.
+- April 18 EOI to `expansion@coex.com.au` may have a reply trapped there.
+- Outbound OTP via ACS (`DoNotReply@thegoodsort.org`) still works; SPF already
+  includes `azurecomm.net`.
 
-Discovered 2026-07-14 while auditing founder outreach:
+**Immediate workaround:** send with Reply-To + Cc `knox@tailor.au` (payload
+already does). **Durable fix:** ImprovMX/Forward Email catch-all → knox@tailor.au
+via `infra/email-inbound-cutover.sh`, plus recover M365 for historical mail.
 
-- `thegoodsort.org` is verified in its own tenant: **NETORG20627853.onmicrosoft.com**,
-  tenant id `1945399a-0691-45fb-8534-73a0c8919c69` ("thegoodsort org").
-  MX → `thegoodsort-org.mail.protection.outlook.com`; SPF includes
-  outlook + azurecomm (ACS OTP sending).
-- `admin@thegoodsort.org` is NOT reachable from the tailor.au / tailorco.au
-  tenants (no delegate access), and the tenant is not in `az account list`.
-- **Known outbound founder email:** EOI to `expansion@coex.com.au`
-  (COEX Expansion Team) sent 2026-04-18 from `admin@thegoodsort.org`,
-  cc `Knox@tailor.au` — asks about CRP registration, handling fees, digital
-  evidence chain, RVM hire. **No reply ever arrived at Knox@tailor.au and the
-  mailbox that would hold a reply is in the inaccessible tenant.** COEX may
-  have replied there — or the EOI may be sitting unanswered for ~3 months.
-- **Action for Knox:** log into the NETORG20627853 tenant (the M365 Basic
-  admin account created when the domain was bought), check
-  `admin@thegoodsort.org` for a COEX reply, and either grant
-  `Knox@tailor.au` delegate access or set a forwarding rule so this can be
-  monitored from the main account. Follow up with COEX either way.
+## COEX / CDS — FY26–27 policy snapshot
 
-## Prod state (unchanged this pass)
+| Item | Status | Action |
+|------|--------|--------|
+| April 18 EOI | No reply seen at knox@tailor.au | Send follow-up (payload ready) |
+| FY26–28 Strategic Plan | Partner for Growth; SEQ small formats | Pitch kerbside as waste partnership |
+| CRP form | Includes **Bag Drop** + **Mobile Pop Up** | Ask Expansion for category, then apply |
+| RVM Asset Hire | SEQ; new ops <$2.5m TO; X30 ~$706/mo; 5.90¢ | Secondary channel for buildings |
+| Amendment Bill 2026 | Introduced Mar 26; committee pass recommended May 15; 2nd reading pending | Soft ask on pilot / surplus programmes |
+| Refund increase | Gov **rejected** | Stay on 10¢ economics |
 
-- 0 scans/24h, MRR $0. Prod live at thegoodsort.org / api on Container Apps.
-- Tailor Vision (BAINK) still HTTP 402 `environment_not_ready` since
-  2026-04-19 — needs Tailor-side tenant re-provisioning. Fallback
-  `gpt-5-mini` works; azd env updated in both checkouts
-  (`C:\TailorOS\thegoodsort-app` and `C:\Users\knoxh\GoodSort`).
-- Vision health check: `GET /api/admin/vision/health` with admin JWT
-  (admin@tailorco.au, profile `1f37ac92-9121-486e-842d-cd716155da1c`,
-  OTP-to-email auth). Healthy = `verdict: green`.
-- **ABA source account is still the placeholder** (`062-000` / `12345678`)
-  in `CashoutService.GenerateAbaFile` — awaiting Knox's real settlement
-  account. Do not fill without Knox.
-- Container App secrets are still plaintext env vars — Key Vault migration
-  still outstanding (see 2026-05-24 handoff follow-ups, all still open:
-  BSB encryption at rest, JWT rotation, CSP unsafe-inline, OTel NU1902).
+**Funding clarity:** COEX is industry-funded. Ask for **handling fees + RVM hire
+(capex relief) + category guidance**, not a "grant".
 
-## Local tree notes
+## Still open from prior handoffs
 
-- `stash@{0}` (autostash) predates this pass — left untouched, do not drop.
-- azd env for this repo lives in `.azure/GoodSort/` (copied 2026-07-14 from
-  the old `C:\Users\knoxh\GoodSort` checkout; gitignored, holds secrets).
+- Sovrgn: code on main; prod flip blocked on API key + model name
+- Tailor Vision BAINK: HTTP 402 since 2026-04-19 — fallback `gpt-5-mini` works
+- ABA settlement account still placeholder — Knox only
+- PR #3 launch hardening still open; PR #2 draft should stay unmerged
+- Key Vault migration / BSB encryption still outstanding
+
+## Prod
+
+- Frontend: https://thegoodsort.org
+- API: https://api.livelyfield-64227152.eastasia.azurecontainerapps.io
+- Entity: Crispr Projects Pty Ltd (ABN 85 680 798 770)

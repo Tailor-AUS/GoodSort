@@ -874,6 +874,34 @@ app.MapGet("/api/admin/aba-export", async (CashoutService cashout) =>
     return Results.Text(aba, "text/plain");
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
+// ── Admin: Send founder/outreach email via ACS (thegoodsort.org) ──
+// Used for COEX follow-ups and GTM outbound while the M365 tenant for
+// admin@thegoodsort.org remains inaccessible. Reply-To defaults to knox@tailor.au
+// so replies land somewhere we can actually read.
+app.MapPost("/api/admin/outreach/send", async (OutreachEmailRequest req, NotificationService notify, ILogger<Program> log) =>
+{
+    // Force a usable reply path when the caller doesn't specify one.
+    var replyTo = (req.ReplyTo is { Count: > 0 })
+        ? req.ReplyTo
+        : new[] { "knox@tailor.au" };
+    var cc = req.Cc;
+    var enriched = req with { ReplyTo = replyTo, Cc = cc };
+    var error = await notify.SendOutreachAsync(enriched);
+    if (error is not null)
+    {
+        log.LogWarning("Outreach send failed: {Error}", error);
+        return Results.BadRequest(new { error });
+    }
+    return Results.Ok(new
+    {
+        sent = true,
+        to = req.To,
+        subject = req.Subject,
+        from = string.IsNullOrWhiteSpace(req.From) ? notify.OutreachSender : req.From,
+        replyTo,
+    });
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
+
 // ── Admin: Dashboard stats (auth required) ──
 app.MapGet("/api/admin/stats", async (GoodSortDbContext db) =>
 {
@@ -1657,3 +1685,4 @@ record MarketplaceClaimRequest(Guid ProfileId);
 record RunStopPickupRequest(int ActualContainers, string? PhotoUrl);
 record PricingSimulateRequest(int Containers, double DistanceKm, int StopCount);
 record AdminBootstrapRequest(string Email);
+// OutreachEmailRequest lives in NotificationService.cs (shared DTO).

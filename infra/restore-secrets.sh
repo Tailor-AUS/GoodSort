@@ -9,6 +9,7 @@
 #   azd env set TAILOR_VISION_API_URL "..."
 #   azd env set ACS_CONNECTION_STRING "..."
 #   azd env set ACS_EMAIL_SENDER "..."
+#   azd env set ACS_OUTREACH_SENDER "..."   # optional — defaults to ACS_EMAIL_SENDER
 #   azd env set AZURE_OPENAI_ENDPOINT "..."
 #   azd env set AZURE_OPENAI_KEY "..."
 #   azd env set AZURE_OPENAI_DEPLOYMENT "..."
@@ -53,6 +54,14 @@ az containerapp update -n "$APP" -g "$RG" \
   --output none
 
 echo "Env vars restored."
+
+# Optional: founder outreach From address (hello@ / admin@) once ACS MailFrom exists.
+if [ -n "${ACS_OUTREACH_SENDER:-}" ]; then
+  az containerapp update -n "$APP" -g "$RG" \
+    --set-env-vars "ACS_OUTREACH_SENDER=$ACS_OUTREACH_SENDER" \
+    --output none
+  echo "ACS_OUTREACH_SENDER restored."
+fi
 
 # Optional: Sovrgn sovereign inference gateway (api.sovrgn.ai). Only applied
 # when a key is set — the app falls back to Azure OpenAI without it.
