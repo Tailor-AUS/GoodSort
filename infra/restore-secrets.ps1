@@ -54,6 +54,14 @@ az containerapp update -n $app -g $rg `
 
 Write-Host "Env vars restored."
 
+$acsOutreach = [Environment]::GetEnvironmentVariable("ACS_OUTREACH_SENDER")
+if ($acsOutreach) {
+  az containerapp update -n $app -g $rg `
+    --set-env-vars "ACS_OUTREACH_SENDER=$acsOutreach" `
+    --output none
+  Write-Host "ACS_OUTREACH_SENDER restored."
+}
+
 # Optional: Sovrgn sovereign inference gateway (api.sovrgn.ai). Only applied
 # when a key is set — the app falls back to Azure OpenAI without it.
 $sovrgnKey = [Environment]::GetEnvironmentVariable("SOVRGN_API_KEY")
