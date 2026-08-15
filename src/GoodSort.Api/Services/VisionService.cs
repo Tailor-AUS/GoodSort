@@ -6,7 +6,6 @@ using System.Text.Json.Serialization;
 using Azure.AI.OpenAI;
 using GoodSort.Api.Data;
 using GoodSort.Api.Data.Entities;
-using OpenAI;
 using OpenAI.Chat;
 
 namespace GoodSort.Api.Services;
@@ -207,33 +206,13 @@ No containers (blurry):
 
     private async Task<VisionResult> IdentifyViaLlmFallback(string base64Image, Guid? userId)
     {
-        var sovrgnKey = _config["SOVRGN_API_KEY"] ?? "";
-        if (!string.IsNullOrEmpty(sovrgnKey))
+        // Direct Sovrgn consumers were revoked (TailorAU/tailor-app#5223).
+        // A leftover SOVRGN_API_KEY must not be sent at api.sovrgn.ai.
+        if (!string.IsNullOrEmpty(_config["SOVRGN_API_KEY"]))
         {
-            var sovrgnResult = await IdentifyViaSovrgn(base64Image, userId, sovrgnKey);
-            if (sovrgnResult is not null) return sovrgnResult;
-            _logger.LogWarning("Sovrgn inference failed — falling back to Azure OpenAI");
+            _logger.LogWarning("SOVRGN_API_KEY is set but The Good Sort is not a Sovrgn consumer — using Azure OpenAI");
         }
         return await IdentifyViaAzureOpenAI(base64Image, userId);
-    }
-
-    // Sovrgn (api.sovrgn.ai) is an OpenAI-compatible sovereign inference
-    // gateway. When SOVRGN_API_KEY is set, LLM inference routes through it in
-    // preference to Azure OpenAI. Returns null on any failure so the caller
-    // can fall through.
-    private async Task<VisionResult?> IdentifyViaSovrgn(string base64Image, Guid? userId, string apiKey)
-    {
-        var endpoint = _config["SOVRGN_API_URL"] ?? "https://api.sovrgn.ai/v1";
-        var model = _config["SOVRGN_MODEL"] ?? "";
-        if (string.IsNullOrEmpty(model))
-        {
-            _logger.LogWarning("SOVRGN_API_KEY is set but SOVRGN_MODEL is missing — skipping Sovrgn");
-            return null;
-        }
-
-        var client = new OpenAIClient(new ApiKeyCredential(apiKey),
-            new OpenAIClientOptions { Endpoint = new Uri(endpoint) });
-        return await RunChatVision(client.GetChatClient(model), "sovrgn", base64Image, userId);
     }
 
     private async Task<VisionResult> IdentifyViaAzureOpenAI(string base64Image, Guid? userId)
@@ -244,7 +223,7 @@ No containers (blurry):
 
         if (string.IsNullOrEmpty(apiKey))
         {
-            _logger.LogError("No vision API configured (neither Tailor Vision, Sovrgn, nor Azure OpenAI)");
+            _logger.LogError("No vision API configured (neither Tailor Vision nor Azure OpenAI)");
             await LogCall("none", success: false, containerCount: 0, 0, userId,
                 errorSummary: "No vision provider configured");
             return new VisionResult { Message = "Photo scan is temporarily unavailable. Please try again later." };
@@ -255,9 +234,9 @@ No containers (blurry):
         return result ?? new VisionResult { Message = "Something went wrong analysing that photo. Give it another go!" };
     }
 
-    // Shared chat-vision path for OpenAI-compatible providers (Sovrgn, Azure
-    // OpenAI). Returns null on failure; the failure is logged to VisionCalls
-    // under the given provider name.
+    // Shared chat-vision path for OpenAI-compatible providers (Azure OpenAI).
+    // Returns null on failure; the failure is logged to VisionCalls under the
+    // given provider name.
     private async Task<VisionResult?> RunChatVision(ChatClient chatClient, string provider, string base64Image, Guid? userId)
     {
         var sw = Stopwatch.StartNew();
