@@ -54,20 +54,13 @@ az containerapp update -n $app -g $rg `
 
 Write-Host "Env vars restored."
 
-# Optional: Sovrgn sovereign inference gateway (api.sovrgn.ai). Only applied
-# when a key is set — the app falls back to Azure OpenAI without it.
-$sovrgnKey = [Environment]::GetEnvironmentVariable("SOVRGN_API_KEY")
-if ($sovrgnKey) {
-  $sovrgnUrl = [Environment]::GetEnvironmentVariable("SOVRGN_API_URL")
-  if (-not $sovrgnUrl) { $sovrgnUrl = "https://api.sovrgn.ai/v1" }
-  $sovrgnModel = [Environment]::GetEnvironmentVariable("SOVRGN_MODEL")
-  az containerapp update -n $app -g $rg `
-    --set-env-vars `
-      "SOVRGN_API_KEY=$sovrgnKey" `
-      "SOVRGN_API_URL=$sovrgnUrl" `
-      "SOVRGN_MODEL=$sovrgnModel" `
-    --output none
-  Write-Host "Sovrgn env vars restored."
+# Direct Sovrgn consumers were revoked (TailorAU/tailor-app#5223). Strip any
+# leftover SOVRGN_* so the next azd deploy cannot re-inject a dead bearer.
+az containerapp update -n $app -g $rg `
+  --remove-env-vars SOVRGN_API_KEY SOVRGN_API_URL SOVRGN_MODEL `
+  --output none
+if ([Environment]::GetEnvironmentVariable("SOVRGN_API_KEY")) {
+  Write-Host "WARNING: SOVRGN_API_KEY is set in azd env but will not be restored (revoked)."
 }
 
 # Re-link thegoodsort.org to ACS (keeps getting unlinked by M365 DNS changes)
