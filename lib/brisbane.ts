@@ -191,6 +191,19 @@ export function streetInviteUrl(opts: {
   return `${origin}${streetInvitePath(opts)}`;
 }
 
+/** Printable letterbox card. Missing suburb → `/`, never a fake Moorooka. */
+export function streetCardPath(opts: {
+  suburb?: string | null;
+  day?: number | null;
+  dayName?: string | null;
+}): string {
+  const known = opts.suburb ? findSuburb(opts.suburb) : undefined;
+  if (!known) return "/";
+  const day = opts.day ?? parseDayParam(opts.dayName);
+  const slug = day != null ? daySlug(day) : null;
+  return slug ? `/brisbane/${known.slug}/card?day=${slug}` : `/brisbane/${known.slug}/card`;
+}
+
 export function whatsappShareUrl(message: string) {
   return `https://wa.me/?text=${encodeURIComponent(message)}`;
 }

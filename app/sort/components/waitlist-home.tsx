@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ScanBarcode } from "lucide-react";
-import { LIVE_HOUSEHOLD_THRESHOLD, inviteMessage, residentialNeedsStreet, streetInviteUrl, titleSuburb } from "@/lib/brisbane";
+import { LIVE_HOUSEHOLD_THRESHOLD, inviteMessage, residentialNeedsStreet, streetCardPath, streetInviteUrl, titleSuburb } from "@/lib/brisbane";
 import { readStoredProfileId } from "@/lib/config";
 import { Logo } from "@/app/components/shared/logo";
 import { WaitlistCard } from "@/app/components/shared/waitlist-card";
@@ -88,6 +88,14 @@ export function WaitlistHome({
               The collection night starts when {LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day join. Same day is the unlock.
             </p>
             <InviteActions url={inviteUrl} message={message} />
+            {suburb && (
+              <a
+                href={streetCardPath({ suburb, day: household?.councilCollectionDay, dayName })}
+                className="block mt-2 text-center text-[12px] font-semibold text-violet-800"
+              >
+                Print a letterbox card
+              </a>
+            )}
           </div>
         )}
 

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ShieldCheck, ChevronRight, Recycle, Banknote, Truck, ArrowDown, Check, MapPin, Home } from "lucide-react";
 import { apiUrl, clearAuth, hasValidToken, persistWaitlistFromUrl, readDayHint, readReferrerId, waitlistContinuePath, writeDayHint } from "@/lib/config";
 import { track } from "@/lib/analytics";
-import { BCC_BIN_DAY_DATASET, DAY_NAMES, LIVE_HOUSEHOLD_THRESHOLD, dayClusterStats, daySlug, findSuburb, inviteMessage, sameSuburb, streetInviteUrl, type GrowthSuburb } from "@/lib/brisbane";
+import { BCC_BIN_DAY_DATASET, DAY_NAMES, LIVE_HOUSEHOLD_THRESHOLD, dayClusterStats, daySlug, findSuburb, inviteMessage, sameSuburb, streetCardPath, streetInviteUrl, type GrowthSuburb } from "@/lib/brisbane";
 import { Logo } from "@/app/components/shared/logo";
 import { SortAnimation } from "@/app/components/shared/sort-animation";
 import { InviteActions } from "@/app/components/shared/invite-actions";
@@ -268,6 +268,12 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
             {place ? (
               <div className="mt-3">
                 <InviteActions url={shareUrl} message={shareMessage} compact />
+                <a
+                  href={streetCardPath({ suburb: place, day: dayHint, dayName: cluster?.dayName })}
+                  className="block mt-2 text-center text-[12px] font-semibold text-violet-800"
+                >
+                  Print a letterbox card
+                </a>
               </div>
             ) : (
               <p className="text-[12px] text-slate-500 mt-2">
