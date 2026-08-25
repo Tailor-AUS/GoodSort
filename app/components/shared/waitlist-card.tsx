@@ -14,9 +14,10 @@ type WaitlistCardProps = {
   dayName?: string | null;
   day?: number | null;
   building?: boolean;
+  hideInvite?: boolean;
 };
 
-export function WaitlistCard({ suburb, households, needed, live, binStatus, dayName, day, building }: WaitlistCardProps) {
+export function WaitlistCard({ suburb, households, needed, live, binStatus, dayName, day, building, hideInvite }: WaitlistCardProps) {
   const place = suburb ? titleSuburb(suburb) : "your suburb";
   const dayLabel = dayName ?? "your recycling day";
   const ordered = binStatus === "allocated";
@@ -46,7 +47,7 @@ export function WaitlistCard({ suburb, households, needed, live, binStatus, dayN
       <p className="text-[11px] uppercase tracking-wider text-violet-700/70 mb-1">Street</p>
       <p className="text-[15px] font-display font-extrabold text-slate-900">{title}</p>
       <p className="text-[12px] text-slate-600 mt-1">{body}</p>
-      {!arriving && (
+      {!arriving && !hideInvite && (
         <div className="mt-3">
           <InviteActions url={inviteUrl} message={message} compact />
         </div>

@@ -189,7 +189,7 @@ export default function OnboardPage() {
       sub={type === "unit_complex"
         ? "High-rise common-area pickups are phase 2. If you put a bin on the street, join as a house so your recycling day can unlock."
         : suburbHint
-          ? `Put ${suburbHint} on the waitlist. Address, recycling day, done.`
+          ? `Start sorting in ${suburbHint}. Address, recycling day, done.`
           : "Address and recycling day. Start sorting today — we tell you when we collect."}
     >
       <div className="space-y-3 mb-4">

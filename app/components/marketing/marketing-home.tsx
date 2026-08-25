@@ -202,12 +202,12 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
           <div className="mb-9"><Logo size="lg" /></div>
 
           <div className="inline-flex items-center gap-2 bg-white/82 text-violet-800 text-[12px] font-semibold px-3.5 py-1.5 rounded-full mb-6 border border-violet-200">
-            <MapPin className="w-3.5 h-3.5" /> {suburbName ? `${suburbName} · Brisbane waitlist` : "Brisbane waitlist"}
+            <MapPin className="w-3.5 h-3.5" /> {suburbName ? `${suburbName} · start sorting` : "Brisbane · start sorting"}
           </div>
 
           {inviteFrom && (
             <p className="max-w-xl mb-5 text-[15px] font-semibold text-violet-900 bg-violet-50/90 border border-violet-200 rounded-2xl px-4 py-3">
-              {inviteFrom.name} invited you{suburbName ? ` onto the ${inviteFrom.dayName ? `${inviteFrom.dayName} ` : ""}${suburbName} waitlist` : ""}. Join so your recycling day can unlock.
+              {inviteFrom.name} invited you{suburbName ? ` to start sorting on ${inviteFrom.dayName ? `${inviteFrom.dayName} ` : ""}${suburbName}` : ""}. Join so your recycling day can unlock.
             </p>
           )}
 
@@ -255,7 +255,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
           </div>
 
           <div className="mt-10 max-w-md bg-white/85 border border-violet-200 rounded-2xl px-4 py-3">
-            <p className="text-[12px] text-slate-500 uppercase tracking-wider mb-1">Street waitlist</p>
+            <p className="text-[12px] text-slate-500 uppercase tracking-wider mb-1">Your street</p>
             <p className="text-[15px] font-semibold text-slate-900">
               {dayLive
                 ? `${place ?? "Your suburb"}${cluster?.dayName ? ` ${cluster.dayName}` : ""} has enough neighbours on the same recycling day — we can order bins.`
@@ -369,7 +369,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
       <footer className="px-6 py-8 text-center border-t border-slate-100">
         <div className="flex justify-center mb-3"><Logo size="sm" /></div>
         <p className="text-[11px] text-slate-400">
-          Brisbane waitlist — not a live city-wide pickup. Sorting credits are a private reward, not the 10¢ Containers for Change refund. We are not claiming approval as a Containers for Change refund point.
+          Not a live city-wide pickup. Sorting credits are a private reward, not the 10¢ Containers for Change refund. We are not claiming approval as a Containers for Change refund point.
         </p>
         <div className="flex justify-center gap-4 mt-2">
           <a href="/brisbane" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">Brisbane suburbs</a>

@@ -83,7 +83,7 @@ export function BinDayFinder({ suburbName, onResolved }: Props) {
           {href && !suburbName && (
             <>
               {" "}
-              <a href={href} className="font-semibold text-violet-800 underline">Open that waitlist</a>
+              <a href={href} className="font-semibold text-violet-800 underline">Start sorting there</a>
             </>
           )}
         </p>
