@@ -7,7 +7,19 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
     branches:
-      - main
+    - main
+    # API-only PRs must not consume the SWA staging-slot cap.
+    paths:
+      - "app/**"
+      - "lib/**"
+      - "public/**"
+      - "package.json"
+      - "package-lock.json"
+      - "next.config.*"
+      - "tsconfig.json"
+      - "tailwind.config.*"
+      - "postcss.config.*"
+      - ".github/workflows/azure-static-web-apps-kind-mushroom-0fe89a200.yml"
 
 jobs:
   build_and_deploy_job:

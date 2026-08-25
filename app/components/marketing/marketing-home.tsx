@@ -282,7 +282,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
           </div>
           <div className="hidden lg:block pt-8">
             <SortAnimation />
-            <p className="text-center text-[12px] text-slate-500 mt-3">Our purple bin. We collect it. Not the council yellow bin.</p>
+            <p className="text-center text-[12px] text-slate-500 mt-3">Sort in your own bags today. We collect when 12 same-day houses join — not the council yellow bin.</p>
           </div>
         </div>
       </section>
