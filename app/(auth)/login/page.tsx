@@ -52,7 +52,7 @@ export default function LoginPage() {
           <div className="flex justify-center mb-4">
             <Logo size="lg" />
           </div>
-          <p className="text-slate-400 text-[13px] mt-1">Join the waitlist. We&apos;ll tell you when we&apos;re collecting in your area.</p>
+          <p className="text-slate-400 text-[13px] mt-1">Start sorting today. We&apos;ll tell you when we collect.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

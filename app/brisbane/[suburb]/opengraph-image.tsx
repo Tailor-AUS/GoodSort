@@ -10,7 +10,7 @@ export function generateStaticParams() {
   return BRISBANE_SUBURBS.map((s) => ({ suburb: s.slug }));
 }
 
-export const alt = "Join the waitlist for a purple The Good Sort bin in this Brisbane suburb";
+export const alt = "Start sorting today with The Good Sort in this Brisbane suburb";
 
 export default async function Image({ params }: { params: Promise<{ suburb: string }> }) {
   const { suburb } = await params;

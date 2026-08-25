@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { ScanBarcode, MapPin, X, QrCode, ChevronUp, Truck } from "lucide-react";
+import { ScanBarcode, MapPin, X, QrCode, ChevronUp } from "lucide-react";
 import { type SortBin, type User, formatCents } from "@/lib/store";
 import { PoweredByTailor } from "@/app/components/shared/powered-by-tailor";
 import { WaitlistCard } from "@/app/components/shared/waitlist-card";
+import { CollectionNightCard } from "@/app/components/shared/collection-night-card";
 import { isCollecting } from "@/lib/brisbane";
 import Link from "next/link";
 
@@ -111,18 +112,12 @@ export function SorterSheet({
                 />
               )}
 
-              {nextPickup && isCollecting(household?.binStatus) && (
-                <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3 mb-3 flex items-start gap-3">
-                  <Truck className="w-5 h-5 text-green-700 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-[11px] uppercase tracking-wider text-green-700/70">Next collection</p>
-                    <p className="text-[15px] font-display font-extrabold text-slate-900">
-                      {new Date(nextPickup).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "short" })}
-                    </p>
-                    <p className="text-[12px] text-slate-500 mt-0.5">Night before council. Put your purple The Good Sort bin on the kerb.</p>
-                  </div>
-                </div>
-              )}
+              <CollectionNightCard
+                nextPickup={nextPickup}
+                confirmed={isCollecting(household?.binStatus)}
+                unlocked={!!household?.areaLive || household?.binStatus === "allocated"}
+                dayName={household?.dayName}
+              />
 
               {household && isCollecting(household.binStatus) && (
                 <button onClick={onBinOut}

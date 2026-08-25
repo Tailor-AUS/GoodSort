@@ -5,15 +5,15 @@ export const SITE_URL = (
 ).replace(/\/+$/, "");
 
 export const SITE_NAME = "The Good Sort";
-export const SITE_TITLE = "The Good Sort | Brisbane purple-bin waitlist";
+export const SITE_TITLE = "The Good Sort | Start sorting today in Brisbane";
 export const SITE_DESCRIPTION =
-  "Join the waitlist for a purple The Good Sort bin. When enough neighbours on your street sign up, we deliver the bin and start collecting eligible cans and bottles. We'll let you know when we're collecting in your area.";
+  "Start sorting eligible cans and bottles at home today. Join with your address. We tell you the night we collect — the night before your Brisbane recycling day, once 12 neighbours on that day join.";
 
 export const SOCIAL_IMAGE = {
   url: "/opengraph-image",
   width: 1200,
   height: 630,
-  alt: "The Good Sort purple-bin waitlist for Brisbane streets",
+  alt: "The Good Sort — start sorting today in Brisbane",
 };
 
 export const seoKeywords = [

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Camera, RotateCcw, Check, Mail, ShieldCheck, ImagePlus, X, Home } from "lucide-react";
 import { apiUrl, authHeaders, persistWaitlistFromUrl, readReferrerId } from "@/lib/config";
-import { isCollecting, residentialNeedsStreet } from "@/lib/brisbane";
+import { residentialNeedsStreet } from "@/lib/brisbane";
 
 interface BinInfo {
   id: string; code: string; name: string; address: string; hostedBy: string | null;
@@ -60,7 +60,7 @@ function ScanPageContent() {
         router.replace("/onboard");
         return;
       }
-      if (hh && isCollecting(hh.binStatus)) {
+      if (hh) {
         setStep("camera");
         return;
       }
@@ -290,12 +290,12 @@ function ScanPageContent() {
         {bin ? bin.name : "Scan is optional"}
       </h1>
       <p className="text-slate-400 text-[13px] mb-6">
-        Join the waitlist for a purple The Good Sort bin. You do not need to scan every container. Camera count is only for streets we already collect.
+        Join, then start sorting at home today. Scan is optional — we tell you the night we collect.
       </p>
-      <GreenButton onClick={() => { window.location.href = "/"; }}>Join the waitlist</GreenButton>
+      <GreenButton onClick={() => { window.location.href = "/"; }}>Start sorting</GreenButton>
       <button onClick={() => setStep("auth")}
         className="w-full mt-2 py-3 text-slate-500 font-medium text-[13px] hover:text-slate-700 transition-colors">
-        I already have a purple bin — optional count
+        I already joined — optional count
       </button>
     </Center>
   );
@@ -305,7 +305,7 @@ function ScanPageContent() {
     <Center>
       <IconBubble><Mail className="w-7 h-7 text-green-600" /></IconBubble>
       <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">Enter your email</h1>
-      <p className="text-slate-400 text-[13px] mb-6">Optional count only. Join the waitlist for a purple bin — scan is not required.</p>
+      <p className="text-slate-400 text-[13px] mb-6">Optional count. You can start sorting at home today — scan is not required.</p>
       <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
         onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}
         className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 mb-3" autoFocus />
@@ -343,21 +343,21 @@ function ScanPageContent() {
       <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">
         {totalItems > 0 ? "Estimate logged" : "Done"}
       </h1>
-      <p className="text-slate-500 text-[13px] mb-4">{totalItems} container{totalItems !== 1 ? "s" : ""} noted{bin ? ` at ${bin.name}` : ""}. The runner count after we collect your purple bin is what pays.</p>
+      <p className="text-slate-500 text-[13px] mb-4">{totalItems} container{totalItems !== 1 ? "s" : ""} noted{bin ? ` at ${bin.name}` : ""}. The runner count after we collect is what pays.</p>
 
       {totalItems > 0 && (
         <div className="bg-green-50 rounded-2xl p-4 border border-green-200 mb-4 text-left">
           <p className="text-[12px] font-bold text-green-800 mb-2">How this works:</p>
           <div className="space-y-1.5 text-[12px] text-green-700">
-            <p>1. Scan is optional — you do not need to scan every can</p>
-            <p>2. Join the waitlist and invite the street</p>
-            <p>3. We collect the purple bin the night before council</p>
+            <p>1. Scan is optional — you sort at home today</p>
+            <p>2. We tell you the night we collect</p>
+            <p>3. 12 houses on your recycling day start that night</p>
             <p>4. 5¢ each from the runner count. Bank transfer from $20 once payouts are live</p>
           </div>
         </div>
       )}
 
-      <GreenButton onClick={() => { window.location.href = "/"; }}>Join the waitlist</GreenButton>
+      <GreenButton onClick={() => { window.location.href = "/sort"; }}>Back to sort</GreenButton>
       <button onClick={retake}
         className="w-full mt-2 py-3 text-slate-400 font-medium text-[13px] hover:text-slate-600 transition-colors">
         Log another optional count
@@ -436,7 +436,7 @@ function ScanPageContent() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[14px] text-slate-900 font-semibold">{item.name}</p>
-                    <p className="text-[12px] text-slate-500">5c each &middot; into your purple bin when we&apos;re collecting</p>
+                    <p className="text-[12px] text-slate-500">5c each &middot; sort into your own bags today</p>
                   </div>
                   <span className="text-[15px] font-display font-extrabold text-slate-900">&times;{item.count}</span>
                 </div>
@@ -444,7 +444,7 @@ function ScanPageContent() {
 
               <div className="mt-4 p-4 bg-green-50 rounded-2xl border border-green-100">
                 <p className="text-[12px] text-slate-700 font-medium">
-                  Drop into the <span className="font-bold">CDS side</span> of your purple The Good Sort bin once we&apos;re collecting in your area.
+                  Keep it in your sorted bags. We collect the night before council recycling.
                 </p>
               </div>
             </div>

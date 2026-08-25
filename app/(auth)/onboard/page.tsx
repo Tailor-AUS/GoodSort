@@ -67,7 +67,7 @@ export default function OnboardPage() {
     const ln = override?.lng ?? lng;
     const suburb = canonicalSuburb(override?.suburb) ?? canonicalSuburb(pickedSuburb) ?? canonicalSuburb(suburbHint);
     if (!addr || la == null || ln == null || collectionDay == null) { setError("Pick your address and collection day."); return; }
-    if (!accessConsent) { setError("Tick the box so we can contact you when we launch your street."); return; }
+    if (!accessConsent) { setError("Tick the box so we can tell you when we collect."); return; }
     if (!hasValidToken()) { clearAuth(); setError("Your session expired — please sign in again."); router.push("/login"); return; }
     setLoading(true); setError("");
 
@@ -97,7 +97,7 @@ export default function OnboardPage() {
       if (hhRes.status === 401) { clearAuth(); setError("Your session expired — please sign in again."); router.push("/login"); return; }
       if (!hhRes.ok) {
         const data = await hhRes.json().catch(() => ({} as { error?: string }));
-        setError(typeof data.error === "string" && data.error ? data.error : "Failed to join the waitlist");
+        setError(typeof data.error === "string" && data.error ? data.error : "Couldn't save your street");
         setLoading(false);
         return;
       }
@@ -111,7 +111,7 @@ export default function OnboardPage() {
         localStorage.setItem("goodsort_profile", JSON.stringify(profile));
       }
       track("household_joined", { suburb });
-      router.push("/invite");
+      router.push("/sort");
     } catch {
       setError("Something went wrong"); setLoading(false);
     }
@@ -190,7 +190,7 @@ export default function OnboardPage() {
         ? "High-rise common-area pickups are phase 2. If you put a bin on the street, join as a house so your recycling day can unlock."
         : suburbHint
           ? `Put ${suburbHint} on the waitlist. Address, recycling day, done.`
-          : "Address and recycling day. That's a request for a purple bin."}
+          : "Address and recycling day. Start sorting today — we tell you when we collect."}
     >
       <div className="space-y-3 mb-4">
         {type === "residential" && (
@@ -242,15 +242,15 @@ export default function OnboardPage() {
             ))}
           </div>
           <div className="p-3 bg-violet-50 border border-violet-200 rounded-xl mb-3">
-            <p className="text-[13px] font-semibold text-slate-900">Purple bin + divider, when your street unlocks</p>
-            <p className="text-[11px] text-slate-500 mt-0.5">We do not rummage your council yellow bin. 12 houses on the same day and we order ours.</p>
+            <p className="text-[13px] font-semibold text-slate-900">Sort at home today. We tell you the collection night.</p>
+            <p className="text-[11px] text-slate-500 mt-0.5">You manage the four streams. We collect the night before council recycling once 12 houses on your day join. We do not rummage the yellow bin.</p>
           </div>
           <label className="flex items-start gap-3 p-3 bg-white border border-slate-200 rounded-xl mb-4 cursor-pointer">
             <input type="checkbox" checked={accessConsent} onChange={e => setAccessConsent(e.target.checked)} className="w-4 h-4 accent-green-600 mt-0.5" />
             <div className="flex-1">
-              <p className="text-[13px] font-semibold text-slate-900">Put me on the waitlist for a purple The Good Sort bin</p>
+              <p className="text-[13px] font-semibold text-slate-900">Start sorting today. Tell me when you will collect.</p>
               <p className="text-[11px] text-slate-500">
-                Contact me when you are collecting in my area. When you deliver the bin, I authorise The Good Sort to collect it from my kerb. See our <a href="/terms" target="_blank" className="underline text-green-600">Terms</a> and <a href="/privacy" target="_blank" className="underline text-green-600">Privacy Policy</a>.
+                I will sort eligible containers at home. Contact me with the collection night. When you collect, I authorise The Good Sort to take the sorted containers from my kerb. See our <a href="/terms" target="_blank" className="underline text-green-600">Terms</a> and <a href="/privacy" target="_blank" className="underline text-green-600">Privacy Policy</a>.
               </p>
             </div>
           </label>
@@ -273,7 +273,7 @@ export default function OnboardPage() {
       <Continue
         onClick={continueFromPlace}
         disabled={loading || !address.trim() || !accessConsent || (type === "unit_complex" ? !buildingName.trim() : !name.trim() || collectionDay == null)}
-        label={loading ? "Joining..." : "Join the waitlist"}
+        label={loading ? "Saving..." : "Start sorting"}
       />
       <button
         type="button"

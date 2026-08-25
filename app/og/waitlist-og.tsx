@@ -1,17 +1,17 @@
 import { LIVE_HOUSEHOLD_THRESHOLD } from "@/lib/brisbane";
 
 export const OG_SIZE = { width: 1200, height: 630 };
-export const OG_ALT = "The Good Sort purple-bin waitlist for Brisbane streets";
+export const OG_ALT = "The Good Sort — start sorting today in Brisbane";
 
 export function waitlistOgElement(opts?: { suburb?: string }) {
   const suburb = opts?.suburb;
-  const kicker = suburb ? `${suburb} · Brisbane waitlist` : "Brisbane street waitlist";
+  const kicker = suburb ? `${suburb} · sort today` : "Brisbane · sort today";
   const headline = suburb
-    ? `Join the ${suburb} waitlist`
-    : "We'll tell you when we're collecting in your area";
+    ? `Start sorting in ${suburb}`
+    : "Start sorting today. We'll tell you when we collect.";
   const body = suburb
-    ? `${LIVE_HOUSEHOLD_THRESHOLD} neighbours on the same recycling day unlock a purple The Good Sort bin on your kerb.`
-    : `${LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day unlock collection. Like NBN: we go live when the street is ready.`;
+    ? `${LIVE_HOUSEHOLD_THRESHOLD} neighbours on the same recycling day start the collection night.`
+    : `${LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day start the night. You sort at home until then.`;
 
   return (
     <div
@@ -113,8 +113,8 @@ export function waitlistOgElement(opts?: { suburb?: string }) {
         {(
           [
             ["Join", "#7c3aed"],
-            ["Invite", "#2563eb"],
-            ["Unlock", "#d97706"],
+            ["Sort", "#2563eb"],
+            ["Collect", "#d97706"],
             ["5¢ credit", "#15803d"],
           ] as const
         ).map(([label, color], index) => (

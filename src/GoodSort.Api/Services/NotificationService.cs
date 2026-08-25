@@ -25,21 +25,21 @@ public class NotificationService
         var hello = string.IsNullOrWhiteSpace(name) ? "there" : name;
         var dayName = DayName(hh.CouncilCollectionDay);
         var status = needed <= 0
-            ? $"<b>{place}</b> {dayName} now has enough neighbours on the same recycling day. We'll email you again when purple bins are on order."
-            : $"<b>{households}</b> household{(households == 1 ? "" : "s")} on the {dayName} list in {place}. <b>{needed}</b> more on that recycling day and we order purple bins.";
+            ? $"<b>{place}</b> {dayName} now has enough neighbours on the same recycling day. We'll tell you when we collect."
+            : $"<b>{households}</b> household{(households == 1 ? "" : "s")} on the {dayName} list in {place}. <b>{needed}</b> more on that recycling day and we start the collection night.";
         var subject = needed <= 0
-            ? $"You're on the list — {place} {dayName} can unlock"
-            : $"You're on the list in {place}";
+            ? $"Start sorting — {place} {dayName} can unlock"
+            : $"Start sorting today in {place}";
         var body = $@"
           <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
-            <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>You're on the waitlist</h1>
+            <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Start sorting today</h1>
             <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {hello},</p>
-            <p style='font-size:14px;line-height:1.55'>Request received for a purple The Good Sort bin at <b>{hh.Address}</b>.</p>
+            <p style='font-size:14px;line-height:1.55'>You're on the street list at <b>{hh.Address}</b>. Sort eligible cans and bottles at home — four streams, you manage them.</p>
             <p style='font-size:14px;line-height:1.55'>{status}</p>
-            <p style='font-size:14px;line-height:1.55'>Like NBN: we don't start until the street is ready. We'll tell you when we're collecting in your area.</p>
+            <p style='font-size:14px;line-height:1.55'>We'll tell you the night we collect — the night before {dayName} recycling.</p>
             <p style='font-size:14px;margin:20px 0 8px'><a href='{WhatsAppInvite(place, invite, dayName)}' style='display:inline-block;background:#25D366;color:#fff;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:12px'>WhatsApp the street</a></p>
             <p style='font-size:13px;margin:0 0 20px'><a href='{invite}' style='color:#16a34a;font-weight:600'>Or copy your street link →</a></p>
-            <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · Brisbane waitlist</p>
+            <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · Brisbane</p>
           </div>";
         await Send(email, subject, body);
     }
@@ -266,13 +266,13 @@ public class NotificationService
     private static string WhatsAppInvite(string place, string inviteUrl, string? dayName = null)
     {
         var day = string.IsNullOrWhiteSpace(dayName) || dayName == "recycling day" ? "the same recycling day" : dayName;
-        var text = $"Join the {day} waitlist for a purple The Good Sort bin in {place}. 12 neighbours on that recycling day unlock collection — like NBN, they'll tell you when they're in your area: {inviteUrl}";
+        var text = $"Start sorting with The Good Sort in {place}. 12 neighbours on {day} start the collection night: {inviteUrl}";
         return $"https://wa.me/?text={Uri.EscapeDataString(text)}";
     }
 
     private static string WhatsAppProgress(string place, string dayName, int households, int needed, string inviteUrl)
     {
-        var text = $"{households} household{(households == 1 ? "" : "s")} on the {dayName} waitlist in {place}. {needed} more on that recycling day unlock a purple The Good Sort bin: {inviteUrl}";
+        var text = $"{households} household{(households == 1 ? "" : "s")} sorting on {dayName} in {place}. {needed} more on that recycling day start the collection night: {inviteUrl}";
         return $"https://wa.me/?text={Uri.EscapeDataString(text)}";
     }
 }

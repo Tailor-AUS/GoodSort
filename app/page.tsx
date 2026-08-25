@@ -37,8 +37,8 @@ const structuredData = {
     {
       "@type": "Service",
       "@id": `${SITE_URL}/#service`,
-      name: "The Good Sort purple-bin waitlist",
-      serviceType: "Residential container recycling waitlist and pickup",
+      name: "The Good Sort Brisbane collection",
+      serviceType: "Residential container sorting and scheduled pickup",
       provider: {
         "@id": `${SITE_URL}/#organization`,
       },
@@ -49,12 +49,12 @@ const structuredData = {
         addressCountry: "AU",
       },
       description:
-        "Join a Brisbane waitlist for a purple The Good Sort bin. When 12 houses on the same recycling day join, we deliver the bin and collect eligible drink containers, paying a 5¢ sorting credit after depot verification.",
+        "Join with your Brisbane address and start sorting eligible drink containers at home today. We tell you the collection night — the night before council recycling — once 12 houses on the same recycling day join. 5¢ sorting credit after depot verification.",
       offers: {
         "@type": "Offer",
         price: "0",
         priceCurrency: "AUD",
-        description: "Free waitlist signup. Collection starts when your area unlocks.",
+        description: "Free to join. Sort today. Collection night starts when your recycling day unlocks.",
       },
     },
     {
@@ -66,7 +66,7 @@ const structuredData = {
           name: "How does The Good Sort work?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Request a purple The Good Sort bin. That puts your house on a Brisbane waitlist. When 12 houses in your suburb on the same recycling day join, we deliver our bin and collect eligible cans and bottles. We do not rummage the council yellow bin. Scan is optional.",
+            text: "Join with your address and start sorting at home today — four streams, you manage them. We tell you the collection night: the night before your council recycling day. That night starts when 12 houses in your suburb on the same recycling day join. We do not rummage the council yellow bin. Scan is optional.",
           },
         },
         {
@@ -74,7 +74,7 @@ const structuredData = {
           name: "Is The Good Sort live across Brisbane?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "No. This is a waitlist, not a city-wide pickup. Collection starts only when a suburb and recycling day hit 12 houses. City-wide totals never unlock a run.",
+            text: "You can start sorting today. Collection nights start only when a suburb and recycling day hit 12 houses. City-wide totals never unlock a run.",
           },
         },
         {
@@ -82,7 +82,7 @@ const structuredData = {
           name: "Do I need to drive to a depot?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "No. Once your street is live, we collect the purple The Good Sort bin we delivered. You do not drive to a depot.",
+            text: "No. Keep sorting at home. When your recycling day is live, we collect from the kerb. You do not drive to a depot.",
           },
         },
         {
@@ -98,7 +98,7 @@ const structuredData = {
           name: "Do I have to scan every container?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "No. Scanning is optional. Credits are based on the runner count when we collect your purple bin, after a depot verifies the containers.",
+            text: "No. Scanning is optional. Credits are based on the runner count when we collect, after a depot verifies the containers.",
           },
         },
       ],

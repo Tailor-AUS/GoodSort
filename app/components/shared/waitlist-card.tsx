@@ -26,24 +26,24 @@ export function WaitlistCard({ suburb, households, needed, live, binStatus, dayN
   const inviteUrl = streetInviteUrl({ suburb, day, dayName, profileId });
   const message = inviteMessage(inviteUrl, suburb, { dayName, households, needed, live });
 
-  let title = building ? `Building list in ${place}` : `You're on the list in ${place}`;
+  let title = building ? `Building list in ${place}` : `Keep sorting in ${place}`;
   let body = building
     ? `${households} house${households === 1 ? "" : "s"} on ${dayLabel} so far. You do not count toward the 12. Invite a house on the street.`
-    : `${households} household${households === 1 ? "" : "s"} on ${dayLabel}. ${needed} more on that day and we order purple bins. We'll email you when a neighbour joins.`;
+    : `${households} household${households === 1 ? "" : "s"} on ${dayLabel}. ${needed} more on that day and we start the collection night. Invite the street.`;
   if (arriving) {
     title = `${place} is collecting`;
-    body = "Put your purple The Good Sort bin on the kerb the night before council recycling.";
+    body = "Put your sorted containers on the kerb the night before council recycling.";
   } else if (ordered) {
-    title = `${place} unlocked — bins on order`;
-    body = "We'll email you when your purple bin is on the way. Invite the rest of the street so the first run is dense.";
+    title = `${place} unlocked — collection night is on`;
+    body = "We'll tell you when we collect. Invite the rest of the street so the first night is dense.";
   } else if (live) {
     title = `${place} ${dayLabel} has enough neighbours`;
-    body = `We've hit ${LIVE_HOUSEHOLD_THRESHOLD} households on the same recycling day. We'll tell you when your purple bin is coming.`;
+    body = `We've hit ${LIVE_HOUSEHOLD_THRESHOLD} households on the same recycling day. We'll tell you when we collect.`;
   }
 
   return (
     <div className="bg-violet-50 border border-violet-200 rounded-2xl px-4 py-3 mb-3">
-      <p className="text-[11px] uppercase tracking-wider text-violet-700/70 mb-1">Waitlist</p>
+      <p className="text-[11px] uppercase tracking-wider text-violet-700/70 mb-1">Street</p>
       <p className="text-[15px] font-display font-extrabold text-slate-900">{title}</p>
       <p className="text-[12px] text-slate-600 mt-1">{body}</p>
       {!arriving && (

@@ -121,7 +121,7 @@ export function readReferrerId(): string | undefined {
   return asProfileId(params.get("r") || params.get("ref") || sessionStorage.getItem(REFERRER_STORAGE_KEY));
 }
 
-/** After OTP: finish the street, or go to the waitlist home. Never invent a suburb. */
+/** After OTP: finish the street, or go sort at home. Never invent a suburb. */
 export async function waitlistContinuePath(): Promise<"/onboard" | "/sort"> {
   if (!hasValidToken()) return "/onboard";
   let householdId: string | undefined;

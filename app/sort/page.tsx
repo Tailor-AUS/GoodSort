@@ -49,6 +49,7 @@ export default function SorterApp() {
   const [toast, setToast] = useState<{ text: string; visible: boolean } | null>(null);
   const [household, setHousehold] = useState<HouseholdStatus | null>(null);
   const [nextPickup, setNextPickup] = useState<string | null>(null);
+  const [pickupConfirmed, setPickupConfirmed] = useState(false);
 
   const refreshData = useCallback(async () => {
     const [apiUser, apiBins, apiDepots] = await Promise.all([
@@ -108,6 +109,7 @@ export default function SorterApp() {
         });
       }
       setNextPickup(pickup?.nextPickup ?? null);
+      setPickupConfirmed(!!pickup?.confirmed);
     }
   }, []);
 
@@ -173,7 +175,15 @@ export default function SorterApp() {
         <div className="fixed z-30" style={{ top: "calc(env(safe-area-inset-top, 16px) + 0.5rem)", left: "1rem" }}>
           <AccountButton onClick={() => setShowAccount(true)} />
         </div>
-        <WaitlistHome household={household} />
+        <WaitlistHome
+          household={household}
+          nextPickup={nextPickup}
+          pickupConfirmed={pickupConfirmed}
+          onScanPress={() => setShowScanner(true)}
+        />
+        {showScanner && (
+          <Scanner onClose={() => setShowScanner(false)} onScanComplete={handleScanComplete} onBatchComplete={handleBatchComplete} />
+        )}
         <AccountPanel user={user} open={showAccount} onClose={() => { setShowAccount(false); refreshData(); }} />
       </div>
     );
