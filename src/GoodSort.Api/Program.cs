@@ -760,30 +760,30 @@ app.MapPost("/api/households/lookup-bin-day", async (BinDayLookupRequest req, Bi
     return Results.Ok(new { found = true, dayOfWeek = result.DayOfWeek, councilArea = result.CouncilArea, source = result.Source });
 });
 
-// ── Next pickup — tells the household exactly when we're coming for their bin ──
+// ── Next collection night — households sort today; we tell them this date.
+// confirmed=false until the purple bin is delivered / we are collecting. ──
 app.MapGet("/api/households/{id:guid}/next-pickup", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
     var h = await db.Households.FindAsync(id);
     if (h is null) return Results.NotFound();
     if (!await CallerCanAccessHousehold(ctx, id, db)) return Results.Forbid();
     if (h.Type != "residential" || h.CouncilCollectionDay is null)
-        return Results.Ok(new { nextPickup = (DateTime?)null, binStatus = h.BinStatus, reason = "Not a residential household with a council collection day set." });
-    if (!BinStatuses.IsServiceable(h.BinStatus))
-        return Results.Ok(new { nextPickup = (DateTime?)null, binStatus = h.BinStatus, reason = "Waitlisted — we notify you when we start collecting in your area." });
+        return Results.Ok(new { nextPickup = (string?)null, confirmed = false, binStatus = h.BinStatus, reason = "Not a residential household with a council collection day set." });
 
-    // We collect the night/day BEFORE council pickup. So runner day = (councilDay - 1) mod 7.
-    var today = DateTime.UtcNow.Date;
-    var runnerDay = ((h.CouncilCollectionDay.Value + 6) % 7); // day before council, 0=Sun..6=Sat
-    var daysAhead = ((int)runnerDay - (int)today.DayOfWeek + 7) % 7;
-    if (daysAhead == 0) daysAhead = 7; // if today is runner day but already past, target next week
-    var next = today.AddDays(daysAhead);
+    var next = KerbsideNight.NextRunnerLocalDate(h.CouncilCollectionDay, DateTime.UtcNow);
+    var confirmed = BinStatuses.IsServiceable(h.BinStatus);
     return Results.Ok(new
     {
-        nextPickup = next,
+        nextPickup = next?.ToString("yyyy-MM-dd"),
+        confirmed,
         councilDay = h.CouncilCollectionDay,
+        runnerDay = (h.CouncilCollectionDay.Value + 6) % 7,
         councilArea = h.CouncilArea,
         usesDivider = h.UsesDivider,
         binStatus = h.BinStatus,
+        reason = confirmed
+            ? "Put your sorted containers on the kerb. We collect the night before council recycling."
+            : "Start sorting today. We collect this night when 12 houses on your recycling day join.",
     });
 }).RequireAuthorization();
 

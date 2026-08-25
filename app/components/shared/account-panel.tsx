@@ -85,7 +85,7 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
 
         <div className="p-6">
           {waiting ? (
-            <p className="text-[13px] text-slate-500 mb-1">Invite the street — that is how a run starts. Scan is not required on the waitlist.</p>
+            <p className="text-[13px] text-slate-500 mb-1">Start sorting today. Invite the street so the collection night can start. Scan is optional.</p>
           ) : (
             <>
           <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-[0.15em] mb-3">
@@ -338,9 +338,9 @@ function CashoutSection({ clearedCents, waiting }: { clearedCents: number; waiti
         {!canCashout && showHint && (
           <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl p-3 text-[12px] text-amber-900 leading-relaxed">
             {payoutsOpen === false
-              ? <>Bank transfers are not live yet. Credits stay on your account. You do not need to scan to stay on the waitlist.</>
+              ? <>Bank transfers are not live yet. Credits stay on your account. Keep sorting — scan is optional.</>
               : waiting
-              ? <>Credits start after we collect your purple bin and a depot verifies the containers. You do not need to scan to stay on the waitlist. Cash out from $20 once payouts are open.</>
+              ? <>Credits start after we collect and a depot verifies the containers. Scan is optional. Cash out from $20 once payouts are open.</>
               : <>You need <b>$20</b> to cash out. You have <b>${(clearedCents / 100).toFixed(2)}</b>, just <b>${(remaining / 100).toFixed(2)}</b> to go (≈ {moreContainers} more container{moreContainers === 1 ? "" : "s"}).</>}
           </div>
         )}

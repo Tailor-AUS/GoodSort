@@ -79,7 +79,7 @@ export default function InvitePage() {
         </p>
         <button onClick={() => router.push("/sort")}
           className="w-full text-green-700 font-semibold text-[14px] py-3 flex items-center justify-center gap-1">
-          Continue to your waitlist <ChevronRight className="w-4 h-4" />
+          Continue to sort at home <ChevronRight className="w-4 h-4" />
         </button>
       </div>
     </div>

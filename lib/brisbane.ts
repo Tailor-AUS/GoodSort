@@ -110,6 +110,18 @@ export function isCollecting(status?: string | null) {
   return status === "delivered" || status === "collecting";
 }
 
+/** Date-only `yyyy-MM-dd` from the API — never parse as UTC midnight. */
+export function formatCollectionNight(iso?: string | null): string | null {
+  if (!iso) return null;
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d).toLocaleDateString("en-AU", {
+    weekday: "long",
+    day: "numeric",
+    month: "short",
+  });
+}
+
 export function inviteShareText(
   suburb?: string | null,
   opts?: { dayName?: string | null; households?: number; needed?: number; live?: boolean },
@@ -117,12 +129,12 @@ export function inviteShareText(
   const place = suburb ? titleSuburb(suburb) : "our street";
   const day = opts?.dayName ? ` ${opts.dayName}` : "";
   if (opts?.live) {
-    return `${place}${day} recycling has enough neighbours for a The Good Sort purple-bin run. Join the waitlist so they can drop a bin at your place too:`;
+    return `${place}${day} recycling has enough neighbours for a The Good Sort collection night. Start sorting today — they tell you when they collect:`;
   }
   if (opts?.households && opts.households > 0 && opts.needed != null) {
-    return `${place}${day} recycling is ${opts.households}/${LIVE_HOUSEHOLD_THRESHOLD} for a purple The Good Sort bin. ${opts.needed} more neighbours on that day and they start collecting. Join the waitlist:`;
+    return `${place}${day} is ${opts.households}/${LIVE_HOUSEHOLD_THRESHOLD} for a The Good Sort collection night. Start sorting today. ${opts.needed} more neighbours on that day and they collect:`;
   }
-  return `Join the waitlist for a purple The Good Sort bin in ${place}. ${LIVE_HOUSEHOLD_THRESHOLD} neighbours on the same recycling day unlock collection — like NBN, they'll tell you when they're in your area:`;
+  return `Start sorting with The Good Sort in ${place}. ${LIVE_HOUSEHOLD_THRESHOLD} neighbours on the same recycling day start the collection night:`;
 }
 
 export function inviteMessage(url: string, suburb?: string | null, opts?: { dayName?: string | null; households?: number; needed?: number; live?: boolean }) {

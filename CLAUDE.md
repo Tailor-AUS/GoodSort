@@ -128,8 +128,8 @@ src/GoodSort.Api/
 
 ### Key domain concepts
 
-- **Waitlist PLG**: Household signup is a request for a purple The Good Sort bin, not live pickup. `Household.BinStatus` is `waitlisted` → `allocated` → `delivered` → `collecting`. Density of 12 houses on the **same recycling day in the same suburb** unlocks purchase (city-wide totals never unlock). Ops triggers allocate per day from `/admin/waitlist`. Runs and pickup reminders skip waitlisted/allocated households. NBN-style emails fire on join, unlock, order, and collecting.
-- **Purple TGS bin**: We deliver our bin with a divider. We do not rummage the council yellow bin.
+- **Sort today, collect when ready**: Join starts sorting at home (own bags, 4 streams). We announce the collection night (night before council). Runs stay density-gated: 12 houses on the **same recycling day in the same suburb**. Waitlisted houses never join tonight's run. `Household.BinStatus` is `waitlisted` → `allocated` → `delivered` → `collecting`. `GET /next-pickup` always returns the night; `confirmed` only when delivered/collecting. Ops allocate from `/admin/waitlist`.
+- **Purple TGS bin**: When a street is live we may deliver our bin. Until then households sort in their own bags. We do not rummage the council yellow bin.
 - **4-bag sorting system**: Blue (aluminium), Teal (PET), Amber (glass), Green (other). Scanner is optional verification, not the growth loop.
 - **Two balance types**: `pendingCents` (scan credited, not yet cleared) and `clearedCents` (cashout-eligible). $20 minimum to cash out.
 - **Runs**: Collection routes generated for runners. Runner picks up The Good Sort bins from collecting households, delivers to depot, settles.

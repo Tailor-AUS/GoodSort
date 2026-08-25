@@ -155,8 +155,8 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
             <>
               <div className="text-center mb-8">
                 <div className="flex justify-center mb-5"><Logo size="lg" /></div>
-                <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-2">Join the waitlist</h1>
-                <p className="text-slate-400 text-[13px]">Your email. Then your address. We&apos;ll tell you when we&apos;re collecting in your area.</p>
+                <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-2">Start sorting today</h1>
+                <p className="text-slate-400 text-[13px]">Your email. Then your address. We tell you the night we collect.</p>
               </div>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com"
                 onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}
@@ -209,13 +209,13 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
           )}
 
           <h1 className="text-[40px] sm:text-[60px] max-w-2xl leading-[0.98] font-display font-extrabold text-slate-950 mb-6">
-            We&apos;ll tell you when we&apos;re collecting in your area
+            Start sorting today. We&apos;ll tell you when we collect.
           </h1>
           <p className="text-slate-700 text-[17px] sm:text-[19px] leading-relaxed mb-3 max-w-xl">
-            Request a purple The Good Sort bin. That puts you on the waitlist. When enough neighbours on the same recycling day join, we buy the bins, drop them off, and start collecting eligible cans and bottles.
+            Join with your address. Sort eligible cans and bottles at home — four streams, you manage them. We collect the night before your council recycling day, once 12 houses on that day join.
           </p>
           <p className="text-slate-500 text-[13px] mb-8 max-w-xl">
-            Like NBN: join the list for your street. This is a Brisbane waitlist — not a live city-wide pickup. You earn a 5¢ sorting credit per eligible container. Cash out from $20 once payouts are live. Recycling day comes from{" "}
+            Not a live city-wide pickup. You earn a 5¢ sorting credit per eligible container. Cash out from $20 once payouts are live. Recycling day comes from{" "}
             <a href={BCC_BIN_DAY_DATASET} target="_blank" rel="noopener noreferrer" className="underline text-violet-800">Brisbane City Council open data</a>.
           </p>
 
@@ -240,7 +240,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
               onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}
               className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 bg-white/90 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 mb-3" />
             <GreenButton onClick={() => { void startJoin(); }}>
-              {place ? `Join the ${dayLabel ? `${dayLabel} ` : ""}${place} waitlist` : "Join the waitlist"} <ChevronRight className="w-5 h-5 inline ml-1" />
+              {place ? `Start sorting in ${dayLabel ? `${dayLabel} ` : ""}${place}` : "Start sorting today"} <ChevronRight className="w-5 h-5 inline ml-1" />
             </GreenButton>
             <button onClick={() => {
               track("waitlist_cta", { suburb: place });
@@ -303,24 +303,24 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
 
       <section id="how-it-works" className="px-6 py-14 max-w-lg mx-auto">
         <h2 className="text-center text-[12px] text-slate-400 font-semibold uppercase tracking-[0.15em] mb-3">How it works</h2>
-        <p className="text-center text-slate-500 text-[14px] mb-6">Join the list. Neighbours unlock the street. Then we deliver the bin.</p>
+        <p className="text-center text-slate-500 text-[14px] mb-6">Join. Sort at home today. We tell you when we collect.</p>
         <div className="mb-10"><SortAnimation /></div>
 
         <div className="relative">
           <div className="absolute left-[23px] top-6 bottom-6 w-[2px] bg-slate-200 rounded-full" />
           <div className="space-y-10">
             <StepRow icon={<Home className="w-5 h-5" />} color="from-violet-400 to-violet-600" num={1}
-              title="Join the waitlist"
-              body="Email, address, recycling day. That is a request for a purple The Good Sort bin — not a live pickup yet."
+              title="Join with your address"
+              body="Email, address, recycling day. That puts you on the street list and opens sort-at-home."
               tag="30 seconds" tagColor="bg-violet-100 text-violet-700" />
             <StepRow icon={<Recycle className="w-5 h-5" />} color="from-blue-400 to-blue-600" num={2}
-              title="Invite the street"
-              body={`${LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day unlock bin purchase. Like NBN: we go live when the area is ready.`}
-              tag="Density unlocks the run" tagColor="bg-blue-100 text-blue-700" />
+              title="Sort at home today"
+              body="You manage four streams: cans, PET, glass, other. Scan is optional. Invite the street so the night can start."
+              tag="Your bags, your sort" tagColor="bg-blue-100 text-blue-700" />
             <StepRow icon={<Truck className="w-5 h-5" />} color="from-amber-400 to-amber-600" num={3}
-              title="We deliver a purple bin"
-              body="Divider included. You put eligible cans and bottles in our bin. We collect it the night before council recycling."
-              tag="Our bin, not the yellow one" tagColor="bg-amber-100 text-amber-700" />
+              title="We tell you when we collect"
+              body={`${LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day start the night. We collect the night before council recycling. We do not rummage the yellow bin.`}
+              tag="Night before council" tagColor="bg-amber-100 text-amber-700" />
             <StepRow icon={<Banknote className="w-5 h-5" />} color="from-emerald-400 to-emerald-600" num={4}
               title="Get paid after the depot"
               body="Credits clear when containers are verified at a depot. Bank transfer from $20 once payouts are live."
@@ -333,18 +333,18 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
         <div className="max-w-lg mx-auto">
           <h2 className="text-center text-[12px] text-slate-400 font-semibold uppercase tracking-[0.15em] mb-8">Why this works</h2>
           <div className="grid grid-cols-2 gap-3">
-            <ValueCard title="Purple bin" body="We deliver our bin with a divider. We do not rummage your council yellow bin." />
-            <ValueCard title="Street density" body={`${LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day make a collection run worth doing.`} />
+            <ValueCard title="You sort at home" body="Four streams, your bags. We do not rummage your council yellow bin." />
+            <ValueCard title="Street density" body={`${LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day start a collection night.`} />
             <ValueCard title="Honest 5¢" body="When we take eligible containers to a refund point, the scheme pays 10¢. You get a 5¢ sorting credit — not the scheme refund. Terms say so." />
-            <ValueCard title="Scan is optional" body="Photo scan can confirm a count. It is not required to join the waitlist." />
+            <ValueCard title="Scan is optional" body="Photo scan can confirm a count. It is not required to start sorting." />
           </div>
         </div>
       </section>
 
       <section className="px-6 py-10">
         <div className="max-w-lg mx-auto flex flex-wrap justify-center gap-6">
-          <TrustItem icon={<MapPin className="w-4 h-4" />} text="Brisbane waitlist" />
-          <TrustItem icon={<Check className="w-4 h-4" />} text="Told when your area is live" />
+          <TrustItem icon={<MapPin className="w-4 h-4" />} text="Sort today in Brisbane" />
+          <TrustItem icon={<Check className="w-4 h-4" />} text="Told when we collect" />
           <TrustItem icon={<Check className="w-4 h-4" />} text="Paid after depot verify" />
         </div>
       </section>
@@ -352,13 +352,13 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
       <section className="px-6 py-14 text-center">
         <div className="max-w-sm mx-auto">
           <h2 className="text-[28px] font-display font-extrabold text-slate-900 mb-3 leading-tight">
-            Get on the list for your street
+            Start sorting on your street
           </h2>
           <p className="text-slate-400 text-[14px] mb-8">
-            We order purple bins and start collecting when {LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day join. Invite the neighbours.
+            Sort today. We collect when {LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day join. Invite the neighbours.
           </p>
           <GreenButton onClick={() => { void startJoin(); }}>
-            Join the waitlist <ChevronRight className="w-5 h-5 inline ml-1" />
+            Start sorting today <ChevronRight className="w-5 h-5 inline ml-1" />
           </GreenButton>
         </div>
       </section>

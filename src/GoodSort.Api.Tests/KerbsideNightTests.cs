@@ -16,6 +16,18 @@ public class KerbsideNightTests
     }
 
     [Fact]
+    public void Next_collection_is_the_night_before_council()
+    {
+        var thursdayEveningUtc = new DateTime(2026, 8, 27, 8, 0, 0, DateTimeKind.Utc);
+        Assert.Equal(new DateTime(2026, 8, 27), KerbsideNight.NextRunnerLocalDate(5, thursdayEveningUtc));
+        var fridayMorningUtc = new DateTime(2026, 8, 28, 0, 0, 0, DateTimeKind.Utc);
+        Assert.Equal(new DateTime(2026, 9, 3), KerbsideNight.NextRunnerLocalDate(5, fridayMorningUtc));
+        Assert.Null(KerbsideNight.NextRunnerLocalDate(null, thursdayEveningUtc));
+        var saturdayUtc = new DateTime(2026, 8, 22, 8, 0, 0, DateTimeKind.Utc);
+        Assert.Equal(new DateTime(2026, 8, 22), KerbsideNight.NextRunnerLocalDate(0, saturdayUtc));
+    }
+
+    [Fact]
     public void Waitlisted_houses_never_join_tonight_run()
     {
         var utc = new DateTime(2026, 8, 27, 8, 0, 0, DateTimeKind.Utc);

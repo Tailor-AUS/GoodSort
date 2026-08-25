@@ -21,6 +21,20 @@ public static class KerbsideNight
         councilDay is int day && day == TomorrowCouncilDay(utc);
 
     /// <summary>
+    /// Next collection night in Brisbane local time — the calendar day before
+    /// council recycling. Households sort today; this is the night we tell them.
+    /// If that night is today, we still say today (not next week).
+    /// </summary>
+    public static DateTime? NextRunnerLocalDate(int? councilDay, DateTime utc)
+    {
+        if (councilDay is not int day || day is < 0 or > 6) return null;
+        var brisbane = BrisbaneLocal(utc).Date;
+        var runnerDay = (day + 6) % 7;
+        var daysAhead = (runnerDay - (int)brisbane.DayOfWeek + 7) % 7;
+        return brisbane.AddDays(daysAhead);
+    }
+
+    /// <summary>
     /// Tonight's run includes every collecting house on tomorrow's council day,
     /// plus any serviceable house that already put the purple bin out.
     /// </summary>

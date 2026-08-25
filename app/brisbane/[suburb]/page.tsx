@@ -16,13 +16,13 @@ export async function generateMetadata({
   const { suburb } = await params;
   const found = BRISBANE_SUBURBS.find((s) => s.slug === suburb);
   if (!found) return { title: "Brisbane" };
-  const description = `Join the waitlist for a purple The Good Sort bin in ${found.name}. We'll let you know when we're collecting in your area.`;
+  const description = `Start sorting today in ${found.name}. We tell you the collection night once ${LIVE_HOUSEHOLD_THRESHOLD} neighbours on the same recycling day join.`;
   return {
-    title: `${found.name} waitlist`,
+    title: `${found.name} — start sorting`,
     description,
     alternates: { canonical: `/brisbane/${found.slug}` },
     openGraph: {
-      title: `${found.name} waitlist | The Good Sort`,
+      title: `${found.name} | The Good Sort`,
       description,
       url: `/brisbane/${found.slug}`,
       siteName: "The Good Sort",
@@ -31,7 +31,7 @@ export async function generateMetadata({
     },
     twitter: {
       card: "summary_large_image",
-      title: `${found.name} waitlist | The Good Sort`,
+      title: `${found.name} | The Good Sort`,
       description,
     },
   };
@@ -48,7 +48,7 @@ export default async function SuburbPage({
   const structuredData = {
     "@context": "https://schema.org",
     "@type": "Service",
-    name: `The Good Sort waitlist — ${found.name}`,
+    name: `The Good Sort — ${found.name}`,
     url: `${SITE_URL}/brisbane/${found.slug}`,
     areaServed: {
       "@type": "Place",
@@ -59,7 +59,7 @@ export default async function SuburbPage({
       name: "The Good Sort",
       url: SITE_URL,
     },
-    description: `Join the waitlist for a purple The Good Sort bin in ${found.name}. ${LIVE_HOUSEHOLD_THRESHOLD} neighbours on the same recycling day unlock collection.`,
+    description: `Start sorting today in ${found.name}. ${LIVE_HOUSEHOLD_THRESHOLD} neighbours on the same recycling day start the collection night.`,
   };
   return (
     <>

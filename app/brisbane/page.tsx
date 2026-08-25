@@ -7,7 +7,7 @@ import { DensityBoard } from "@/app/components/marketing/density-board";
 export const metadata: Metadata = {
   title: "Brisbane suburbs",
   description:
-    "Join the waitlist for a purple The Good Sort bin. When enough neighbours in your Brisbane suburb sign up, we deliver bins and start collecting.",
+    "Start sorting today in your Brisbane suburb. We tell you the collection night once 12 neighbours on the same recycling day join.",
   alternates: { canonical: "/brisbane" },
 };
 

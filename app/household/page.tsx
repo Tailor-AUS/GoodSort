@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Home, Package, Users, Weight, Truck, Recycle } from "lucide-react";
+import { ArrowLeft, Home, Package, Users, Weight, Recycle } from "lucide-react";
 import { apiUrl, authHeaders } from "@/lib/config";
 import { formatCents } from "@/lib/store";
-import { isCollecting, sameSuburb, streetStatsForViewer, type GrowthSuburb } from "@/lib/brisbane";
+import { DAY_NAMES, isCollecting, sameSuburb, streetStatsForViewer, type GrowthSuburb } from "@/lib/brisbane";
 import { WaitlistCard } from "@/app/components/shared/waitlist-card";
+import { CollectionNightCard } from "@/app/components/shared/collection-night-card";
 
 interface HouseholdDetail {
   id: string;
@@ -26,14 +27,13 @@ interface HouseholdDetail {
   lastScanAt?: string | null;
 }
 
-const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
 interface Member { id: string; email: string | null; name: string; totalContainers: number; }
 
 export default function HouseholdPage() {
   const [hh, setHh] = useState<HouseholdDetail | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [nextPickup, setNextPickup] = useState<string | null>(null);
+  const [pickupConfirmed, setPickupConfirmed] = useState(false);
   const [growth, setGrowth] = useState<{ households: number; needed: number; live: boolean; dayName?: string | null } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -46,7 +46,10 @@ export default function HouseholdPage() {
       .catch(() => setErr("Couldn't load household."));
     fetch(apiUrl(`/api/households/${profile.householdId}/next-pickup`), { headers: authHeaders() })
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.nextPickup) setNextPickup(d.nextPickup); })
+      .then(d => {
+        if (d?.nextPickup) setNextPickup(d.nextPickup);
+        setPickupConfirmed(!!d?.confirmed);
+      })
       .catch(() => {});
     fetch(apiUrl("/api/growth/brisbane"))
       .then(r => r.ok ? r.json() : null)
@@ -94,27 +97,17 @@ export default function HouseholdPage() {
               <BinOutToggle hh={hh} onChange={(v) => setHh({ ...hh, binIsOut: v })} />
             )}
 
-            {nextPickup && isCollecting(hh.binStatus) && (
-              <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-2xl p-5 mb-6 shadow-lg shadow-green-600/25">
-                <div className="flex items-start gap-3">
-                  <Truck className="w-6 h-6 shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <p className="text-[11px] uppercase tracking-wider text-white/70 mb-1">Next pickup</p>
-                    <p className="text-xl font-display font-extrabold">
-                      {new Date(nextPickup).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "short" })}
-                    </p>
-                    <p className="text-[12px] text-white/80 mt-1">
-                      We'll collect your purple bin the night before council recycling ({hh.councilCollectionDay != null ? DAY_NAMES[hh.councilCollectionDay] : ""}).
-                      {hh.usesDivider && " Cans and bottles on the CDS side of the divider."}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-            {!nextPickup && hh.type === "residential" && isCollecting(hh.binStatus) && (
+            <CollectionNightCard
+              nextPickup={nextPickup}
+              confirmed={pickupConfirmed || isCollecting(hh.binStatus)}
+              unlocked={!!growth?.live || hh.binStatus === "allocated"}
+              dayName={hh.councilCollectionDay != null ? DAY_NAMES[hh.councilCollectionDay] : growth?.dayName}
+              tone="green"
+            />
+            {!nextPickup && hh.type === "residential" && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex items-start gap-3">
                 <Recycle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                <p className="text-[13px] text-amber-900">Set your council collection day in settings so we can schedule pickups.</p>
+                <p className="text-[13px] text-amber-900">Set your council collection day so we can tell you the night we collect.</p>
               </div>
             )}
 
