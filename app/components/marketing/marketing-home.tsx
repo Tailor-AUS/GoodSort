@@ -175,7 +175,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
                 </div>
                 <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-1">Check your email</h1>
                 <p className="text-slate-400 text-[13px]">Code sent to {email}. Check inbox and spam — it expires in 5 minutes.</p>
-                {devCode && <p className="text-[12px] text-violet-700 mt-2">Local waitlist code {devCode} — ACS email is not configured on this machine.</p>}
+                {devCode && <p className="text-[12px] text-violet-700 mt-2">Local code {devCode} — ACS email is not configured on this machine.</p>}
               </div>
               <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} placeholder="000000"
@@ -184,6 +184,9 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
               <GreenButton onClick={verifyOtp} disabled={loading || otp.length < 6}>
                 {loading ? "Verifying..." : "Verify"}
               </GreenButton>
+              <button type="button" onClick={() => void sendOtp()} className="w-full text-green-700 text-[13px] font-semibold py-3 mt-1">
+                Resend code
+              </button>
             </>
           )}
         </div>

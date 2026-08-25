@@ -68,7 +68,7 @@ public class AuthService
             var client = new EmailClient(connectionString);
             var sender = _config["ACS_EMAIL_SENDER"] ?? "DoNotReply@thegoodsort.org";
 
-            var content = new EmailContent("Your Good Sort waitlist code")
+            var content = new EmailContent("Your The Good Sort code")
             {
                 Html = $@"
                     <div style='font-family: Inter, system-ui, sans-serif; max-width: 400px; margin: 0 auto; padding: 40px 20px;'>
@@ -77,8 +77,8 @@ public class AuthService
                                 <span style='color: white; font-size: 24px; font-weight: 800;'>G</span>
                             </div>
                         </div>
-                        <h1 style='text-align: center; font-size: 20px; font-weight: 800; color: #0f172a; margin-bottom: 8px;'>Your waitlist code</h1>
-                        <p style='text-align: center; color: #64748b; font-size: 14px; margin-bottom: 24px;'>Enter this code to join The Good Sort waitlist</p>
+                        <h1 style='text-align: center; font-size: 20px; font-weight: 800; color: #0f172a; margin-bottom: 8px;'>Your code</h1>
+                        <p style='text-align: center; color: #64748b; font-size: 14px; margin-bottom: 24px;'>Enter this to start sorting today. We tell you when we collect.</p>
                         <div style='text-align: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 24px;'>
                             <span style='font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #0f172a;'>{code}</span>
                         </div>
