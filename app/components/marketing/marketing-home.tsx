@@ -2,26 +2,104 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
-import { ShieldCheck, ChevronRight, Scan, Recycle, Banknote, Truck, ArrowDown, Check, MapPin, Shield } from "lucide-react";
-import { apiUrl } from "@/lib/config";
+import { ShieldCheck, ChevronRight, Recycle, Banknote, Truck, ArrowDown, Check, MapPin, Home } from "lucide-react";
+import { apiUrl, clearAuth, hasValidToken, persistWaitlistFromUrl, readDayHint, readReferrerId, waitlistContinuePath, writeDayHint } from "@/lib/config";
+import { track } from "@/lib/analytics";
+import { BCC_BIN_DAY_DATASET, DAY_NAMES, LIVE_HOUSEHOLD_THRESHOLD, dayClusterStats, daySlug, findSuburb, inviteMessage, sameSuburb, streetInviteUrl, type GrowthSuburb } from "@/lib/brisbane";
 import { Logo } from "@/app/components/shared/logo";
+import { SortAnimation } from "@/app/components/shared/sort-animation";
+import { InviteActions } from "@/app/components/shared/invite-actions";
+import { SuburbFinder } from "@/app/components/marketing/suburb-finder";
+import { DensityBoard } from "@/app/components/marketing/density-board";
+import { BinDayFinder } from "@/app/components/marketing/bin-day-finder";
 
 const APP_HOME_PATH = "/sort";
 
-export function MarketingHome() {
+type GrowthResponse = { liveThreshold: number; totalHouseholds: number; suburbs: GrowthSuburb[] };
+
+export function MarketingHome({ suburbName }: { suburbName?: string }) {
   const router = useRouter();
   const [showAuth, setShowAuth] = useState(false);
   const [step, setStep] = useState<"email" | "verify">("email");
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
+  const [devCode, setDevCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [growth, setGrowth] = useState<GrowthResponse | null>(null);
+  const [inviteFrom, setInviteFrom] = useState<{ name: string; suburb: string | null; dayName?: string | null } | null>(null);
+  const [dayHint, setDayHint] = useState<number | null>(null);
+  const [lookedUpSuburb, setLookedUpSuburb] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("goodsort_token");
-    if (token) router.push(APP_HOME_PATH);
-  }, [router]);
+    persistWaitlistFromUrl();
+    setDayHint(readDayHint());
+    if (suburbName) sessionStorage.setItem("goodsort_suburb_hint", suburbName);
+    if (!hasValidToken()) {
+      if (localStorage.getItem("goodsort_token")) clearAuth();
+    } else {
+      try {
+        const hid = JSON.parse(localStorage.getItem("goodsort_profile") || "{}").householdId;
+        if (hid) {
+          void waitlistContinuePath().then((path) => {
+            if (path === APP_HOME_PATH) router.push(path);
+          });
+        }
+      } catch { /* stay on the invite landing */ }
+    }
+    const rid = readReferrerId();
+    if (!rid) return;
+    fetch(apiUrl(`/api/growth/invite/${rid}`))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { name?: string; suburb?: string | null; day?: number | null; dayName?: string | null } | null) => {
+        if (!d?.name) return;
+        setInviteFrom({ name: d.name, suburb: d.suburb ?? null, dayName: d.dayName ?? null });
+        track("invite_landed", { suburb: d.suburb ?? suburbName });
+        const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : `r=${rid}`);
+        if (d.day != null && !params.get("day")) params.set("day", daySlug(d.day) ?? String(d.day));
+        if (d.day != null) setDayHint(d.day);
+        if (suburbName || !d.suburb) return;
+        const known = findSuburb(d.suburb);
+        if (!known) return;
+        router.replace(`/brisbane/${known.slug}?${params.toString()}`);
+      })
+      .catch(() => {});
+  }, [router, suburbName]);
+
+  useEffect(() => {
+    fetch(apiUrl("/api/growth/brisbane"))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setGrowth(d); })
+      .catch(() => {});
+  }, []);
+
+  const place = suburbName ?? lookedUpSuburb;
+  const local = place
+      ? growth?.suburbs.find((s) => sameSuburb(s.suburb, place))
+    : null;
+  const cluster = dayClusterStats(local, dayHint) ?? dayClusterStats(local);
+  const signedUp = place ? (cluster?.households ?? 0) : null;
+  const needed = cluster?.needed ?? LIVE_HOUSEHOLD_THRESHOLD;
+  const dayLive = !!cluster?.live;
+  const shareUrl = streetInviteUrl({ suburb: place, day: dayHint, dayName: cluster?.dayName });
+  const shareMessage = inviteMessage(shareUrl, place, {
+    dayName: cluster?.dayName,
+    households: place ? (signedUp ?? 0) : undefined,
+    needed: place ? needed : undefined,
+    live: dayLive,
+  });
+  const dayLabel = dayHint != null ? DAY_NAMES[dayHint] : cluster?.dayName;
+
+  async function startJoin() {
+    track("waitlist_cta", { suburb: place });
+    if (hasValidToken()) {
+      router.push(await waitlistContinuePath());
+      return;
+    }
+    if (localStorage.getItem("goodsort_token")) clearAuth();
+    setShowAuth(true);
+    if (email.includes("@")) void sendOtp();
+  }
 
   async function sendOtp() {
     if (!email.includes("@")) return;
@@ -31,7 +109,19 @@ export function MarketingHome() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim() }),
       });
-      if (!res.ok) { setError("Failed to send code"); setLoading(false); return; }
+      const data = await res.json().catch(() => ({} as { error?: string; devCode?: string }));
+      if (!res.ok) {
+        setError(typeof data.error === "string" && data.error ? data.error : "Failed to send code");
+        setLoading(false);
+        return;
+      }
+      if (typeof data.devCode === "string" && data.devCode.length === 6) {
+        setDevCode(data.devCode);
+        setOtp(data.devCode);
+      } else {
+        setDevCode("");
+      }
+      track("otp_sent", { suburb: place });
       setStep("verify");
     } catch { setError("Something went wrong"); }
     setLoading(false);
@@ -41,7 +131,7 @@ export function MarketingHome() {
     if (otp.length < 6) return;
     setLoading(true); setError("");
     try {
-      const referrerId = (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("r") : null) || undefined;
+      const referrerId = readReferrerId();
       const res = await fetch(apiUrl("/api/auth/verify-otp"), {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), code: otp, referrerId }),
@@ -51,7 +141,8 @@ export function MarketingHome() {
       localStorage.setItem("goodsort_token", data.token);
       localStorage.setItem("goodsort_profile", JSON.stringify(data.profile));
       document.cookie = `goodsort_token=${data.token}; path=/; max-age=${30*24*60*60}; SameSite=Lax; Secure`;
-      router.push(data.profile.householdId ? APP_HOME_PATH : "/onboard");
+      track("otp_verified", { suburb: place });
+      router.push(await waitlistContinuePath());
     } catch { setError("Verification failed"); }
     setLoading(false);
   }
@@ -64,8 +155,8 @@ export function MarketingHome() {
             <>
               <div className="text-center mb-8">
                 <div className="flex justify-center mb-5"><Logo size="lg" /></div>
-                <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-2">Get started</h1>
-                <p className="text-slate-400 text-[13px]">Enter your email — we&apos;ll send a code</p>
+                <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-2">Join the waitlist</h1>
+                <p className="text-slate-400 text-[13px]">Your email. Then your address. We&apos;ll tell you when we&apos;re collecting in your area.</p>
               </div>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com"
                 onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}
@@ -83,7 +174,8 @@ export function MarketingHome() {
                   <ShieldCheck className="w-8 h-8 text-green-600" />
                 </div>
                 <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-1">Check your email</h1>
-                <p className="text-slate-400 text-[13px]">Code sent to {email}</p>
+                <p className="text-slate-400 text-[13px]">Code sent to {email}. Check inbox and spam — it expires in 5 minutes.</p>
+                {devCode && <p className="text-[12px] text-violet-700 mt-2">Local waitlist code {devCode} — ACS email is not configured on this machine.</p>}
               </div>
               <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} placeholder="000000"
@@ -101,169 +193,187 @@ export function MarketingHome() {
 
   return (
     <div className="min-h-dvh bg-white overflow-y-auto overscroll-none" style={{ paddingTop: "env(safe-area-inset-top,0)" }}>
-
-      {/* Hero */}
-      <section className="relative min-h-[88svh] overflow-hidden px-6 py-8 flex items-center">
-        <Image
-          src="/marketing-hero.webp"
-          alt="A Good Sort runner collecting sorted cans and bottles from a yellow-lid recycling bin in Brisbane."
-          fill
-          priority
-          sizes="100vw"
-          className="object-cover object-[76%_center] sm:object-[62%_center]"
-        />
-        <div className="absolute inset-0 bg-gradient-to-r from-white via-white/90 to-white/35 sm:via-white/86 sm:to-white/10" />
-        <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-white to-transparent" />
-
-        <div className="relative z-10 w-full max-w-6xl mx-auto">
+      <section className="relative min-h-[88svh] overflow-hidden px-6 py-8 flex items-center bg-gradient-to-br from-white via-violet-50 to-emerald-50">
+        <div className="relative z-10 w-full max-w-6xl mx-auto lg:grid lg:grid-cols-2 lg:gap-12 lg:items-center">
+          <div>
           <div className="mb-9"><Logo size="lg" /></div>
 
-          <div className="inline-flex items-center gap-2 bg-white/82 text-green-800 text-[12px] font-semibold px-3.5 py-1.5 rounded-full mb-6 border border-green-200">
-            <MapPin className="w-3.5 h-3.5" /> Brisbane pilot now open
+          <div className="inline-flex items-center gap-2 bg-white/82 text-violet-800 text-[12px] font-semibold px-3.5 py-1.5 rounded-full mb-6 border border-violet-200">
+            <MapPin className="w-3.5 h-3.5" /> {suburbName ? `${suburbName} · Brisbane waitlist` : "Brisbane waitlist"}
           </div>
 
-          <h1 className="text-[44px] sm:text-[64px] max-w-2xl leading-[0.98] font-display font-extrabold text-slate-950 mb-6">
-            Yellow-bin container pickup
+          {inviteFrom && (
+            <p className="max-w-xl mb-5 text-[15px] font-semibold text-violet-900 bg-violet-50/90 border border-violet-200 rounded-2xl px-4 py-3">
+              {inviteFrom.name} invited you{suburbName ? ` onto the ${inviteFrom.dayName ? `${inviteFrom.dayName} ` : ""}${suburbName} waitlist` : ""}. Join so your recycling day can unlock.
+            </p>
+          )}
+
+          <h1 className="text-[40px] sm:text-[60px] max-w-2xl leading-[0.98] font-display font-extrabold text-slate-950 mb-6">
+            We&apos;ll tell you when we&apos;re collecting in your area
           </h1>
           <p className="text-slate-700 text-[17px] sm:text-[19px] leading-relaxed mb-3 max-w-xl">
-            Scan eligible cans and bottles, sort them at home, and get paid after pickup. No depot run, no queue, no second errand.
+            Request a purple The Good Sort bin. That puts you on the waitlist. When enough neighbours on the same recycling day join, we buy the bins, drop them off, and start collecting eligible cans and bottles.
           </p>
-          <p className="text-slate-500 text-[13px] mb-8">Containers for Change eligible containers - cash out to your bank.</p>
+          <p className="text-slate-500 text-[13px] mb-8 max-w-xl">
+            Like NBN: join the list for your street. This is a Brisbane waitlist — not a live city-wide pickup. You earn a 5¢ sorting credit per eligible container. Cash out from $20 once payouts are live. Recycling day comes from{" "}
+            <a href={BCC_BIN_DAY_DATASET} target="_blank" rel="noopener noreferrer" className="underline text-violet-800">Brisbane City Council open data</a>.
+          </p>
+
+          {!suburbName && <SuburbFinder />}
+          <BinDayFinder
+            suburbName={suburbName}
+            onResolved={({ day, suburb }) => {
+              if (day != null) {
+                writeDayHint(day);
+                setDayHint(day);
+              }
+              const named = suburb ? (findSuburb(suburb)?.name ?? suburb) : null;
+              if (named) {
+                setLookedUpSuburb(named);
+                try { sessionStorage.setItem("goodsort_suburb_hint", named); } catch { /* ignore */ }
+              }
+            }}
+          />
 
           <div className="w-full max-w-xs">
-            <GreenButton onClick={() => setShowAuth(true)}>
-              Get started <ChevronRight className="w-5 h-5 inline ml-1" />
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com"
+              onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}
+              className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 bg-white/90 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 mb-3" />
+            <GreenButton onClick={() => { void startJoin(); }}>
+              {place ? `Join the ${dayLabel ? `${dayLabel} ` : ""}${place} waitlist` : "Join the waitlist"} <ChevronRight className="w-5 h-5 inline ml-1" />
             </GreenButton>
-            <button onClick={() => setShowAuth(true)} className="block mt-3 text-green-700 text-[13px] font-semibold hover:text-green-800 transition-colors">
+            <button onClick={() => {
+              track("waitlist_cta", { suburb: place });
+              if (hasValidToken()) { void waitlistContinuePath().then((path) => router.push(path)); return; }
+              setShowAuth(true);
+            }} className="block mt-3 text-green-700 text-[13px] font-semibold hover:text-green-800 transition-colors">
               Already have an account? Sign in
             </button>
           </div>
 
-          <div className="mt-12 text-slate-500 animate-bounce">
+          <div className="mt-10 max-w-md bg-white/85 border border-violet-200 rounded-2xl px-4 py-3">
+            <p className="text-[12px] text-slate-500 uppercase tracking-wider mb-1">Street waitlist</p>
+            <p className="text-[15px] font-semibold text-slate-900">
+              {dayLive
+                ? `${place ?? "Your suburb"}${cluster?.dayName ? ` ${cluster.dayName}` : ""} has enough neighbours on the same recycling day — we can order bins.`
+                : place
+                  ? signedUp === 0
+                    ? `Be the first house on a recycling day in ${place}. ${LIVE_HOUSEHOLD_THRESHOLD} neighbours on the same day and we order purple bins.`
+                    : `${signedUp} household${signedUp === 1 ? "" : "s"} on ${cluster?.dayName ?? "a recycling day"} in ${place}. ${needed} more on that day and we order purple bins.`
+                  : `Pick your suburb. ${LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day unlock a run — city-wide totals never start collection.`}
+            </p>
+            <div className="mt-3">
+              <InviteActions url={shareUrl} message={shareMessage} compact />
+            </div>
+          </div>
+
+          <div className="mt-10 text-slate-500 animate-bounce lg:hidden">
             <ArrowDown className="w-5 h-5 mx-auto" />
           </div>
+          </div>
+          <div className="hidden lg:block pt-8">
+            <SortAnimation />
+            <p className="text-center text-[12px] text-slate-500 mt-3">Our purple bin. We collect it. Not the council yellow bin.</p>
+          </div>
         </div>
       </section>
 
-      {/* ── The problem ── */}
+      {!suburbName && (
+        <section className="px-6 py-10 max-w-lg mx-auto">
+          <DensityBoard />
+        </section>
+      )}
+
       <section className="px-6 py-12 bg-slate-900 text-white">
         <div className="max-w-lg mx-auto text-center">
-          <p className="text-slate-400 text-[12px] uppercase tracking-[0.15em] mb-5">Right now</p>
+          <p className="text-slate-400 text-[12px] uppercase tracking-[0.15em] mb-5">The leak</p>
           <h2 className="text-[24px] sm:text-[28px] font-display font-extrabold leading-tight mb-4">
-            Every can you bin is<br /><span className="text-green-400">10¢ you&apos;re throwing away</span>
+            The yellow bin is where<br /><span className="text-green-400">the 10¢ goes to die</span>
           </h2>
-          <p className="text-slate-400 text-[14px] leading-relaxed max-w-xs mx-auto mb-8">
-            Queensland&apos;s Container Refund Scheme pays 10¢ for every eligible container. Most people never claim it because the depot is a 40-minute round trip.
+          <p className="text-slate-400 text-[14px] leading-relaxed max-w-sm mx-auto mb-8">
+            About a third of eligible containers in Queensland go into kerbside recycling unclaimed. People are recycling. They are not driving to a depot.
           </p>
           <div className="grid grid-cols-3 gap-3 max-w-xs mx-auto">
-            <MiniStat value="10¢" label="per container" />
-            <MiniStat value="~50" label="per fortnight" />
-            <MiniStat value="0 min" label="effort with us" />
+            <MiniStat value="10¢" label="scheme refund" />
+            <MiniStat value="5¢" label="your credit" />
+            <MiniStat value="0 min" label="extra habit" />
           </div>
         </div>
       </section>
 
-      {/* ── How it works ── */}
       <section id="how-it-works" className="px-6 py-14 max-w-lg mx-auto">
         <h2 className="text-center text-[12px] text-slate-400 font-semibold uppercase tracking-[0.15em] mb-3">How it works</h2>
-        <p className="text-center text-slate-500 text-[14px] mb-10">Four steps. Zero trips to the depot.</p>
+        <p className="text-center text-slate-500 text-[14px] mb-6">Join the list. Neighbours unlock the street. Then we deliver the bin.</p>
+        <div className="mb-10"><SortAnimation /></div>
 
         <div className="relative">
-          {/* Vertical line */}
-          <div className="absolute left-[23px] top-6 bottom-6 w-[2px] bg-gradient-to-b from-green-400 via-blue-400 via-amber-400 to-emerald-400 rounded-full" />
-
+          <div className="absolute left-[23px] top-6 bottom-6 w-[2px] bg-slate-200 rounded-full" />
           <div className="space-y-10">
-            <StepRow icon={<Scan className="w-5 h-5" />} color="from-green-400 to-green-600" num={1}
-              title="Scan your containers"
-              body="Take a photo or scan the barcode. Our AI identifies each container, confirms CDS eligibility, and tells you which compartment."
-              tag="5¢ pending instantly" tagColor="bg-green-100 text-green-700" />
+            <StepRow icon={<Home className="w-5 h-5" />} color="from-violet-400 to-violet-600" num={1}
+              title="Join the waitlist"
+              body="Email, address, recycling day. That is a request for a purple The Good Sort bin — not a live pickup yet."
+              tag="30 seconds" tagColor="bg-violet-100 text-violet-700" />
             <StepRow icon={<Recycle className="w-5 h-5" />} color="from-blue-400 to-blue-600" num={2}
-              title="Sort into your yellow bin"
-              body="Four compartments — Blue (aluminium), Teal (plastic), Amber (glass), Green (other). The app tells you where each container goes."
-              tag="No guesswork" tagColor="bg-blue-100 text-blue-700" />
+              title="Invite the street"
+              body={`${LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day unlock bin purchase. Like NBN: we go live when the area is ready.`}
+              tag="Density unlocks the run" tagColor="bg-blue-100 text-blue-700" />
             <StepRow icon={<Truck className="w-5 h-5" />} color="from-amber-400 to-amber-600" num={3}
-              title="We pick up on bin day"
-              body="A local Runner collects your sorted containers from the kerb on your council collection day and delivers them to an approved depot."
-              tag="You do nothing" tagColor="bg-amber-100 text-amber-700" />
+              title="We deliver a purple bin"
+              body="Divider included. You put eligible cans and bottles in our bin. We collect it the night before council recycling."
+              tag="Our bin, not the yellow one" tagColor="bg-amber-100 text-amber-700" />
             <StepRow icon={<Banknote className="w-5 h-5" />} color="from-emerald-400 to-emerald-600" num={4}
-              title="Cash out to your bank"
-              body="Your balance clears once containers hit the depot. Cash out via bank transfer when you reach $20. Weekly payments."
-              tag="Direct to your bank" tagColor="bg-emerald-100 text-emerald-700" />
+              title="Get paid after the depot"
+              body="Credits clear when containers are verified at a depot. Bank transfer from $20 once payouts are live."
+              tag="5¢ sorting credit" tagColor="bg-emerald-100 text-emerald-700" />
           </div>
         </div>
       </section>
 
-      {/* ── Value props ── */}
-      <section className="px-6 py-12 bg-gradient-to-b from-slate-50 to-white">
+      <section className="px-6 py-12 bg-slate-50">
         <div className="max-w-lg mx-auto">
-          <h2 className="text-center text-[12px] text-slate-400 font-semibold uppercase tracking-[0.15em] mb-8">Why Good Sort</h2>
+          <h2 className="text-center text-[12px] text-slate-400 font-semibold uppercase tracking-[0.15em] mb-8">Why this works</h2>
           <div className="grid grid-cols-2 gap-3">
-            <ValueCard icon={<span className="text-2xl">🏠</span>} title="Zero effort" body="No driving to depots. No queuing. Just put your bin out." />
-            <ValueCard icon={<span className="text-2xl">💰</span>} title="5¢ per container" body="Every can, bottle, and carton earns you credits." />
-            <ValueCard icon={<span className="text-2xl">🤖</span>} title="AI-powered" body="Our vision AI identifies containers and checks eligibility instantly." />
-            <ValueCard icon={<span className="text-2xl">🏦</span>} title="Bank transfer" body="Cash out direct to your Aussie bank account." />
+            <ValueCard title="Purple bin" body="We deliver our bin with a divider. We do not rummage your council yellow bin." />
+            <ValueCard title="Street density" body={`${LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day make a collection run worth doing.`} />
+            <ValueCard title="Honest 5¢" body="When we take eligible containers to a refund point, the scheme pays 10¢. You get a 5¢ sorting credit — not the scheme refund. Terms say so." />
+            <ValueCard title="Scan is optional" body="Photo scan can confirm a count. It is not required to join the waitlist." />
           </div>
         </div>
       </section>
 
-      {/* ── Accountability chain ── */}
-      <section className="px-6 py-14 max-w-lg mx-auto text-center">
-        <h2 className="text-[12px] text-slate-400 font-semibold uppercase tracking-[0.15em] mb-3">Every container tracked</h2>
-        <p className="text-slate-500 text-[14px] mb-8">Three digital checkpoints. Each handoff is reconciled.</p>
-
-        <div className="inline-flex flex-col gap-3 items-center">
-          <div className="flex items-center gap-2 flex-wrap justify-center">
-            <ChainNode color="bg-green-500" icon="📸">You scan</ChainNode>
-            <ChainArrow />
-            <ChainNode color="bg-blue-500" icon="🤖">AI verifies</ChainNode>
-          </div>
-          <ChainArrow vertical />
-          <div className="flex items-center gap-2 flex-wrap justify-center">
-            <ChainNode color="bg-amber-500" icon="🚗">Runner counts</ChainNode>
-            <ChainArrow />
-            <ChainNode color="bg-purple-500" icon="✅">Depot confirms</ChainNode>
-          </div>
-        </div>
-
-        <p className="text-slate-400 text-[13px] mt-8 leading-relaxed max-w-xs mx-auto">
-          You earn on what physically arrives at the depot — no guesswork, no scales, no trucks.
-        </p>
-      </section>
-
-      {/* ── Trust ── */}
-      <section className="px-6 py-10 bg-slate-50">
+      <section className="px-6 py-10">
         <div className="max-w-lg mx-auto flex flex-wrap justify-center gap-6">
-          <TrustItem icon={<Shield className="w-4 h-4" />} text="Containers for Change approved" />
-          <TrustItem icon={<MapPin className="w-4 h-4" />} text="Brisbane-based" />
-          <TrustItem icon={<Check className="w-4 h-4" />} text="Australian AI" />
+          <TrustItem icon={<MapPin className="w-4 h-4" />} text="Brisbane waitlist" />
+          <TrustItem icon={<Check className="w-4 h-4" />} text="Told when your area is live" />
+          <TrustItem icon={<Check className="w-4 h-4" />} text="Paid after depot verify" />
         </div>
       </section>
 
-      {/* ── Final CTA ── */}
       <section className="px-6 py-14 text-center">
         <div className="max-w-sm mx-auto">
           <h2 className="text-[28px] font-display font-extrabold text-slate-900 mb-3 leading-tight">
-            Stop throwing<br />money in the bin
+            Get on the list for your street
           </h2>
-          <p className="text-slate-400 text-[14px] mb-8">Takes 30 seconds. Just your email.</p>
-          <GreenButton onClick={() => setShowAuth(true)}>
-            Get started - it&apos;s free <ChevronRight className="w-5 h-5 inline ml-1" />
+          <p className="text-slate-400 text-[14px] mb-8">
+            We order purple bins and start collecting when {LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day join. Invite the neighbours.
+          </p>
+          <GreenButton onClick={() => { void startJoin(); }}>
+            Join the waitlist <ChevronRight className="w-5 h-5 inline ml-1" />
           </GreenButton>
         </div>
       </section>
 
-      {/* ── Footer ── */}
       <footer className="px-6 py-8 text-center border-t border-slate-100">
         <div className="flex justify-center mb-3"><Logo size="sm" /></div>
         <p className="text-[11px] text-slate-400">
-          Queensland Container Refund Scheme · Containers for Change
+          Brisbane waitlist — not a live city-wide pickup. Sorting credits are a private reward, not the 10¢ Containers for Change refund. We are not claiming approval as a Containers for Change refund point.
         </p>
         <div className="flex justify-center gap-4 mt-2">
+          <a href="/brisbane" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">Brisbane suburbs</a>
           <a href="/terms" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">Terms</a>
           <a href="/privacy" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">Privacy</a>
         </div>
       </footer>
-
     </div>
   );
 }
@@ -274,10 +384,10 @@ function StepRow({ icon, color, num, title, body, tag, tagColor }: {
   return (
     <div className="flex gap-4 items-start relative">
       <div className="relative flex-shrink-0 z-10">
-        <div className={`w-12 h-12 bg-gradient-to-br ${color} rounded-2xl flex items-center justify-center text-white shadow-lg`}>
+        <div className={`w-12 h-12 bg-gradient-to-br ${color} rounded-2xl flex items-center justify-center text-white`}>
           {icon}
         </div>
-        <span className="absolute -top-1.5 -left-1.5 w-5 h-5 bg-slate-900 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow">{num}</span>
+        <span className="absolute -top-1.5 -left-1.5 w-5 h-5 bg-slate-900 text-white text-[10px] font-bold rounded-full flex items-center justify-center">{num}</span>
       </div>
       <div className="pt-0.5">
         <h3 className="text-[15px] font-bold text-slate-900 mb-1">{title}</h3>
@@ -288,26 +398,13 @@ function StepRow({ icon, color, num, title, body, tag, tagColor }: {
   );
 }
 
-function ValueCard({ icon, title, body }: { icon: React.ReactNode; title: string; body: string }) {
+function ValueCard({ title, body }: { title: string; body: string }) {
   return (
-    <div className="bg-white rounded-2xl p-4 border border-slate-200 hover:border-green-200 hover:shadow-sm transition-all">
-      {icon}
-      <h3 className="text-[14px] font-bold text-slate-900 mt-2.5 mb-1">{title}</h3>
+    <div className="bg-white rounded-2xl p-4 border border-slate-200">
+      <h3 className="text-[14px] font-bold text-slate-900 mb-1">{title}</h3>
       <p className="text-[12px] text-slate-500 leading-relaxed">{body}</p>
     </div>
   );
-}
-
-function ChainNode({ color, icon, children }: { color: string; icon: string; children: React.ReactNode }) {
-  return (
-    <span className={`${color} text-white text-[12px] font-semibold px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5 shadow-sm`}>
-      <span className="text-[14px]">{icon}</span> {children}
-    </span>
-  );
-}
-
-function ChainArrow({ vertical }: { vertical?: boolean }) {
-  return <span className={`text-green-300 font-bold text-lg ${vertical ? "rotate-90" : ""}`}>→</span>;
 }
 
 function TrustItem({ icon, text }: { icon: React.ReactNode; text: string }) {
@@ -331,7 +428,7 @@ function MiniStat({ value, label }: { value: string; label: string }) {
 function GreenButton({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
   return (
     <button onClick={onClick} disabled={disabled}
-      className="w-full bg-gradient-to-b from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-extrabold py-4 rounded-2xl text-[16px] shadow-lg shadow-green-600/25 disabled:opacity-50 transition-all min-h-[52px] flex items-center justify-center active:scale-[0.98]">
+      className="w-full bg-gradient-to-b from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-extrabold py-4 rounded-2xl text-[16px] disabled:opacity-50 transition-all min-h-[52px] flex items-center justify-center active:scale-[0.98]">
       {children}
     </button>
   );

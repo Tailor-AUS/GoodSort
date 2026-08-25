@@ -5,6 +5,8 @@ import Link from "next/link";
 import { ArrowLeft, Home, Package, Users, Weight, Truck, Recycle } from "lucide-react";
 import { apiUrl, authHeaders } from "@/lib/config";
 import { formatCents } from "@/lib/store";
+import { isCollecting, sameSuburb, streetStatsForViewer, type GrowthSuburb } from "@/lib/brisbane";
+import { WaitlistCard } from "@/app/components/shared/waitlist-card";
 
 interface HouseholdDetail {
   id: string;
@@ -14,6 +16,8 @@ interface HouseholdDetail {
   councilCollectionDay: number | null;
   usesDivider: boolean;
   binIsOut: boolean;
+  binStatus?: string;
+  suburb?: string | null;
   pendingContainers: number;
   pendingValueCents: number;
   materials?: { aluminium: number; pet: number; glass: number; other: number };
@@ -30,18 +34,31 @@ export default function HouseholdPage() {
   const [hh, setHh] = useState<HouseholdDetail | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [nextPickup, setNextPickup] = useState<string | null>(null);
+  const [growth, setGrowth] = useState<{ households: number; needed: number; live: boolean; dayName?: string | null } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
     if (!profile.householdId) { setErr("You haven't set up a household yet."); return; }
-    fetch(apiUrl(`/api/households/${profile.householdId}`))
+    fetch(apiUrl(`/api/households/${profile.householdId}`), { headers: authHeaders() })
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(setHh)
       .catch(() => setErr("Couldn't load household."));
-    fetch(apiUrl(`/api/households/${profile.householdId}/next-pickup`))
+    fetch(apiUrl(`/api/households/${profile.householdId}/next-pickup`), { headers: authHeaders() })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.nextPickup) setNextPickup(d.nextPickup); })
+      .catch(() => {});
+    fetch(apiUrl("/api/growth/brisbane"))
+      .then(r => r.ok ? r.json() : null)
+      .then(g => {
+        if (!g?.suburbs) return;
+        return fetch(apiUrl(`/api/households/${profile.householdId}`), { headers: authHeaders() })
+          .then(r => r.ok ? r.json() : null)
+          .then(house => {
+            const match = g.suburbs.find((s: GrowthSuburb) => sameSuburb(s.suburb, house?.suburb));
+            setGrowth(streetStatsForViewer(match, house?.councilCollectionDay, house?.type !== "unit_complex"));
+          });
+      })
       .catch(() => {});
     setMembers([{ id: profile.id, email: profile.email, name: profile.name, totalContainers: profile.totalContainers ?? 0 }]);
   }, []);
@@ -60,11 +77,24 @@ export default function HouseholdPage() {
           <>
             <p className="text-[13px] text-slate-500 mb-6">{hh.name} · {hh.address}</p>
 
-            {/* Bin-out toggle */}
-            <BinOutToggle hh={hh} onChange={(v) => setHh({ ...hh, binIsOut: v })} />
+            {hh && !isCollecting(hh.binStatus) && (
+              <WaitlistCard
+                suburb={hh.suburb}
+                households={growth?.households ?? (hh.type === "unit_complex" ? 0 : 1)}
+                needed={growth?.needed ?? 12}
+                live={!!growth?.live}
+                binStatus={hh.binStatus}
+                dayName={growth?.dayName}
+                day={hh.councilCollectionDay}
+                building={hh.type === "unit_complex"}
+              />
+            )}
 
-            {/* Next pickup banner — the heart of the yellow-bin model */}
-            {nextPickup && (
+            {isCollecting(hh.binStatus) && (
+              <BinOutToggle hh={hh} onChange={(v) => setHh({ ...hh, binIsOut: v })} />
+            )}
+
+            {nextPickup && isCollecting(hh.binStatus) && (
               <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-2xl p-5 mb-6 shadow-lg shadow-green-600/25">
                 <div className="flex items-start gap-3">
                   <Truck className="w-6 h-6 shrink-0 mt-0.5" />
@@ -74,28 +104,30 @@ export default function HouseholdPage() {
                       {new Date(nextPickup).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "short" })}
                     </p>
                     <p className="text-[12px] text-white/80 mt-1">
-                      We'll come the night before your council truck ({hh.councilCollectionDay != null ? DAY_NAMES[hh.councilCollectionDay] : ""}).
-                      {hh.usesDivider && " Remember: cans & bottles on the CDS side of your divider."}
+                      We'll collect your purple bin the night before council recycling ({hh.councilCollectionDay != null ? DAY_NAMES[hh.councilCollectionDay] : ""}).
+                      {hh.usesDivider && " Cans and bottles on the CDS side of the divider."}
                     </p>
                   </div>
                 </div>
               </div>
             )}
-            {!nextPickup && hh.type === "residential" && (
+            {!nextPickup && hh.type === "residential" && isCollecting(hh.binStatus) && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex items-start gap-3">
                 <Recycle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <p className="text-[13px] text-amber-900">Set your council collection day in settings so we can schedule pickups.</p>
               </div>
             )}
 
+            {isCollecting(hh.binStatus) && (
             <div className="grid grid-cols-2 gap-3 mb-6">
               <Card icon={Package} label="Containers pending" value={String(hh.pendingContainers)} />
               <Card icon={Users} label="Value" value={formatCents(hh.pendingValueCents)} />
               <Card icon={Weight} label="Weight est." value={`${hh.estimatedWeightKg.toFixed(1)} kg`} />
               <Card icon={Package} label="Bags" value={String(hh.estimatedBags)} />
             </div>
+            )}
 
-            {hh.materials && (
+            {isCollecting(hh.binStatus) && hh.materials && (
               <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
                 <p className="text-[11px] uppercase tracking-wider text-slate-400 mb-3">By material</p>
                 <div className="grid grid-cols-4 gap-2 text-center">
@@ -156,7 +188,7 @@ function BinOutToggle({ hh, onChange }: { hh: HouseholdDetail; onChange: (v: boo
       className={`w-full rounded-2xl p-4 mb-4 border-2 flex items-center justify-between transition-colors ${hh.binIsOut ? "bg-green-50 border-green-500" : "bg-white border-slate-300"}`}>
       <div className="text-left">
         <p className={`text-[14px] font-semibold ${hh.binIsOut ? "text-green-800" : "text-slate-900"}`}>
-          {hh.binIsOut ? "Bin is on the kerb ✓" : "Put your yellow bin on the kerb?"}
+          {hh.binIsOut ? "Purple bin is on the kerb ✓" : "Put your purple bin on the kerb?"}
         </p>
         <p className="text-[12px] text-slate-500 mt-0.5">
           {hh.binIsOut ? "Tap to mark bin as back inside." : "Tap once your bin is out so the runner knows it's ready."}

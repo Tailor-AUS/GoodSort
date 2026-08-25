@@ -1,5 +1,6 @@
 using Azure.Communication.Email;
 using GoodSort.Api.Data;
+using GoodSort.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace GoodSort.Api.Services;
@@ -47,7 +48,9 @@ public class PickupReminderService
     private async Task<int> NotifyHouseholds(int tomorrowDow, DateTime tomorrowLocal, bool forceResend)
     {
         var todayLocal = tomorrowLocal.AddDays(-1);
-        var q = _db.Households.Where(h => h.Type == "residential" && h.CouncilCollectionDay == tomorrowDow);
+        var q = _db.Households.Where(h => h.Type == "residential"
+            && h.CouncilCollectionDay == tomorrowDow
+            && (h.BinStatus == BinStatuses.Delivered || h.BinStatus == BinStatuses.Collecting));
         if (!forceResend) q = q.Where(h => h.LastPickupAt == null || h.LastPickupAt < todayLocal);
         var candidates = await q.Include(h => h.Members).ToListAsync();
         if (candidates.Count == 0) return 0;
@@ -64,15 +67,15 @@ public class PickupReminderService
                     var subject = "Your Good Sort pickup is tomorrow 🌱";
                     var body = $@"
                       <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
-                        <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Bin out tonight!</h1>
+                        <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Purple bin out tonight!</h1>
                         <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {member.Name},</p>
-                        <p style='font-size:14px;line-height:1.55'>Your council truck comes on <b>{((DayOfWeek)tomorrowDow)}</b>. We'll be by the night before / early morning to pick up your cans &amp; bottles from your yellow bin.</p>
+                        <p style='font-size:14px;line-height:1.55'>Your council recycling day is <b>{((DayOfWeek)tomorrowDow)}</b>. We'll collect your purple The Good Sort bin the night before / early morning.</p>
                         <div style='background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px;margin:16px 0'>
                           <p style='font-size:13px;font-weight:600;color:#166534;margin:0 0 6px'>Quick checklist</p>
                           <ul style='font-size:13px;color:#166534;margin:0;padding-left:20px'>
-                            <li>Put your yellow bin out tonight (as usual for council)</li>
-                            {(hh.UsesDivider ? "<li>Make sure cans &amp; bottles are on the <b>CDS side</b> of your divider</li>" : "<li>Any cans or bottles in the bin are fine — our runner will spot them</li>")}
-                            <li>We extract the 10c items; the truck takes the rest</li>
+                            <li>Put your purple The Good Sort bin on the kerb tonight</li>
+                            <li>Cans and bottles on the CDS side of the divider</li>
+                            <li>Council still empties your yellow bin as usual</li>
                           </ul>
                         </div>
                         <p style='font-size:14px;margin:12px 0'><a href='https://www.thegoodsort.org/household' style='color:#16a34a;font-weight:600'>Tap here once your bin is on the kerb →</a></p>

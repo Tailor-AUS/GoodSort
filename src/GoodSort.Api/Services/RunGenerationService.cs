@@ -6,15 +6,14 @@ namespace GoodSort.Api.Services;
 
 /// <summary>
 /// Background service that runs every 30 minutes to:
-/// 1. Cluster households with pending containers into potential Runs
+/// 1. Cluster collecting purple-bin households (bin out or scanned) into runs
 /// 2. Post runs to marketplace when payout ≥ $20 threshold
-/// 3. Add "bin full" flagged households to nearby profitable runs
+/// 3. Add "bin on the kerb" households to nearby runs
 /// 4. Re-price unclaimed runs every 30 minutes
 /// 5. Expire old unclaimed runs after 24hrs
 ///
-/// DECOUPLED from council schedule — runs are demand-driven, not
-/// calendar-driven. Containers accumulate in the GoodSort bin until
-/// there's enough volume for a profitable run.
+/// Waitlisted / allocated streets never generate a run. Scan volume is
+/// optional — a collecting household that puts the purple bin out is enough.
 /// </summary>
 public class RunGenerationService : BackgroundService
 {
@@ -88,30 +87,54 @@ public class RunGenerationService : BackgroundService
             .Distinct()
             .ToListAsync();
 
-        var readyBins = await db.Bins
-            .Where(b => b.Status == "active"
-                     && b.PendingContainers >= 1
-                     && !activeBinIds.Contains(b.Id))
-            .OrderByDescending(b => b.PendingContainers)
+        var notServiceable = await db.Households
+            .Where(h => h.BinStatus == BinStatuses.Waitlisted || h.BinStatus == BinStatuses.Allocated)
+            .Select(h => h.Id)
             .ToListAsync();
+
+        var candidates = await db.Bins
+            .Where(b => b.Status == "active"
+                     && !activeBinIds.Contains(b.Id)
+                     && (b.HouseholdId == null || !notServiceable.Contains(b.HouseholdId.Value)))
+            .ToListAsync();
+        var householdIds = candidates.Where(b => b.HouseholdId.HasValue).Select(b => b.HouseholdId!.Value).Distinct().ToList();
+        var households = await db.Households
+            .Where(h => householdIds.Contains(h.Id))
+            .ToDictionaryAsync(h => h.Id);
+        var utc = DateTime.UtcNow;
+        var readyBins = candidates
+            .Where(b =>
+            {
+                if (b.HouseholdId is null) return b.PendingContainers >= 1;
+                if (!households.TryGetValue(b.HouseholdId.Value, out var hh)) return false;
+                return KerbsideNight.HouseholdBinIsOnTonightRun(hh.BinStatus, hh.BinIsOut, hh.CouncilCollectionDay, utc);
+            })
+            .OrderByDescending(b => HouseholdCredit.EstimatedContainers(b.PendingContainers))
+            .ToList();
 
         if (readyBins.Count == 0) return;
 
         var dropPoint = await db.Depots.FirstOrDefaultAsync();
         if (dropPoint == null) return;
 
-        // Greedy clustering: group bins within 3km of each other
-        var used = new HashSet<Guid>();
-        var clusters = new List<List<Bin>>();
+        var clusters = new List<(List<Bin> Bins, string Area)>();
+        foreach (var group in RunCluster.GroupByStreet(
+            readyBins.Where(b => b.HouseholdId.HasValue),
+            b => households[b.HouseholdId!.Value].Suburb,
+            b => households[b.HouseholdId!.Value].CouncilCollectionDay))
+        {
+            var hh = households[group[0].HouseholdId!.Value];
+            clusters.Add((group.ToList(), RunCluster.AreaName(hh.Suburb, hh.CouncilCollectionDay)));
+        }
 
-        foreach (var bin in readyBins)
+        var publicBins = readyBins.Where(b => b.HouseholdId is null).ToList();
+        var used = new HashSet<Guid>();
+        foreach (var bin in publicBins)
         {
             if (used.Contains(bin.Id)) continue;
-
             var cluster = new List<Bin> { bin };
             used.Add(bin.Id);
-
-            foreach (var other in readyBins)
+            foreach (var other in publicBins)
             {
                 if (used.Contains(other.Id)) continue;
                 if (Haversine(bin.Lat, bin.Lng, other.Lat, other.Lng) <= 3.0)
@@ -120,13 +143,12 @@ public class RunGenerationService : BackgroundService
                     used.Add(other.Id);
                 }
             }
-
-            clusters.Add(cluster);
+            clusters.Add((cluster, ExtractSuburb(cluster[0].Address)));
         }
 
-        foreach (var cluster in clusters)
+        foreach (var (cluster, areaName) in clusters)
         {
-            var totalContainers = cluster.Sum(b => b.PendingContainers);
+            var totalContainers = cluster.Sum(b => HouseholdCredit.EstimatedContainers(b.PendingContainers));
             var centroidLat = cluster.Average(b => b.Lat);
             var centroidLng = cluster.Average(b => b.Lng);
             var routeDistance = EstimateRouteDistance(cluster, dropPoint);
@@ -138,8 +160,6 @@ public class RunGenerationService : BackgroundService
                 Glass = cluster.Sum(b => b.Materials.Glass),
                 Other = cluster.Sum(b => b.Materials.Other),
             };
-
-            var areaName = ExtractSuburb(cluster.First().Address);
 
             // Material focus
             var total = materials.Aluminium + materials.Pet + materials.Glass + materials.Other;
@@ -170,7 +190,7 @@ public class RunGenerationService : BackgroundService
                 EstimatedDistanceKm = routeDistance,
                 EstimatedDurationMin = durationMin,
                 Materials = materials,
-                ExpiresAt = DateTime.UtcNow.AddHours(24), // 24hr window — no council dependency
+                ExpiresAt = DateTime.UtcNow.AddHours(18),
             };
 
             var sequence = 0;
@@ -181,8 +201,8 @@ public class RunGenerationService : BackgroundService
                     BinId = bin.Id,
                     Lat = bin.Lat,
                     Lng = bin.Lng,
-                    EstimatedContainers = bin.PendingContainers,
-                    PickupInstruction = $"Collect from {bin.Name}",
+                    EstimatedContainers = HouseholdCredit.EstimatedContainers(bin.PendingContainers),
+                    PickupInstruction = HouseholdCredit.PickupInstruction(bin.Name),
                     Materials = new MaterialBreakdown
                     {
                         Aluminium = bin.Materials.Aluminium,
@@ -235,13 +255,13 @@ public class RunGenerationService : BackgroundService
         var fullBins = await db.Bins
             .Where(b => b.Status == "active"
                      && b.HouseholdId.HasValue
-                     && b.PendingContainers >= 1
                      && !activeBinIds.Contains(b.Id))
             .ToListAsync();
 
         var fullHouseholdIds = fullBins.Select(b => b.HouseholdId!.Value).ToList();
         var flaggedHouseholds = await db.Households
-            .Where(h => fullHouseholdIds.Contains(h.Id) && h.BinIsOut)
+            .Where(h => fullHouseholdIds.Contains(h.Id) && h.BinIsOut
+                     && (h.BinStatus == BinStatuses.Delivered || h.BinStatus == BinStatuses.Collecting))
             .ToListAsync();
 
         if (flaggedHouseholds.Count == 0) return;
@@ -273,8 +293,8 @@ public class RunGenerationService : BackgroundService
                 BinId = bin.Id,
                 Lat = bin.Lat,
                 Lng = bin.Lng,
-                EstimatedContainers = bin.PendingContainers,
-                PickupInstruction = $"Added: {hh.Name} (bin full)",
+                EstimatedContainers = HouseholdCredit.EstimatedContainers(bin.PendingContainers),
+                PickupInstruction = HouseholdCredit.PickupInstruction(hh.Name),
                 Materials = new MaterialBreakdown
                 {
                     Aluminium = bin.Materials.Aluminium,
@@ -285,7 +305,7 @@ public class RunGenerationService : BackgroundService
                 Sequence = nearestRun.Run.Stops.Count,
             });
 
-            nearestRun.Run.EstimatedContainers += bin.PendingContainers;
+            nearestRun.Run.EstimatedContainers += HouseholdCredit.EstimatedContainers(bin.PendingContainers);
             nearestRun.Run.EstimatedDurationMin += 1; // +1 min for the extra stop
 
             // Reset the flag

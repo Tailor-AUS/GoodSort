@@ -18,6 +18,9 @@ jobs:
         with:
           dotnet-version: 9.0.x
 
+      - name: Test density invariants
+        run: dotnet test src/GoodSort.Api.Tests/GoodSort.Api.Tests.csproj -c Release --nologo
+
       - name: Build
         run: dotnet publish src/GoodSort.Api/GoodSort.Api.csproj -c Release -o publish
 

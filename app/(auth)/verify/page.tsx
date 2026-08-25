@@ -3,19 +3,27 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
-import { apiUrl } from "@/lib/config";
+import { apiUrl, persistWaitlistFromUrl, readReferrerId, waitlistContinuePath } from "@/lib/config";
+import { track } from "@/lib/analytics";
 
 export default function VerifyPage() {
   const [otp, setOtp] = useState("");
+  const [devCode, setDevCode] = useState("");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
 
   useEffect(() => {
+    persistWaitlistFromUrl();
     const stored = sessionStorage.getItem("goodsort_verify_email");
     if (!stored) { router.push("/login"); return; }
     setEmail(stored);
+    const localCode = sessionStorage.getItem("goodsort_dev_otp");
+    if (localCode && localCode.length === 6) {
+      setDevCode(localCode);
+      setOtp(localCode);
+    }
   }, [router]);
 
   async function handleVerify(e: React.FormEvent) {
@@ -25,7 +33,7 @@ export default function VerifyPage() {
     setLoading(true);
 
     try {
-      const referrerId = (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("r") || sessionStorage.getItem("goodsort_referrer") : null) || undefined;
+      const referrerId = readReferrerId();
       const res = await fetch(apiUrl("/api/auth/verify-otp"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -43,12 +51,9 @@ export default function VerifyPage() {
       localStorage.setItem("goodsort_profile", JSON.stringify(data.profile));
       document.cookie = `goodsort_token=${data.token}; path=/; max-age=${30 * 24 * 60 * 60}; SameSite=Lax; Secure`;
       sessionStorage.removeItem("goodsort_verify_email");
+      track("otp_verified");
 
-      if (!data.profile.householdId) {
-        router.push("/onboard");
-      } else {
-        router.push("/sort");
-      }
+      router.push(await waitlistContinuePath());
     } catch {
       setError("Verification failed. Please try again.");
       setLoading(false);
@@ -63,7 +68,8 @@ export default function VerifyPage() {
             <ShieldCheck className="w-8 h-8 text-green-600" />
           </div>
           <h1 className="text-2xl font-display font-extrabold text-slate-900">Check your email</h1>
-          <p className="text-slate-400 text-[13px] mt-1">Code sent to {email}</p>
+          <p className="text-slate-400 text-[13px] mt-1">Code sent to {email}. Check inbox and spam — it expires in 5 minutes.</p>
+          {devCode && <p className="text-[12px] text-violet-700 mt-2">Local waitlist code {devCode} — ACS email is not configured on this machine.</p>}
         </div>
 
         <form onSubmit={handleVerify} className="space-y-4">

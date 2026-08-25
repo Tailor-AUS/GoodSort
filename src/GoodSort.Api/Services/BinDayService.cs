@@ -82,7 +82,7 @@ public class BinDayService
     private static string Escape(string s) => s.Replace("\"", "\\\"");
 
     /// <summary>Parse "12 Beaudesert Rd, Moorooka QLD 4105, Australia" → (12, "BEAUDESERT RD", "MOOROOKA").</summary>
-    internal static ParsedAddress? ParseAddress(string address)
+    public static ParsedAddress? ParseAddress(string address)
     {
         // Strip trailing ", Australia" and postcode / state tails
         var parts = address.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -97,13 +97,26 @@ public class BinDayService
 
         // Suburb: usually second part. If second part looks like "Moorooka QLD 4105", take just "Moorooka".
         var suburbPart = parts[1];
-        var suburb = Regex.Replace(suburbPart, @"\b(QLD|NSW|VIC|SA|WA|TAS|NT|ACT)\b.*$", "", RegexOptions.IgnoreCase).Trim();
+        var suburb = Regex.Replace(suburbPart, @"\b(QLD|NSW|VIC|SA|WA|TAS|NT|ACT|QUEENSLAND|AUSTRALIA)\b.*$", "", RegexOptions.IgnoreCase).Trim();
+        suburb = Regex.Replace(suburb, @"\s+\d{4}\s*$", "").Trim();
         suburb = suburb.ToUpperInvariant();
 
         if (string.IsNullOrWhiteSpace(streetName) || string.IsNullOrWhiteSpace(suburb) || string.IsNullOrWhiteSpace(houseNum))
             return null;
 
         return new ParsedAddress(houseNum, streetName, suburb);
+    }
+
+    /// <summary>
+    /// Photon often labels city as Brisbane. That must never be a density cluster —
+    /// 12 houses city-wide do not unlock a run.
+    /// </summary>
+    public static string? CanonicalSuburb(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var s = raw.Trim().ToUpperInvariant();
+        if (s is "BRISBANE" or "QLD" or "QUEENSLAND" or "AUSTRALIA") return null;
+        return s;
     }
 
     private static string NormaliseStreet(string s)
@@ -131,4 +144,4 @@ public class BinDayService
 }
 
 public record BinDayResult(int DayOfWeek, string CouncilArea, string Source);
-internal record ParsedAddress(string HouseNumber, string Street, string Suburb);
+public record ParsedAddress(string HouseNumber, string Street, string Suburb);

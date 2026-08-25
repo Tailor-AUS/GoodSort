@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * Pixel-art style looping scene showing the GoodSort flow:
- * House → yellow bin → runner car collects → depot → money back.
- * Pure SVG + CSS keyframes. Respects prefers-reduced-motion.
+ * Pixel-art loop: house drops eligible cans into a purple The Good Sort
+ * bin → runner collects that bin → depot → sorting credit back.
+ * No phone scan. No council yellow bin. Respects prefers-reduced-motion.
  */
 export function SortAnimation() {
   return (
@@ -105,46 +105,36 @@ export function SortAnimation() {
           <rect x="54" y="68" width="8" height="8" fill="none" stroke="#0284c7" strokeWidth="1" />
         </g>
 
-        {/* ─── Person (scanner) ─── */}
+        {/* ─── Person (drops a can — no scan) ─── */}
         <g>
-          {/* Head */}
           <circle cx="85" cy="78" r="4" fill="#fcd34d" />
-          {/* Body */}
-          <rect x="82" y="82" width="6" height="12" fill="#3b82f6" />
-          {/* Legs */}
-          <rect x="82" y="94" width="2.5" height="10" fill="#1e40af" />
-          <rect x="85.5" y="94" width="2.5" height="10" fill="#1e40af" />
-          {/* Static arm (down) */}
+          <rect x="82" y="82" width="6" height="12" fill="#7c3aed" />
+          <rect x="82" y="94" width="2.5" height="10" fill="#5b21b6" />
+          <rect x="85.5" y="94" width="2.5" height="10" fill="#5b21b6" />
           <rect x="80" y="84" width="2" height="8" fill="#fcd34d" />
-          {/* Waving arm holding phone */}
           <g className="sa-arm">
             <rect x="87" y="84" width="2" height="8" fill="#fcd34d" />
-            {/* Phone */}
-            <rect x="86.5" y="79" width="3" height="5" fill="#0f172a" />
-            <rect x="87" y="79.5" width="2" height="4" fill="#22c55e" />
           </g>
         </g>
 
-        {/* ─── Can being scanned → going to bin ─── */}
+        {/* ─── Can going into our purple bin ─── */}
         <g className="sa-can-bin">
           <rect x="91" y="78" width="4" height="8" fill="#64748b" />
           <rect x="91" y="78" width="4" height="2" fill="#475569" />
           <rect x="91" y="84" width="4" height="1" fill="#e2e8f0" />
         </g>
 
-        {/* ─── Yellow bin ─── */}
+        {/* ─── Purple The Good Sort bin ─── */}
         <g>
-          <rect x="142" y="80" width="22" height="30" fill="#facc15" />
-          <rect x="142" y="80" width="22" height="30" fill="none" stroke="#a16207" strokeWidth="1.5" />
-          {/* Lid */}
-          <rect x="140" y="76" width="26" height="5" fill="#eab308" />
-          <rect x="140" y="76" width="26" height="5" fill="none" stroke="#a16207" strokeWidth="1" />
-          {/* Wheels */}
+          <rect x="142" y="80" width="22" height="30" fill="#f5f3ff" />
+          <rect x="142" y="80" width="22" height="30" fill="none" stroke="#7c3aed" strokeWidth="1.5" />
+          <rect x="140" y="76" width="26" height="5" fill="#7c3aed" />
           <circle cx="147" cy="112" r="2.5" fill="#1e293b" />
           <circle cx="159" cy="112" r="2.5" fill="#1e293b" />
-          {/* GS label */}
-          <rect x="148" y="90" width="10" height="6" fill="#22c55e" />
-          <text x="153" y="95" fontSize="5" fontWeight="800" fill="white" textAnchor="middle" fontFamily="system-ui">GS</text>
+          <rect x="145" y="88" width="7" height="6" fill="#3b82f6" />
+          <rect x="154" y="88" width="7" height="6" fill="#14b8a6" />
+          <rect x="145" y="96" width="7" height="6" fill="#f59e0b" />
+          <rect x="154" y="96" width="7" height="6" fill="#16a34a" />
         </g>
 
         {/* ─── Depot (right) ─── */}

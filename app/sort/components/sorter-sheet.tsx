@@ -1,23 +1,41 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { ScanBarcode, MapPin, X, QrCode, ChevronUp } from "lucide-react";
+import { ScanBarcode, MapPin, X, QrCode, ChevronUp, Truck } from "lucide-react";
 import { type SortBin, type User, formatCents } from "@/lib/store";
 import { PoweredByTailor } from "@/app/components/shared/powered-by-tailor";
+import { WaitlistCard } from "@/app/components/shared/waitlist-card";
+import { isCollecting } from "@/lib/brisbane";
 import Link from "next/link";
+
+export type HouseholdStatus = {
+  id: string;
+  binIsOut: boolean;
+  suburb?: string | null;
+  councilCollectionDay?: number | null;
+  binStatus?: string | null;
+  type?: string | null;
+  areaLive?: boolean;
+  needed?: number;
+  households?: number;
+  dayName?: string | null;
+};
 
 interface SorterSheetProps {
   user: User;
   bins: SortBin[];
   selectedBin: SortBin | null;
+  household: HouseholdStatus | null;
+  nextPickup: string | null;
+  onBinOut: () => void;
   onScanPress: () => void;
   onDataUpdate: () => void;
   onDeselectBin: () => void;
 }
 
 export function SorterSheet({
-  user, bins, selectedBin,
-  onScanPress, onDataUpdate, onDeselectBin,
+  user, bins, selectedBin, household, nextPickup,
+  onBinOut, onScanPress, onDataUpdate, onDeselectBin,
 }: SorterSheetProps) {
   const activeBins = bins.filter((b) => b.status === "active" || b.status === "full");
   const [expanded, setExpanded] = useState(false);
@@ -81,11 +99,46 @@ export function SorterSheet({
                 </div>
               </div>
 
-              {/* Scan CTA */}
+              {household && !isCollecting(household.binStatus) && (
+                <WaitlistCard
+                  suburb={household.suburb}
+                  households={household.households ?? (household.type === "unit_complex" ? 0 : 1)}
+                  building={household.type === "unit_complex"}
+                  needed={household.needed ?? 12}
+                  live={!!household.areaLive}
+                  binStatus={household.binStatus}
+                  dayName={household.dayName}
+                />
+              )}
+
+              {nextPickup && isCollecting(household?.binStatus) && (
+                <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3 mb-3 flex items-start gap-3">
+                  <Truck className="w-5 h-5 text-green-700 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wider text-green-700/70">Next collection</p>
+                    <p className="text-[15px] font-display font-extrabold text-slate-900">
+                      {new Date(nextPickup).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "short" })}
+                    </p>
+                    <p className="text-[12px] text-slate-500 mt-0.5">Night before council. Put your purple The Good Sort bin on the kerb.</p>
+                  </div>
+                </div>
+              )}
+
+              {household && isCollecting(household.binStatus) && (
+                <button onClick={onBinOut}
+                  className={`w-full font-extrabold py-4 rounded-2xl text-[15px] mb-3 min-h-[48px] border-2 ${
+                    household.binIsOut
+                      ? "bg-green-50 border-green-500 text-green-800"
+                      : "bg-gradient-to-b from-green-500 to-green-600 text-white border-transparent"
+                  }`}>
+                  {household.binIsOut ? "Purple bin is on the kerb — tap if it's back in" : "Purple bin is on the kerb"}
+                </button>
+              )}
+
               <button onClick={onScanPress}
-                className="w-full bg-gradient-to-b from-green-500 to-green-600 hover:from-green-400 hover:to-green-500 text-white font-extrabold py-4 rounded-2xl transition-all duration-200 text-[15px] mb-4 flex items-center justify-center gap-2.5 shadow-lg shadow-green-600/20 min-h-[48px]">
-                <ScanBarcode className="w-5 h-5" />
-                Scan Containers
+                className="w-full bg-white border border-slate-200 text-slate-700 font-semibold py-3 rounded-2xl text-[13px] mb-4 flex items-center justify-center gap-2 min-h-[44px]">
+                <ScanBarcode className="w-4 h-4" />
+                Optional: photo a container
               </button>
 
               {/* Expandable content below the fold */}
@@ -196,8 +249,8 @@ export function SorterSheet({
 
               {/* Scan at this bin */}
               <Link href={`/scan?bin=${selectedBin.code}`}
-                className="block w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-4 rounded-2xl text-center text-[15px] shadow-lg shadow-green-600/20 min-h-[48px]">
-                Scan at This Bin
+                className="block w-full bg-white border border-slate-200 text-slate-700 font-semibold py-3.5 rounded-2xl text-center text-[13px] min-h-[48px]">
+                Optional: count at this bin
               </Link>
             </>
           )}

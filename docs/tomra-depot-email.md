@@ -8,16 +8,16 @@
 
 Hi,
 
-My name is Knox Hart and I run **The Good Sort** — a residential container collection service operating in Brisbane's inner south (Moorooka, South Brisbane, West End).
+My name is Knox Hart and I run **The Good Sort** — a purple-bin kerbside collection we are standing up in Brisbane's inner south (Moorooka, South Brisbane, West End). We deliver our own bins. We do not rummage council yellow bins.
 
-We collect CDS-eligible containers from residential yellow bins on a weekly basis and need a reliable depot to deliver to. Your Yeerongpilly / Salisbury facility is the closest to our collection area.
+When a street unlocks we will bring CDS-eligible containers to your depot. Your Yeerongpilly / Salisbury facility is the closest to that first area.
 
-## What we deliver
+## What we expect to deliver
 
 - Pre-separated material in 3 streams: **aluminium cans, PET bottles, glass bottles**
 - Delivered by our runners in bags or tubs (not mixed / not compacted)
-- Each delivery is accompanied by a digital manifest showing per-container AI-verified scans and household attribution
-- Expected starting volume: **200-500 containers/week**, scaling to **2,000-5,000/week** over 6 months
+- Each delivery accompanied by a household manifest (scan is optional verification, not required for every container)
+- Starting volume is not live yet — we will confirm a first-drop window once streets unlock. Planning range: **200–500 containers/week**, then **2,000–5,000/week** if density holds
 
 ## What we need
 
@@ -29,7 +29,7 @@ We collect CDS-eligible containers from residential yellow bins on a weekly basi
 
 ## Our details
 
-- **Entity:** Crispr Projects Pty Ltd (ABN 85 680 798 770), trading as The Good Sort
+- **Entity:** Tailor Intelligence Pty Ltd (ABN 13 688 827 572), trading as The Good Sort
 - **Website:** [thegoodsort.org](https://www.thegoodsort.org)
 - **Contact:** Knox Hart — knox.hart@gmail.com — 0400 XXX XXX [add your mobile]
 

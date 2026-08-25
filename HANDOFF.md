@@ -1,23 +1,36 @@
-# GoodSort — handoff (2026-07-14)
+# GoodSort — handoff (2026-07-15)
 
-Previous handoff (2026-05-24 hardening pass) is in git history; everything in
-it landed on main. This handoff covers the marketing launch + ops pass.
+**Superseded 25 Aug 2026.** Do not follow the Sovrgn-on steps below. PR **#8**
+revoked the Sovrgn consumer. Do not set `SOVRGN_API_KEY`. The live product
+block is the waitlist ship — see
+`C:\TailorOS\_session_handoffs\HANDOFF_TGS_WAITLIST_SHIP_2026-08-25.md`.
+Conversion is request a purple bin, not scan-every-can. Do not fill ABA.
+Do not send mail.
 
-## Open PRs (deliverables of this pass)
+---
 
-1. **PR #4 — `feat/marketing-launch`**: public landing page at `/`, SEO
-   (sitemap/robots/OG images, schema.org), `(sorter)` → `/sort`, auth-guard
-   redirects to `/`, next 16.2.9. Copy is written around the B2B model
-   (~$149/mo per building subscription = the MRR line; households = supply
-   flywheel).
-2. **PR #5 — `fix/marketplace-ownership-ci-vision`**: CI backend deploy
-   replaced `container-apps-deploy-action@v2` (broken azext_containerapp CLI
-   bug) with `azure/cli@v2` running `az acr build` + `az containerapp update`;
-   restore-secrets defaults `AZURE_OPENAI_DEPLOYMENT=gpt-5-mini`.
-3. **PR (this branch) — `feat/sovrgn-inference`**: LLM inference routes
-   through Sovrgn (`api.sovrgn.ai`, OpenAI-compatible) when `SOVRGN_API_KEY`
-   is set; falls back to Azure OpenAI. Vision health endpoint now reports
-   `sovrgnFallback`.
+Refresh of the 2026-07-14 handoff (in git history). The three PRs from that
+pass — #4 marketing launch, #5 CI/vision fix, #6 Sovrgn inference routing —
+have all **merged to main**. Main is synced with origin. PR **#8** later
+revoked Sovrgn. Ignore the “flip prod” commands in the Sovrgn section.
+
+## Uncommitted local change — commit first
+
+`CLAUDE.md` has a new **"Mandatory QA — live browser preview"** section
+(added 2026-07-15): any frontend/API-surface change must be QA'd by running
+`npm run dev` and driving the changed flows via the Claude in Chrome browser
+tools (console check + screenshot) before reporting done. This is now the QA
+gate (no test suite exists). Commit this to main before starting new work.
+
+## Open PRs (pre-existing, need triage)
+
+1. **PR #3 — `claude/modest-sagan-nGiQY`** (open since 2026-06-16): "Launch
+   hardening: auth/PII fixes, ABA payout, JWT revocation, SEO & CI". Predates
+   the #4/#5/#6 merges — likely overlaps/conflicts with them now. Rebase and
+   salvage what's still relevant, or close with a note.
+2. **PR #2 (draft, Copilot)**: glass containers always CDS-eligible
+   (overrides Tailor Vision's stale wine/spirit ruleset). Review whether the
+   eligibility bug still exists post-#6, then land or close.
 
 ## Sovrgn rollout — blocked on a key
 

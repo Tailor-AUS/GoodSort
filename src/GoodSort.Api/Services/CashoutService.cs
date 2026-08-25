@@ -7,12 +7,42 @@ namespace GoodSort.Api.Services;
 
 public class CashoutService
 {
-    private readonly GoodSortDbContext _db;
+    public const string PlaceholderTraceBsb = "062000";
 
-    public CashoutService(GoodSortDbContext db) => _db = db;
+    private readonly GoodSortDbContext _db;
+    private readonly IConfiguration _config;
+
+    public CashoutService(GoodSortDbContext db, IConfiguration config)
+    {
+        _db = db;
+        _config = config;
+    }
+
+    public bool PayoutsOpen() => PayoutsAreOpen(
+        _config["ABA_PAYOUTS_ENABLED"],
+        _config["ABA_TRACE_BSB"],
+        _config["ABA_TRACE_ACCOUNT"],
+        _config["ABA_USER_ID"]);
+
+    /// <summary>
+    /// Bank files stay closed until Knox sets a real ABA remitter.
+    /// The old 062-000 / 12345678 placeholders must never pay anyone.
+    /// </summary>
+    public static bool PayoutsAreOpen(string? enabled, string? traceBsb, string? traceAccount, string? userId)
+    {
+        if (!string.Equals(enabled, "true", StringComparison.OrdinalIgnoreCase)) return false;
+        var bsb = Digits(traceBsb);
+        var account = Digits(traceAccount);
+        var user = (userId ?? "").Trim();
+        if (bsb.Length != 6 || bsb == PlaceholderTraceBsb) return false;
+        if (account.Length < 5 || account.Length > 9 || account == "12345678") return false;
+        if (user.Length < 4) return false;
+        return true;
+    }
 
     public async Task<(bool Success, string? Error)> RequestCashout(Guid userId, int amountCents, string bsb, string accountNumber, string accountName)
     {
+        if (!PayoutsOpen()) return (false, "Payouts are not open yet. Credits stay on your account until bank transfers are live.");
         var profile = await _db.Profiles.FindAsync(userId);
         if (profile is null) return (false, "User not found");
         if (profile.ClearedCents < amountCents) return (false, "Insufficient balance");
@@ -42,6 +72,8 @@ public class CashoutService
     // Generate ABA (Australian Banking Association) file for batch bank transfers
     public async Task<string> GenerateAbaFile()
     {
+        if (!PayoutsOpen()) return "";
+
         var pending = await _db.Set<CashoutRequest>()
             .Where(c => c.Status == "pending")
             .Include(c => c.User)
@@ -59,8 +91,8 @@ public class CashoutService
             "01" +                                          // Reel Sequence
             "WBC" +                                         // Bank (Westpac example)
             "       " +                                     // Blank (7)
-            "THE GOOD SORT PTY LTD     " +                  // User Name (26)
-            "301500" +                                      // User ID (6)
+            Pad26(_config["ABA_USER_NAME"] ?? "TAILOR INTELLIGENCE") + // User Name (26)
+            (_config["ABA_USER_ID"] ?? "").Trim().PadRight(6).Substring(0, 6) + // User ID (6)
             "PAYMENTS  " +                                  // Description (12)
             now.ToString("ddMMyy") +                        // Date
             "                                        "      // Blank (40)
@@ -85,9 +117,9 @@ public class CashoutService
                 (amount).ToString().PadLeft(10, '0') +      // Amount in cents (10)
                 cashout.AccountName!.PadRight(32).Substring(0, 32) + // Title (32)
                 "GOODSORT PAYOUT   " +                      // Lodgement Ref (18)
-                "062-000" +                                 // Trace BSB (7)
-                "12345678 " +                               // Trace Account (9)
-                "THE GOOD SORT     " +                      // Remitter (16)
+                FormatBsb(Digits(_config["ABA_TRACE_BSB"])) + // Trace BSB (7)
+                Digits(_config["ABA_TRACE_ACCOUNT"]).PadRight(9).Substring(0, 9) + // Trace Account (9)
+                Pad16(_config["ABA_REMITTER"] ?? "THE GOOD SORT") + // Remitter (16)
                 "00000000"                                  // Withholding Tax (8)
             );
         }
@@ -112,6 +144,18 @@ public class CashoutService
 
         return sb.ToString();
     }
+
+    private static string Digits(string? raw) =>
+        new string((raw ?? "").Where(char.IsDigit).ToArray());
+
+    private static string FormatBsb(string digits6) =>
+        digits6.Length == 6 ? digits6.Insert(3, "-") : "000-000";
+
+    private static string Pad26(string name) =>
+        name.Trim().ToUpperInvariant().PadRight(26).Substring(0, 26);
+
+    private static string Pad16(string name) =>
+        name.Trim().ToUpperInvariant().PadRight(16).Substring(0, 16);
 }
 
 public class CashoutRequest

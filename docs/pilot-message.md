@@ -1,32 +1,17 @@
-# The Good Sort — Pilot Message
+# The Good Sort — Neighbour waitlist message
+
+Do not send this as a live-pickup pitch. Conversion is: request a purple bin = join the waitlist. Scan is optional.
 
 ---
 
-Hey! I'm testing a new recycling service and need 5 houses to try it. You earn 5c for every can and bottle you recycle through us. Takes 10 minutes to set up. Here's everything:
+Hey — The Good Sort is taking a waitlist for a purple recycling bin on our street.
 
-👉 **https://thegoodsort.org**
+12 neighbours on the same recycling day and they deliver the bin and start collecting eligible cans and bottles. You get a 5¢ sorting credit (not the 10¢ scheme refund). No depot trip. They do not rummage the council yellow bin.
 
-Click that link and it walks you through everything:
+Join: https://thegoodsort.org/brisbane/moorooka
 
-1. **Enter your email** — we send you a one-time code to log in
-2. **Grab 4 containers** — any buckets, boxes, tubs or bags you have lying around. One for cans, one for plastic bottles, one for glass, one for everything else. Write CANS, PLASTIC, GLASS, OTHER on them (or just 1, 2, 3, 4 — the app tells you which is which)
-3. **Take a photo of a container** — the app uses AI to identify what it is and tells you which bin to put it in
+Then send that link to the street. That is how a run starts.
 
-That's the setup. From then on:
+---
 
-- When you finish a can or bottle, open the app and photo it → it tells you which bin
-- After a while you'll just know — cans in 1, bottles in 2, glass in 3, other in 4
-- **You earn 5c per container** credited to your account
-- Cash out to your bank when you hit $20
-
-**When your bins are getting full:**
-
-You don't need to do anything. We'll **email you 24 hours before** someone is coming to collect. Just put your bins somewhere accessible out the front and we'll empty them.
-
-**What it costs:** Nothing. Free. You use your own containers. We collect for free. You get paid.
-
-**Why?** Over 1 billion recyclable containers go to landfill every year in QLD. That's $100M in unclaimed refunds sitting in yellow bins. We're fixing that.
-
-**Get started:** https://thegoodsort.org
-
-Any questions just message me! ♻️
+Swap `moorooka` for the suburb slug. Logged-in invites should use the suburb page with `?r=` from the app.

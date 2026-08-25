@@ -1,13 +1,11 @@
 "use client";
 
 /**
- * The Good Sort logo — 3A: Yellow lid, cream body, 4 CDS stream squares.
- * Colours match the 4-bag sorting system:
+ * The Good Sort logo — purple TGS bin, 4 CDS stream squares.
  *   Blue (#3b82f6)  = Aluminium
  *   Teal (#14b8a6)  = PET plastic
  *   Amber (#f59e0b) = Glass
  *   Green (#16a34a) = Other (HDPE, cartons)
- * Yellow lid = AS4123.7 Australian recycling bin standard.
  */
 
 interface LogoProps {
@@ -40,17 +38,17 @@ export function Logo({ size = "md", showText = true, dark = false, className = "
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
       >
-        {/* Yellow lid */}
-        <rect x={(s.icon - s.lid.w) / 2} y={1} width={s.lid.w} height={s.lid.h} rx={s.lid.rx} fill="#eab308" />
-        {/* Cream body with yellow border */}
+        {/* Purple lid */}
+        <rect x={(s.icon - s.lid.w) / 2} y={1} width={s.lid.w} height={s.lid.h} rx={s.lid.rx} fill="#7c3aed" />
+        {/* Lilac body with purple border */}
         <rect
           x={s.body.x + (s.icon - s.lid.w) / 2}
           y={bodyY}
           width={s.body.w}
           height={s.body.h}
           rx={s.body.rx}
-          fill={dark ? "#1e293b" : "#fefce8"}
-          stroke={dark ? "#334155" : "#fde047"}
+          fill={dark ? "#1e293b" : "#f5f3ff"}
+          stroke={dark ? "#334155" : "#c4b5fd"}
           strokeWidth={1.5}
         />
         {/* Aluminium — blue */}

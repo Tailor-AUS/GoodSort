@@ -13,7 +13,8 @@ This project uses **Next.js 16** with breaking changes from what you know. Read 
 npm ci                    # install deps
 npm run build             # production build (no map API keys required — OSS stack)
 npm run dev               # dev server
-npx tsc --noEmit          # typecheck (no test suite exists)
+npx tsc --noEmit          # typecheck
+dotnet test src/GoodSort.Api.Tests --nologo   # density / address-parse invariants
 ```
 
 ### Backend (.NET 9 — minimal API)
@@ -58,12 +59,14 @@ app/
 ├── admin/           # admin dashboard, bins, users, pickups
 ├── components/shared/  # scanner.tsx, map-view.tsx, account-panel.tsx, logo.tsx,
 │                       # auth-guard.tsx, install-prompt.tsx, address-autocomplete.tsx,
-│                       # sort-animation.tsx, powered-by-tailor.tsx, account-button.tsx
+│                       # sort-animation.tsx, powered-by-tailor.tsx, account-button.tsx,
+│                       # waitlist-card.tsx
 ├── scan/            # unauthenticated demo scan page
 ├── start/           # landing/marketing page
 ├── household/       # household management
 ├── privacy/ terms/  # static legal pages
 lib/
+├── brisbane.ts        # BCC suburbs, waitlist density threshold (12), invite copy
 ├── config.ts          # API_URL from NEXT_PUBLIC_API_URL env var
 ├── store.ts           # Types, constants (SORTER_PAYOUT_CENTS=5), localStorage state, 4-bag system
 ├── store-api.ts       # API wrapper — apiFetch() adds Bearer token; offline-first (writes local first, then syncs)
@@ -125,10 +128,12 @@ src/GoodSort.Api/
 
 ### Key domain concepts
 
-- **4-bag sorting system**: Blue (aluminium), Teal (PET), Amber (glass), Green (other). Scanner tells user which bag.
+- **Waitlist PLG**: Household signup is a request for a purple The Good Sort bin, not live pickup. `Household.BinStatus` is `waitlisted` → `allocated` → `delivered` → `collecting`. Density of 12 houses on the **same recycling day in the same suburb** unlocks purchase (city-wide totals never unlock). Ops triggers allocate per day from `/admin/waitlist`. Runs and pickup reminders skip waitlisted/allocated households. NBN-style emails fire on join, unlock, order, and collecting.
+- **Purple TGS bin**: We deliver our bin with a divider. We do not rummage the council yellow bin.
+- **4-bag sorting system**: Blue (aluminium), Teal (PET), Amber (glass), Green (other). Scanner is optional verification, not the growth loop.
 - **Two balance types**: `pendingCents` (scan credited, not yet cleared) and `clearedCents` (cashout-eligible). $20 minimum to cash out.
-- **Runs**: Collection routes generated for runners. Runner picks up bags from households, delivers to depot, settles.
-- **CDS**: QLD Container Refund Scheme (Containers for Change). 10¢ refund per eligible container. GoodSort pays 5¢ to sorter, 5¢ to runner.
+- **Runs**: Collection routes generated for runners. Runner picks up The Good Sort bins from collecting households, delivers to depot, settles.
+- **CDS**: QLD Container Refund Scheme (Containers for Change). 10¢ refund per eligible container. GoodSort pays 5¢ to sorter. Sorting credits are a private reward, not the scheme refund.
 
 ## Environment Variables
 
@@ -139,8 +144,8 @@ src/GoodSort.Api/
 - `JWT_SECRET` — symmetric key for JWT signing
 - `GOODSORTDB_CONNECTION_STRING` — Azure SQL connection
 - `TAILOR_VISION_API_KEY` / `TAILOR_VISION_API_URL` — Tailor Vision API
-- `SOVRGN_API_KEY` / `SOVRGN_API_URL` / `SOVRGN_MODEL` — Sovrgn sovereign inference gateway (api.sovrgn.ai, OpenAI-compatible). When the key is set, LLM inference routes through Sovrgn ahead of Azure OpenAI. `SOVRGN_API_URL` defaults to `https://api.sovrgn.ai/v1`; `SOVRGN_MODEL` is required alongside the key.
-- `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_KEY` / `AZURE_OPENAI_DEPLOYMENT` — fallback vision (last resort after Sovrgn)
+- `SOVRGN_API_KEY` — leftover. PR #8 revoked the consumer. Do not set. A leftover key is logged and ignored.
+- `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_KEY` / `AZURE_OPENAI_DEPLOYMENT` — vision fallback after Tailor Vision
 - `ACS_CONNECTION_STRING` / `ACS_EMAIL_SENDER` — Azure Communication Services (OTP emails)
 - `OSRM_URL` (optional) — defaults to `https://router.project-osrm.org` (public demo). Override with a self-hosted OSRM instance for production scale.
 
@@ -166,10 +171,21 @@ src/GoodSort.Api/
 - **Postdeploy secrets**: `azd deploy` strips env vars not in the Aspire manifest. The `infra/restore-secrets.sh` postdeploy hook re-applies them from the azd environment.
 - **CORS origins**: Backend restricts to `thegoodsort.org` + the SWA staging domain. Add new origins in `Program.cs` if needed.
 - **Single-file API**: All ~67 endpoints live in `Program.cs`. When adding endpoints, follow the existing minimal API pattern there — don't create controllers.
-- **No test suite or linter**: CI (`.github/workflows/ci.yml`) only runs `npm run build` and `dotnet build -c Release`. `npx tsc --noEmit` is the only frontend check. Don't claim "tests pass" — there are none.
+- **Thin test suite**: `GoodSort.Api.Tests` covers address parse / city-wide Brisbane must never cluster. CI and API deploy run those tests. Frontend still has no unit tests — browser-QA marketing and onboard flows.
 - **App version meta**: `app/layout.tsx` has `<meta name="app-version" content="YYYYMMDD-HHMM">`. `debug-prod` reads this to confirm a deploy actually landed; bump it when shipping user-visible changes.
 - **JSON cycle handling**: `Program.cs` sets `ReferenceHandler.IgnoreCycles` because `Run ↔ RunnerProfile` (and similar EF nav properties) would otherwise blow up serialization. Keep this in mind when adding entities with circular relationships.
 - **ACS domain re-link in postdeploy**: `infra/restore-secrets.sh` doesn't just restore env vars — it also re-links `thegoodsort.org` to the shared `tailor-prod-comm` Communication Service in `rg-tailor-app-prod`, because M365 DNS changes periodically unlink it. The subscription ID and resource group are hardcoded.
+
+## Mandatory QA — live browser preview
+
+Every piece of autonomous work that touches the frontend or an API surface the frontend consumes MUST be QA'd in a live preview before you report it done:
+
+1. Start the dev server: `npm run dev` (or full stack via `dotnet run --project src/GoodSort.AppHost` if the change spans the API).
+2. Load the Claude in Chrome browser tools (one ToolSearch call: `select:mcp__claude-in-chrome__tabs_context_mcp,mcp__claude-in-chrome__navigate,mcp__claude-in-chrome__computer,mcp__claude-in-chrome__read_page,mcp__claude-in-chrome__tabs_create_mcp,mcp__claude-in-chrome__read_console_messages`).
+3. Open `http://localhost:3000` in a new tab and drive the actual flows you changed — click through them, don't just load the page.
+4. Check the browser console for errors (`read_console_messages`) and screenshot the result.
+
+Do not claim a change works from a build or typecheck alone. API density tests are required; the live browser pass is still the QA gate for UI.
 
 ## Production URLs
 

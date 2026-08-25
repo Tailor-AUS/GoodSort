@@ -29,3 +29,4 @@ jobs:
           dotnet-version: 9.0.x
       - run: dotnet restore src/GoodSort.sln
       - run: dotnet build src/GoodSort.sln --no-restore -c Release
+      - run: dotnet test src/GoodSort.Api.Tests/GoodSort.Api.Tests.csproj -c Release --nologo --no-restore
