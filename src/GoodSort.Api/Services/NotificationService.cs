@@ -55,12 +55,12 @@ public class NotificationService
             <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>You're on the building list</h1>
             <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {hello},</p>
             <p style='font-size:14px;line-height:1.55'>Request received for <b>{building}</b> at <b>{hh.Address}</b>.</p>
-            <p style='font-size:14px;line-height:1.55'>Common-area pickups are phase 2. Houses on the same recycling day in {place} unlock a purple-bin run first — invite them.</p>
+            <p style='font-size:14px;line-height:1.55'>{DensityEmailCopy.BuildingInviteLine(place)}</p>
             <p style='font-size:14px;margin:20px 0 8px'><a href='{WhatsAppInvite(place, invite)}' style='display:inline-block;background:#25D366;color:#fff;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:12px'>WhatsApp the street</a></p>
             <p style='font-size:13px;margin:0 0 20px'><a href='{invite}' style='color:#16a34a;font-weight:600'>Or copy your street link →</a></p>
             <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {place}</p>
           </div>";
-        await Send(email, $"Building waitlist in {place}", body);
+        await Send(email, $"Building list in {place}", body);
     }
 
     public async Task SendAreaUnlocked(string suburb, int day)
@@ -84,13 +84,13 @@ public class NotificationService
               <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
                 <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>{place} {dayName} has enough neighbours</h1>
                 <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {hello},</p>
-                <p style='font-size:14px;line-height:1.55'>Twelve households in {place} on {dayName} recycling are on the waitlist. That is enough for a collection run. We'll email you when your purple The Good Sort bin is on the way.</p>
-                <p style='font-size:14px;line-height:1.55'>Invite the rest of the street so the first run is dense.</p>
+                <p style='font-size:14px;line-height:1.55'>{DensityEmailCopy.UnlockLine(place, dayName)}</p>
+                <p style='font-size:14px;line-height:1.55'>Invite the rest of the street so the first night is dense. Keep sorting today.</p>
                 <p style='font-size:14px;margin:20px 0 8px'><a href='{WhatsAppInvite(place, InviteLink.StreetUrl(suburb, day, member.Id), dayName)}' style='display:inline-block;background:#25D366;color:#fff;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:12px'>WhatsApp the street</a></p>
                 <p style='font-size:13px;margin:0 0 20px'><a href='{InviteLink.StreetUrl(suburb, day, member.Id)}' style='color:#16a34a;font-weight:600'>Or copy your street link →</a></p>
                 <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {place}</p>
               </div>";
-            await Send(member.Email!, $"{place} {dayName} unlocked — we'll order purple bins", body);
+            await Send(member.Email!, DensityEmailCopy.UnlockSubject(place, dayName), body);
         }
     }
 
@@ -139,13 +139,13 @@ public class NotificationService
               <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
                 <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>{place} {dayName} moved</h1>
                 <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {hello},</p>
-                <p style='font-size:14px;line-height:1.55'><b>{households}</b> household{(households == 1 ? "" : "s")} are now on the {dayName} waitlist in {place}. <b>{needed}</b> more on that recycling day and we order purple bins.</p>
-                <p style='font-size:14px;line-height:1.55'>A neighbour just joined. WhatsApp the street again — that is how a run starts.</p>
+                <p style='font-size:14px;line-height:1.55'>{DensityEmailCopy.ProgressLine(households, dayName, place, needed)}</p>
+                <p style='font-size:14px;line-height:1.55'>{DensityEmailCopy.ProgressInviteLine}</p>
                 <p style='font-size:14px;margin:20px 0 8px'><a href='{WhatsAppProgress(place, dayName, households, needed, invite)}' style='display:inline-block;background:#25D366;color:#fff;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:12px'>WhatsApp the street</a></p>
                 <p style='font-size:13px;margin:0 0 20px'><a href='{invite}' style='color:#16a34a;font-weight:600'>Or copy your street link →</a></p>
                 <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {place}</p>
               </div>";
-            await Send(member.Email!, $"{place} {dayName}: {needed} more unlock bins", body);
+            await Send(member.Email!, DensityEmailCopy.ProgressSubject(place, dayName, needed), body);
         }
     }
 
@@ -171,7 +171,7 @@ public class NotificationService
               <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
                 <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Your purple bin is on order</h1>
                 <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {hello},</p>
-                <p style='font-size:14px;line-height:1.55'>We're buying The Good Sort bins for {place}{(day is null ? "" : $" {dayName} recycling")}. We'll tell you when yours is delivered and collection starts.</p>
+                <p style='font-size:14px;line-height:1.55'>We're buying The Good Sort bins for {place}{(day is null ? "" : $" {dayName} recycling")}. Keep sorting in your own bags. We'll tell you when yours is delivered.</p>
                 <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {place}</p>
               </div>";
             await Send(member.Email!, $"Purple bins on order for {place}", body);

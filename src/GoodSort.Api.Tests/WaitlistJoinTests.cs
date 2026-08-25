@@ -19,7 +19,11 @@ public class WaitlistJoinTests
 
     [Fact]
     public void Rejects_without_consent()
-        => Assert.NotNull(WaitlistJoin.RejectCreate(House("MOOROOKA", 5, consent: false)));
+        => Assert.Equal(DensityEmailCopy.ConsentRequired, WaitlistJoin.RejectCreate(House("MOOROOKA", 5, consent: false)));
+
+    [Fact]
+    public void Rejects_missing_suburb_with_collection_night_copy()
+        => Assert.Equal(DensityEmailCopy.StreetRequired, WaitlistJoin.RejectCreate(House(null, 5, consent: true)));
 
     [Fact]
     public void Rejects_apartment_on_house_endpoint()

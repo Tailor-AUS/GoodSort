@@ -13,11 +13,11 @@ public static class WaitlistJoin
         if (string.Equals(h.Type, "unit_complex", StringComparison.OrdinalIgnoreCase))
             return "Use the building waitlist for apartments.";
         if (BinDayService.CanonicalSuburb(h.Suburb) is null)
-            return "Pick your suburb and recycling day so we can put you on a street waitlist.";
+            return DensityEmailCopy.StreetRequired;
         if (h.CouncilCollectionDay is null or < 0 or > 6)
-            return "Pick your suburb and recycling day so we can put you on a street waitlist.";
+            return DensityEmailCopy.StreetRequired;
         if (!h.AccessConsent)
-            return "Tick the box so we can contact you when we launch your street.";
+            return DensityEmailCopy.ConsentRequired;
         return null;
     }
 }
