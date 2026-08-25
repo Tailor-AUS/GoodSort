@@ -69,7 +69,7 @@ export default function VerifyPage() {
           </div>
           <h1 className="text-2xl font-display font-extrabold text-slate-900">Check your email</h1>
           <p className="text-slate-400 text-[13px] mt-1">Code sent to {email}. Check inbox and spam — it expires in 5 minutes.</p>
-          {devCode && <p className="text-[12px] text-violet-700 mt-2">Local waitlist code {devCode} — ACS email is not configured on this machine.</p>}
+          {devCode && <p className="text-[12px] text-violet-700 mt-2">Local code {devCode} — ACS email is not configured on this machine.</p>}
         </div>
 
         <form onSubmit={handleVerify} className="space-y-4">
@@ -96,8 +96,34 @@ export default function VerifyPage() {
           </button>
         </form>
 
+        <button
+          type="button"
+          onClick={async () => {
+            setLoading(true); setError("");
+            try {
+              const res = await fetch(apiUrl("/api/auth/send-otp"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email }),
+              });
+              const data = await res.json().catch(() => ({} as { error?: string; devCode?: string }));
+              if (!res.ok) {
+                setError(typeof data.error === "string" && data.error ? data.error : "Couldn't resend. Try again shortly.");
+              } else if (typeof data.devCode === "string" && data.devCode.length === 6) {
+                setDevCode(data.devCode);
+                setOtp(data.devCode);
+              }
+            } catch {
+              setError("Couldn't resend. Try again shortly.");
+            }
+            setLoading(false);
+          }}
+          className="w-full text-center text-[13px] text-green-700 hover:text-green-800 font-semibold py-3 mt-2"
+        >
+          Resend code
+        </button>
         <button onClick={() => router.push("/login")}
-          className="w-full text-center text-[13px] text-slate-400 hover:text-slate-600 font-medium py-3 mt-2 transition-colors">
+          className="w-full text-center text-[13px] text-slate-400 hover:text-slate-600 font-medium py-2 transition-colors">
           Use different email
         </button>
       </div>

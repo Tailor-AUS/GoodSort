@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiUrl } from "@/lib/config";
-import { LIVE_HOUSEHOLD_THRESHOLD, clusterForDay, rankByUnlockProximity, streetInvitePath, titleSuburb, type GrowthSuburb } from "@/lib/brisbane";
+import { LIVE_HOUSEHOLD_THRESHOLD, clusterForDay, rankByUnlockProximity, streetInvitePath, titleSuburb, wedgeSuburbs, type GrowthSuburb } from "@/lib/brisbane";
 
 export function DensityBoard() {
   const [suburbs, setSuburbs] = useState<GrowthSuburb[]>([]);
@@ -34,16 +34,30 @@ export function DensityBoard() {
   if (state === "unavailable") {
     return (
       <p className="text-[13px] text-slate-400 mb-8">
-        Street counts load when the waitlist API is reachable. {LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day unlock a run — city-wide totals never do.
+        Street counts load when the API is reachable. {LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day start a collection night — city-wide totals never do.
       </p>
     );
   }
 
   if (closest.length === 0) {
+    const wedge = wedgeSuburbs().slice(0, 8);
     return (
-      <p className="text-[13px] text-slate-400 mb-8">
-        No streets on the list yet. Join your suburb — {LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day unlock a run.
-      </p>
+      <div className="mb-10">
+        <p className="text-[13px] text-slate-500 mb-3">
+          No streets on the list yet. Be the first house. Start sorting today — {LIVE_HOUSEHOLD_THRESHOLD} neighbours on the same recycling day start the collection night.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {wedge.map((s) => (
+            <Link
+              key={s.slug}
+              href={`/brisbane/${s.slug}`}
+              className="text-[13px] font-semibold text-violet-800 bg-violet-50 border border-violet-200 rounded-full px-3 py-1.5 hover:border-violet-400"
+            >
+              {s.name}
+            </Link>
+          ))}
+        </div>
+      </div>
     );
   }
 

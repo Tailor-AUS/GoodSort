@@ -21,18 +21,18 @@ I wrote on 18 April 2026 about registering as a Container Refund Point. This not
 
 Queensland's scheme pays 10¢. A large share of eligible containers still goes into kerbside recycling unclaimed, because a depot trip is too far for most households.
 
-The Good Sort puts a **purple The Good Sort bin** (divider included) at the house. Residents put eligible cans and bottles in **our** bin. When a street is dense enough, a runner collects that bin the night before council recycling and we return the containers to an approved depot.
+Households start sorting eligible cans and bottles at home today (their own bags, four streams). When a street is dense enough, a runner collects the night before council recycling and we return the containers to an approved depot. We may deliver our own purple bin once a street is live. We do not rummage the council yellow bin.
 
-1. A household joins the waitlist at thegoodsort.org (email, address, recycling day). That is a request for a purple bin — not a live pickup.
-2. We use Brisbane City Council open data to fill the recycling day. We unlock a run only when **12 households in the same suburb on the same recycling day** have joined. City-wide totals do not unlock a run.
-3. We buy and deliver the purple bins. We do not rummage the council yellow bin. Council still empties that bin as usual.
+1. A household joins at thegoodsort.org (email, address, recycling day) and starts sorting the same day. That is not a live city-wide pickup.
+2. We use Brisbane City Council open data to fill the recycling day. We start a collection night only when **12 households in the same suburb on the same recycling day** have joined. City-wide totals do not unlock a run.
+3. We collect sorted containers from the kerb. We do not rummage the council yellow bin. Council still empties that bin as usual.
 4. We receive the 10¢ scheme refund at the depot. The household gets a **5¢ sorting credit** (a private reward, not the scheme refund). Cash-out from $20 to an Australian bank.
 
 Scan / photo is optional verification. It is not how we grow.
 
 ## Current status (honest)
 
-- Product and waitlist are built. Public site copy is being cut over to this model.
+- Product is live: households can join and start sorting today. We announce the collection night.
 - We are **not** collecting yet. No COEX registration, no depot contract, no claim that we are an approved CRP.
 - First wedge: inner-south Brisbane (Moorooka, Annerley, Yeronga, Fairfield and neighbours), because Yeerongpilly and Salisbury depots are close.
 
