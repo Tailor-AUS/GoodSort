@@ -25,21 +25,22 @@ export default function PrivacyPage() {
           <li>Name and household address</li>
           <li>Container scan records (barcodes, materials, timestamps)</li>
           <li>Location data (for map functionality and route optimization)</li>
-          <li>Waitlist consent, recycling day, and later collection of a The Good Sort bin</li>
+          <li>Street-list consent, recycling day, collection-night notices, and later collection of sorted bags or a The Good Sort bin</li>
           <li>Collection and earnings history</li>
         </ul>
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">2. How We Use Your Information</h2>
         <p className="text-slate-600 text-sm mb-4">
-          We use your information to operate the waitlist, decide when an area has enough density to
-          order bins, schedule collection of The Good Sort bins, process sorting credits, and improve
-          the service. We share your address and container counts with appointed runners for pickup
-          only after your area is collecting. We do not sell your personal information.
+          We use your information to operate the street list, tell you the collection night, decide
+          when 12 households in the same suburb on the same recycling day have joined, schedule
+          collection of sorted bags or The Good Sort bins, process sorting credits, and improve the
+          service. We share your address and container counts with appointed runners for pickup only
+          after your street is collecting. We do not sell your personal information.
         </p>
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">3. Data Storage</h2>
         <p className="text-slate-600 text-sm mb-4">
-          Account, waitlist, and collection data are stored on Microsoft Azure (Azure SQL and related
+          Account, street-list, and collection data are stored on Microsoft Azure (Azure SQL and related
           services). The live API currently runs in Azure East Asia. That is not an Australian region.
           We intend to host in Australia and will update this policy when that move is complete.
           Traffic is encrypted in transit.

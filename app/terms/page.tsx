@@ -19,25 +19,31 @@ export default function TermsPage() {
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">1. Service Description</h2>
         <p className="text-slate-600 text-sm mb-4">
           Crispr Projects Pty Ltd (ABN 85 680 798 770), trading as The Good Sort (&quot;The Good Sort&quot;, &quot;we&quot;, &quot;us&quot;)
-          operates a waitlist and, where an area is unlocked, a kerbside container collection service
-          in Queensland. Completing registration puts your address on a waitlist for a purple The Good
-          Sort bin (divider included). We do not rummage your council yellow recycling bin. Collection
-          does not start until enough neighbouring households on the same recycling day have joined
-          and we have delivered our bin. We will contact you when we are collecting in your area.
-          When a bin has been delivered, you authorise The Good Sort and its appointed runners
-          (&quot;Runners&quot;) to collect that purple bin from your kerb and return eligible containers to
-          approved recycling depots. The Good Sort is the entity that returns containers to Container
-          Refund Points under the Queensland Container Refund Scheme (Containers for Change).
+          operates a household container-sorting service and, when density is met, a kerbside collection
+          in Queensland. Completing registration puts your address on a street list. You start sorting
+          eligible cans and bottles at home today — four streams (aluminium, PET, glass, and other),
+          in your own bags. We tell you the collection night: the night before your council recycling
+          day. That night starts once 12 neighbouring households in the same suburb on the same
+          recycling day have joined. Until a street is live, you manage your own sorting. When a street
+          is live we may deliver a purple The Good Sort bin and divider; until then we collect the
+          sorted bags you set out. We do not rummage your council yellow recycling bin. Units and
+          apartments are a later phase and do not count toward the 12. When we collect, you authorise
+          The Good Sort and its appointed runners (&quot;Runners&quot;) to take those sorted containers from
+          your kerb and return eligible containers to Container Refund Points. The Good Sort is the
+          party that returns those containers under the Queensland Container Refund Scheme (Containers
+          for Change). We do not claim COEX approval of this service, and we do not operate a
+          city-wide pickup.
         </p>
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">2. Sorting Credits — Not CDS Refunds</h2>
         <p className="text-slate-600 text-sm mb-4">
           <strong>Important:</strong> Credits earned through The Good Sort are &quot;Sorting Credits&quot; — a
-          reward paid by The Good Sort for keeping eligible containers in your purple The Good Sort bin and authorising
+          private reward paid by The Good Sort for sorting eligible containers at home and authorising
           collection. Sorting Credits are <strong>not</strong> the 10-cent container refund under the Queensland
-          Container Refund Scheme. The Good Sort, as the party physically returning containers to approved
-          depots, is the recipient of any applicable CDS refunds and handling fees. Sorting Credits are a
-          separate, private arrangement between you and The Good Sort.
+          Container Refund Scheme. The Good Sort, as the party physically returning containers to
+          Container Refund Points, is the recipient of any applicable CDS refunds and handling fees.
+          Sorting Credits are a separate, private arrangement between you and The Good Sort. They are
+          not a bank deposit and are not held on trust.
         </p>
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">3. Sorting Credit Rates</h2>
@@ -71,7 +77,8 @@ export default function TermsPage() {
           You must be at least 13 years old and located in Queensland, Australia to use this service.
           Sorting Credits are only earned for eligible beverage containers as defined by the QLD
           Container Refund Scheme (150ml to 3L containers bearing a refund marking). Non-eligible items
-          left in a The Good Sort bin that are not collected and verified will not earn credits and may result in account review.
+          left in your sorted bags or a The Good Sort bin that are not collected and verified will not
+          earn credits and may result in account review.
         </p>
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">7. Runner Terms</h2>
@@ -87,7 +94,7 @@ export default function TermsPage() {
         <p className="text-slate-600 text-sm mb-4">
           The following activities constitute fraud and will result in immediate account termination
           and forfeiture of all pending and cleared balances: claiming credit for containers that were
-          not in your The Good Sort bin; submitting false pickup or delivery confirmations; manipulating
+          not sorted and set out for The Good Sort; submitting false pickup or delivery confirmations; manipulating
           container counts; creating multiple accounts; or any other deceptive activity. We reserve
           the right to withhold payouts pending investigation and to report suspected fraud to relevant
           authorities.
@@ -96,9 +103,10 @@ export default function TermsPage() {
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">9. Bins and Property</h2>
         <p className="text-slate-600 text-sm mb-4">
           Your council yellow bin remains council or household property and is not part of this
-          service. The purple The Good Sort bin and divider we supply remain our property unless we
-          say otherwise. Eligible containers become the property of The Good Sort when a runner
-          collects them from a delivered The Good Sort bin under your consent. Tampering with a
+          service. Until we deliver a purple The Good Sort bin, you sort in your own bags. The purple
+          bin and divider we supply remain our property unless we say otherwise. Eligible containers
+          become the property of The Good Sort when a runner collects them from your kerb under your
+          consent — from your sorted bags or from a delivered The Good Sort bin. Tampering with a
           runner&apos;s collection or removing containers after they have been set aside for us may
           constitute theft.
         </p>
