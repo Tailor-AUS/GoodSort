@@ -258,16 +258,22 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
             <p className="text-[12px] text-slate-500 uppercase tracking-wider mb-1">Your street</p>
             <p className="text-[15px] font-semibold text-slate-900">
               {dayLive
-                ? `${place ?? "Your suburb"}${cluster?.dayName ? ` ${cluster.dayName}` : ""} has enough neighbours on the same recycling day — we can order bins.`
+                ? `${place ?? "Your suburb"}${cluster?.dayName ? ` ${cluster.dayName}` : ""} has enough neighbours on the same recycling day — we can start the night.`
                 : place
                   ? signedUp === 0
-                    ? `Be the first house on a recycling day in ${place}. ${LIVE_HOUSEHOLD_THRESHOLD} neighbours on the same day and we order purple bins.`
-                    : `${signedUp} household${signedUp === 1 ? "" : "s"} on ${cluster?.dayName ?? "a recycling day"} in ${place}. ${needed} more on that day and we order purple bins.`
-                  : `Pick your suburb. ${LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day unlock a run — city-wide totals never start collection.`}
+                    ? `Be the first house on a recycling day in ${place}. ${LIVE_HOUSEHOLD_THRESHOLD} neighbours on the same day and we start the collection night.`
+                    : `${signedUp} household${signedUp === 1 ? "" : "s"} on ${cluster?.dayName ?? "a recycling day"} in ${place}. ${needed} more on that day and we start the collection night.`
+                  : `Pick your suburb first. Then share that street — a city-wide link never starts a collection night.`}
             </p>
-            <div className="mt-3">
-              <InviteActions url={shareUrl} message={shareMessage} compact />
-            </div>
+            {place ? (
+              <div className="mt-3">
+                <InviteActions url={shareUrl} message={shareMessage} compact />
+              </div>
+            ) : (
+              <p className="text-[12px] text-slate-500 mt-2">
+                Suburb chips above, or type your address. Same recycling day is the unlock.
+              </p>
+            )}
           </div>
 
           <div className="mt-10 text-slate-500 animate-bounce lg:hidden">
