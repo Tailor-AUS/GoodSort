@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
-import { Camera, MapPin, RotateCcw, Check, Mail, ShieldCheck, ImagePlus, X, Home } from "lucide-react";
-import { apiUrl, authHeaders } from "@/lib/config";
+import { useSearchParams, useRouter } from "next/navigation";
+import { Camera, RotateCcw, Check, Mail, ShieldCheck, ImagePlus, X, Home } from "lucide-react";
+import { apiUrl, authHeaders, persistWaitlistFromUrl, readReferrerId } from "@/lib/config";
+import { isCollecting, residentialNeedsStreet } from "@/lib/brisbane";
 
 interface BinInfo {
   id: string; code: string; name: string; address: string; hostedBy: string | null;
@@ -12,9 +13,10 @@ interface IdentifiedItem {
   name: string; material: string; count: number; eligible: boolean;
 }
 
-type Step = "loading" | "auth" | "verify" | "camera" | "analyzing" | "results" | "error" | "done";
+type Step = "loading" | "waitlist" | "auth" | "verify" | "camera" | "analyzing" | "results" | "error" | "done";
 
 function ScanPageContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const binCode = searchParams.get("bin");
 
@@ -44,18 +46,46 @@ function ScanPageContent() {
   // out of this server-side, so the client can't fabricate eligible counts.
   const [scanToken, setScanToken] = useState<string | null>(null);
 
+  async function routeToCameraOrWaitlist() {
+    try {
+      const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
+      if (!profile.householdId) {
+        router.replace("/onboard");
+        return;
+      }
+      const hh = await fetch(apiUrl(`/api/households/${profile.householdId}`), { headers: authHeaders() })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+      if (residentialNeedsStreet(hh)) {
+        router.replace("/onboard");
+        return;
+      }
+      if (hh && isCollecting(hh.binStatus)) {
+        setStep("camera");
+        return;
+      }
+      router.replace("/sort");
+    } catch {
+      router.replace("/");
+    }
+  }
+
   // ── Init ──
   useEffect(() => {
-    const token = localStorage.getItem("goodsort_token");
-
+    persistWaitlistFromUrl();
     if (binCode) {
       fetch(apiUrl(`/api/bins/code/${binCode}`))
         .then((r) => { if (!r.ok) throw new Error(); return r.json(); })
-        .then((d) => { setBin(d); setStep(token ? "camera" : "auth"); })
-        .catch(() => setStep(token ? "camera" : "auth")); // Bin not found — still let them scan
-    } else {
-      setStep(token ? "camera" : "auth");
+        .then((d) => setBin(d))
+        .catch(() => {});
     }
+    const token = localStorage.getItem("goodsort_token");
+    if (!token) {
+      setStep("waitlist");
+      return;
+    }
+    void routeToCameraOrWaitlist();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot land
   }, [binCode]);
 
   // ── Auth ──
@@ -67,7 +97,12 @@ function ScanPageContent() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim() }),
       });
-      if (!res.ok) { setAuthError("Failed to send code"); setAuthLoading(false); return; }
+      const data = await res.json().catch(() => ({} as { error?: string }));
+      if (!res.ok) {
+        setAuthError(typeof data.error === "string" && data.error ? data.error : "Failed to send code");
+        setAuthLoading(false);
+        return;
+      }
       setStep("verify");
     } catch { setAuthError("Something went wrong"); }
     setAuthLoading(false);
@@ -77,16 +112,17 @@ function ScanPageContent() {
     if (otp.length < 6) return;
     setAuthLoading(true); setAuthError("");
     try {
+      const referrerId = readReferrerId();
       const res = await fetch(apiUrl("/api/auth/verify-otp"), {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), code: otp }),
+        body: JSON.stringify({ email: email.trim(), code: otp, referrerId }),
       });
       if (!res.ok) { setAuthError("Invalid code"); setAuthLoading(false); return; }
       const data = await res.json();
       localStorage.setItem("goodsort_token", data.token);
       localStorage.setItem("goodsort_profile", JSON.stringify(data.profile));
       document.cookie = `goodsort_token=${data.token}; path=/; max-age=${30*24*60*60}; SameSite=Lax; Secure`;
-      setStep("camera");
+      await routeToCameraOrWaitlist();
     } catch { setAuthError("Verification failed"); }
     setAuthLoading(false);
   }
@@ -247,12 +283,29 @@ function ScanPageContent() {
 
   if (step === "loading") return <Center><p className="text-slate-400">Loading...</p></Center>;
 
+  if (step === "waitlist") return (
+    <Center>
+      <IconBubble><Home className="w-7 h-7 text-violet-600" /></IconBubble>
+      <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">
+        {bin ? bin.name : "Scan is optional"}
+      </h1>
+      <p className="text-slate-400 text-[13px] mb-6">
+        Join the waitlist for a purple The Good Sort bin. You do not need to scan every container. Camera count is only for streets we already collect.
+      </p>
+      <GreenButton onClick={() => { window.location.href = "/"; }}>Join the waitlist</GreenButton>
+      <button onClick={() => setStep("auth")}
+        className="w-full mt-2 py-3 text-slate-500 font-medium text-[13px] hover:text-slate-700 transition-colors">
+        I already have a purple bin — optional count
+      </button>
+    </Center>
+  );
+
   // Auth
   if (step === "auth") return (
     <Center>
       <IconBubble><Mail className="w-7 h-7 text-green-600" /></IconBubble>
       <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">Enter your email</h1>
-      <p className="text-slate-400 text-[13px] mb-6">To track your sorting credits</p>
+      <p className="text-slate-400 text-[13px] mb-6">Optional count only. Join the waitlist for a purple bin — scan is not required.</p>
       <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
         onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}
         className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 mb-3" autoFocus />
@@ -288,26 +341,26 @@ function ScanPageContent() {
         <p className="text-3xl font-display font-extrabold text-green-600 mb-2 animate-ka-ching">+{totalItems * 5}c</p>
       )}
       <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">
-        {totalItems > 0 ? "Sorting credit earned!" : "Done!"}
+        {totalItems > 0 ? "Estimate logged" : "Done"}
       </h1>
-      <p className="text-slate-500 text-[13px] mb-4">{totalItems} container{totalItems !== 1 ? "s" : ""} sorted{bin ? ` at ${bin.name}` : ""}</p>
+      <p className="text-slate-500 text-[13px] mb-4">{totalItems} container{totalItems !== 1 ? "s" : ""} noted{bin ? ` at ${bin.name}` : ""}. The runner count after we collect your purple bin is what pays.</p>
 
       {totalItems > 0 && (
         <div className="bg-green-50 rounded-2xl p-4 border border-green-200 mb-4 text-left">
-          <p className="text-[12px] font-bold text-green-800 mb-2">How you get paid:</p>
+          <p className="text-[12px] font-bold text-green-800 mb-2">How this works:</p>
           <div className="space-y-1.5 text-[12px] text-green-700">
-            <p>1. Keep sorting — earn 5c per container</p>
-            <p>2. Credits add up in your account</p>
-            <p>3. Cash out at $20 via bank transfer</p>
-            <p>4. We collect your sorted containers for free</p>
+            <p>1. Scan is optional — you do not need to scan every can</p>
+            <p>2. Join the waitlist and invite the street</p>
+            <p>3. We collect the purple bin the night before council</p>
+            <p>4. 5¢ each from the runner count. Bank transfer from $20 once payouts are live</p>
           </div>
         </div>
       )}
 
-      <GreenButton onClick={retake}>Scan Another</GreenButton>
-      <button onClick={() => window.location.href = "/sort"}
+      <GreenButton onClick={() => { window.location.href = "/"; }}>Join the waitlist</GreenButton>
+      <button onClick={retake}
         className="w-full mt-2 py-3 text-slate-400 font-medium text-[13px] hover:text-slate-600 transition-colors">
-        Go Home
+        Log another optional count
       </button>
     </Center>
   );
@@ -383,7 +436,7 @@ function ScanPageContent() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[14px] text-slate-900 font-semibold">{item.name}</p>
-                    <p className="text-[12px] text-slate-500">5c each &middot; into your yellow bin</p>
+                    <p className="text-[12px] text-slate-500">5c each &middot; into your purple bin when we&apos;re collecting</p>
                   </div>
                   <span className="text-[15px] font-display font-extrabold text-slate-900">&times;{item.count}</span>
                 </div>
@@ -391,7 +444,7 @@ function ScanPageContent() {
 
               <div className="mt-4 p-4 bg-green-50 rounded-2xl border border-green-100">
                 <p className="text-[12px] text-slate-700 font-medium">
-                  Drop into the <span className="font-bold">CDS side</span> of your yellow bin. We'll pick it up the night before your council collection.
+                  Drop into the <span className="font-bold">CDS side</span> of your purple The Good Sort bin once we&apos;re collecting in your area.
                 </p>
               </div>
             </div>
@@ -432,7 +485,7 @@ function ScanPageContent() {
       {/* Top bar */}
       <div className="flex-shrink-0 px-5 pb-2 bg-black" style={{ paddingTop: "calc(env(safe-area-inset-top, 16px) + 0.25rem)" }}>
         <p className="text-[15px] text-white font-display font-bold">
-          {bin ? bin.name : "Scan Your Containers"}
+          {bin ? bin.name : "Optional container count"}
         </p>
       </div>
 

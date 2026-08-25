@@ -29,12 +29,25 @@ export interface AddressSelection {
   address: string;
   lat: number;
   lng: number;
+  suburb?: string;
+  street?: string;
+}
+
+/** Photon sets city=Brisbane and district=the suburb. City-wide "Brisbane" must never be the cluster. */
+export function suburbFromPhoton(p: PhotonProps): string | undefined {
+  const district = (p.district ?? "").trim();
+  const city = (p.city ?? "").trim();
+  if (district && (!city || /^brisbane$/i.test(city))) return district;
+  if (/^brisbane city$/i.test(city)) return city;
+  if (city && !/^brisbane$/i.test(city) && !/^queensland$/i.test(city)) return city;
+  return district || undefined;
 }
 
 function formatAddress(p: PhotonProps): string {
   const street = [p.housenumber, p.street].filter(Boolean).join(" ");
-  const locality = p.city ?? p.district ?? "";
-  const tail = [locality, p.state, p.postcode].filter(Boolean).join(" ");
+  const locality = suburbFromPhoton(p) ?? "";
+  const state = /^queensland$/i.test(p.state ?? "") ? "QLD" : (p.state ?? "");
+  const tail = [locality, state, p.postcode].filter(Boolean).join(" ");
   return [street || p.name, tail].filter(Boolean).join(", ");
 }
 
@@ -44,7 +57,13 @@ async function searchPhoton(query: string, limit = 6): Promise<PhotonFeature[]> 
   const res = await fetch(url);
   if (!res.ok) return [];
   const data = await res.json() as { features?: PhotonFeature[] };
-  return (data.features ?? []).filter((f) => f.properties.countrycode === "AU");
+  const au = (data.features ?? []).filter((f) => f.properties.countrycode === "AU");
+  // Street-only Photon hits miss BCC house-level days. Numbered houses first.
+  return au.sort((a, b) => {
+    const ah = a.properties.housenumber ? 0 : 1;
+    const bh = b.properties.housenumber ? 0 : 1;
+    return ah - bh;
+  });
 }
 
 /** One-shot geocode: returns the first matching AU place, or null. */
@@ -56,6 +75,8 @@ export async function geocodeAddress(query: string): Promise<AddressSelection | 
     address: formatAddress(f.properties),
     lng: f.geometry.coordinates[0],
     lat: f.geometry.coordinates[1],
+    suburb: suburbFromPhoton(f.properties),
+    street: f.properties.street,
   };
 }
 
@@ -109,6 +130,8 @@ export function AddressAutocomplete({ value, onChange, onSelect, placeholder, au
       address: formatAddress(f.properties),
       lng: f.geometry.coordinates[0],
       lat: f.geometry.coordinates[1],
+      suburb: suburbFromPhoton(f.properties),
+      street: f.properties.street,
     };
     onChange(sel.address);
     onSelect(sel);

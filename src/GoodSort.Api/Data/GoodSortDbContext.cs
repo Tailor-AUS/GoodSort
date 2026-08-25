@@ -31,6 +31,9 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
         {
             e.OwnsOne(h => h.Materials, b => b.ToJson());
             e.HasIndex(h => new { h.Lat, h.Lng });
+            e.HasIndex(h => h.Suburb);
+            e.HasIndex(h => new { h.Suburb, h.CouncilCollectionDay });
+            e.HasIndex(h => h.BinStatus);
         });
 
         // Profile

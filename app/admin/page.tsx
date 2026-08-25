@@ -4,6 +4,13 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Users, Package, Truck, DollarSign, Download, MapPin, Mail } from "lucide-react";
 import { apiUrl } from "@/lib/config";
+import { titleSuburb } from "@/lib/brisbane";
+
+interface Funnel {
+  since: string;
+  note?: string;
+  events: Record<string, number>;
+}
 
 interface Stats {
   users: number;
@@ -32,15 +39,38 @@ interface Stats {
 export default function AdminPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [denied, setDenied] = useState(false);
+  const [funnel, setFunnel] = useState<Funnel | null>(null);
+  const [readyDays, setReadyDays] = useState<{ suburb: string; dayName: string }[]>([]);
 
   useEffect(() => {
     const token = localStorage.getItem("goodsort_token");
     const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
     fetch(apiUrl("/api/admin/stats"), { headers })
-      .then((r) => { if (!r.ok) throw new Error(); return r.json(); })
+      .then((r) => {
+        if (r.status === 401 || r.status === 403) { setDenied(true); throw new Error(); }
+        if (!r.ok) throw new Error();
+        return r.json();
+      })
       .then(setStats)
       .catch(() => {})
       .finally(() => setLoading(false));
+    fetch(apiUrl("/api/admin/funnel"), { headers })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setFunnel(d); })
+      .catch(() => {});
+    fetch(apiUrl("/api/admin/waitlist"), { headers })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const ready: { suburb: string; dayName: string }[] = [];
+        for (const s of d?.suburbs ?? []) {
+          for (const day of s.days ?? []) {
+            if (day.readyToOrder) ready.push({ suburb: s.suburb, dayName: day.dayName });
+          }
+        }
+        setReadyDays(ready);
+      })
+      .catch(() => {});
   }, []);
 
   async function exportAba() {
@@ -66,6 +96,22 @@ export default function AdminPage() {
     <div className="min-h-dvh bg-slate-50">
       <div className="max-w-4xl mx-auto px-6 py-8">
         <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-6">Admin Dashboard</h1>
+        {denied && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-[13px] text-amber-900 mb-6">
+            This login is not an admin. After the waitlist ships, set <code className="font-mono">ADMIN_SEED_EMAIL</code> on the API to your email and sign in once — or use the one-shot bootstrap secret. Zeros below are not household counts.
+          </div>
+        )}
+        {!denied && readyDays.length > 0 && (
+          <Link href="/admin/waitlist" className="block bg-violet-50 border border-violet-300 rounded-xl p-4 mb-6">
+            <p className="text-[14px] font-bold text-violet-900">
+              {readyDays.length} recycling day{readyDays.length === 1 ? "" : "s"} ready to order bins
+            </p>
+            <p className="text-[12px] text-violet-800 mt-1">
+              {readyDays.slice(0, 4).map((d) => `${titleSuburb(d.suburb)} ${d.dayName}`).join(" · ")}
+              {readyDays.length > 4 ? " · …" : ""}. Allocate that day only.
+            </p>
+          </Link>
+        )}
 
         {/* Stats grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
@@ -141,6 +187,21 @@ export default function AdminPage() {
           </div>
         )}
 
+        {funnel && (
+          <div className="bg-white rounded-xl p-4 border border-slate-200 mb-8">
+            <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-1">Waitlist funnel</p>
+            <p className="text-[11px] text-slate-400 mb-3">{funnel.note ?? "Since this API process started."}</p>
+            <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
+              {["waitlist_cta", "otp_sent", "otp_verified", "household_joined", "invite_landed", "invite_whatsapp", "invite_sms", "invite_share", "suburb_picked", "bin_day_looked_up"].map((name) => (
+                <div key={name}>
+                  <p className="text-2xl font-display font-extrabold text-slate-900">{funnel.events?.[name] ?? 0}</p>
+                  <p className="text-[11px] text-slate-400">{name.replaceAll("_", " ")}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="space-y-3">
           <Link href="/admin/users"
@@ -149,6 +210,14 @@ export default function AdminPage() {
             <div>
               <p className="text-[14px] font-semibold text-slate-900">Users & Map</p>
               <p className="text-[12px] text-slate-400">See all users, their households, and bin locations on a map</p>
+            </div>
+          </Link>
+          <Link href="/admin/waitlist"
+            className="flex items-center gap-3 w-full bg-white rounded-xl p-4 border border-slate-200 hover:border-green-300 transition-colors text-left">
+            <Package className="w-5 h-5 text-violet-600" />
+            <div>
+              <p className="text-[14px] font-semibold text-slate-900">Bin waitlist</p>
+              <p className="text-[12px] text-slate-400">Street density, trigger purchase when 12 houses join</p>
             </div>
           </Link>
           <Link href="/admin/pickups"

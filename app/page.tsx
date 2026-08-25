@@ -37,8 +37,8 @@ const structuredData = {
     {
       "@type": "Service",
       "@id": `${SITE_URL}/#service`,
-      name: "Yellow-bin container pickup",
-      serviceType: "Residential container recycling pickup",
+      name: "The Good Sort purple-bin waitlist",
+      serviceType: "Residential container recycling waitlist and pickup",
       provider: {
         "@id": `${SITE_URL}/#organization`,
       },
@@ -49,12 +49,12 @@ const structuredData = {
         addressCountry: "AU",
       },
       description:
-        "The Good Sort helps Brisbane households scan eligible drink containers, sort them into a yellow bin, and earn sorting credits after pickup.",
+        "Join a Brisbane waitlist for a purple The Good Sort bin. When 12 houses on the same recycling day join, we deliver the bin and collect eligible drink containers, paying a 5¢ sorting credit after depot verification.",
       offers: {
         "@type": "Offer",
         price: "0",
         priceCurrency: "AUD",
-        description: "Free household signup with sorting credits for eligible containers.",
+        description: "Free waitlist signup. Collection starts when your area unlocks.",
       },
     },
     {
@@ -66,15 +66,15 @@ const structuredData = {
           name: "How does The Good Sort work?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Scan your eligible cans and bottles, place them in the CDS side of your yellow bin, and The Good Sort collects them before council collection day.",
+            text: "Request a purple The Good Sort bin. That puts your house on a Brisbane waitlist. When 12 houses in your suburb on the same recycling day join, we deliver our bin and collect eligible cans and bottles. We do not rummage the council yellow bin. Scan is optional.",
           },
         },
         {
           "@type": "Question",
-          name: "Where is The Good Sort available?",
+          name: "Is The Good Sort live across Brisbane?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "The Good Sort is currently focused on Brisbane households with council yellow-bin collection.",
+            text: "No. This is a waitlist, not a city-wide pickup. Collection starts only when a suburb and recycling day hit 12 houses. City-wide totals never unlock a run.",
           },
         },
         {
@@ -82,7 +82,23 @@ const structuredData = {
           name: "Do I need to drive to a depot?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "No. The service is designed to remove the depot trip by collecting sorted eligible containers from your yellow bin.",
+            text: "No. Once your street is live, we collect the purple The Good Sort bin we delivered. You do not drive to a depot.",
+          },
+        },
+        {
+          "@type": "Question",
+          name: "Is this the Containers for Change 10¢ refund?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "No. The scheme pays 10¢ when eligible containers reach a refund point. You earn a 5¢ sorting credit from The Good Sort. We are not claiming approval as a Containers for Change refund point.",
+          },
+        },
+        {
+          "@type": "Question",
+          name: "Do I have to scan every container?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "No. Scanning is optional. Credits are based on the runner count when we collect your purple bin, after a depot verifies the containers.",
           },
         },
       ],

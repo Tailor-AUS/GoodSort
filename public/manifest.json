@@ -2,17 +2,17 @@
   "id": "/",
   "name": "The Good Sort",
   "short_name": "GoodSort",
-  "description": "Brisbane yellow-bin container pickup: scan eligible cans and bottles, sort them at home, and earn sorting credits after pickup.",
-  "start_url": "/sort",
+  "description": "Join the Brisbane waitlist for a purple The Good Sort bin. When enough neighbours on the same recycling day sign up, we deliver the bin and collect eligible cans and bottles.",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
   "background_color": "#ffffff",
-  "theme_color": "#16a34a",
+  "theme_color": "#7c3aed",
   "orientation": "portrait",
   "lang": "en-AU",
   "dir": "ltr",
-  "categories": ["utilities", "lifestyle", "productivity"],
+  "categories": ["utilities", "lifestyle"],
   "icons": [
     {
       "src": "/icon-192.png",
@@ -33,17 +33,17 @@
   ],
   "shortcuts": [
     {
-      "name": "Open sorter",
-      "short_name": "Sorter",
-      "description": "Open your Good Sort sorter dashboard.",
-      "url": "/sort",
+      "name": "Join the waitlist",
+      "short_name": "Waitlist",
+      "description": "Request a purple The Good Sort bin for your street.",
+      "url": "/",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
-      "name": "Scan containers",
-      "short_name": "Scan",
-      "description": "Scan eligible cans and bottles for sorting credits.",
-      "url": "/scan",
+      "name": "Your street",
+      "short_name": "Street",
+      "description": "See your suburb waitlist and invite neighbours.",
+      "url": "/sort",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]

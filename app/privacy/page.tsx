@@ -14,7 +14,7 @@ export default function PrivacyPage() {
     <div className="min-h-dvh bg-white px-6 py-12 max-w-2xl mx-auto">
       <h1 className="text-3xl font-display font-extrabold text-slate-900 mb-8">Privacy Policy</h1>
       <div className="prose prose-slate prose-sm">
-        <p className="text-slate-500 text-sm mb-6">Last updated: April 2026</p>
+        <p className="text-slate-500 text-sm mb-6">Last updated: August 2026</p>
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">1. Information We Collect</h2>
         <p className="text-slate-600 text-sm mb-4">
@@ -25,20 +25,24 @@ export default function PrivacyPage() {
           <li>Name and household address</li>
           <li>Container scan records (barcodes, materials, timestamps)</li>
           <li>Location data (for map functionality and route optimization)</li>
+          <li>Waitlist consent, recycling day, and later collection of a The Good Sort bin</li>
           <li>Collection and earnings history</li>
         </ul>
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">2. How We Use Your Information</h2>
         <p className="text-slate-600 text-sm mb-4">
-          We use your information to operate the container recycling service, process container refunds,
-          optimize collection routes, and improve our service. We do not sell your personal information
-          to third parties.
+          We use your information to operate the waitlist, decide when an area has enough density to
+          order bins, schedule collection of The Good Sort bins, process sorting credits, and improve
+          the service. We share your address and container counts with appointed runners for pickup
+          only after your area is collecting. We do not sell your personal information.
         </p>
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">3. Data Storage</h2>
         <p className="text-slate-600 text-sm mb-4">
-          Your data is stored securely on servers located in Australia. We use industry-standard
-          encryption and security measures to protect your information.
+          Account, waitlist, and collection data are stored on Microsoft Azure (Azure SQL and related
+          services). The live API currently runs in Azure East Asia. That is not an Australian region.
+          We intend to host in Australia and will update this policy when that move is complete.
+          Traffic is encrypted in transit.
         </p>
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">4. Your Rights</h2>

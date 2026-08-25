@@ -13,7 +13,7 @@
 
 Hi,
 
-We're looking for a supplier for a simple custom corrugated cardboard divider insert that sits inside a standard Australian **240-litre council wheelie bin** (yellow recycling bin).
+We're looking for a supplier for a simple custom corrugated cardboard divider insert that sits inside **our purple The Good Sort 240-litre bin** (not the council yellow recycling bin). We deliver our own bin; the divider ships with it.
 
 ## Product Spec
 
@@ -44,9 +44,9 @@ We're looking for a supplier for a simple custom corrugated cardboard divider in
 
 ## About us
 
-**The Good Sort** (thegoodsort.org) is a residential recycling pickup service. We collect cans and bottles from household yellow bins the night before council collection. The divider helps residents keep CDS containers separated so our runner can extract them quickly.
+**The Good Sort** (thegoodsort.org) is a residential recycling waitlist and pickup. We deliver our own purple bin; we do not rummage the council yellow bin. The divider ships inside our bin so eligible cans and bottles stay separate for collection the night before council recycling.
 
-**Entity:** Crispr Projects Pty Ltd, ABN 85 680 798 770
+**Entity:** Tailor Intelligence Pty Ltd, ABN 13 688 827 572
 **Contact:** Knox Hart — knox.hart@gmail.com
 
 Thanks,

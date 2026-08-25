@@ -10,7 +10,12 @@ using Microsoft.IdentityModel.Tokens;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
-builder.AddSqlServerDbContext<GoodSortDbContext>("goodsortdb");
+var sqlCs = builder.Configuration.GetConnectionString("goodsortdb");
+var useMemory = builder.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(sqlCs);
+if (useMemory)
+    builder.Services.AddDbContext<GoodSortDbContext>(o => o.UseInMemoryDatabase("goodsort-dev"));
+else
+    builder.AddSqlServerDbContext<GoodSortDbContext>("goodsortdb");
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<VisionService>();
 builder.Services.AddScoped<CashoutService>();
@@ -50,7 +55,11 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(
             "https://www.thegoodsort.org",
             "https://thegoodsort.org",
-            "https://kind-mushroom-0fe89a200.2.azurestaticapps.net"
+            "https://kind-mushroom-0fe89a200.2.azurestaticapps.net",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:3001",
+            "http://127.0.0.1:3001"
         )
         .AllowAnyHeader()
         .AllowAnyMethod();
@@ -58,6 +67,13 @@ builder.Services.AddCors(options =>
 });
 
 // JWT Authentication
+if (builder.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(builder.Configuration["JWT_SECRET"]))
+{
+    builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+    {
+        ["JWT_SECRET"] = "goodsort-dev-secret-key-min-32-chars!!",
+    });
+}
 var jwtSecret = builder.Configuration["JWT_SECRET"] ?? throw new InvalidOperationException("JWT_SECRET must be set");
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -115,8 +131,16 @@ for (var i = 0; i < 10; i++)
     {
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
-        await db.Database.MigrateAsync();
-        app.Logger.LogInformation("Database migration completed successfully");
+        if (db.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            await db.Database.EnsureCreatedAsync();
+            app.Logger.LogInformation("In-memory waitlist database ready (no SQL Server)");
+        }
+        else
+        {
+            await db.Database.MigrateAsync();
+            app.Logger.LogInformation("Database migration completed successfully");
+        }
 
         // One-shot cleanup of demo seed bins (GS-0001..GS-0005) if they have no
         // referencing scans. Real bins created via /api/bins are untouched.
@@ -201,8 +225,9 @@ app.MapPost("/api/auth/send-otp", async (SendOtpRequest req, AuthService auth) =
 {
     var email = req.Email.Trim().ToLower();
     if (!email.Contains('@')) return Results.BadRequest(new { error = "Invalid email" });
-    var (success, error) = await auth.SendOtp(email);
-    return success ? Results.Ok(new { sent = true }) : Results.BadRequest(new { error = error ?? "Failed to send code" });
+    var (success, error, devCode) = await auth.SendOtp(email);
+    if (!success) return Results.BadRequest(new { error = error ?? "Failed to send code" });
+    return Results.Ok(new { sent = true, devCode = app.Environment.IsDevelopment() ? devCode : null });
 });
 
 app.MapPost("/api/auth/verify-otp", async (VerifyOtpRequest req, AuthService auth) =>
@@ -215,10 +240,12 @@ app.MapPost("/api/auth/verify-otp", async (VerifyOtpRequest req, AuthService aut
 
 // ── Bins (QR-coded drop points) ──
 app.MapGet("/api/bins", async (GoodSortDbContext db) =>
-    Results.Ok(await db.Bins.Where(b => b.Status != "disabled").OrderByDescending(b => b.PendingContainers).ToListAsync()));
+    Results.Ok(await db.Bins.Where(b => b.Status != "disabled").OrderByDescending(b => b.PendingContainers).ToListAsync()))
+    .RequireAuthorization();
 
 app.MapGet("/api/bins/{id:guid}", async (Guid id, GoodSortDbContext db) =>
-    await db.Bins.FindAsync(id) is { } b ? Results.Ok(b) : Results.NotFound());
+    await db.Bins.FindAsync(id) is { } b ? Results.Ok(b) : Results.NotFound())
+    .RequireAuthorization();
 
 app.MapGet("/api/bins/code/{code}", async (string code, GoodSortDbContext db) =>
     await db.Bins.FirstOrDefaultAsync(b => b.Code == code) is { } b ? Results.Ok(b) : Results.NotFound());
@@ -240,12 +267,12 @@ app.MapGet("/api/bins/{id:guid}/qr", (Guid id, GoodSortDbContext db) =>
     var bin = db.Bins.Find(id);
     if (bin is null) return Results.NotFound();
 
-    var url = $"https://www.thegoodsort.org/scan?bin={bin.Code}";
+    var url = $"https://thegoodsort.org/scan?bin={bin.Code}";
     var svg = $@"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 380'>
         <rect width='300' height='380' fill='white' rx='16'/>
         <rect x='20' y='20' width='260' height='260' fill='#f1f5f9' rx='12'/>
         <text x='150' y='160' text-anchor='middle' font-family='system-ui' font-size='48' font-weight='800' fill='#16a34a'>{bin.Code}</text>
-        <text x='150' y='200' text-anchor='middle' font-family='system-ui' font-size='14' fill='#64748b'>Scan to recycle</text>
+        <text x='150' y='200' text-anchor='middle' font-family='system-ui' font-size='14' fill='#64748b'>Optional count</text>
         <text x='150' y='310' text-anchor='middle' font-family='system-ui' font-size='13' font-weight='700' fill='#0f172a'>{bin.Name}</text>
         <text x='150' y='335' text-anchor='middle' font-family='system-ui' font-size='11' fill='#94a3b8'>{url}</text>
         <text x='150' y='365' text-anchor='middle' font-family='system-ui' font-size='10' fill='#16a34a'>thegoodsort.org</text>
@@ -500,19 +527,40 @@ app.MapGet("/api/barcode/{barcode}", async (string barcode, IHttpClientFactory h
 
 // ── Households ──
 app.MapGet("/api/households", async (GoodSortDbContext db) =>
-    Results.Ok(await db.Households.OrderByDescending(h => h.PendingContainers).ToListAsync()));
+    Results.Ok(await db.Households.OrderByDescending(h => h.PendingContainers).ToListAsync()))
+    .RequireAuthorization(AuthHelpers.AdminPolicy);
 
-app.MapGet("/api/households/{id:guid}", async (Guid id, GoodSortDbContext db) =>
-    await db.Households.FindAsync(id) is { } h ? Results.Ok(h) : Results.NotFound());
-
-app.MapPost("/api/households", async (Household household, GoodSortDbContext db) =>
+app.MapGet("/api/households/{id:guid}", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
+    var h = await db.Households.FindAsync(id);
+    if (h is null) return Results.NotFound();
+    if (!await CallerCanAccessHousehold(ctx, id, db)) return Results.Forbid();
+    return Results.Ok(h);
+}).RequireAuthorization();
+
+app.MapPost("/api/households", async (HttpContext ctx, Household household, GoodSortDbContext db, NotificationService notif) =>
+{
+    var parsed = BinDayService.ParseAddress(household.Address);
+    household.Suburb = BinDayService.CanonicalSuburb(household.Suburb)
+        ?? (parsed is not null ? BinDayService.CanonicalSuburb(parsed.Suburb) : null);
+    if (string.IsNullOrWhiteSpace(household.Street) && parsed is not null)
+        household.Street = parsed.Street;
+
+    var reject = WaitlistJoin.RejectCreate(household);
+    if (reject is not null)
+        return Results.BadRequest(new { error = reject });
+
+    // Signup is a waitlist for a purple TGS bin. Purchase/delivery happens when
+    // the suburb hits density — clients cannot jump to collecting on create.
+    household.BinStatus = BinStatuses.Waitlisted;
+    household.WaitlistedAt ??= DateTime.UtcNow;
+    household.UsesDivider = true;
+
     db.Households.Add(household);
     await db.SaveChangesAsync();
 
-    // Residential households get an implicit "yellow bin" — a Bin that represents
-    // the user's kerbside council bin. The RunGenerationService clusters these
-    // for pickup on the day before the council truck arrives.
+    // Placeholder bin for the household. RunGeneration skips waitlisted/allocated
+    // households until ops marks the area collecting.
     if (household.Type == "residential")
     {
         var code = $"GS-H{Math.Abs(household.Id.GetHashCode()) % 100000:D5}";
@@ -526,12 +574,185 @@ app.MapPost("/api/households", async (Household household, GoodSortDbContext db)
             HouseholdId = household.Id,
             HostedBy = null,
         });
-        await db.SaveChangesAsync();
     }
+
+    // First household for a referred profile credits the neighbour $1 pending.
+    // The growth loop is street density, not scan-every-can.
+    var callerId = ctx.GetCallerId();
+    if (callerId is Guid uid)
+    {
+        var me = await db.Profiles.FindAsync(uid);
+        if (me is not null)
+        {
+            if (me.ReferrerId is Guid rid && rid != uid && me.HouseholdId is null)
+            {
+                var referrer = await db.Profiles.FindAsync(rid);
+                if (referrer is not null) referrer.PendingCents += 100;
+            }
+            me.HouseholdId ??= household.Id;
+        }
+    }
+
+    await db.SaveChangesAsync();
+
+    var board = WaitlistDensity.Aggregate(await WaitlistDensity.LoadRowsAsync(db));
+    var cluster = WaitlistDensity.DayCluster(board, household.Suburb, household.CouncilCollectionDay);
+    var clusterCount = cluster?.Households ?? 0;
+
+    Profile? caller = null;
+    if (callerId is Guid cid)
+        caller = await db.Profiles.FindAsync(cid);
+
+    try
+    {
+        if (!string.IsNullOrWhiteSpace(caller?.Email))
+            await notif.SendWaitlistJoined(caller.Email, caller.Name, household, clusterCount, cluster?.Needed ?? WaitlistDensity.LiveThreshold, caller.Id);
+        if (household.CouncilCollectionDay is int progressDay
+            && !string.IsNullOrWhiteSpace(household.Suburb)
+            && WaitlistNudge.ShouldNudgeOthers(clusterCount, cluster?.Live ?? false))
+            await notif.SendWaitlistProgress(household.Suburb, progressDay, clusterCount, cluster?.Needed ?? WaitlistDensity.LiveThreshold, caller?.Id);
+        if (cluster?.Households == WaitlistDensity.LiveThreshold && cluster.Live && household.CouncilCollectionDay is int unlockDay)
+        {
+            await notif.SendAreaUnlocked(household.Suburb!, unlockDay);
+            await notif.SendOpsStreetReady(household.Suburb!, unlockDay);
+        }
+    }
+    catch (Exception)
+    {
+        // Waitlist signup must succeed even if ACS is down.
+    }
+
     return Results.Created($"/api/households/{household.Id}", household);
 }).RequireAuthorization();
 
-// ── Bin-day lookup — auto-fills the yellow bin collection day from an address ──
+// Finish suburb + recycling day on a waitlisted household. Leftover prod
+// rows and failed Photon parses cannot create a second household.
+app.MapPatch("/api/households/{id:guid}/street", async (HttpContext ctx, Guid id, StreetPatchRequest req, GoodSortDbContext db, NotificationService notif) =>
+{
+    var h = await db.Households.FindAsync(id);
+    if (h is null) return Results.NotFound();
+    if (!await CallerCanAccessHousehold(ctx, id, db)) return Results.Forbid();
+    if (!InviteLink.CanEditCluster(h.BinStatus))
+        return Results.BadRequest(new { error = "Street details are locked after we order bins." });
+
+    var beforeSuburb = h.Suburb;
+    var beforeDay = h.CouncilCollectionDay;
+    var wasIncomplete = string.IsNullOrWhiteSpace(beforeSuburb) || beforeDay is null;
+
+    if (!string.IsNullOrWhiteSpace(req.Address))
+    {
+        h.Address = req.Address.Trim();
+        var parsed = BinDayService.ParseAddress(h.Address);
+        if (parsed is not null)
+        {
+            h.Street = parsed.Street;
+            h.Suburb ??= BinDayService.CanonicalSuburb(parsed.Suburb);
+        }
+    }
+    if (req.Lat is double lat) h.Lat = lat;
+    if (req.Lng is double lng) h.Lng = lng;
+    var suburb = BinDayService.CanonicalSuburb(req.Suburb);
+    if (suburb is not null) h.Suburb = suburb;
+    if (req.CouncilCollectionDay is int day && day is >= 0 and <= 6)
+        h.CouncilCollectionDay = day;
+    if (!string.IsNullOrWhiteSpace(req.CouncilArea))
+        h.CouncilArea = req.CouncilArea;
+    if (req.AccessConsent == true)
+    {
+        h.AccessConsent = true;
+        h.AccessConsentAt ??= DateTime.UtcNow;
+    }
+    h.UsesDivider = true;
+    await db.SaveChangesAsync();
+
+    var clusterChanged = !string.Equals(beforeSuburb, h.Suburb, StringComparison.OrdinalIgnoreCase)
+        || beforeDay != h.CouncilCollectionDay;
+    if (clusterChanged)
+    {
+        var board = WaitlistDensity.Aggregate(await WaitlistDensity.LoadRowsAsync(db));
+        var cluster = WaitlistDensity.DayCluster(board, h.Suburb, h.CouncilCollectionDay);
+        var clusterCount = cluster?.Households ?? 0;
+        var callerId = ctx.GetCallerId();
+        Profile? caller = callerId is Guid cid ? await db.Profiles.FindAsync(cid) : null;
+        try
+        {
+            if (wasIncomplete && !string.IsNullOrWhiteSpace(caller?.Email))
+                await notif.SendWaitlistJoined(caller.Email, caller.Name, h, clusterCount, cluster?.Needed ?? WaitlistDensity.LiveThreshold, caller.Id);
+            if (h.CouncilCollectionDay is int progressDay
+                && !string.IsNullOrWhiteSpace(h.Suburb)
+                && WaitlistNudge.ShouldNudgeOthers(clusterCount, cluster?.Live ?? false))
+                await notif.SendWaitlistProgress(h.Suburb, progressDay, clusterCount, cluster?.Needed ?? WaitlistDensity.LiveThreshold, caller?.Id);
+            if (cluster?.Households == WaitlistDensity.LiveThreshold && cluster.Live && h.CouncilCollectionDay is int unlockDay)
+            {
+                await notif.SendAreaUnlocked(h.Suburb!, unlockDay);
+                await notif.SendOpsStreetReady(h.Suburb!, unlockDay);
+            }
+        }
+        catch (Exception)
+        {
+            // Street repair must succeed even if ACS is down.
+        }
+    }
+
+    return Results.Ok(h);
+}).RequireAuthorization();
+
+// Public density — no addresses, no emails. A run unlocks at 12 houses
+// on the SAME recycling day in the same suburb. City-wide totals never unlock.
+app.MapGet("/api/growth/brisbane", async (GoodSortDbContext db) =>
+{
+    return Results.Ok(WaitlistDensity.Aggregate(await WaitlistDensity.LoadRowsAsync(db)));
+});
+
+// First-party funnel (no PII). City-wide totals here would be a product bug —
+// this endpoint only records that a named waitlist action happened.
+var waitlistEvents = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+{
+    "waitlist_cta", "otp_sent", "otp_verified", "household_joined",
+    "invite_whatsapp", "invite_sms", "invite_share", "invite_landed", "suburb_picked",
+    "bin_day_looked_up",
+};
+var waitlistFunnel = new System.Collections.Concurrent.ConcurrentDictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+var waitlistFunnelStarted = DateTime.UtcNow;
+app.MapPost("/api/growth/events", (WaitlistEventRequest req, ILoggerFactory logFactory) =>
+{
+    var name = req.Name?.Trim();
+    if (string.IsNullOrWhiteSpace(name) || !waitlistEvents.Contains(name))
+        return Results.BadRequest();
+    var key = name.ToLowerInvariant();
+    waitlistFunnel.AddOrUpdate(key, 1, (_, n) => n + 1);
+    logFactory.CreateLogger("WaitlistGrowth").LogInformation(
+        "waitlist_event name={Name} suburb={Suburb} path={Path}",
+        key,
+        BinDayService.CanonicalSuburb(req.Suburb),
+        req.Path);
+    return Results.Accepted();
+});
+
+app.MapGet("/api/admin/funnel", () =>
+    Results.Ok(new
+    {
+        since = waitlistFunnelStarted,
+        note = "Counts since this API process started. Restarts reset the board.",
+        events = waitlistEvents.OrderBy(n => n).ToDictionary(n => n, n => waitlistFunnel.TryGetValue(n, out var c) ? c : 0L),
+    }))
+    .RequireAuthorization(AuthHelpers.AdminPolicy);
+
+// Neighbour invite card for ?r= landings. First name + suburb only.
+app.MapGet("/api/growth/invite/{id:guid}", async (Guid id, GoodSortDbContext db) =>
+{
+    var p = await db.Profiles.Include(x => x.Household).FirstOrDefaultAsync(x => x.Id == id);
+    if (p is null) return Results.NotFound();
+    return Results.Ok(new
+    {
+        name = InvitePreview.PublicFirstName(p.Name),
+        suburb = BinDayService.CanonicalSuburb(p.Household?.Suburb),
+        day = p.Household?.Type == "residential" ? p.Household.CouncilCollectionDay : null,
+        dayName = p.Household?.Type == "residential" ? InviteLink.PublicDayName(p.Household.CouncilCollectionDay) : null,
+    });
+});
+
+// ── Bin-day lookup — auto-fills the council recycling day from an address ──
 app.MapPost("/api/households/lookup-bin-day", async (BinDayLookupRequest req, BinDayService svc) =>
 {
     var result = await svc.Lookup(req.Lat, req.Lng, req.Address);
@@ -540,12 +761,15 @@ app.MapPost("/api/households/lookup-bin-day", async (BinDayLookupRequest req, Bi
 });
 
 // ── Next pickup — tells the household exactly when we're coming for their bin ──
-app.MapGet("/api/households/{id:guid}/next-pickup", async (Guid id, GoodSortDbContext db) =>
+app.MapGet("/api/households/{id:guid}/next-pickup", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
     var h = await db.Households.FindAsync(id);
     if (h is null) return Results.NotFound();
+    if (!await CallerCanAccessHousehold(ctx, id, db)) return Results.Forbid();
     if (h.Type != "residential" || h.CouncilCollectionDay is null)
-        return Results.Ok(new { nextPickup = (DateTime?)null, reason = "Not a residential household with a council collection day set." });
+        return Results.Ok(new { nextPickup = (DateTime?)null, binStatus = h.BinStatus, reason = "Not a residential household with a council collection day set." });
+    if (!BinStatuses.IsServiceable(h.BinStatus))
+        return Results.Ok(new { nextPickup = (DateTime?)null, binStatus = h.BinStatus, reason = "Waitlisted — we notify you when we start collecting in your area." });
 
     // We collect the night/day BEFORE council pickup. So runner day = (councilDay - 1) mod 7.
     var today = DateTime.UtcNow.Date;
@@ -559,17 +783,18 @@ app.MapGet("/api/households/{id:guid}/next-pickup", async (Guid id, GoodSortDbCo
         councilDay = h.CouncilCollectionDay,
         councilArea = h.CouncilArea,
         usesDivider = h.UsesDivider,
+        binStatus = h.BinStatus,
     });
-});
+}).RequireAuthorization();
 
 // ── Household: toggle "bin is out / bin is full" ──
-// In the yellow-bin model this meant "bin is on the kerb for council."
-// In the GoodSort-bin model this means "my bin is full, come get it."
+// Purple TGS bin: household marks the bin full so a runner can collect it.
 // The RunGenerationService absorbs full-bin households into nearby runs.
-app.MapPost("/api/households/{id:guid}/bin-full", async (Guid id, BinOutRequest req, GoodSortDbContext db) =>
+app.MapPost("/api/households/{id:guid}/bin-full", async (HttpContext ctx, Guid id, BinOutRequest req, GoodSortDbContext db) =>
 {
     var h = await db.Households.FindAsync(id);
     if (h is null) return Results.NotFound();
+    if (!await CallerCanAccessHousehold(ctx, id, db)) return Results.Forbid();
     h.BinIsOut = req.Out; // reusing the field — BinIsOut = "bin is full, ready for pickup"
     h.BinIsOutAt = req.Out ? DateTime.UtcNow : null;
     await db.SaveChangesAsync();
@@ -577,10 +802,11 @@ app.MapPost("/api/households/{id:guid}/bin-full", async (Guid id, BinOutRequest 
 }).RequireAuthorization();
 
 // Legacy endpoint alias
-app.MapPost("/api/households/{id:guid}/bin-out", async (Guid id, BinOutRequest req, GoodSortDbContext db) =>
+app.MapPost("/api/households/{id:guid}/bin-out", async (HttpContext ctx, Guid id, BinOutRequest req, GoodSortDbContext db) =>
 {
     var h = await db.Households.FindAsync(id);
     if (h is null) return Results.NotFound();
+    if (!await CallerCanAccessHousehold(ctx, id, db)) return Results.Forbid();
     h.BinIsOut = req.Out;
     h.BinIsOutAt = req.Out ? DateTime.UtcNow : null;
     await db.SaveChangesAsync();
@@ -588,8 +814,9 @@ app.MapPost("/api/households/{id:guid}/bin-out", async (Guid id, BinOutRequest r
 }).RequireAuthorization();
 
 // ── Waitlist for unit_complex customers (phase 2) ──
-app.MapPost("/api/waitlist/unit-complex", async (UnitComplexWaitlistRequest req, GoodSortDbContext db) =>
+app.MapPost("/api/waitlist/unit-complex", async (HttpContext ctx, UnitComplexWaitlistRequest req, GoodSortDbContext db, NotificationService notif) =>
 {
+    var parsed = BinDayService.ParseAddress(req.Address);
     var placeholder = new Household
     {
         Type = "unit_complex",
@@ -598,11 +825,41 @@ app.MapPost("/api/waitlist/unit-complex", async (UnitComplexWaitlistRequest req,
         Lat = req.Lat,
         Lng = req.Lng,
         BuildingName = req.BuildingName,
+        Suburb = UnitWaitlist.ResolveSuburb(req.Suburb, parsed?.Suburb),
+        Street = parsed?.Street,
+        BinStatus = BinStatuses.Waitlisted,
+        WaitlistedAt = DateTime.UtcNow,
+        AccessConsent = true,
+        AccessConsentAt = DateTime.UtcNow,
     };
     db.Households.Add(placeholder);
+    var callerId = ctx.GetCallerId();
+    Profile? caller = null;
+    if (callerId is Guid uid)
+    {
+        caller = await db.Profiles.FindAsync(uid);
+        if (caller is not null)
+        {
+            if (caller.ReferrerId is Guid rid && rid != uid && caller.HouseholdId is null)
+            {
+                var referrer = await db.Profiles.FindAsync(rid);
+                if (referrer is not null) referrer.PendingCents += 100;
+            }
+            caller.HouseholdId ??= placeholder.Id;
+        }
+    }
     await db.SaveChangesAsync();
-    return Results.Ok(new { waitlisted = true, id = placeholder.Id });
-});
+    try
+    {
+        if (!string.IsNullOrWhiteSpace(caller?.Email))
+            await notif.SendBuildingWaitlisted(caller.Email, caller.Name, placeholder, caller.Id);
+    }
+    catch (Exception)
+    {
+        // Building signup must succeed even if ACS is down.
+    }
+    return Results.Ok(new { waitlisted = true, id = placeholder.Id, suburb = placeholder.Suburb });
+}).RequireAuthorization();
 
 // ── Profiles ──
 // Profile contains email + household address. Gate to owner or admin to avoid
@@ -856,6 +1113,16 @@ app.MapPost("/api/routes/{id:guid}/optimize", async (HttpContext ctx, Guid id, G
 }).RequireAuthorization();
 
 // ── Cash-out ──
+app.MapGet("/api/cashout/status", (CashoutService cashout) =>
+    Results.Ok(new
+    {
+        open = cashout.PayoutsOpen(),
+        minCents = 2000,
+        message = cashout.PayoutsOpen()
+            ? "Bank transfers run weekly once you hit $20."
+            : "Payouts are not open yet. Sorting credits stay on your account until bank transfers are live.",
+    }));
+
 app.MapPost("/api/cashout", async (HttpContext ctx, CashoutRequestDto req, CashoutService cashout) =>
 {
     // Caller-supplied UserId in the body is ignored — JWT sub is the source of truth.
@@ -869,6 +1136,7 @@ app.MapPost("/api/cashout", async (HttpContext ctx, CashoutRequestDto req, Casho
 // ── Admin: Generate ABA file (admin only — file contains every payee's BSB+account) ──
 app.MapGet("/api/admin/aba-export", async (CashoutService cashout) =>
 {
+    if (!cashout.PayoutsOpen()) return Results.Ok(new { message = "Payouts are not enabled. Set ABA_PAYOUTS_ENABLED plus a real remitter BSB/account/user id." });
     var aba = await cashout.GenerateAbaFile();
     if (string.IsNullOrEmpty(aba)) return Results.Ok(new { message = "No pending cashouts" });
     return Results.Text(aba, "text/plain");
@@ -1024,7 +1292,9 @@ app.MapGet("/api/admin/pickups/tomorrow", async (GoodSortDbContext db) =>
 
     var households = await db.Households
         .Include(h => h.Members)
-        .Where(h => h.Type == "residential" && h.CouncilCollectionDay == tomorrowDow)
+        .Where(h => h.Type == "residential"
+                    && h.CouncilCollectionDay == tomorrowDow
+                    && (h.BinStatus == BinStatuses.Delivered || h.BinStatus == BinStatuses.Collecting))
         .ToListAsync();
 
     var hhIds = households.Select(h => h.Id).ToHashSet();
@@ -1047,7 +1317,7 @@ app.MapGet("/api/admin/pickups/tomorrow", async (GoodSortDbContext db) =>
         runsClaimed = claimingRuns.Count(r => r.Status != "available"),
         householdsUncovered = households.Count(h => !claimingRuns.Any(r => r.Stops.Any(s => bins.Any(b => b.Id == s.BinId && b.HouseholdId == h.Id)))),
         households = households.Select(h => new {
-            h.Id, h.Name, h.Address, h.PendingContainers, h.UsesDivider, h.BinIsOut,
+            h.Id, h.Name, h.Address, h.PendingContainers, h.UsesDivider, h.BinIsOut, h.BinStatus,
             memberEmails = h.Members.Select(m => m.Email).Where(e => e != null),
         }),
         runs = claimingRuns.Select(r => new {
@@ -1064,6 +1334,137 @@ app.MapPost("/api/admin/trigger-pickup-reminders", async (PickupReminderService 
 {
     var (households, runners) = await svc.TriggerNow();
     return Results.Ok(new { households, runners });
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
+
+// ── Admin: waitlist by suburb — trigger bin purchase when density is met ──
+app.MapGet("/api/admin/waitlist", async (GoodSortDbContext db) =>
+{
+    var liveThreshold = WaitlistDensity.LiveThreshold;
+    var dayNames = WaitlistDensity.DayNames;
+    var rows = await db.Households.AsNoTracking()
+        .Where(h => h.Type == "residential")
+        .Select(h => new
+        {
+            h.Id, h.Name, h.Address, h.Suburb, h.Street,
+            h.CouncilCollectionDay, h.BinStatus, h.WaitlistedAt, h.CreatedAt,
+        })
+        .ToListAsync();
+
+    var suburbs = rows
+        .GroupBy(r => WaitlistDensity.AdminGroupKey(r.Suburb))
+        .Select(g =>
+        {
+            var clusterable = WaitlistDensity.CanAllocateSuburb(g.Key);
+            var days = g.Where(x => x.CouncilCollectionDay != null)
+                .GroupBy(x => x.CouncilCollectionDay!.Value)
+                .Select(d => new
+                {
+                    day = d.Key,
+                    dayName = d.Key is >= 0 and <= 6 ? dayNames[d.Key] : "recycling day",
+                    households = d.Count(),
+                    waitlisted = d.Count(x => x.BinStatus == BinStatuses.Waitlisted),
+                    allocated = d.Count(x => x.BinStatus == BinStatuses.Allocated),
+                    delivered = d.Count(x => x.BinStatus == BinStatuses.Delivered),
+                    collecting = d.Count(x => x.BinStatus == BinStatuses.Collecting),
+                    readyToOrder = clusterable && d.Count() >= liveThreshold && d.Any(x => x.BinStatus == BinStatuses.Waitlisted),
+                })
+                .OrderByDescending(d => d.households)
+                .ToList();
+            return new
+            {
+                suburb = g.Key,
+                households = g.Count(),
+                waitlisted = g.Count(x => x.BinStatus == BinStatuses.Waitlisted),
+                allocated = g.Count(x => x.BinStatus == BinStatuses.Allocated),
+                delivered = g.Count(x => x.BinStatus == BinStatuses.Delivered),
+                collecting = g.Count(x => x.BinStatus == BinStatuses.Collecting),
+                readyToOrder = days.Any(d => d.readyToOrder),
+                days,
+                houses = g.OrderBy(x => x.WaitlistedAt ?? x.CreatedAt).Select(x => new
+                {
+                    x.Id, x.Name, x.Address, x.Street, x.CouncilCollectionDay, x.BinStatus, x.WaitlistedAt,
+                }),
+            };
+        })
+        .OrderByDescending(s => s.households)
+        .ToList();
+
+    return Results.Ok(new { liveThreshold, total = rows.Count, suburbs });
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
+
+app.MapPost("/api/admin/areas/{suburb}/allocate", async (string suburb, int? day, GoodSortDbContext db, NotificationService notif) =>
+{
+    if (!WaitlistDensity.CanAllocateSuburb(suburb))
+        return Results.BadRequest(new { error = "Not a residential suburb cluster." });
+    var key = BinDayService.CanonicalSuburb(suburb)!;
+    var q = db.Households.Where(h => h.Type == "residential" && h.Suburb != null && h.Suburb.ToUpper() == key && h.BinStatus == BinStatuses.Waitlisted);
+    if (day is int d)
+    {
+        var onDay = await db.Households.CountAsync(h =>
+            h.Type == "residential" && h.Suburb != null && h.Suburb.ToUpper() == key && h.CouncilCollectionDay == d);
+        if (!WaitlistDensity.CanPurchase(onDay))
+            return Results.BadRequest(new { error = $"Need {WaitlistDensity.LiveThreshold} houses on that recycling day. This day has {onDay}." });
+        q = q.Where(h => h.CouncilCollectionDay == d);
+    }
+    else
+    {
+        var readyDays = await db.Households
+            .Where(h => h.Type == "residential" && h.Suburb != null && h.Suburb.ToUpper() == key && h.CouncilCollectionDay != null)
+            .GroupBy(h => h.CouncilCollectionDay!.Value)
+            .Where(g => g.Count() >= WaitlistDensity.LiveThreshold)
+            .Select(g => g.Key)
+            .ToListAsync();
+        q = q.Where(h => h.CouncilCollectionDay != null && readyDays.Contains(h.CouncilCollectionDay.Value));
+    }
+    var rows = await q.ToListAsync();
+    foreach (var h in rows) h.BinStatus = BinStatuses.Allocated;
+    await db.SaveChangesAsync();
+    try { await notif.SendBinsOnOrder(key, day); } catch { /* ACS optional */ }
+    return Results.Ok(new { suburb = key, day, allocated = rows.Count });
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
+
+app.MapPost("/api/admin/areas/{suburb}/advance", async (string suburb, int? day, string to, GoodSortDbContext db, NotificationService notif) =>
+{
+    if (!WaitlistDensity.CanAllocateSuburb(suburb))
+        return Results.BadRequest(new { error = "Not a residential suburb cluster." });
+    var next = to.Trim().ToLowerInvariant();
+    var from = next switch
+    {
+        BinStatuses.Delivered => BinStatuses.Allocated,
+        BinStatuses.Collecting => BinStatuses.Delivered,
+        _ => null,
+    };
+    if (from is null) return Results.BadRequest(new { error = "Advance to delivered or collecting only." });
+    var key = BinDayService.CanonicalSuburb(suburb)!;
+    var q = db.Households.Where(h => h.Type == "residential" && h.Suburb != null && h.Suburb.ToUpper() == key && h.BinStatus == from);
+    if (day is int d) q = q.Where(h => h.CouncilCollectionDay == d);
+    var rows = await q.ToListAsync();
+    foreach (var h in rows) h.BinStatus = next;
+    await db.SaveChangesAsync();
+    if (next == BinStatuses.Collecting)
+    {
+        foreach (var h in rows)
+        {
+            try { await notif.SendCollectingNow(h); } catch { /* ACS optional */ }
+        }
+    }
+    return Results.Ok(new { suburb = key, day, to = next, updated = rows.Count });
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
+
+app.MapPost("/api/admin/households/{id:guid}/bin-status", async (Guid id, BinStatusRequest req, GoodSortDbContext db, NotificationService notif) =>
+{
+    var allowed = new[] { BinStatuses.Waitlisted, BinStatuses.Allocated, BinStatuses.Delivered, BinStatuses.Collecting };
+    if (!allowed.Contains(req.Status)) return Results.BadRequest(new { error = "Invalid status" });
+    var h = await db.Households.FindAsync(id);
+    if (h is null) return Results.NotFound();
+    var previous = h.BinStatus;
+    h.BinStatus = req.Status;
+    await db.SaveChangesAsync();
+    if (previous != req.Status && (req.Status == BinStatuses.Delivered || req.Status == BinStatuses.Collecting))
+    {
+        try { await notif.SendCollectingNow(h); } catch { /* ACS optional */ }
+    }
+    return Results.Ok(new { h.Id, h.BinStatus });
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
 // ── Recyclers — material destination endpoints ──
@@ -1440,7 +1841,7 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
         bin.LastCollectedAt = DateTime.UtcNow;
         if (bin.PendingContainers == 0) bin.Materials = new MaterialBreakdown();
 
-        // If this bin belongs to a household, clear that household's pending scans
+        // Household credit is the runner count (5¢), not Vision scans.
         if (bin.HouseholdId.HasValue)
         {
             var hh = await db.Households.Include(h => h.Members).FirstOrDefaultAsync(h => h.Id == bin.HouseholdId);
@@ -1449,21 +1850,17 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
             var pendingScans = await db.Scans
                 .Where(s => s.HouseholdId == hh.Id && s.Status == "pending")
                 .ToListAsync();
-
+            var payees = hh.Members.ToList();
             foreach (var scan in pendingScans)
             {
-                scan.Status = "cleared";
-                var user = hh.Members.FirstOrDefault(m => m.Id == scan.UserId)
-                           ?? await db.Profiles.FindAsync(scan.UserId);
-                if (user is not null)
-                {
-                    user.PendingCents = Math.Max(0, user.PendingCents - scan.RefundCents);
-                    user.ClearedCents += scan.RefundCents;
-                }
+                if (payees.Any(m => m.Id == scan.UserId)) continue;
+                var extra = await db.Profiles.FindAsync(scan.UserId);
+                if (extra is not null) payees.Add(extra);
             }
+            HouseholdCredit.ApplyPickup(payees, pendingScans, count);
 
             hh.PendingContainers = Math.Max(0, hh.PendingContainers - count);
-            hh.PendingValueCents = hh.PendingContainers * 5;
+            hh.PendingValueCents = hh.PendingContainers * HouseholdCredit.CentsPerContainer;
             hh.EstimatedBags = (int)Math.Ceiling(hh.PendingContainers / 150.0);
             hh.LastPickupAt = DateTime.UtcNow;
             if (hh.PendingContainers == 0) hh.Materials = new MaterialBreakdown();
@@ -1615,6 +2012,14 @@ app.Run();
 // assigned runner (run.RunnerId is a RunnerProfile.Id, not a profile id), or
 // when they're an admin. Used to gate the run lifecycle so a runner can only
 // drive/settle their own runs — settle credits cash-out-eligible balance.
+static async Task<bool> CallerCanAccessHousehold(HttpContext ctx, Guid householdId, GoodSortDbContext db)
+{
+    if (ctx.IsAdmin()) return true;
+    var callerId = ctx.GetCallerId();
+    if (callerId is null) return false;
+    return await db.Profiles.AnyAsync(p => p.Id == callerId && p.HouseholdId == householdId);
+}
+
 static async Task<bool> CallerOwnsRun(HttpContext ctx, Run run, GoodSortDbContext db)
 {
     if (ctx.IsAdmin()) return true;
@@ -1648,9 +2053,12 @@ record ScanRequest(Guid UserId, string Barcode, string ContainerName, string Mat
 record ClaimRequest(Guid DriverId);
 record PickupRequest(int ActualCount);
 record RunnerRegisterRequest(Guid ProfileId, string? VehicleType, string? VehicleMake, string? VehicleRego, int? CapacityBags, double? ServiceRadiusKm);
-record UnitComplexWaitlistRequest(string BuildingName, string Address, double Lat, double Lng);
+record WaitlistEventRequest(string Name, string? Suburb, string? Path);
+record UnitComplexWaitlistRequest(string BuildingName, string Address, double Lat, double Lng, string? Suburb = null);
+record StreetPatchRequest(string? Address, double? Lat, double? Lng, string? Suburb, int? CouncilCollectionDay, string? CouncilArea, bool? AccessConsent);
 record BinDayLookupRequest(double Lat, double Lng, string? Address);
 record BinOutRequest(bool Out);
+record BinStatusRequest(string Status);
 record RunnerProfileUpdateRequest(string? VehicleType, int? CapacityBags, double? ServiceRadiusKm);
 record RunnerHeartbeatRequest(Guid ProfileId, double Lat, double Lng, bool IsOnline);
 record MarketplaceClaimRequest(Guid ProfileId);

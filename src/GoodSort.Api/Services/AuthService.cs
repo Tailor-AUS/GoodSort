@@ -14,21 +14,23 @@ public class AuthService
     private readonly GoodSortDbContext _db;
     private readonly IConfiguration _config;
     private readonly ILogger<AuthService> _logger;
+    private readonly IHostEnvironment _env;
 
-    public AuthService(GoodSortDbContext db, IConfiguration config, ILogger<AuthService> logger)
+    public AuthService(GoodSortDbContext db, IConfiguration config, ILogger<AuthService> logger, IHostEnvironment env)
     {
         _db = db;
         _config = config;
         _logger = logger;
+        _env = env;
     }
 
-    public async Task<(bool Success, string? Error)> SendOtp(string email)
+    public async Task<(bool Success, string? Error, string? DevCode)> SendOtp(string email)
     {
         // Rate limit: max 5 OTPs per email per hour
         var oneHourAgo = DateTime.UtcNow.AddHours(-1);
         var recentCount = await _db.OtpCodes.CountAsync(o => o.Email == email && o.CreatedAt > oneHourAgo);
         if (recentCount >= 5)
-            return (false, "Too many requests. Try again in an hour.");
+            return (false, "Too many requests. Try again in an hour.", null);
 
         // 6-digit code, cryptographically random — Random.Shared is not secure
         // enough for an auth credential. RandomNumberGenerator gives us a
@@ -52,8 +54,13 @@ public class AuthService
         var connectionString = _config["ACS_CONNECTION_STRING"];
         if (string.IsNullOrEmpty(connectionString))
         {
-            _logger.LogWarning("ACS_CONNECTION_STRING not set — OTP for {Email}: {Code}", email, code);
-            return (true, null);
+            if (!_env.IsDevelopment())
+            {
+                _logger.LogError("ACS_CONNECTION_STRING is not set — refusing OTP");
+                return (false, "Email is not configured. Try again shortly.", null);
+            }
+            _logger.LogWarning("ACS_CONNECTION_STRING not set — OTP issued in Development only");
+            return (true, null, code);
         }
 
         try
@@ -61,7 +68,7 @@ public class AuthService
             var client = new EmailClient(connectionString);
             var sender = _config["ACS_EMAIL_SENDER"] ?? "DoNotReply@thegoodsort.org";
 
-            var content = new EmailContent("Your Good Sort verification code")
+            var content = new EmailContent("Your Good Sort waitlist code")
             {
                 Html = $@"
                     <div style='font-family: Inter, system-ui, sans-serif; max-width: 400px; margin: 0 auto; padding: 40px 20px;'>
@@ -70,8 +77,8 @@ public class AuthService
                                 <span style='color: white; font-size: 24px; font-weight: 800;'>G</span>
                             </div>
                         </div>
-                        <h1 style='text-align: center; font-size: 20px; font-weight: 800; color: #0f172a; margin-bottom: 8px;'>Your verification code</h1>
-                        <p style='text-align: center; color: #64748b; font-size: 14px; margin-bottom: 24px;'>Enter this code in The Good Sort app</p>
+                        <h1 style='text-align: center; font-size: 20px; font-weight: 800; color: #0f172a; margin-bottom: 8px;'>Your waitlist code</h1>
+                        <p style='text-align: center; color: #64748b; font-size: 14px; margin-bottom: 24px;'>Enter this code to join The Good Sort waitlist</p>
                         <div style='text-align: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 24px;'>
                             <span style='font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #0f172a;'>{code}</span>
                         </div>
@@ -82,12 +89,12 @@ public class AuthService
             var message = new EmailMessage(sender, email, content);
             await client.SendAsync(Azure.WaitUntil.Started, message);
             _logger.LogInformation("OTP email sent to {Email}", email);
-            return (true, null);
+            return (true, null, null);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send OTP email to {Email}", email);
-            return (false, "Failed to send email. Try again.");
+            return (false, "Failed to send email. Try again.", null);
         }
     }
 
@@ -140,9 +147,40 @@ public class AuthService
             _db.Profiles.Add(profile);
             await _db.SaveChangesAsync();
         }
+        else if (referrerId is Guid rid
+                 && rid != profile.Id
+                 && profile.HouseholdId is null
+                 && profile.ReferrerId is null)
+        {
+            // Neighbour invite after a first OTP (no household yet) still counts.
+            profile.ReferrerId = rid;
+            await _db.SaveChangesAsync();
+        }
+
+        if (ShouldPromoteSeedAdmin(
+                profile.IsAdmin,
+                await _db.Profiles.AnyAsync(p => p.IsAdmin),
+                profile.Email,
+                _config["ADMIN_SEED_EMAIL"]))
+        {
+            profile.IsAdmin = true;
+            await _db.SaveChangesAsync();
+            _logger.LogWarning("Seed admin: promoted {Email} ({Id}) because no admin existed", profile.Email, profile.Id);
+        }
 
         var token = GenerateJwt(profile);
         return (token, profile);
+    }
+
+    /// <summary>
+    /// First matching seed email becomes admin when the table has none.
+    /// Set ADMIN_SEED_EMAIL on the Container App after ship; leave unset otherwise.
+    /// </summary>
+    public static bool ShouldPromoteSeedAdmin(bool profileIsAdmin, bool anyAdminExists, string? profileEmail, string? seedEmail)
+    {
+        if (profileIsAdmin || anyAdminExists) return false;
+        if (string.IsNullOrWhiteSpace(seedEmail) || string.IsNullOrWhiteSpace(profileEmail)) return false;
+        return string.Equals(profileEmail.Trim(), seedEmail.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
     public string GenerateJwt(Profile profile)

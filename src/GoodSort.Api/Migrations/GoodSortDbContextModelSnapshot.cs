@@ -255,6 +255,10 @@ namespace GoodSort.Api.Migrations
                     b.Property<DateTime?>("BinIsOutAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("BinStatus")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<string>("BuildingName")
                         .HasColumnType("nvarchar(max)");
 
@@ -295,6 +299,12 @@ namespace GoodSort.Api.Migrations
                     b.Property<int>("PendingValueCents")
                         .HasColumnType("int");
 
+                    b.Property<string>("Street")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Suburb")
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -302,9 +312,18 @@ namespace GoodSort.Api.Migrations
                     b.Property<bool>("UsesDivider")
                         .HasColumnType("bit");
 
+                    b.Property<DateTime?>("WaitlistedAt")
+                        .HasColumnType("datetime2");
+
                     b.HasKey("Id");
 
+                    b.HasIndex("BinStatus");
+
+                    b.HasIndex("Suburb");
+
                     b.HasIndex("Lat", "Lng");
+
+                    b.HasIndex("Suburb", "CouncilCollectionDay");
 
                     b.ToTable("Households");
                 });

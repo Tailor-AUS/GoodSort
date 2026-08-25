@@ -1,6 +1,8 @@
 # End-to-End Dogfood Playbook
 
-**Goal:** Walk the complete user + runner journey with real production data before inviting pilot households.
+**Superseded for acquisition:** The growth loop is waitlist + street invite, not scanning every container. Use this playbook only after a street is `delivered` / `collecting`. Runners collect our purple bin. Do not rummage the council yellow bin.
+
+**Goal:** Walk the complete user + runner journey with real production data before inviting collecting households.
 
 ---
 
@@ -31,7 +33,7 @@
    - If still nothing, manually trigger via /admin → "Trigger reminders now" (this tests emails but won't create a run — run generation is separate)
    - As a last resort: POST /api/admin/seed-marketplace was deleted. You can create a run manually by posting to the Runs endpoint via curl (see API below)
 5. Once claimed: tap "Start Run" → drive to the address → tap "Arrived"
-6. Open the yellow bin → extract cans/bottles → enter actual count → tap "Picked Up"
+6. Collect our purple The Good Sort bin (do not open the council yellow bin) → enter actual count → tap "Picked Up"
 7. Drive to Tomra Yeerongpilly (201 Montague Rd, West End)
 8. Feed containers through the machine or hand over to staff
 9. In the app: tap "Delivering" → then "Delivered" / "Complete"

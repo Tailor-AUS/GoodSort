@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { apiUrl } from "@/lib/config";
+import { apiUrl, persistWaitlistFromUrl } from "@/lib/config";
+import { track } from "@/lib/analytics";
 import { Logo } from "@/app/components/shared/logo";
 
 export default function LoginPage() {
@@ -10,6 +11,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
+
+  useEffect(() => { persistWaitlistFromUrl(); }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -30,7 +33,11 @@ export default function LoginPage() {
         return;
       }
 
+      const data = await res.json().catch(() => ({}));
+      track("otp_sent");
       sessionStorage.setItem("goodsort_verify_email", email.trim());
+      if (typeof data.devCode === "string") sessionStorage.setItem("goodsort_dev_otp", data.devCode);
+      else sessionStorage.removeItem("goodsort_dev_otp");
       router.push("/verify");
     } catch {
       setError("Something went wrong. Please try again.");
@@ -45,7 +52,7 @@ export default function LoginPage() {
           <div className="flex justify-center mb-4">
             <Logo size="lg" />
           </div>
-          <p className="text-slate-400 text-[13px] mt-1">Scan. Sort. Earn sorting credits.</p>
+          <p className="text-slate-400 text-[13px] mt-1">Join the waitlist. We&apos;ll tell you when we&apos;re collecting in your area.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

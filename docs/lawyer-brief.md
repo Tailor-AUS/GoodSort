@@ -1,9 +1,10 @@
 # Legal Review Brief — The Good Sort
 
 **For:** Paralegal / solicitor review (~$200–300 engagement)
-**Contact:** Knox Hart, knox.hart@gmail.com
-**Entity:** Crispr Projects Pty Ltd, ABN 85 680 798 770, trading as "The Good Sort"
+**Contact:** Knox Hart, knox@tailor.au
+**Entity (confirm with Knox):** Tailor Intelligence Pty Ltd, ABN 13 688 827 572, is the intended applicant and trading company. Website legal pages still name Crispr Projects Pty Ltd ABN 85 680 798 770 (Accenture personal-services vehicle only). Do not treat CRISPR as the operating company.
 **Website:** thegoodsort.org
+**Model (supersedes any yellow-bin rummage brief):** We deliver a purple The Good Sort bin. We do not open the council yellow bin.
 
 ---
 
@@ -13,27 +14,27 @@
 
 We need the following clauses added or confirmed:
 
-**a) Yellow bin access consent:**
-> "By completing registration, you authorise The Good Sort and its appointed runners to access your residential yellow recycling bin on the day before your scheduled council collection. Access is limited to removing CDS-eligible containers (cans, bottles, cartons eligible under the Queensland Container Refund Scheme). All other contents are left undisturbed for council collection."
+**a) Waitlist + purple-bin collection consent:**
+> Completing registration puts the address on a waitlist for a purple The Good Sort bin. Collection does not start until enough neighbours on the same recycling day have joined and we have delivered our bin. When the bin is delivered, the household authorises The Good Sort and appointed runners to collect that purple bin from the kerb. We do not rummage the council yellow bin.
 
-**b) Runner access to private property:**
-Our runners open yellow bins that may be on the resident's property (front yard, driveway) or on the kerb. We need to confirm:
-- Is explicit consent (ticked checkbox at signup) sufficient?
-- Do we need a physical sign/sticker on the bin?
-- Any QLD-specific legislation on accessing recycling bins on private property with consent?
+**b) Runner access:**
+Runners collect **our** purple bin from the kerb the night before council recycling. They do not open the council yellow bin. Confirm:
+- Is the waitlist tick plus later delivery notice enough consent for kerb collection of our bin?
+- Do we need a sticker on the purple bin?
+- Any QLD-specific issue with leaving our bin on the kerb overnight?
 
 **c) Account deletion / right to erasure:**
 We have a "Delete Account" button that wipes all user data (scans, earnings, profile). Confirm this satisfies the Australian Privacy Act obligations.
 
 **d) Earnings and cashout:**
-Users earn 5c per container scanned. They can cash out at $20+ to a nominated bank account via ABA file transfer. Confirm we are not operating a "stored value facility" that requires an AFSL.
+Users earn a 5¢ sorting credit per eligible container we verify at a depot (optional photo scan is not the source of the credit). Cash out from $20 via ABA to an Australian bank. Confirm this is not a stored-value facility that needs an AFSL. Credits are a private reward — we receive the 10¢ scheme refund.
 
 ### 2. Privacy Policy update (thegoodsort.org/privacy)
 
 Confirm the following are adequately disclosed:
 - We collect: email, name, home address, GPS coordinates, photos of containers, council bin collection day
 - We share: address + container counts with our runners (for pickup logistics)
-- We store data on: Microsoft Azure (Australia East region), Azure SQL
+- We store data on: Microsoft Azure (live API is East Asia today — do not tell users it is Australia East until that is true), Azure SQL
 - We send transactional emails via Azure Communication Services
 - We use AI (Tailor Vision / Azure OpenAI) to classify container photos — images are sent to these services for processing
 

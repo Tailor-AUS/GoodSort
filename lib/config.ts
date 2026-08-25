@@ -1,7 +1,144 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+import { parseDayParam, residentialNeedsStreet } from "./brisbane";
+
+export const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (process.env.NODE_ENV !== "production" ? "http://localhost:5113" : "");
+export const REFERRER_STORAGE_KEY = "goodsort_referrer";
+export const DAY_HINT_KEY = "goodsort_day_hint";
+export const PLACE_HINT_KEY = "goodsort_place_hint";
+
+export type PlaceHint = {
+  address: string;
+  lat: number;
+  lng: number;
+  suburb?: string | null;
+  councilArea?: string | null;
+};
+
+export function writePlaceHint(place: PlaceHint): void {
+  if (typeof window === "undefined") return;
+  if (!place.address.trim()) return;
+  if (!Number.isFinite(place.lat) || !Number.isFinite(place.lng)) return;
+  sessionStorage.setItem(PLACE_HINT_KEY, JSON.stringify({
+    address: place.address.trim(),
+    lat: place.lat,
+    lng: place.lng,
+    suburb: place.suburb ?? null,
+    councilArea: place.councilArea ?? null,
+  }));
+}
+
+export function readPlaceHint(): PlaceHint | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(PLACE_HINT_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw) as Partial<PlaceHint>;
+    if (typeof d.address !== "string" || typeof d.lat !== "number" || typeof d.lng !== "number") return null;
+    return {
+      address: d.address,
+      lat: d.lat,
+      lng: d.lng,
+      suburb: typeof d.suburb === "string" ? d.suburb : null,
+      councilArea: typeof d.councilArea === "string" ? d.councilArea : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+const PROFILE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function asProfileId(raw: string | null | undefined): string | undefined {
+  const value = raw?.trim();
+  return value && PROFILE_ID.test(value) ? value : undefined;
+}
+
+/** Client-only profile id. Empty on the first render so static HTML matches. */
+export function readStoredProfileId(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    return asProfileId(JSON.parse(localStorage.getItem("goodsort_profile") || "{}").id);
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveApiBase(): string {
+  if (API_URL) return API_URL;
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") return "http://localhost:5113";
+  }
+  return "";
+}
 
 export function apiUrl(path: string): string {
-  return API_URL ? `${API_URL}${path}` : path;
+  const base = resolveApiBase();
+  return base ? `${base}${path}` : path;
+}
+
+/** Persist ?r= / ?ref= so a neighbour invite survives the OTP hop. */
+export function persistReferrerFromUrl(): void {
+  if (typeof window === "undefined") return;
+  const params = new URLSearchParams(window.location.search);
+  const r = asProfileId(params.get("r") || params.get("ref"));
+  if (r) sessionStorage.setItem(REFERRER_STORAGE_KEY, r);
+}
+
+/** Persist ?day=friday so the same recycling night survives OTP → onboard. */
+export function persistDayFromUrl(): void {
+  if (typeof window === "undefined") return;
+  const day = parseDayParam(new URLSearchParams(window.location.search).get("day"));
+  if (day != null) sessionStorage.setItem(DAY_HINT_KEY, String(day));
+}
+
+export function persistWaitlistFromUrl(): void {
+  persistReferrerFromUrl();
+  persistDayFromUrl();
+}
+
+export function writeDayHint(day: number): void {
+  if (typeof window === "undefined") return;
+  if (day < 0 || day > 6) return;
+  sessionStorage.setItem(DAY_HINT_KEY, String(day));
+}
+
+export function readDayHint(): number | null {
+  if (typeof window === "undefined") return null;
+  const fromUrl = parseDayParam(new URLSearchParams(window.location.search).get("day"));
+  if (fromUrl != null) return fromUrl;
+  try {
+    return parseDayParam(sessionStorage.getItem(DAY_HINT_KEY));
+  } catch {
+    return null;
+  }
+}
+
+export function readReferrerId(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const params = new URLSearchParams(window.location.search);
+  return asProfileId(params.get("r") || params.get("ref") || sessionStorage.getItem(REFERRER_STORAGE_KEY));
+}
+
+/** After OTP: finish the street, or go to the waitlist home. Never invent a suburb. */
+export async function waitlistContinuePath(): Promise<"/onboard" | "/sort"> {
+  if (!hasValidToken()) return "/onboard";
+  let householdId: string | undefined;
+  try {
+    const id = JSON.parse(localStorage.getItem("goodsort_profile") || "{}").householdId;
+    householdId = typeof id === "string" && id ? id : undefined;
+  } catch {
+    return "/onboard";
+  }
+  if (!householdId) return "/onboard";
+  try {
+    const hh = await fetch(apiUrl(`/api/households/${householdId}`), { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : null));
+    return residentialNeedsStreet(hh) ? "/onboard" : "/sort";
+  } catch {
+    return "/onboard";
+  }
 }
 
 // Builds headers for a direct fetch() to an authenticated endpoint. Any fetch()

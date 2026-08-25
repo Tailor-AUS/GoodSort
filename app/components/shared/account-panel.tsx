@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { X, Package, Leaf, Truck, Wallet, LogOut, DollarSign, CheckCircle, Share2, Users, Gift, Trash2, Car } from "lucide-react";
-import { apiUrl, authHeaders } from "@/lib/config";
+import { X, Package, Leaf, Truck, Wallet, LogOut, CheckCircle, Users, Gift, Trash2, Car } from "lucide-react";
+import { apiUrl, authHeaders, readStoredProfileId } from "@/lib/config";
 import { formatCents, type User } from "@/lib/store";
+import { inviteMessage, isCollecting, sameSuburb, streetInviteUrl, streetStatsForViewer, type GrowthSuburb } from "@/lib/brisbane";
+import { InviteActions } from "@/app/components/shared/invite-actions";
 
 interface AccountPanelProps {
   user: User;
@@ -13,8 +15,29 @@ interface AccountPanelProps {
 }
 
 export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
+  const [binStatus, setBinStatus] = useState<string | null>(null);
+  const [streetStats, setStreetStats] = useState<{ households: number; needed: number; dayName: string | null } | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    try {
+      const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
+      if (!profile.householdId) return;
+      Promise.all([
+        fetch(apiUrl(`/api/households/${profile.householdId}`), { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)),
+        fetch(apiUrl("/api/growth/brisbane")).then((r) => (r.ok ? r.json() : null)),
+      ]).then(([hh, g]) => {
+        if (hh?.binStatus) setBinStatus(hh.binStatus);
+        const match = g?.suburbs?.find((s: GrowthSuburb) => sameSuburb(s.suburb, hh?.suburb));
+        const cluster = streetStatsForViewer(match, hh?.councilCollectionDay, hh?.type !== "unit_complex");
+        setStreetStats({ households: cluster.households, needed: cluster.needed, dayName: cluster.dayName });
+      }).catch(() => {});
+    } catch { /* ignore */ }
+  }, [open]);
+
   if (!open) return null;
 
+  const waiting = !isCollecting(binStatus);
   // Show email when name is default "New User" or "You"
   const displayName = (user.name === "New User" || user.name === "You")
     ? (() => { try { const p = JSON.parse(localStorage.getItem("goodsort_profile") || "{}"); return p.phone || p.email || user.name; } catch { return user.name; } })()
@@ -36,7 +59,7 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
           </div>
 
           <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200">
-            <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-[0.15em]">Available</p>
+            <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-[0.15em]">{waiting ? "Credits after collection" : "Available"}</p>
             <p className="text-3xl font-display font-extrabold text-slate-900 mt-1">{formatCents(user.clearedCents)}</p>
             {user.pendingCents > 0 && (
               <p className="text-green-600/60 text-sm font-medium mt-0.5">+ {formatCents(user.pendingCents)} pending</p>
@@ -45,14 +68,26 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
         </div>
 
         <div className="p-6 border-b border-slate-100">
-          <div className="grid grid-cols-3 gap-2">
-            <StatCard icon={Package} label="Scanned" value={user.totalContainers.toString()} />
-            <StatCard icon={Leaf} label="CO2" value={`${user.totalCO2SavedKg.toFixed(1)}kg`} />
-            <StatCard icon={Truck} label="Routes" value={user.collections.length.toString()} />
-          </div>
+          {waiting ? (
+            <div className="grid grid-cols-3 gap-2">
+              <StatCard icon={Users} label="On your day" value={(streetStats?.households ?? 0).toString()} />
+              <StatCard icon={Gift} label="Still need" value={(streetStats?.needed ?? 12).toString()} />
+              <StatCard icon={Truck} label="Day" value={streetStats?.dayName?.slice(0, 3) ?? "—"} />
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              <StatCard icon={Package} label="Scanned" value={user.totalContainers.toString()} />
+              <StatCard icon={Leaf} label="CO2" value={`${user.totalCO2SavedKg.toFixed(1)}kg`} />
+              <StatCard icon={Truck} label="Routes" value={user.collections.length.toString()} />
+            </div>
+          )}
         </div>
 
         <div className="p-6">
+          {waiting ? (
+            <p className="text-[13px] text-slate-500 mb-1">Invite the street — that is how a run starts. Scan is not required on the waitlist.</p>
+          ) : (
+            <>
           <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-[0.15em] mb-3">
             {user.collections.length > 0 ? "Collections" : "Scans"} ({user.collections.length > 0 ? user.collections.length : user.scans.length})
           </p>
@@ -88,8 +123,10 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
           ) : (
             <p className="text-slate-400 text-[13px]">No activity yet</p>
           )}
+            </>
+          )}
 
-          <CashoutSection clearedCents={user.clearedCents} />
+          <CashoutSection clearedCents={user.clearedCents} waiting={waiting} />
 
           <InviteFriends user={user} />
 
@@ -151,68 +188,66 @@ function StatCard({ icon: Icon, label, value }: { icon: React.ElementType; label
   );
 }
 
-function InviteFriends({ user }: { user: User }) {
-  const [copied, setCopied] = useState(false);
-  const [shared, setShared] = useState(false);
+function InviteFriends({ user: _user }: { user: User }) {
+  const [suburb, setSuburb] = useState<string | null>(null);
+  const [binDay, setBinDay] = useState<number | null>(null);
+  const [growth, setGrowth] = useState<GrowthSuburb | null>(null);
+  const [building, setBuilding] = useState(false);
+  const [profileId, setProfileId] = useState<string | undefined>(undefined);
+  const inviteUrl = streetInviteUrl({ suburb, day: binDay, profileId });
 
-  const profileId = (() => {
-    try { return JSON.parse(localStorage.getItem("goodsort_profile") || "{}").id as string | undefined; } catch { return undefined; }
-  })();
-  const inviteUrl = `https://thegoodsort.org${profileId ? `?r=${profileId}` : ""}`;
-  const inviteText = user.totalContainers > 0
-    ? `I've recycled ${user.totalContainers} container${user.totalContainers !== 1 ? "s" : ""} and earned ${formatCents(user.pendingCents + user.clearedCents)} with The Good Sort! Scan your cans and bottles, earn 5c each. Join me:`
-    : "I just joined The Good Sort — scan your empty cans and bottles to earn 5c each. Give it a go:";
+  useEffect(() => {
+    try {
+      setProfileId(readStoredProfileId());
+      const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
+      if (!profile.householdId) return;
+      Promise.all([
+        fetch(apiUrl(`/api/households/${profile.householdId}`), { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)),
+        fetch(apiUrl("/api/growth/brisbane")).then((r) => (r.ok ? r.json() : null)),
+      ])
+        .then(([hh, g]) => {
+          if (hh?.suburb) setSuburb(hh.suburb);
+          if (hh?.councilCollectionDay != null) setBinDay(hh.councilCollectionDay);
+          setBuilding(hh?.type === "unit_complex");
+          const match = g?.suburbs?.find((s: GrowthSuburb) => sameSuburb(s.suburb, hh?.suburb));
+          if (match) setGrowth(match);
+        })
+        .catch(() => {});
+    } catch { /* ignore */ }
+  }, []);
 
-  async function handleShare() {
-    if (typeof navigator !== "undefined" && navigator.share) {
-      try {
-        await navigator.share({
-          title: "Join The Good Sort",
-          text: inviteText,
-          url: inviteUrl,
-        });
-        setShared(true);
-        setTimeout(() => setShared(false), 3000);
-      } catch {
-        // User cancelled share — that's fine
-      }
-    } else {
-      handleCopy();
-    }
-  }
-
-  function handleCopy() {
-    navigator.clipboard?.writeText(`${inviteText} ${inviteUrl}`);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
+  const cluster = streetStatsForViewer(growth, binDay, !building);
+  const needed = cluster.needed;
+  const waiting = cluster.households;
+  const dayLive = cluster.live;
+  const message = inviteMessage(inviteUrl, suburb, {
+    dayName: cluster?.dayName,
+    households: waiting,
+    needed,
+    live: dayLive,
+  });
 
   return (
     <div className="mt-5 bg-green-50 border border-green-200 rounded-xl p-4">
       <div className="flex items-center gap-2 mb-2">
         <Users className="w-4 h-4 text-green-600" />
-        <p className="text-[13px] font-bold text-green-800">Invite Friends</p>
+        <p className="text-[13px] font-bold text-green-800">Invite the street</p>
       </div>
       <p className="text-[12px] text-green-700/70 mb-3">
-        Get your mates sorting! Share The Good Sort and help keep QLD clean.
+        {building
+          ? (dayLive
+            ? "Houses on a recycling day have hit 12. You are on the building list — invite more houses. $1 pending after they join; cash-out after we start collecting."
+            : `${waiting} house${waiting === 1 ? "" : "s"} on ${cluster?.dayName ?? "a recycling day"}. You do not count toward the 12. Invite a house — $1 pending after they join.`)
+          : (dayLive
+          ? "Your recycling day has enough neighbours. Share so the first run is dense. A neighbour you invite earns you $1 pending — cash-out after we start collecting."
+          : `${waiting} household${waiting === 1 ? "" : "s"} on ${cluster?.dayName ?? "your recycling day"}. ${needed} more on that day unlocks bins. A neighbour you invite earns you $1 pending — cash-out after we start collecting.`)}
       </p>
-      <button
-        onClick={handleShare}
-        className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-bold py-3 rounded-xl text-[13px] shadow-lg shadow-green-600/20 min-h-[44px] active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
-      >
-        {shared ? (
-          <><CheckCircle className="w-4 h-4" /> Shared!</>
-        ) : copied ? (
-          <><CheckCircle className="w-4 h-4" /> Copied!</>
-        ) : (
-          <><Share2 className="w-4 h-4" /> Invite Friends</>
-        )}
-      </button>
+      <InviteActions url={inviteUrl} message={message} compact />
     </div>
   );
 }
 
-function CashoutSection({ clearedCents }: { clearedCents: number }) {
+function CashoutSection({ clearedCents, waiting }: { clearedCents: number; waiting?: boolean }) {
   const [showForm, setShowForm] = useState(false);
   const [bsb, setBsb] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
@@ -220,9 +255,17 @@ function CashoutSection({ clearedCents }: { clearedCents: number }) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
+  const [payoutsOpen, setPayoutsOpen] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch(apiUrl("/api/cashout/status"))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d && typeof d.open === "boolean") setPayoutsOpen(d.open); })
+      .catch(() => setPayoutsOpen(false));
+  }, []);
 
   const minCashout = 2000; // $20 in cents
-  const canCashout = clearedCents >= minCashout;
+  const canCashout = payoutsOpen === true && clearedCents >= minCashout;
 
   async function handleCashout() {
     if (!canCashout || !bsb || !accountNumber || !accountName) return;
@@ -267,8 +310,8 @@ function CashoutSection({ clearedCents }: { clearedCents: number }) {
     return (
       <div className="mt-6 bg-green-50 border border-green-200 rounded-xl p-4 text-center">
         <CheckCircle className="w-6 h-6 text-green-600 mx-auto mb-2" />
-        <p className="text-[13px] font-semibold text-green-700">Cashout requested!</p>
-        <p className="text-[11px] text-green-600 mt-1">You'll receive a bank transfer within 5 business days</p>
+        <p className="text-[13px] font-semibold text-green-700">Cashout requested</p>
+        <p className="text-[11px] text-green-600 mt-1">Queued for the next weekly bank file. Not sent yet.</p>
       </div>
     );
   }
@@ -294,7 +337,11 @@ function CashoutSection({ clearedCents }: { clearedCents: number }) {
         </button>
         {!canCashout && showHint && (
           <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl p-3 text-[12px] text-amber-900 leading-relaxed">
-            You need <b>$20</b> to cash out — keep scanning! You have <b>${(clearedCents / 100).toFixed(2)}</b>, just <b>${(remaining / 100).toFixed(2)}</b> to go (≈ {moreContainers} more container{moreContainers === 1 ? "" : "s"}).
+            {payoutsOpen === false
+              ? <>Bank transfers are not live yet. Credits stay on your account. You do not need to scan to stay on the waitlist.</>
+              : waiting
+              ? <>Credits start after we collect your purple bin and a depot verifies the containers. You do not need to scan to stay on the waitlist. Cash out from $20 once payouts are open.</>
+              : <>You need <b>$20</b> to cash out. You have <b>${(clearedCents / 100).toFixed(2)}</b>, just <b>${(remaining / 100).toFixed(2)}</b> to go (≈ {moreContainers} more container{moreContainers === 1 ? "" : "s"}).</>}
           </div>
         )}
       </div>
@@ -317,7 +364,7 @@ function CashoutSection({ clearedCents }: { clearedCents: number }) {
             maxLength={7}
             value={bsb}
             onChange={(e) => setBsb(e.target.value)}
-            placeholder="062-000"
+            placeholder="000-000"
             className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
           />
         </div>
@@ -329,7 +376,7 @@ function CashoutSection({ clearedCents }: { clearedCents: number }) {
             maxLength={9}
             value={accountNumber}
             onChange={(e) => setAccountNumber(e.target.value)}
-            placeholder="12345678"
+            placeholder="Account number"
             className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
           />
         </div>
@@ -356,7 +403,7 @@ function CashoutSection({ clearedCents }: { clearedCents: number }) {
       </button>
 
       <p className="text-[10px] text-slate-400 mt-2 text-center">
-        Bank transfers are processed weekly via ABA batch file
+        Weekly bank file — only after payouts are switched on.
       </p>
     </div>
   );

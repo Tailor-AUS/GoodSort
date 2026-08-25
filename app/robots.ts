@@ -7,15 +7,17 @@ export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: "*",
-      allow: ["/", "/privacy", "/terms", "/favicon.ico", "/favicon.svg", "/icon-192.png", "/icon-512.png"],
+      allow: ["/", "/brisbane", "/privacy", "/terms", "/favicon.ico", "/favicon.svg", "/icon-192.png", "/icon-512.png"],
       disallow: [
         "/admin",
         "/household",
+        "/invite",
         "/login",
         "/onboard",
         "/runner",
         "/scan",
         "/sort",
+        "/start",
         "/verify",
       ],
     },
