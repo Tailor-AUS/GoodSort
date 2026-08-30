@@ -39,7 +39,7 @@ export function RunActive({ run, onStart, onArrive, onPickup, onSkip, onDeliver,
             {run.stops.length} stops · {formatCents(run.estimatedPayoutCents)}
           </p>
           <p className="text-[13px] text-slate-400 mt-0.5">
-            Purple The Good Sort bins only — not the council yellow bin. ~{run.estimatedDurationMin} min · {run.perContainerCents}c/container
+            Sorted bags on the kerb only. ~{run.estimatedDurationMin} min · {run.perContainerCents}c/container
           </p>
         </div>
 
@@ -100,7 +100,7 @@ export function RunActive({ run, onStart, onArrive, onPickup, onSkip, onDeliver,
             {currentStop.pickupInstruction || `Stop ${currentStop.sequence + 1}`}
           </p>
           <p className="text-[12px] text-slate-500 mt-1.5">
-            Collect the purple The Good Sort bin (~{currentStop.estimatedContainers} containers). Do not open the council yellow bin.
+            Collect sorted bags on the kerb (~{currentStop.estimatedContainers} containers). Take them to a refund point.
           </p>
         </div>
 

@@ -5,10 +5,10 @@ using System.Text.RegularExpressions;
 namespace GoodSort.Api.Services;
 
 /// <summary>
-/// Looks up the day of the week (0=Sun..6=Sat) that a given address has its
-/// yellow recycling bin collected, using Brisbane City Council's open data
-/// portal (OpenDataSoft). For addresses outside BCC we fall through to null
-/// and the UI asks the user to pick manually.
+/// Looks up the day of the week (0=Sun..6=Sat) for council recycling at an
+/// address using Brisbane City Council open data (OpenDataSoft). City-wide
+/// labels must never unlock a run. Addresses outside BCC return null and the
+/// UI asks the user to pick manually.
 /// </summary>
 public class BinDayService
 {
@@ -109,7 +109,7 @@ public class BinDayService
 
     /// <summary>
     /// Photon often labels city as Brisbane. That must never be a density cluster —
-    /// 12 houses city-wide do not unlock a run.
+    /// city-wide totals do not unlock a run.
     /// </summary>
     public static string? CanonicalSuburb(string? raw)
     {

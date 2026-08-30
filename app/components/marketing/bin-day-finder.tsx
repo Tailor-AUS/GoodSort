@@ -83,7 +83,7 @@ export function BinDayFinder({ suburbName, onResolved }: Props) {
           {href && !suburbName && (
             <>
               {" "}
-              <a href={href} className="font-semibold text-violet-800 underline">Start sorting there</a>
+              <a href={href} className="font-semibold text-violet-800 underline">Start scanning there</a>
             </>
           )}
         </p>
@@ -94,7 +94,7 @@ export function BinDayFinder({ suburbName, onResolved }: Props) {
           <a href={BCC_BIN_DAY_DATASET} target="_blank" rel="noopener noreferrer" className="underline">
             council dataset
           </a>
-          . Pick the day when you join — we only unlock houses on the same night.
+          . Pick the day when you join — we use it for routing once suburb volume unlocks a run.
         </p>
       )}
     </div>

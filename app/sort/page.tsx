@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { type User, type SortBin, type Depot, type BagInfo, getUser } from "@/lib/store";
 import { getUserApi, getDepotsApi, getBinsApi } from "@/lib/store-api";
 import { apiUrl, authHeaders } from "@/lib/config";
-import { isCollecting, residentialNeedsStreet, sameSuburb, streetStatsForViewer, type GrowthSuburb } from "@/lib/brisbane";
+import { isCollecting, LIVE_VOLUME_THRESHOLD, residentialNeedsStreet, sameSuburb, streetStatsForViewer, type GrowthSuburb } from "@/lib/brisbane";
 import { getDepots } from "@/lib/store";
 import { MapView } from "@/app/components/shared/map-view";
 import { SorterSheet, type HouseholdStatus } from "./components/sorter-sheet";
@@ -70,8 +70,9 @@ export default function SorterApp() {
       ]);
       if (hh) {
         let areaLive = false;
-        let needed = 12;
+        let needed = LIVE_VOLUME_THRESHOLD;
         let households = hh.type === "unit_complex" ? 0 : 1;
+        let containers = 0;
         let dayName: string | null = null;
         try {
           const g = await fetch(apiUrl("/api/growth/brisbane")).then((r) => (r.ok ? r.json() : null));
@@ -80,6 +81,7 @@ export default function SorterApp() {
           areaLive = cluster.live;
           needed = cluster.needed;
           households = cluster.households;
+          containers = cluster.containers;
           dayName = cluster.dayName;
         } catch { /* waitlist card can fall back */ }
         setHousehold({
@@ -92,6 +94,7 @@ export default function SorterApp() {
           areaLive,
           needed,
           households,
+          containers,
           dayName,
         });
       } else {
@@ -103,8 +106,9 @@ export default function SorterApp() {
           suburb: suburbHint,
           binStatus: "waitlisted",
           areaLive: false,
-          needed: 11,
+          needed: LIVE_VOLUME_THRESHOLD,
           households: 1,
+          containers: 0,
           dayName: null,
         });
       }
@@ -115,10 +119,12 @@ export default function SorterApp() {
 
   useEffect(() => {
     refreshData().then(async () => {
-      // Enforce onboarding completeness: no household OR no council day.
+      // A scan-first member has credit but no address yet. Let them in and
+      // prompt for the address in-page — bouncing them to /onboard is the wall
+      // we just removed from the scan path.
       const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
       if (profile.id && !profile.householdId) {
-        router.push("/onboard");
+        setLoading(false);
         return;
       }
       if (profile.householdId) {
@@ -159,7 +165,9 @@ export default function SorterApp() {
   const handleBinSelect = useCallback((id: string) => setSelectedBinId(id), []);
   const handleMapTap = useCallback(() => setSelectedBinId(null), []);
   const selectedBin = bins.find((b) => b.id === selectedBinId) || null;
-  const onWaitlist = !!household && !isCollecting(household.binStatus);
+  // No household yet = scan-first member. They belong on the waitlist home
+  // (scan + progress + invite), never in the map/sorter collection UI.
+  const onWaitlist = !household || !isCollecting(household.binStatus);
 
   if (loading || !user) {
     return (

@@ -3,6 +3,7 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { X, Camera, ScanBarcode, Plus, Minus, Check, RotateCcw } from "lucide-react";
 import { lookupContainer, lookupContainerAsync } from "@/lib/containers";
+import { CENTS_PER_CONTAINER, formatCredit, launchBonusNote } from "@/lib/credit";
 import { apiUrl, authHeaders } from "@/lib/config";
 import { mapToMaterialType, type BagInfo } from "@/lib/store";
 import { addScanApi } from "@/lib/store-api";
@@ -44,11 +45,16 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
   // and reads items out of it; we can't bypass the server's view of what was
   // identified by editing the items array on the client.
   const [scanToken, setScanToken] = useState<string | null>(null);
+  // Credit quoted by the server for this batch — bonus-aware. Null until the
+  // preview responds; we never invent a rate the server did not confirm.
+  const [quotedCents, setQuotedCents] = useState<number | null>(null);
+  const [bonusRemaining, setBonusRemaining] = useState<number | null>(null);
 
   // Barcode mode state
   const [manualBarcode, setManualBarcode] = useState("");
   const [showManual, setShowManual] = useState(false);
   const [scanResult, setScanResult] = useState<{ name: string; bag: BagInfo | null } | null>(null);
+  const [lastCredit, setLastCredit] = useState(CENTS_PER_CONTAINER);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stopCamera = useCallback(() => {
@@ -150,6 +156,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
       setResults(data.containers || []);
       setResultSummary(data.summary || "No containers found");
       setScanToken(data.scanToken || null);
+      setQuotedCents(typeof data.totalCents === "number" ? data.totalCents : null);
     } catch {
       setResults([]);
       setResultSummary("Failed to connect to server");
@@ -184,15 +191,17 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
       if (res.ok) {
         const data = await res.json();
         totalItems = data.totalContainers || eligible.reduce((s, e) => s + e.count, 0);
-        totalCents = data.totalCents || totalItems * 10;
+        totalCents = typeof data.totalCents === "number" ? data.totalCents : totalItems * CENTS_PER_CONTAINER;
+        setBonusRemaining(typeof data.bonusRemaining === "number" ? data.bonusRemaining : null);
       } else {
-        // Fallback: count from eligible items
+        // Fallback: count from eligible items at the standard rate. Never quote
+        // the bonus rate the server did not confirm.
         totalItems = eligible.reduce((s, e) => s + e.count, 0);
-        totalCents = totalItems * 10;
+        totalCents = totalItems * CENTS_PER_CONTAINER;
       }
     } catch {
       totalItems = eligible.reduce((s, e) => s + e.count, 0);
-      totalCents = totalItems * 10;
+      totalCents = totalItems * CENTS_PER_CONTAINER;
     }
 
     setConfirming(false);
@@ -225,7 +234,17 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     }
 
     const stream = getStream(container.material, container.name);
-    addScanApi(cleaned, container.name, container.material);
+    // Server decides the credit (launch bonus doubles a member's first
+    // containers). Show what it actually granted, not an assumed rate.
+    let credited = CENTS_PER_CONTAINER;
+    try {
+      const res = await addScanApi(cleaned, container.name, container.material);
+      if (res.creditedCents != null) credited = res.creditedCents;
+      setBonusRemaining(res.bonusRemaining);
+    } catch {
+      // Offline: the local scan is already saved; quote the standard rate.
+    }
+    setLastCredit(credited);
 
     // Create a BagInfo-compatible object from the stream for the callback
     const streamAsBag: BagInfo = {
@@ -236,7 +255,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     setScanResult({ name: container.name, bag: streamAsBag });
     timeoutRef.current = setTimeout(() => {
       setScanResult(null);
-      onScanComplete(container!.name, 5, streamAsBag);
+      onScanComplete(container!.name, credited, streamAsBag);
     }, 2000);
   }
 
@@ -290,8 +309,10 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
   if (results !== null) {
     const eligible = results.filter((r) => r.eligible);
     const totalItems = eligible.reduce((s, r) => s + r.count, 0);
-    const centsPerItem = 5; // 5¢ sorting credit per container
-    const totalCents = totalItems * centsPerItem;
+    // Server quote when we have one (it accounts for the launch bonus);
+    // otherwise the standard rate.
+    const totalCents = quotedCents ?? totalItems * CENTS_PER_CONTAINER;
+    const centsPerItem = totalItems > 0 ? Math.round(totalCents / totalItems) : CENTS_PER_CONTAINER;
 
     return (
       <div className="fixed inset-0 z-50 bg-black flex flex-col" style={{ paddingTop: "env(safe-area-inset-top, 0px)", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
@@ -335,7 +356,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
                       <div className="flex-1 min-w-0">
                         <p className="text-[13px] text-white font-semibold truncate">{item.name}</p>
                         <p className="text-[11px] text-white/50">
-                          {item.eligible ? `Section ${stream.section} · ${stream.label} · 5¢` : "Not CDS eligible"}
+                          {item.eligible ? `Section ${stream.section} · ${stream.label} · ${formatCredit(centsPerItem)}` : "Not CDS eligible"}
                         </p>
                       </div>
                       {/* Count stepper — also acts as "how many more?" */}
@@ -438,7 +459,10 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
           </div>
           <p className="text-white/50 text-sm mb-2">{name}</p>
           <p className="text-white text-2xl font-display font-extrabold mb-2">Section {bag.id} · {bag.label}</p>
-          <p className="text-green-400 text-lg font-bold">+5¢ added to your account</p>
+          <p className="text-green-400 text-lg font-bold">+{formatCredit(lastCredit)} added to your account</p>
+          {launchBonusNote(bonusRemaining) && (
+            <p className="text-white/60 text-[13px] mt-2">{launchBonusNote(bonusRemaining)}</p>
+          )}
           <div className={`mt-8 mx-auto w-48 h-2 ${bag.color} rounded-full opacity-60`} />
         </div>
       </div>

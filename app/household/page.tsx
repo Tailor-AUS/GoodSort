@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Home, Package, Users, Weight, Recycle } from "lucide-react";
 import { apiUrl, authHeaders } from "@/lib/config";
 import { formatCents } from "@/lib/store";
-import { DAY_NAMES, isCollecting, sameSuburb, streetStatsForViewer, type GrowthSuburb } from "@/lib/brisbane";
+import { DAY_NAMES, isCollecting, LIVE_VOLUME_THRESHOLD, sameSuburb, streetStatsForViewer, type GrowthSuburb } from "@/lib/brisbane";
 import { WaitlistCard } from "@/app/components/shared/waitlist-card";
 import { CollectionNightCard } from "@/app/components/shared/collection-night-card";
 
@@ -34,7 +34,7 @@ export default function HouseholdPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [nextPickup, setNextPickup] = useState<string | null>(null);
   const [pickupConfirmed, setPickupConfirmed] = useState(false);
-  const [growth, setGrowth] = useState<{ households: number; needed: number; live: boolean; dayName?: string | null } | null>(null);
+  const [growth, setGrowth] = useState<{ households: number; containers: number; needed: number; live: boolean; dayName?: string | null } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -84,7 +84,8 @@ export default function HouseholdPage() {
               <WaitlistCard
                 suburb={hh.suburb}
                 households={growth?.households ?? (hh.type === "unit_complex" ? 0 : 1)}
-                needed={growth?.needed ?? 12}
+                containers={growth?.containers ?? 0}
+                needed={growth?.needed ?? LIVE_VOLUME_THRESHOLD}
                 live={!!growth?.live}
                 binStatus={hh.binStatus}
                 dayName={growth?.dayName}
@@ -107,7 +108,7 @@ export default function HouseholdPage() {
             {!nextPickup && hh.type === "residential" && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex items-start gap-3">
                 <Recycle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                <p className="text-[13px] text-amber-900">Set your council collection day so we can tell you the night we collect.</p>
+                <p className="text-[13px] text-amber-900">Set your council collection day for pickup scheduling. Volume unlocks the run — scan builds suburb totals.</p>
               </div>
             )}
 
@@ -181,10 +182,10 @@ function BinOutToggle({ hh, onChange }: { hh: HouseholdDetail; onChange: (v: boo
       className={`w-full rounded-2xl p-4 mb-4 border-2 flex items-center justify-between transition-colors ${hh.binIsOut ? "bg-green-50 border-green-500" : "bg-white border-slate-300"}`}>
       <div className="text-left">
         <p className={`text-[14px] font-semibold ${hh.binIsOut ? "text-green-800" : "text-slate-900"}`}>
-          {hh.binIsOut ? "Purple bin is on the kerb ✓" : "Put your purple bin on the kerb?"}
+          {hh.binIsOut ? "Bags on kerb ✓" : "Bag out sorted containers?"}
         </p>
         <p className="text-[12px] text-slate-500 mt-0.5">
-          {hh.binIsOut ? "Tap to mark bin as back inside." : "Tap once your bin is out so the runner knows it's ready."}
+          {hh.binIsOut ? "Tap to mark bags as back inside." : "Tap once your bags are on the kerb so the runner knows they're ready."}
         </p>
       </div>
       <div className={`w-12 h-6 rounded-full relative transition-colors ${hh.binIsOut ? "bg-green-500" : "bg-slate-300"}`}>

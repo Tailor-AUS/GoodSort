@@ -6,23 +6,23 @@ namespace GoodSort.Api.Tests;
 public class WaitlistNudgeTests
 {
     [Fact]
-    public void First_house_does_not_nudge() =>
+    public void First_container_does_not_nudge() =>
         Assert.False(WaitlistNudge.ShouldNudgeOthers(1, live: false));
 
     [Fact]
-    public void Second_house_nudges_the_street() =>
+    public void Second_container_nudges_the_street() =>
         Assert.True(WaitlistNudge.ShouldNudgeOthers(2, live: false));
 
     [Fact]
-    public void Eleven_still_nudges() =>
-        Assert.True(WaitlistNudge.ShouldNudgeOthers(11, live: false));
+    public void Below_threshold_still_nudges() =>
+        Assert.True(WaitlistNudge.ShouldNudgeOthers(999, live: false));
 
     [Fact]
-    public void Twelve_live_is_unlock_email_not_nudge()
+    public void At_threshold_is_unlock_email_not_nudge()
     {
-        Assert.False(WaitlistNudge.ShouldNudgeOthers(12, live: true));
-        Assert.False(WaitlistNudge.ShouldNudgeOthers(12, live: false));
-        Assert.False(WaitlistNudge.ShouldNudgeOthers(13, live: true));
+        Assert.False(WaitlistNudge.ShouldNudgeOthers(1000, live: true));
+        Assert.False(WaitlistNudge.ShouldNudgeOthers(1000, live: false));
+        Assert.False(WaitlistNudge.ShouldNudgeOthers(1001, live: true));
     }
 
     [Fact]

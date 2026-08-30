@@ -4,7 +4,7 @@
 **Contact:** Knox Hart, knox@tailor.au
 **Entity (confirm with Knox):** Tailor Intelligence Pty Ltd, ABN 13 688 827 572, is the intended applicant and trading company. Website legal pages still name Crispr Projects Pty Ltd ABN 85 680 798 770 (Accenture personal-services vehicle only). Do not treat CRISPR as the operating company.
 **Website:** thegoodsort.org
-**Model (supersedes any yellow-bin rummage brief):** We deliver a purple The Good Sort bin. We do not open the council yellow bin.
+**Model:** Scan-first suburb volume runs. Households scan eligible containers for 5¢, sort at home, bag out when suburb volume unlocks a driver trip.
 
 ---
 
@@ -14,20 +14,19 @@
 
 We need the following clauses added or confirmed:
 
-**a) Waitlist + purple-bin collection consent:**
-> Completing registration puts the address on a waitlist for a purple The Good Sort bin. Collection does not start until enough neighbours on the same recycling day have joined and we have delivered our bin. When the bin is delivered, the household authorises The Good Sort and appointed runners to collect that purple bin from the kerb. We do not rummage the council yellow bin.
+**a) Scan + kerbside collection consent:**
+> Completing registration lets the household scan eligible containers and sort at home. A volume run unlocks when suburb scanned volume is enough for one driver trip (about 1,000 containers). When we announce collection, the household authorises The Good Sort and appointed runners to collect bagged sorted containers from the kerb and deliver them to a refund point or depot.
 
 **b) Runner access:**
-Runners collect **our** purple bin from the kerb the night before council recycling. They do not open the council yellow bin. Confirm:
-- Is the waitlist tick plus later delivery notice enough consent for kerb collection of our bin?
-- Do we need a sticker on the purple bin?
-- Any QLD-specific issue with leaving our bin on the kerb overnight?
+Runners collect **bagged sorted containers** from the kerb on scheduled suburb runs. Confirm:
+- Is the onboarding tick plus collection notice enough consent for kerb collection?
+- Any QLD-specific issue with leaving bags on the kerb overnight?
 
 **c) Account deletion / right to erasure:**
 We have a "Delete Account" button that wipes all user data (scans, earnings, profile). Confirm this satisfies the Australian Privacy Act obligations.
 
 **d) Earnings and cashout:**
-Users earn a 5¢ sorting credit per eligible container we verify at a depot (optional photo scan is not the source of the credit). Cash out from $20 via ABA to an Australian bank. Confirm this is not a stored-value facility that needs an AFSL. Credits are a private reward — we receive the 10¢ scheme refund.
+Users earn a 5¢ sorting credit per eligible container we verify at a depot (optional photo scan creates pending credit). Cash out from $20 via ABA to an Australian bank. Confirm this is not a stored-value facility that needs an AFSL. Credits are a private reward — we receive the 10¢ scheme refund.
 
 ### 2. Privacy Policy update (thegoodsort.org/privacy)
 

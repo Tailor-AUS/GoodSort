@@ -4,7 +4,8 @@ using GoodSort.Api.Data.Entities;
 namespace GoodSort.Api.Services;
 
 /// <summary>
-/// Brisbane kerbside clock. We collect the night before council recycling.
+/// Brisbane local clock helpers. Suburb runs are scheduled when volume covers
+/// a trip — suburb volume unlocks scheduling, not a fixed council night.
 /// </summary>
 public static class KerbsideNight
 {
@@ -21,9 +22,8 @@ public static class KerbsideNight
         councilDay is int day && day == TomorrowCouncilDay(utc);
 
     /// <summary>
-    /// Next collection night in Brisbane local time — the calendar day before
-    /// council recycling. Households sort today; this is the night we tell them.
-    /// If that night is today, we still say today (not next week).
+    /// Optional planning date from a household's council day. Product copy no
+    /// longer promises collection on this night — prefer ops-announced runs.
     /// </summary>
     public static DateTime? NextRunnerLocalDate(int? councilDay, DateTime utc)
     {
@@ -35,36 +35,40 @@ public static class KerbsideNight
     }
 
     /// <summary>
-    /// Tonight's run includes every collecting house on tomorrow's council day,
-    /// plus any serviceable house that already put the purple bin out.
+    /// Serviceable houses are eligible for a suburb volume run. Council night
+    /// is not the gate. Prefer <see cref="HouseholdBinIsReady"/> when pending
+    /// container counts are available.
     /// </summary>
     public static bool HouseholdBinIsOnTonightRun(string? binStatus, bool binIsOut, int? councilDay, DateTime utc)
     {
+        _ = binIsOut;
+        _ = councilDay;
+        _ = utc;
+        return BinStatuses.IsServiceable(binStatus);
+    }
+
+    /// <summary>Serviceable and either bags/bin out or pending containers on the books.</summary>
+    public static bool HouseholdBinIsReady(string? binStatus, bool binIsOut, int pendingContainers)
+    {
         if (!BinStatuses.IsServiceable(binStatus)) return false;
-        return binIsOut || IsTonightFor(councilDay, utc);
+        return binIsOut || pendingContainers >= 1;
     }
 }
 
 /// <summary>
-/// A run is one suburb + one recycling day. City-wide or mixed-day
-/// clusters never become a run.
+/// A run is one suburb. City-wide clusters never become a run.
 /// </summary>
 public static class RunCluster
 {
-    public static string? Key(string? suburb, int? day)
+    public static string? Key(string? suburb, int? day = null)
     {
-        var s = BinDayService.CanonicalSuburb(suburb);
-        if (s is null || day is not int d || d is < 0 or > 6) return null;
-        return $"{s}:{d}";
+        return BinDayService.CanonicalSuburb(suburb);
     }
 
-    public static string AreaName(string? suburb, int? day)
+    public static string AreaName(string? suburb, int? day = null)
     {
         var s = BinDayService.CanonicalSuburb(suburb) ?? "Nearby";
-        var title = CultureInfo.InvariantCulture.TextInfo.ToTitleCase(s.ToLowerInvariant());
-        if (day is int d && d is >= 0 and <= 6)
-            return $"{title} {WaitlistDensity.DayNames[d]}";
-        return title;
+        return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(s.ToLowerInvariant());
     }
 
     public static IReadOnlyList<IReadOnlyList<T>> GroupByStreet<T>(

@@ -104,7 +104,7 @@ export default function AdminPage() {
         {!denied && readyDays.length > 0 && (
           <Link href="/admin/waitlist" className="block bg-violet-50 border border-violet-300 rounded-xl p-4 mb-6">
             <p className="text-[14px] font-bold text-violet-900">
-              {readyDays.length} recycling day{readyDays.length === 1 ? "" : "s"} ready to order bins
+              {readyDays.length} suburb{readyDays.length === 1 ? "" : "s"} ready for a volume run
             </p>
             <p className="text-[12px] text-violet-800 mt-1">
               {readyDays.slice(0, 4).map((d) => `${titleSuburb(d.suburb)} ${d.dayName}`).join(" · ")}
@@ -217,7 +217,7 @@ export default function AdminPage() {
             <Package className="w-5 h-5 text-violet-600" />
             <div>
               <p className="text-[14px] font-semibold text-slate-900">Bin waitlist</p>
-              <p className="text-[12px] text-slate-400">Street density, trigger purchase when 12 houses join</p>
+              <p className="text-[12px] text-slate-400">Suburb volume — trigger a run at about 1,000 scanned containers</p>
             </div>
           </Link>
           <Link href="/admin/pickups"

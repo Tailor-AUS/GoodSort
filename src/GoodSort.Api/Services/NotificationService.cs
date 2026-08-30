@@ -18,26 +18,25 @@ public class NotificationService
     public NotificationService(GoodSortDbContext db, IConfiguration config, ILogger<NotificationService> log)
     { _db = db; _config = config; _log = log; }
 
-    public async Task SendWaitlistJoined(string email, string? name, Household hh, int households, int needed, Guid? profileId = null)
+    public async Task SendWaitlistJoined(string email, string? name, Household hh, int containers, int needed, Guid? profileId = null)
     {
         var place = TitleSuburb(hh.Suburb);
         var invite = InviteLink.StreetUrl(hh.Suburb, hh.CouncilCollectionDay, profileId);
         var hello = string.IsNullOrWhiteSpace(name) ? "there" : name;
-        var dayName = DayName(hh.CouncilCollectionDay);
         var status = needed <= 0
-            ? $"<b>{place}</b> {dayName} now has enough neighbours on the same recycling day. We'll tell you when we collect."
-            : $"<b>{households}</b> household{(households == 1 ? "" : "s")} on the {dayName} list in {place}. <b>{needed}</b> more on that recycling day and we start the collection night.";
+            ? $"<b>{place}</b> has enough scanned volume for a driver trip. We'll tell you when to bag out."
+            : $"<b>{containers}</b> container{(containers == 1 ? "" : "s")} scanned in {place}. <b>{needed}</b> more and we run a driver trip to the refund point.";
         var subject = needed <= 0
-            ? $"Start sorting — {place} {dayName} can unlock"
-            : $"Start sorting today in {place}";
+            ? $"{place} volume run is ready — bag out when we say"
+            : $"Scan today in {place} — 5¢ each";
         var body = $@"
           <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
-            <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Start sorting today</h1>
+            <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Scan. Earn 5¢.</h1>
             <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {hello},</p>
-            <p style='font-size:14px;line-height:1.55'>You're on the street list at <b>{hh.Address}</b>. Sort eligible cans and bottles at home — four streams, you manage them.</p>
+            <p style='font-size:14px;line-height:1.55'>You're on the list at <b>{hh.Address}</b>. Scan eligible cans and bottles — sort into four streams at home.</p>
             <p style='font-size:14px;line-height:1.55'>{status}</p>
-            <p style='font-size:14px;line-height:1.55'>We'll tell you the night we collect — the night before {dayName} recycling.</p>
-            <p style='font-size:14px;margin:20px 0 8px'><a href='{WhatsAppInvite(place, invite, dayName)}' style='display:inline-block;background:#25D366;color:#fff;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:12px'>WhatsApp the street</a></p>
+            <p style='font-size:14px;line-height:1.55'>Invite neighbours to scan. Volume unlocks the run — not city-wide totals.</p>
+            <p style='font-size:14px;margin:20px 0 8px'><a href='{WhatsAppInvite(place, invite, containers, needed)}' style='display:inline-block;background:#25D366;color:#fff;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:12px'>WhatsApp the street</a></p>
             <p style='font-size:13px;margin:0 0 20px'><a href='{invite}' style='color:#16a34a;font-weight:600'>Or copy your street link →</a></p>
             <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · Brisbane</p>
           </div>";
@@ -55,7 +54,7 @@ public class NotificationService
             <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>You're on the building list</h1>
             <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {hello},</p>
             <p style='font-size:14px;line-height:1.55'>Request received for <b>{building}</b> at <b>{hh.Address}</b>.</p>
-            <p style='font-size:14px;line-height:1.55'>Common-area pickups are phase 2. Houses on the same recycling day in {place} unlock a purple-bin run first — invite them.</p>
+            <p style='font-size:14px;line-height:1.55'>Common-area pickups are phase 2. Invite houses on the street to scan — suburb volume unlocks a run first.</p>
             <p style='font-size:14px;margin:20px 0 8px'><a href='{WhatsAppInvite(place, invite)}' style='display:inline-block;background:#25D366;color:#fff;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:12px'>WhatsApp the street</a></p>
             <p style='font-size:13px;margin:0 0 20px'><a href='{invite}' style='color:#16a34a;font-weight:600'>Or copy your street link →</a></p>
             <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {place}</p>
@@ -63,34 +62,34 @@ public class NotificationService
         await Send(email, $"Building waitlist in {place}", body);
     }
 
-    public async Task SendAreaUnlocked(string suburb, int day)
+    public async Task SendAreaUnlocked(string suburb, int day, Guid? excludeProfileId = null)
     {
         var place = TitleSuburb(suburb);
-        var dayName = DayName(day);
         var members = await _db.Profiles
             .Include(p => p.Household)
             .Where(p => p.Household != null
                         && p.Household.Type == "residential"
                         && p.Household.Suburb != null
                         && p.Household.Suburb.ToUpper() == suburb.ToUpper()
-                        && p.Household.CouncilCollectionDay == day
                         && !string.IsNullOrWhiteSpace(p.Email))
             .ToListAsync();
 
-        foreach (var member in members)
+        // The person whose scan crossed the threshold sees it in-app; mailing
+        // them "your area unlocked" reads as a mistake.
+        foreach (var member in WaitlistNudge.Recipients(members, excludeProfileId))
         {
             var hello = string.IsNullOrWhiteSpace(member.Name) ? "there" : member.Name;
             var body = $@"
               <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
-                <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>{place} {dayName} has enough neighbours</h1>
+                <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>{place} has enough volume</h1>
                 <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {hello},</p>
-                <p style='font-size:14px;line-height:1.55'>Twelve households in {place} on {dayName} recycling are on the waitlist. That is enough for a collection run. We'll email you when your purple The Good Sort bin is on the way.</p>
-                <p style='font-size:14px;line-height:1.55'>Invite the rest of the street so the first run is dense.</p>
-                <p style='font-size:14px;margin:20px 0 8px'><a href='{WhatsAppInvite(place, InviteLink.StreetUrl(suburb, day, member.Id), dayName)}' style='display:inline-block;background:#25D366;color:#fff;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:12px'>WhatsApp the street</a></p>
+                <p style='font-size:14px;line-height:1.55'>{place} has about {WaitlistDensity.LiveThreshold} scanned containers — enough for one driver trip. We'll email you when to bag out sorted containers on the kerb.</p>
+                <p style='font-size:14px;line-height:1.55'>Invite neighbours to keep scanning so the first trip is full.</p>
+                <p style='font-size:14px;margin:20px 0 8px'><a href='{WhatsAppInvite(place, InviteLink.StreetUrl(suburb, day, member.Id))}' style='display:inline-block;background:#25D366;color:#fff;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:12px'>WhatsApp the street</a></p>
                 <p style='font-size:13px;margin:0 0 20px'><a href='{InviteLink.StreetUrl(suburb, day, member.Id)}' style='color:#16a34a;font-weight:600'>Or copy your street link →</a></p>
                 <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {place}</p>
               </div>";
-            await Send(member.Email!, $"{place} {dayName} unlocked — we'll order purple bins", body);
+            await Send(member.Email!, $"{place} volume run unlocked", body);
         }
     }
 
@@ -99,34 +98,31 @@ public class NotificationService
         var to = OpsAlert.Inbox(_config["OPS_ALERT_EMAIL"], _config["ADMIN_SEED_EMAIL"]);
         if (to is null)
         {
-            _log.LogWarning("Street unlocked {Suburb} day={Day} — set ADMIN_SEED_EMAIL or OPS_ALERT_EMAIL so ops can buy bins", suburb, day);
+            _log.LogWarning("Suburb volume unlocked {Suburb} day={Day} — set ADMIN_SEED_EMAIL or OPS_ALERT_EMAIL so ops can schedule a run", suburb, day);
             return;
         }
         var place = TitleSuburb(suburb);
-        var dayName = DayName(day);
         var body = $@"
           <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
-            <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>{place} {dayName} hit 12</h1>
-            <p style='font-size:14px;line-height:1.55'>Twelve residential households on the same recycling day. That is enough to buy purple bins for that night only — not the suburb, not the city.</p>
+            <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>{place} hit volume threshold</h1>
+            <p style='font-size:14px;line-height:1.55'>About {WaitlistDensity.LiveThreshold} scanned containers in {place} — enough for one driver trip. Suburb volume only; city-wide totals never unlock.</p>
             <p style='font-size:14px;margin:20px 0'><a href='https://thegoodsort.org/admin/waitlist' style='display:inline-block;background:#6d28d9;color:#fff;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:12px'>Open the waitlist</a></p>
             <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · ops</p>
           </div>";
-        await Send(to, $"{place} {dayName}: buy bins", body);
+        await Send(to, $"{place}: schedule volume run", body);
     }
 
-    public async Task SendWaitlistProgress(string suburb, int day, int households, int needed, Guid? excludeProfileId)
+    public async Task SendWaitlistProgress(string suburb, int day, int containers, int needed, Guid? excludeProfileId)
     {
-        if (!WaitlistNudge.ShouldNudgeOthers(households, live: false)) return;
+        if (!WaitlistNudge.ShouldNudgeOthers(containers, live: false)) return;
 
         var place = TitleSuburb(suburb);
-        var dayName = DayName(day);
         var members = await _db.Profiles
             .Include(p => p.Household)
             .Where(p => p.Household != null
                         && p.Household.Type == "residential"
                         && p.Household.Suburb != null
                         && p.Household.Suburb.ToUpper() == suburb.ToUpper()
-                        && p.Household.CouncilCollectionDay == day
                         && p.Household.BinStatus == BinStatuses.Waitlisted
                         && !string.IsNullOrWhiteSpace(p.Email))
             .ToListAsync();
@@ -137,22 +133,21 @@ public class NotificationService
             var invite = InviteLink.StreetUrl(suburb, day, member.Id);
             var body = $@"
               <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
-                <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>{place} {dayName} moved</h1>
+                <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>{place} volume moved</h1>
                 <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {hello},</p>
-                <p style='font-size:14px;line-height:1.55'><b>{households}</b> household{(households == 1 ? "" : "s")} are now on the {dayName} waitlist in {place}. <b>{needed}</b> more on that recycling day and we order purple bins.</p>
-                <p style='font-size:14px;line-height:1.55'>A neighbour just joined. WhatsApp the street again — that is how a run starts.</p>
-                <p style='font-size:14px;margin:20px 0 8px'><a href='{WhatsAppProgress(place, dayName, households, needed, invite)}' style='display:inline-block;background:#25D366;color:#fff;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:12px'>WhatsApp the street</a></p>
+                <p style='font-size:14px;line-height:1.55'><b>{containers}</b> container{(containers == 1 ? "" : "s")} scanned in {place}. <b>{needed}</b> more and we run a driver trip to the refund point.</p>
+                <p style='font-size:14px;line-height:1.55'>A neighbour just joined. WhatsApp the street again — that is how volume builds.</p>
+                <p style='font-size:14px;margin:20px 0 8px'><a href='{WhatsAppProgress(place, containers, needed, invite)}' style='display:inline-block;background:#25D366;color:#fff;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:12px'>WhatsApp the street</a></p>
                 <p style='font-size:13px;margin:0 0 20px'><a href='{invite}' style='color:#16a34a;font-weight:600'>Or copy your street link →</a></p>
                 <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {place}</p>
               </div>";
-            await Send(member.Email!, $"{place} {dayName}: {needed} more unlock bins", body);
+            await Send(member.Email!, $"{place}: {needed} more containers for a run", body);
         }
     }
 
     public async Task SendBinsOnOrder(string suburb, int? day = null)
     {
         var place = TitleSuburb(suburb);
-        var dayName = DayName(day);
         var q = _db.Profiles
             .Include(p => p.Household)
             .Where(p => p.Household != null
@@ -169,12 +164,12 @@ public class NotificationService
             var hello = string.IsNullOrWhiteSpace(member.Name) ? "there" : member.Name;
             var body = $@"
               <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
-                <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Your purple bin is on order</h1>
+                <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Volume run is scheduled</h1>
                 <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {hello},</p>
-                <p style='font-size:14px;line-height:1.55'>We're buying The Good Sort bins for {place}{(day is null ? "" : $" {dayName} recycling")}. We'll tell you when yours is delivered and collection starts.</p>
+                <p style='font-size:14px;line-height:1.55'>We're scheduling a driver trip for {place}. We'll tell you when to bag out your sorted containers.</p>
                 <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {place}</p>
               </div>";
-            await Send(member.Email!, $"Purple bins on order for {place}", body);
+            await Send(member.Email!, $"Volume run scheduled for {place}", body);
         }
     }
 
@@ -187,9 +182,9 @@ public class NotificationService
             var hello = string.IsNullOrWhiteSpace(member.Name) ? "there" : member.Name;
             var body = $@"
               <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
-                <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>We're collecting in {place}</h1>
+                <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Bag out in {place}</h1>
                 <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {hello},</p>
-                <p style='font-size:14px;line-height:1.55'>Your purple The Good Sort bin is ready. Put it on the kerb the night before council recycling. Eligible cans and bottles go in our bin — not the yellow one.</p>
+                <p style='font-size:14px;line-height:1.55'>We're collecting sorted containers in {place}. Bag out eligible cans and bottles on the kerb when we tell you. We take them to a refund point or depot.</p>
                 <p style='font-size:14px;margin:20px 0'><a href='https://thegoodsort.org/household' style='color:#16a34a;font-weight:600'>Open your household →</a></p>
                 <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {hh.Address}</p>
               </div>";
@@ -206,24 +201,23 @@ public class NotificationService
         if (client is null) return;
         var sender = _config["ACS_EMAIL_SENDER"] ?? "DoNotReply@thegoodsort.org";
 
-        // Show each member their cleared (cash-out-eligible) balance.
         foreach (var member in hh.Members.Where(m => !string.IsNullOrWhiteSpace(m.Email)))
         {
             var body = $@"
               <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
-                <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Bin collected ✨</h1>
-                <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {member.Name}, we just collected your purple The Good Sort bin.</p>
+                <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Containers collected ✨</h1>
+                <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {member.Name}, we just collected your sorted containers.</p>
                 <div style='background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px;margin:16px 0'>
                   <p style='font-size:12px;color:#166534;margin:0 0 4px;text-transform:uppercase;letter-spacing:.05em'>Sorting credit on your account</p>
                   <p style='font-size:28px;font-weight:800;color:#166534;margin:0'>${member.ClearedCents / 100.0:F2}</p>
                   <p style='font-size:12px;color:#166534;margin:8px 0 0'>From the runner count at pickup. Bank transfer from $20 once payouts are live.</p>
                 </div>
-                <p style='font-size:13px;line-height:1.55'>Bring the purple bin back in when you&apos;re ready. Council still empties your yellow recycling bin as usual.</p>
+                <p style='font-size:13px;line-height:1.55'>Bring bags back inside when you&apos;re ready.</p>
                 <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {hh.Address}</p>
               </div>";
             try
             {
-                var msg = new EmailMessage(sender, member.Email!, new EmailContent("We picked up your bin — earnings updated") { Html = body });
+                var msg = new EmailMessage(sender, member.Email!, new EmailContent("We picked up your containers — earnings updated") { Html = body });
                 await client.SendAsync(Azure.WaitUntil.Started, msg);
             }
             catch (Exception ex) { _log.LogError(ex, "Pickup confirmation email failed for {Email}", member.Email); }
@@ -263,16 +257,17 @@ public class NotificationService
             .Select(w => char.ToUpperInvariant(w[0]) + w[1..]));
     }
 
-    private static string WhatsAppInvite(string place, string inviteUrl, string? dayName = null)
+    private static string WhatsAppInvite(string place, string inviteUrl, int containers = 0, int needed = WaitlistDensity.LiveThreshold)
     {
-        var day = string.IsNullOrWhiteSpace(dayName) || dayName == "recycling day" ? "the same recycling day" : dayName;
-        var text = $"Start sorting with The Good Sort in {place}. 12 neighbours on {day} start the collection night: {inviteUrl}";
+        var text = needed <= 0
+            ? $"The Good Sort in {place} has enough scanned volume for a driver trip. Scan for 5¢: {inviteUrl}"
+            : $"Scan with The Good Sort in {place}. {containers}/{WaitlistDensity.LiveThreshold} containers — {needed} more for a driver trip: {inviteUrl}";
         return $"https://wa.me/?text={Uri.EscapeDataString(text)}";
     }
 
-    private static string WhatsAppProgress(string place, string dayName, int households, int needed, string inviteUrl)
+    private static string WhatsAppProgress(string place, int containers, int needed, string inviteUrl)
     {
-        var text = $"{households} household{(households == 1 ? "" : "s")} sorting on {dayName} in {place}. {needed} more on that recycling day start the collection night: {inviteUrl}";
+        var text = $"{containers} container{(containers == 1 ? "" : "s")} scanned in {place}. {needed} more and we run a driver trip: {inviteUrl}";
         return $"https://wa.me/?text={Uri.EscapeDataString(text)}";
     }
 }

@@ -1,149 +1,89 @@
-# Collection Economics — Purple Bin / Density Model
+# Collection Economics — Scan-first suburb run
 
-A run is one **suburb + one recycling night** (the night before that suburb's
-council day). Unlock is **12 residential households on the same day**.
-City-wide totals never start collection. Runners collect **our purple bin**.
-They do not open the council yellow bin.
+Working model: **scan a container, earn 5¢**. When a suburb (start
+**Moorooka**) has enough volume to cover a single driver trip (~$50
+Uber-scale), call the run: bags/bin on the kerb, one trip **into the
+scheme path** (existing refund point / processor). Purple bins later.
+Unlock is a **container count**, not 12 houses on a recycling night.
 
-Scan is optional. Household credit is runner count × 5¢
-(`HouseholdCredit.CentsPerContainer`). Unscanned houses estimate 20
-containers (`DefaultUnscannedEstimate`).
+## What the scheme actually pays (do not invent 25¢)
 
-## The Revenue Split
+Containers for Change is a not-for-profit PRO ([COEX help](https://www.containersforchange.com.au/qld/help?category=17)).
+Beverage manufacturers fund it.
 
-```
-CDS refund at a depot (we receive):  10¢
-────────────────────────────────────────
-  → Household (sorting credit):       5¢
-  → Runner (marketplace rate):     3–5¢  (PricingService floor 3¢, base 5¢)
-  → Good Sort (scheme margin):     0–2¢  before scrap
-────────────────────────────────────────
-  + Commodity value of material:   1–3¢  (we keep — aluminium, PET, glass)
-```
+| Line | Amount | Source |
+|------|--------|--------|
+| Supplier levy (Aluminium, through 31 Jan 2027) | **12.8¢** excl GST per container sold in QLD | [COEX manufacturer hub](https://containerexchange.com.au/beverage-manufacturer-hub/) |
+| Weighted average levy (all materials) | ~**13.3¢** | Same hub |
+| Consumer / presenter refund | **10¢** at an approved refund point | Public scheme rule |
+| CRP handling (SEQ, Apr 2026) | community RVM hire **3.12¢**; commercial RVM **5.9¢**; shopfront depot **6.5¢**; higher sort/process **7.68¢** | [SEQ rate card PDF](https://containerexchange.com.au/wp-content/uploads/2026/04/COEX_AssetHire_SEQ-Rate-Card_ALL_CMYK.pdf) |
+| Scrap (aluminium can ~13–15 g) | ~**2–3¢/can** at ~$1.50–2.00/kg | Commodity; whoever **keeps the metal** |
 
-Household credits are a private reward, not the scheme refund. Cash-out is
-fail-closed until `ABA_PAYOUTS_ENABLED=true` and a real remitter is set.
-Do not treat placeholder BSB `062-000` as live payouts.
+The ~13¢ levy is **10¢ refund + network** (CRP handling, logistics,
+processors, COEX). Leftover on aluminium is ~**2.8¢**, not 15¢ of
+secret profit. “Free bins everywhere” are mostly **COEX-owned RVMs**;
+hosts earn handling, not 25¢.
 
-## What Triggers a Run
+## Product split (Knox)
 
-`RunGenerationService` builds tonight's work from Brisbane time (UTC+10,
-QLD has no DST):
+- Household **5¢** — private sorting credit (half of 10¢ because they will
+  not drive to a depot). Not the scheme refund.
+- Driver **5¢/container** *or* a flat **$50** trip.
+- TGS keeps **scrap** only when we keep the material (Path B).
 
-1. Household is `delivered` or `collecting` (waitlisted / allocated never run)
-2. Council day is **tomorrow**, or the purple bin is already out
-3. Cluster key is **suburb + recycling night** — Friday Moorooka never
-   mixes with Monday Annerley or a city-wide 3 km blob
-4. Public drop bins still 3 km-cluster among themselves
+Cash-out stays fail-closed until a real remitter is configured. Do not
+treat placeholder ABA details as live payouts. Do not claim we are a CRP
+until Knox / COEX say so.
 
-The 12-house waitlist is the purchase gate. A run after delivery always
-happens on that night if any serviceable house is due. Profitability is
-why we wait for density before buying bins.
+## Path A — customer at someone else’s CRP (today)
 
-## Time Estimates (Purple Bin)
-
-| Activity | Time |
-|----------|------|
-| Drive to start of route | 5 min (local runner) |
-| Lift our purple bin, count, load | 45–60 sec per house |
-| Drive between houses on the same street | 15 sec |
-| Drive between streets in the same suburb | 2 min |
-| Drive to depot / CRP | 10 min |
-| Unload at depot | 10 min |
-| **TOTAL** | houses × 1 min + streets × 2 min + 25 min |
-
-No yellow-bin rummage. No lid-open extract. Divider stays in our bin.
-
-## Unlock Run — 12 Houses, One Night
-
-The first collecting run is the 12-house unlock. Use the unscanned
-default (20 containers) until runners enter a count.
+We present containers at an existing refund point as a **customer**.
 
 ```
-Houses:       12 on the same recycling day in one suburb
-Distance:     ~4 km circuit + 5 km to depot = 9 km
-Time:         12 × 1 min + 3 streets × 2 min + 25 min = 43 min
-
-Containers:   12 × 20 = 240
-
-SCHEME / SCRAP IN:
-  CDS refund:      240 × $0.10 = $24.00
-  Commodity:       240 × $0.02 = $4.80
-  TOTAL IN:                    $28.80
-
-OUT:
-  Household credit: 240 × $0.05 = $12.00
-  Runner (~3¢):     240 × $0.03 = $7.20
-  Fuel:               9 km × $0.21 = $1.89
-  TOTAL OUT:                    $21.09
-
-GOOD SORT:   $28.80 − $21.09 = $7.71 / week for that night
-RUNNER:      $7.20 for 43 min ≈ $10.00/hr
+IN:   10¢  (scheme refund)
+OUT:  5¢   (household) + 5¢ (driver)   OR   5¢ (household) + $50 (trip)
+SCRAP: $0  (CRP keeps the metal)
+HANDLING: $0  (COEX pays the CRP, not us)
 ```
 
-Viable as a first street. Below 12 we do not buy bins — a 3-house
-scatter across Brisbane is not a run.
+- Driver at **5¢/can:** TGS = **$0** at every `N`.
+- Driver at **$50/trip:** TGS = `N × $0.05 − $50`. Break-even at
+  **1,000 containers** (`$50 / $0.05`). Below that the trip loses money.
+- This path does **not** fund the business beyond covering the trip.
 
-## Dense Suburb Night — 50 Houses, Same Day
+## Path B — we are the CRP / we sell to a processor (target)
+
+Honest “recycler” cash-flow once registered and we keep material:
 
 ```
-Houses:       50 on the same recycling day
-Distance:     8 km circuit + 5 km to depot = 13 km
-Time:         50 × 1 min + 6 × 2 min + 25 min = 87 min
-
-Containers:   50 × 20 = 1,000
-
-IN:   CDS $100 + scrap ~$20 = $120
-OUT:  Households $50 + runner $30 + fuel $2.73 = $82.73
-
-GOOD SORT:   ~$37 / week
-RUNNER:      $30 for 87 min ≈ $20.70/hr
+IN:   10¢ refund + ~5.9¢ commercial handling + ~2.3¢ scrap ≈ 18.2¢
+OUT:  5¢ household + 5¢ driver = 10¢
+TGS:  ≈ 8.2¢ / can before GST / true-up
 ```
 
-Hourly rate scales with density. That is why invite-the-street is the
-growth loop, not scan-every-can.
+At **1,000 cans:** ~$82 TGS, $50 household, $50 driver.
+At **$50 flat Uber** instead of 5¢ driver: break-even on Uber + household
+is roughly **~700 cans** if we still get 10¢ + scrap; **~400 cans** if we
+also get ~5.9¢ handling.
 
-## What Does Not Pay
+Do not use Path B numbers in public copy until we are a CRP.
 
-- **City-wide 12.** Four Moorooka + four Annerley + four West End never
-  unlock. Travel between suburbs kills the hour.
-- **Split days.** Twelve houses in one suburb on two days is two thin
-  nights, not one run.
-- **Yellow-bin rummage.** Time blows out; council bins are not ours.
-- **Scan-gated credit.** Vision HTTP 402 must not zero a street. Runner
-  count is the authority.
+## Run threshold (product constant)
 
-## Break-Even
+Default unlock: **1,000 eligible containers in one suburb** (Moorooka
+first). That is Path A break-even when the trip is $50 and the household
+keeps 5¢. Path B would allow a lower constant — tune only after CRP
+status is real.
 
-At 20 containers/house and 3¢ runner:
+- Cluster key: **suburb only** (not suburb + Friday).
+- City-wide totals never unlock.
+- Waitlisted houses **can scan**; their pending containers count toward `N`.
+- Material does not change the 10¢. Aluminium-only math is for scrap
+  stories under Path B, not the unlock constant.
 
-| Houses on that night | Runner payout | Time | ≈ $/hr |
-|----------------------|---------------|------|--------|
-| 6 (do not unlock)    | $3.60         | 33 min | $6.50 |
-| 12 (unlock)          | $7.20         | 43 min | $10.00 |
-| 20                   | $12.00        | 53 min | $13.60 |
-| 50                   | $30.00        | 87 min | $20.70 |
+## Ops invariants
 
-The waitlist threshold **is** the economics threshold: 12 houses on the
-same recycling day. Early streets: Knox or a local runner does the night.
-Do not hire against a 3-house map.
-
-## Commodity (we keep)
-
-| Material | $/kg (approx) | Weight per unit | Value per unit |
-|----------|--------------|----------------|---------------|
-| Aluminium cans | $1.50/kg | 15g | 2.3¢ |
-| PET clear | $0.40/kg | 25g | 1.0¢ |
-| Glass mixed | $0.04/kg | 300g | 1.2¢ |
-
-Typical household mix ≈ 1.5–2¢ per container on top of the scheme split.
-The divider is what makes that scrap grade possible — not an 8-stream
-sort of the council yellow bin.
-
-## Ops Invariants
-
-1. Unlock = 12 residential households, same suburb, same council day.
-2. Tonight = suburb + night before that day, purple bin only.
-3. Household credit = runner count × 5¢. Scans do not double-pay.
-4. ABA files stay closed until a real remitter is configured.
-5. Do not claim COEX approval, live user counts, or city-wide collection.
+1. Unlock = suburb container volume ≥ `WaitlistDensity.LiveThreshold` (1000).
+2. Household credit = 5¢ per eligible container (scan pending; runner count settles).
+3. ABA files stay closed until a real remitter is configured.
+4. Do not claim COEX approval, live user counts, city-wide collection, or 25¢ margin.

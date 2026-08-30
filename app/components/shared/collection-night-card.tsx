@@ -3,17 +3,17 @@
 import { Truck } from "lucide-react";
 import { formatCollectionNight } from "@/lib/brisbane";
 
-function nightCopy(confirmed: boolean | undefined, unlocked: boolean | undefined, council: string) {
-  if (confirmed) return `Put your sorted containers on the kerb. Night before ${council} recycling.`;
-  if (unlocked) return `Night before ${council} recycling. We'll confirm when the first night is on. Start sorting today.`;
-  return `That's the night before ${council} recycling. This night starts once 12 neighbours on that day join. Start sorting today.`;
+function pickupCopy(confirmed: boolean | undefined, unlocked: boolean | undefined) {
+  if (confirmed) return "Bag out your sorted containers. We take them to a refund point or depot.";
+  if (unlocked) return "Suburb volume is enough for a driver trip. We'll confirm when to bag out. Keep scanning.";
+  return "A volume run starts once your suburb has enough scanned containers for one driver trip. Scan today — 5¢ each.";
 }
 
 export function CollectionNightCard({
   nextPickup,
   confirmed,
   unlocked,
-  dayName,
+  dayName: _dayName,
   tone = "light",
 }: {
   nextPickup: string | null;
@@ -24,7 +24,6 @@ export function CollectionNightCard({
 }) {
   const date = formatCollectionNight(nextPickup);
   if (!date) return null;
-  const council = dayName ?? "your recycling day";
 
   if (tone === "green") {
     return (
@@ -33,10 +32,10 @@ export function CollectionNightCard({
           <Truck className="w-6 h-6 shrink-0 mt-0.5" />
           <div className="flex-1">
             <p className="text-[11px] uppercase tracking-wider text-white/70 mb-1">
-              {confirmed ? "We collect" : "Collection night"}
+              {confirmed ? "Bag out" : "Next pickup"}
             </p>
             <p className="text-xl font-display font-extrabold">{date}</p>
-            <p className="text-[12px] text-white/80 mt-1">{nightCopy(confirmed, unlocked, council)}</p>
+            <p className="text-[12px] text-white/80 mt-1">{pickupCopy(confirmed, unlocked)}</p>
           </div>
         </div>
       </div>
@@ -48,10 +47,10 @@ export function CollectionNightCard({
       <Truck className={`w-5 h-5 shrink-0 mt-0.5 ${confirmed ? "text-green-700" : "text-violet-700"}`} />
       <div>
         <p className={`text-[11px] uppercase tracking-wider ${confirmed ? "text-green-700/70" : "text-violet-700/70"}`}>
-          {confirmed ? "We collect" : "We'll collect"}
+          {confirmed ? "Bag out" : "We'll collect"}
         </p>
         <p className="text-[15px] font-display font-extrabold text-slate-900">{date}</p>
-        <p className="text-[12px] text-slate-500 mt-0.5">{nightCopy(confirmed, unlocked, council)}</p>
+        <p className="text-[12px] text-slate-500 mt-0.5">{pickupCopy(confirmed, unlocked)}</p>
       </div>
     </div>
   );

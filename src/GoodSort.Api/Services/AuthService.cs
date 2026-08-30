@@ -24,6 +24,14 @@ public class AuthService
         _env = env;
     }
 
+    /// <summary>
+    /// How long a code stays valid. Deliberately generous: the sending domain
+    /// is not yet fully warmed, so codes often land in spam and the member is
+    /// hunting for them. The code is HMAC-stored, single-use, attempt-locked
+    /// and rate-limited to 5/hour, so a longer window costs little.
+    /// </summary>
+    public const int OtpValidMinutes = 15;
+
     public async Task<(bool Success, string? Error, string? DevCode)> SendOtp(string email)
     {
         // Rate limit: max 5 OTPs per email per hour
@@ -46,7 +54,7 @@ public class AuthService
         {
             Email = email,
             CodeHash = OtpHash.Compute(code, jwtSecret),
-            ExpiresAt = DateTime.UtcNow.AddMinutes(5),
+            ExpiresAt = DateTime.UtcNow.AddMinutes(OtpValidMinutes),
         });
         await _db.SaveChangesAsync();
 
@@ -68,8 +76,14 @@ public class AuthService
             var client = new EmailClient(connectionString);
             var sender = _config["ACS_EMAIL_SENDER"] ?? "DoNotReply@thegoodsort.org";
 
-            var content = new EmailContent("Your The Good Sort code")
+            var content = new EmailContent($"{code} is your The Good Sort code")
             {
+                // A plain-text alternative alongside the HTML part: HTML-only mail
+                // is a well-known spam heuristic, and this sender is not warmed.
+                PlainText =
+                    $"Your The Good Sort code is {code}." + Environment.NewLine + Environment.NewLine
+                    + $"Enter it to start scanning. The code expires in {OtpValidMinutes} minutes." + Environment.NewLine + Environment.NewLine
+                    + "If you did not request this, you can ignore this email.",
                 Html = $@"
                     <div style='font-family: Inter, system-ui, sans-serif; max-width: 400px; margin: 0 auto; padding: 40px 20px;'>
                         <div style='text-align: center; margin-bottom: 30px;'>
@@ -78,11 +92,11 @@ public class AuthService
                             </div>
                         </div>
                         <h1 style='text-align: center; font-size: 20px; font-weight: 800; color: #0f172a; margin-bottom: 8px;'>Your code</h1>
-                        <p style='text-align: center; color: #64748b; font-size: 14px; margin-bottom: 24px;'>Enter this to start sorting today. We tell you when we collect.</p>
+                        <p style='text-align: center; color: #64748b; font-size: 14px; margin-bottom: 24px;'>Enter this to start scanning. We tell you when we collect.</p>
                         <div style='text-align: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 24px;'>
                             <span style='font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #0f172a;'>{code}</span>
                         </div>
-                        <p style='text-align: center; color: #94a3b8; font-size: 12px;'>This code expires in 5 minutes</p>
+                        <p style='text-align: center; color: #94a3b8; font-size: 12px;'>This code expires in {OtpValidMinutes} minutes</p>
                     </div>",
             };
 

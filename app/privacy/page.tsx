@@ -24,6 +24,9 @@ export default function PrivacyPage() {
           <li>Email address (for account verification)</li>
           <li>Name and household address</li>
           <li>Container scan records (barcodes, materials, timestamps)</li>
+          <li>Photographs you take to identify containers, and a short mathematical
+            fingerprint of each one</li>
+          <li>Where a bin deposit was made, when you scan at one of our bins</li>
           <li>Location data (for map functionality and route optimization)</li>
           <li>Waitlist consent, recycling day, and later collection of a The Good Sort bin</li>
           <li>Collection and earnings history</li>
@@ -51,14 +54,25 @@ export default function PrivacyPage() {
           your personal information. Contact us at privacy@thegoodsort.org to exercise these rights.
         </p>
 
-        <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">5. Location Data</h2>
+        <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">5. Photo Scanning</h2>
+        <p className="text-slate-600 text-sm mb-4">
+          When you photograph containers, the image is sent to an artificial-intelligence
+          service that identifies what is in it. That processing may happen outside
+          Australia. <strong>We do not keep your photo.</strong> We keep a short
+          mathematical fingerprint of it so the same photo cannot be claimed twice,
+          and — for deposits at one of our bins — the location where the scan was made,
+          so we can tell a real deposit from credit farmed remotely. You can use the
+          app without photo scanning.
+        </p>
+
+        <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">6. Location Data</h2>
         <p className="text-slate-600 text-sm mb-4">
           We collect location data only when you actively use the app and have granted permission.
           Location data is used for displaying nearby collection points and optimizing collection routes.
           You can disable location access in your device settings at any time.
         </p>
 
-        <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">6. Contact</h2>
+        <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">7. Contact</h2>
         <p className="text-slate-600 text-sm mb-4">
           For privacy inquiries, contact us at privacy@thegoodsort.org or write to:
           Crispr Projects Pty Ltd (ABN 85 680 798 770), trading as The Good Sort, Moorooka QLD 4105, Australia.

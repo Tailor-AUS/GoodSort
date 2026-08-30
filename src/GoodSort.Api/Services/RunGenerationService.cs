@@ -6,14 +6,14 @@ namespace GoodSort.Api.Services;
 
 /// <summary>
 /// Background service that runs every 30 minutes to:
-/// 1. Cluster collecting purple-bin households (bin out or scanned) into runs
+/// 1. Cluster collecting households (bags on kerb or scanned volume) into runs
 /// 2. Post runs to marketplace when payout ≥ $20 threshold
 /// 3. Add "bin on the kerb" households to nearby runs
 /// 4. Re-price unclaimed runs every 30 minutes
 /// 5. Expire old unclaimed runs after 24hrs
 ///
 /// Waitlisted / allocated streets never generate a run. Scan volume is
-/// optional — a collecting household that puts the purple bin out is enough.
+/// optional — a collecting household that bags out on the kerb is enough.
 /// </summary>
 public class RunGenerationService : BackgroundService
 {
@@ -107,7 +107,7 @@ public class RunGenerationService : BackgroundService
             {
                 if (b.HouseholdId is null) return b.PendingContainers >= 1;
                 if (!households.TryGetValue(b.HouseholdId.Value, out var hh)) return false;
-                return KerbsideNight.HouseholdBinIsOnTonightRun(hh.BinStatus, hh.BinIsOut, hh.CouncilCollectionDay, utc);
+                return KerbsideNight.HouseholdBinIsReady(hh.BinStatus, hh.BinIsOut, b.PendingContainers);
             })
             .OrderByDescending(b => HouseholdCredit.EstimatedContainers(b.PendingContainers))
             .ToList();

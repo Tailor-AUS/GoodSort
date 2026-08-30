@@ -125,7 +125,7 @@ public class VisionService
             };
 
             var msg = container.Eligible
-                ? $"Found a {container.Name}! That's 5 cents 🎉"
+                ? $"Found a {container.Name} 🎉"
                 : $"Spotted a {container.Name}, but it's not CDS eligible unfortunately.";
 
             await LogCall("tailor", success: true, containerCount: 1, sw.ElapsedMilliseconds, userId);
@@ -179,23 +179,24 @@ Material classification rules:
 If you cannot identify the specific product, describe what you see (e.g. ""silver aluminium can 375ml"").
 
 MESSAGE GUIDELINES:
-- If containers found: be encouraging. E.g. ""Nice haul! 3 cans ready to sort — that's 30 cents!"" or ""Spotted some VB stubbies — classic choice, even better recycled.""
+- If containers found: be encouraging, and NEVER mention money, cents, dollars or refunds. E.g. ""Nice haul! 3 cans ready to sort."" or ""Spotted some VB stubbies — classic choice, even better recycled.
 - If no containers but you can see what's in the photo: be witty and Australian. E.g.:
-  - Person/selfie: ""Looking good, but I can't recycle you! Though if I could, you'd be worth way more than 10 cents 😄 Try pointing the camera at a can or bottle.""
+  - Person/selfie: ""Looking good, but I can't recycle you! Try pointing the camera at a can or bottle.""
   - Food: ""That looks delicious but I'm more of a cans-and-bottles sort of AI. Show me your empties!""
   - Pet/animal: ""What a legend! But I can only sort containers, not critters. Got any cans nearby?""
   - Scenery/nature: ""Beautiful spot! If you've got any empties from enjoying the view, point the camera at those.""
-  - Random object: ""Interesting! But that's not quite what I'm after. I'm looking for cans, bottles, or cartons — the stuff you get 10 cents for.""
+  - Random object: ""Interesting! But that's not quite what I'm after. I'm looking for cans, bottles or cartons.""
   - Blurry/dark: ""I can't quite make that out — try getting a bit closer with better lighting.""
 - Keep messages under 30 words. Be warm, Aussie, and a little cheeky.
+- NEVER state or imply any amount of money, cents, dollars or a refund value. The app shows the credit itself.
 
 Return ONLY a JSON object, no explanation or markdown. Examples:
 
 With containers:
-{""containers"":[{""name"":""Coca-Cola 375ml can"",""material"":""aluminium"",""count"":3,""eligible"":true}],""message"":""3 Coke cans spotted! That's 30 cents heading your way 🎉""}
+{""containers"":[{""name"":""Coca-Cola 375ml can"",""material"":""aluminium"",""count"":3,""eligible"":true}],""message"":""3 Coke cans spotted — nice one 🎉""}
 
 No containers (selfie):
-{""containers"":[],""message"":""Can't recycle you mate, but you're definitely worth more than 10 cents! Try pointing at a can or bottle 😄""}
+{""containers"":[],""message"":""Can't recycle you mate! Try pointing at a can or bottle 😄""}
 
 No containers (food):
 {""containers"":[],""message"":""Looks tasty! But I'm after the empties, not the snacks. Got any cans nearby?""}
@@ -346,7 +347,39 @@ public class TailorVisionBarcode
 public class VisionResult
 {
     public List<IdentifiedContainer> Containers { get; set; } = [];
-    public string Message { get; set; } = "";
+
+    private string _message = "";
+
+    /// <summary>
+    /// Model-authored text shown at the top of the results screen. The model
+    /// must never author money copy: the scheme refund is 10c and the product
+    /// credit is 5c, and conflating them would imply we pass through the
+    /// Containers for Change refund. Any money-like token replaces the whole
+    /// message with product-authored text rather than being redacted in place.
+    /// </summary>
+    public string Message
+    {
+        get => _message;
+        set => _message = Sanitise(value);
+    }
+
+    private static readonly string[] MoneyWords = ["cent", "dollar", "refund", "$", "¢"];
+
+    /// <summary>True if the text makes any money claim we have not authored.</summary>
+    internal static bool LooksLikeMoney(string text)
+    {
+        foreach (var w in MoneyWords)
+            if (text.Contains(w, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
+    public static string Sanitise(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return "";
+        return LooksLikeMoney(message)
+            ? "Point the camera at cans or bottles to add them to your sort."
+            : message;
+    }
 }
 
 public class IdentifiedContainer
@@ -354,7 +387,7 @@ public class IdentifiedContainer
     public string Name { get; set; } = "";
     public string Material { get; set; } = "aluminium";
     public int Count { get; set; } = 1;
-    public bool Eligible { get; set; } = true;
+    public bool Eligible { get; set; } // default false: a malformed response must not mint credit
     public double Confidence { get; set; }
     public string? Barcode { get; set; }
 }

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { BRISBANE_SUBURBS, LIVE_HOUSEHOLD_THRESHOLD } from "@/lib/brisbane";
+import { BRISBANE_SUBURBS, LIVE_VOLUME_THRESHOLD } from "@/lib/brisbane";
 import { MarketingHome } from "@/app/components/marketing/marketing-home";
 import { SITE_URL } from "@/app/seo";
 
@@ -16,9 +16,9 @@ export async function generateMetadata({
   const { suburb } = await params;
   const found = BRISBANE_SUBURBS.find((s) => s.slug === suburb);
   if (!found) return { title: "Brisbane" };
-  const description = `Start sorting today in ${found.name}. We tell you the collection night once ${LIVE_HOUSEHOLD_THRESHOLD} neighbours on the same recycling day join.`;
+  const description = `Scan eligible containers in ${found.name}. Earn 5¢ each. About ${LIVE_VOLUME_THRESHOLD} scanned containers unlocks a driver trip to the refund point.`;
   return {
-    title: `${found.name} — start sorting`,
+    title: `${found.name} — start scanning`,
     description,
     alternates: { canonical: `/brisbane/${found.slug}` },
     openGraph: {
@@ -59,7 +59,7 @@ export default async function SuburbPage({
       name: "The Good Sort",
       url: SITE_URL,
     },
-    description: `Start sorting today in ${found.name}. ${LIVE_HOUSEHOLD_THRESHOLD} neighbours on the same recycling day start the collection night.`,
+    description: `Scan and sort in ${found.name}. About ${LIVE_VOLUME_THRESHOLD} scanned containers unlocks a volume run to the refund point.`,
   };
   return (
     <>

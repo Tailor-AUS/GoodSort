@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace GoodSort.Api.Services;
 
 /// <summary>
-/// Scoped worker that sends day-before pickup reminders to households and
+/// Scoped worker that sends pickup reminders to households and
 /// their claiming runners. Intended to be run:
 ///  - automatically at 6pm Brisbane local (via the hosted PickupReminderHost)
 ///  - manually via POST /api/admin/trigger-pickup-reminders for dry-run testing
@@ -64,21 +64,21 @@ public class PickupReminderService
             {
                 foreach (var member in hh.Members.Where(m => !string.IsNullOrWhiteSpace(m.Email)))
                 {
-                    var subject = "Your Good Sort pickup is tomorrow 🌱";
+                    var subject = "Bag out tonight — The Good Sort pickup";
                     var body = $@"
                       <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
-                        <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Purple bin out tonight!</h1>
+                        <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Bag out sorted containers</h1>
                         <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {member.Name},</p>
-                        <p style='font-size:14px;line-height:1.55'>Your council recycling day is <b>{((DayOfWeek)tomorrowDow)}</b>. We'll collect your purple The Good Sort bin the night before / early morning.</p>
+                        <p style='font-size:14px;line-height:1.55'>We're collecting in your suburb. Bag out eligible cans and bottles on the kerb tonight or early morning.</p>
                         <div style='background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px;margin:16px 0'>
                           <p style='font-size:13px;font-weight:600;color:#166534;margin:0 0 6px'>Quick checklist</p>
                           <ul style='font-size:13px;color:#166534;margin:0;padding-left:20px'>
-                            <li>Put your purple The Good Sort bin on the kerb tonight</li>
-                            <li>Cans and bottles on the CDS side of the divider</li>
-                            <li>Council still empties your yellow bin as usual</li>
+                            <li>Bag out sorted containers on the kerb</li>
+                            <li>Eligible cans and bottles only</li>
+                            <li>We take them to a refund point or depot</li>
                           </ul>
                         </div>
-                        <p style='font-size:14px;margin:12px 0'><a href='https://www.thegoodsort.org/household' style='color:#16a34a;font-weight:600'>Tap here once your bin is on the kerb →</a></p>
+                        <p style='font-size:14px;margin:12px 0'><a href='https://www.thegoodsort.org/household' style='color:#16a34a;font-weight:600'>Tap here once bags are on the kerb →</a></p>
                         <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {hh.Address}</p>
                       </div>";
                     await SendEmail(client, sender, member.Email!, subject, body);

@@ -3,8 +3,7 @@
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Camera, RotateCcw, Check, Mail, ShieldCheck, ImagePlus, X, Home } from "lucide-react";
-import { apiUrl, authHeaders, persistWaitlistFromUrl, readReferrerId } from "@/lib/config";
-import { residentialNeedsStreet } from "@/lib/brisbane";
+import { apiUrl, authHeaders, persistWaitlistFromUrl, readReferrerId, hasValidToken } from "@/lib/config";
 
 interface BinInfo {
   id: string; code: string; name: string; address: string; hostedBy: string | null;
@@ -13,7 +12,10 @@ interface IdentifiedItem {
   name: string; material: string; count: number; eligible: boolean;
 }
 
-type Step = "loading" | "waitlist" | "auth" | "verify" | "camera" | "analyzing" | "results" | "error" | "done";
+/** Holds a capture across the OTP round-trip (iOS discards backgrounded tabs). */
+const PENDING_CAPTURE_KEY = "goodsort_pending_capture";
+
+type Step = "loading" | "auth" | "verify" | "camera" | "analyzing" | "results" | "error" | "done";
 
 function ScanPageContent() {
   const router = useRouter();
@@ -46,28 +48,12 @@ function ScanPageContent() {
   // out of this server-side, so the client can't fabricate eligible counts.
   const [scanToken, setScanToken] = useState<string | null>(null);
 
-  async function routeToCameraOrWaitlist() {
-    try {
-      const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
-      if (!profile.householdId) {
-        router.replace("/onboard");
-        return;
-      }
-      const hh = await fetch(apiUrl(`/api/households/${profile.householdId}`), { headers: authHeaders() })
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null);
-      if (residentialNeedsStreet(hh)) {
-        router.replace("/onboard");
-        return;
-      }
-      if (hh) {
-        setStep("camera");
-        return;
-      }
-      router.replace("/sort");
-    } catch {
-      router.replace("/");
-    }
+  // Scanning is the first thing anyone can do. An address is only needed before
+  // we drive to someone's kerb, so it is asked for later — never before the
+  // camera. The API credits a scan with a null HouseholdId, and those
+  // containers are attached to the household when one is created.
+  function openCamera() {
+    setStep("camera");
   }
 
   // ── Init ──
@@ -79,12 +65,16 @@ function ScanPageContent() {
         .then((d) => setBin(d))
         .catch(() => {});
     }
-    const token = localStorage.getItem("goodsort_token");
-    if (!token) {
-      setStep("waitlist");
+    // A pending capture survives the trip to the mail app for the OTP code:
+    // iOS discards backgrounded tabs, so the photo is held in sessionStorage
+    // rather than in React state.
+    const pending = sessionStorage.getItem(PENDING_CAPTURE_KEY);
+    if (pending && hasValidToken()) {
+      setCapturedImage(pending);
+      void analyzeImage(pending);
       return;
     }
-    void routeToCameraOrWaitlist();
+    openCamera();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot land
   }, [binCode]);
 
@@ -122,7 +112,13 @@ function ScanPageContent() {
       localStorage.setItem("goodsort_token", data.token);
       localStorage.setItem("goodsort_profile", JSON.stringify(data.profile));
       document.cookie = `goodsort_token=${data.token}; path=/; max-age=${30*24*60*60}; SameSite=Lax; Secure`;
-      await routeToCameraOrWaitlist();
+      const pending = sessionStorage.getItem(PENDING_CAPTURE_KEY);
+      if (pending) {
+        setAuthLoading(false);
+        await analyzeImage(pending);
+        return;
+      }
+      openCamera();
     } catch { setAuthError("Verification failed"); }
     setAuthLoading(false);
   }
@@ -222,6 +218,12 @@ function ScanPageContent() {
 
   // ── Send to AI ──
   async function analyzeImage(base64: string) {
+    // Ask who they are only once there is something to keep.
+    if (!hasValidToken()) {
+      try { sessionStorage.setItem(PENDING_CAPTURE_KEY, base64); } catch { /* quota — retake */ }
+      setStep("auth");
+      return;
+    }
     setStep("analyzing");
     setApiError(false);
     try {
@@ -235,6 +237,7 @@ function ScanPageContent() {
       setResults(data.containers || []);
       setAiMessage(data.message || "");
       setScanToken(data.scanToken || null);
+      try { sessionStorage.removeItem(PENDING_CAPTURE_KEY); } catch { /* ignore */ }
     } catch {
       setResults([]);
       setApiError(true);
@@ -283,29 +286,15 @@ function ScanPageContent() {
 
   if (step === "loading") return <Center><p className="text-slate-400">Loading...</p></Center>;
 
-  if (step === "waitlist") return (
-    <Center>
-      <IconBubble><Home className="w-7 h-7 text-violet-600" /></IconBubble>
-      <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">
-        {bin ? bin.name : "Scan is optional"}
-      </h1>
-      <p className="text-slate-400 text-[13px] mb-6">
-        Join, then start sorting at home today. Scan is optional — we tell you the night we collect.
-      </p>
-      <GreenButton onClick={() => { window.location.href = "/"; }}>Start sorting</GreenButton>
-      <button onClick={() => setStep("auth")}
-        className="w-full mt-2 py-3 text-slate-500 font-medium text-[13px] hover:text-slate-700 transition-colors">
-        I already joined — optional count
-      </button>
-    </Center>
-  );
-
   // Auth
   if (step === "auth") return (
     <Center>
       <IconBubble><Mail className="w-7 h-7 text-green-600" /></IconBubble>
-      <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">Enter your email</h1>
-      <p className="text-slate-400 text-[13px] mb-6">Optional count. You can start sorting at home today — scan is not required.</p>
+      <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">Nice — where should we keep it?</h1>
+      <p className="text-slate-400 text-[13px] mb-6">
+        Your photo is ready. Add an email so your sorting credit is saved to an account.
+        No address needed yet — we only ask for that before we collect.
+      </p>
       <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
         onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}
         className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 mb-3" autoFocus />
@@ -320,7 +309,7 @@ function ScanPageContent() {
     <Center>
       <IconBubble><ShieldCheck className="w-7 h-7 text-green-600" /></IconBubble>
       <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">Check your email</h1>
-      <p className="text-slate-400 text-[13px] mb-6">Code sent to {email}</p>
+      <p className="text-slate-400 text-[13px] mb-6">Code sent to {email}. The code is in the subject line — check spam too. It expires in 15 minutes, and your photo is held while you fetch it.</p>
       <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp}
         onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} placeholder="000000"
         className="w-full text-center text-3xl font-display font-extrabold tracking-[0.3em] border border-slate-200 rounded-xl px-4 py-4 text-slate-900 placeholder-slate-200 focus:outline-none focus:ring-2 focus:ring-green-500/30 mb-3" autoFocus />
@@ -343,24 +332,24 @@ function ScanPageContent() {
       <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">
         {totalItems > 0 ? "Estimate logged" : "Done"}
       </h1>
-      <p className="text-slate-500 text-[13px] mb-4">{totalItems} container{totalItems !== 1 ? "s" : ""} noted{bin ? ` at ${bin.name}` : ""}. The runner count after we collect is what pays.</p>
+      <p className="text-slate-500 text-[13px] mb-4">{totalItems} container{totalItems !== 1 ? "s" : ""} noted{bin ? ` at ${bin.name}` : ""}. Pending 5¢ clears after we collect and a refund point verifies.</p>
 
       {totalItems > 0 && (
         <div className="bg-green-50 rounded-2xl p-4 border border-green-200 mb-4 text-left">
           <p className="text-[12px] font-bold text-green-800 mb-2">How this works:</p>
           <div className="space-y-1.5 text-[12px] text-green-700">
-            <p>1. Scan is optional — you sort at home today</p>
-            <p>2. We tell you the night we collect</p>
-            <p>3. 12 houses on your recycling day start that night</p>
-            <p>4. 5¢ each from the runner count. Bank transfer from $20 once payouts are live</p>
+            <p>1. Scan eligible containers — 5¢ pending each</p>
+            <p>2. Sort into your bags at home</p>
+            <p>3. Suburb volume unlocks a driver trip to the refund point</p>
+            <p>4. Bag out when we collect. Bank transfer from $20 once payouts are live</p>
           </div>
         </div>
       )}
 
-      <GreenButton onClick={() => { window.location.href = "/sort"; }}>Back to sort</GreenButton>
-      <button onClick={retake}
+      <GreenButton onClick={retake}>Scan another container</GreenButton>
+      <button onClick={() => { window.location.href = "/sort"; }}
         className="w-full mt-2 py-3 text-slate-400 font-medium text-[13px] hover:text-slate-600 transition-colors">
-        Log another optional count
+        Back to sort
       </button>
     </Center>
   );
@@ -444,7 +433,7 @@ function ScanPageContent() {
 
               <div className="mt-4 p-4 bg-green-50 rounded-2xl border border-green-100">
                 <p className="text-[12px] text-slate-700 font-medium">
-                  Keep it in your sorted bags. We collect the night before council recycling.
+                  Keep it in your sorted bags. When suburb volume unlocks a run, bag out — we take them to a refund point.
                 </p>
               </div>
             </div>
@@ -485,7 +474,7 @@ function ScanPageContent() {
       {/* Top bar */}
       <div className="flex-shrink-0 px-5 pb-2 bg-black" style={{ paddingTop: "calc(env(safe-area-inset-top, 16px) + 0.25rem)" }}>
         <p className="text-[15px] text-white font-display font-bold">
-          {bin ? bin.name : "Optional container count"}
+          {bin ? bin.name : "Scan a container · 5¢"}
         </p>
       </div>
 
