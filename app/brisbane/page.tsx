@@ -7,7 +7,7 @@ import { DensityBoard } from "@/app/components/marketing/density-board";
 export const metadata: Metadata = {
   title: "Brisbane suburbs",
   description:
-    "Start sorting today in your Brisbane suburb. We tell you the collection night once 12 neighbours on the same recycling day join.",
+    "Scan eligible containers in your Brisbane suburb. Earn 5¢ each. About 1,000 scanned containers unlocks a driver trip to the refund point.",
   alternates: { canonical: "/brisbane" },
 };
 
@@ -19,7 +19,7 @@ export default function BrisbaneIndexPage() {
       <div className="mb-8"><Logo size="sm" /></div>
       <h1 className="text-3xl font-display font-extrabold text-slate-900 mb-3">Brisbane suburbs</h1>
       <p className="text-[14px] text-slate-500 mb-8">
-        Anyone in a Brisbane City Council suburb can start sorting today. We collect when 12 houses on the same recycling day join. Inner south is first because the depots are there.
+        Anyone in a Brisbane City Council suburb can start scanning today. A volume run unlocks when there are enough containers for one driver trip. Inner south is first because the depots are there.
       </p>
       <DensityBoard />
       <h2 className="text-[12px] uppercase tracking-wider text-slate-400 font-semibold mb-3">Inner south first</h2>

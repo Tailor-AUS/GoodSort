@@ -68,7 +68,7 @@ export default function VerifyPage() {
             <ShieldCheck className="w-8 h-8 text-green-600" />
           </div>
           <h1 className="text-2xl font-display font-extrabold text-slate-900">Check your email</h1>
-          <p className="text-slate-400 text-[13px] mt-1">Code sent to {email}. Check inbox and spam — it expires in 5 minutes.</p>
+          <p className="text-slate-400 text-[13px] mt-1">Code sent to {email}. The code is in the subject line — check spam too. It expires in 15 minutes.</p>
           {devCode && <p className="text-[12px] text-violet-700 mt-2">Local code {devCode} — ACS email is not configured on this machine.</p>}
         </div>
 

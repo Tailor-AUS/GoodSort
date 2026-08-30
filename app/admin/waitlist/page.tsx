@@ -14,12 +14,14 @@ type House = {
   councilCollectionDay: number | null;
   binStatus: string;
   waitlistedAt: string | null;
+  pendingContainers?: number;
 };
 
 type DayRow = {
   day: number;
   dayName: string;
   households: number;
+  containers?: number;
   waitlisted: number;
   allocated: number;
   delivered: number;
@@ -30,6 +32,7 @@ type DayRow = {
 type SuburbRow = {
   suburb: string;
   households: number;
+  containers?: number;
   waitlisted: number;
   allocated: number;
   delivered: number;
@@ -43,7 +46,7 @@ const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function AdminWaitlistPage() {
   const [rows, setRows] = useState<SuburbRow[]>([]);
-  const [threshold, setThreshold] = useState(12);
+  const [threshold, setThreshold] = useState(1000);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -63,7 +66,7 @@ export default function AdminWaitlistPage() {
         return r.json();
       })
       .then((d) => {
-        setThreshold(d.liveThreshold ?? 12);
+        setThreshold(d.liveThreshold ?? 1000);
         setRows(d.suburbs ?? []);
       })
       .catch((e) => setErr(`Failed to load: ${e}`));
@@ -124,7 +127,7 @@ export default function AdminWaitlistPage() {
         </Link>
         <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-1">Bin waitlist</h1>
         <p className="text-[13px] text-slate-500 mb-6">
-          Purchase unlocks at {threshold} households on the same recycling day. Allocate only that day&apos;s houses.
+          A volume run unlocks at about {threshold.toLocaleString()} scanned containers in a suburb — enough for one driver trip. Allocate when volume is ready.
         </p>
         {err && <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-[13px] text-red-700 mb-4">{err}</div>}
 
@@ -135,7 +138,7 @@ export default function AdminWaitlistPage() {
                 <div>
                   <p className="text-[16px] font-display font-extrabold text-slate-900">{titleSuburb(s.suburb)}</p>
                   <p className="text-[12px] text-slate-500">
-                    {s.households} houses · {s.waitlisted} waitlisted · {s.allocated} allocated · {s.delivered + s.collecting} delivered
+                    {(s.containers ?? 0).toLocaleString()}/{threshold.toLocaleString()} containers · {s.households} houses · {s.waitlisted} waitlisted · {s.allocated} allocated · {s.delivered + s.collecting} delivered
                   </p>
                 </div>
               </div>
@@ -143,7 +146,7 @@ export default function AdminWaitlistPage() {
                 <div className="flex flex-wrap gap-2 mb-3">
                   {s.days.map((d) => (
                     <div key={d.day} className="flex items-center gap-2 border border-slate-200 rounded-lg px-2 py-1">
-                      <p className="text-[11px] text-slate-600">{d.dayName} · {d.households}/{threshold}</p>
+                      <p className="text-[11px] text-slate-600">{d.dayName} · {(d.containers ?? 0).toLocaleString()} ctr · {d.households} hh</p>
                       {d.readyToOrder && (
                         <button
                           onClick={() => allocate(s.suburb, d.day, d.dayName)}

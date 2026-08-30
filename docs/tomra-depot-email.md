@@ -8,16 +8,16 @@
 
 Hi,
 
-My name is Knox Hart and I run **The Good Sort** — a purple-bin kerbside collection we are standing up in Brisbane's inner south (Moorooka, South Brisbane, West End). We deliver our own bins. We do not rummage council yellow bins.
+My name is Knox Hart and I run **The Good Sort** — a scan-first suburb volume collection we are standing up in Brisbane's inner south (Moorooka, South Brisbane, West End).
 
-When a street unlocks we will bring CDS-eligible containers to your depot. Your Yeerongpilly / Salisbury facility is the closest to that first area.
+When suburb volume unlocks a run, we bring bagged CDS-eligible containers to your depot. Your Yeerongpilly / Salisbury facility is the closest to that first area.
 
 ## What we expect to deliver
 
 - Pre-separated material in 3 streams: **aluminium cans, PET bottles, glass bottles**
 - Delivered by our runners in bags or tubs (not mixed / not compacted)
 - Each delivery accompanied by a household manifest (scan is optional verification, not required for every container)
-- Starting volume is not live yet — we will confirm a first-drop window once streets unlock. Planning range: **200–500 containers/week**, then **2,000–5,000/week** if density holds
+- Starting volume is not live yet — we will confirm a first-drop window once suburbs unlock. Planning range: **200–500 containers/week**, then **2,000–5,000/week** if density holds
 
 ## What we need
 

@@ -5,9 +5,9 @@ export const SITE_URL = (
 ).replace(/\/+$/, "");
 
 export const SITE_NAME = "The Good Sort";
-export const SITE_TITLE = "The Good Sort | Start sorting today in Brisbane";
+export const SITE_TITLE = "The Good Sort | Start scanning today in Brisbane";
 export const SITE_DESCRIPTION =
-  "Start sorting eligible cans and bottles at home today. Join with your address. We tell you the night we collect — the night before your Brisbane recycling day, once 12 neighbours on that day join.";
+  "Scan eligible cans and bottles in Brisbane. Earn 5¢ sorting credit each. When your suburb hits enough containers for one driver trip, bag out — we take them to a refund point.";
 
 export const SOCIAL_IMAGE = {
   url: "/opengraph-image",

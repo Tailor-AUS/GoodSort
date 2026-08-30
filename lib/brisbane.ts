@@ -2,7 +2,8 @@ import { BRISBANE_SUBURBS, type BrisbaneSuburb } from "./brisbane-suburbs";
 
 export { BRISBANE_SUBURBS, type BrisbaneSuburb };
 
-export const LIVE_HOUSEHOLD_THRESHOLD = 12;
+/** Containers scanned in a suburb before a volume run (one driver trip) unlocks. */
+export const LIVE_VOLUME_THRESHOLD = 1000;
 
 /** BCC residential collection-day dataset used for waitlist clustering. */
 export const BCC_BIN_DAY_DATASET =
@@ -14,13 +15,24 @@ export type GrowthDay = {
   day: number;
   dayName: string;
   households: number;
+  containers: number;
   live: boolean;
   needed: number;
+};
+
+/** Public board payload. `launchBonusContainers` is 0 when the promo is off. */
+export type GrowthBoard = {
+  liveThreshold: number;
+  launchBonusContainers?: number;
+  totalHouseholds: number;
+  totalContainers: number;
+  suburbs: GrowthSuburb[];
 };
 
 export type GrowthSuburb = {
   suburb: string;
   households: number;
+  containers: number;
   live: boolean;
   needed: number;
   bestDay: number | null;
@@ -37,12 +49,13 @@ export function clusterForDay(suburb?: GrowthSuburb | null, day?: number | null)
 
 export type DayClusterStats = {
   households: number;
+  containers: number;
   needed: number;
   live: boolean;
   dayName: string | null;
 };
 
-/** Same suburb + same recycling day only. Never suburb-wide or city-wide totals. */
+/** Prefer day cluster when present. Never city-wide totals. */
 export function dayClusterStats(
   suburb?: GrowthSuburb | null,
   day?: number | null,
@@ -51,6 +64,7 @@ export function dayClusterStats(
   if (!cluster) return null;
   return {
     households: cluster.households,
+    containers: cluster.containers,
     needed: cluster.needed,
     live: cluster.live,
     dayName: cluster.dayName,
@@ -61,13 +75,14 @@ export function dayClusterStats(
 export function justYouStats(dayName?: string | null): DayClusterStats {
   return {
     households: 1,
-    needed: LIVE_HOUSEHOLD_THRESHOLD - 1,
+    containers: 0,
+    needed: LIVE_VOLUME_THRESHOLD,
     live: false,
     dayName: dayName ?? null,
   };
 }
 
-/** Houses on a recycling day. A unit/building viewer must not appear as 1/12. */
+/** Suburb volume for a viewer. A unit/building viewer must not appear as a fake unlock. */
 export function streetStatsForViewer(
   suburb: GrowthSuburb | null | undefined,
   day: number | null | undefined,
@@ -76,7 +91,7 @@ export function streetStatsForViewer(
   const cluster = dayClusterStats(suburb, day);
   if (cluster) return cluster;
   if (viewerCountsTowardUnlock) return justYouStats();
-  return { households: 0, needed: LIVE_HOUSEHOLD_THRESHOLD, live: false, dayName: null };
+  return { households: 0, containers: 0, needed: LIVE_VOLUME_THRESHOLD, live: false, dayName: null };
 }
 
 /** Residential waitlist is incomplete until suburb + recycling day are set. Units skip this — they do not unlock. */
@@ -91,16 +106,16 @@ export function residentialNeedsStreet(hh: {
   return !suburb || hh.councilCollectionDay == null;
 }
 
-/** Closest to a run = fewest more houses needed on the best recycling day. Suburb-wide totals never rank a street. */
+/** Closest to a run = fewest more containers needed. Suburb-wide totals never rank a street. */
 export function rankByUnlockProximity(suburbs: GrowthSuburb[]): GrowthSuburb[] {
   return [...suburbs].sort((a, b) => {
     const ac = clusterForDay(a);
     const bc = clusterForDay(b);
-    const aNeeded = ac?.needed ?? LIVE_HOUSEHOLD_THRESHOLD;
-    const bNeeded = bc?.needed ?? LIVE_HOUSEHOLD_THRESHOLD;
+    const aNeeded = ac?.needed ?? LIVE_VOLUME_THRESHOLD;
+    const bNeeded = bc?.needed ?? LIVE_VOLUME_THRESHOLD;
     if (aNeeded !== bNeeded) return aNeeded - bNeeded;
-    const aHave = ac?.households ?? 0;
-    const bHave = bc?.households ?? 0;
+    const aHave = ac?.containers ?? ac?.households ?? 0;
+    const bHave = bc?.containers ?? bc?.households ?? 0;
     if (bHave !== aHave) return bHave - aHave;
     return a.suburb.localeCompare(b.suburb);
   });
@@ -124,20 +139,20 @@ export function formatCollectionNight(iso?: string | null): string | null {
 
 export function inviteShareText(
   suburb?: string | null,
-  opts?: { dayName?: string | null; households?: number; needed?: number; live?: boolean },
+  opts?: { dayName?: string | null; households?: number; containers?: number; needed?: number; live?: boolean },
 ) {
-  const place = suburb ? titleSuburb(suburb) : "our street";
-  const day = opts?.dayName ? ` ${opts.dayName}` : "";
+  const place = suburb ? titleSuburb(suburb) : "our suburb";
+  const count = opts?.containers ?? opts?.households;
   if (opts?.live) {
-    return `${place}${day} recycling has enough neighbours for a The Good Sort collection night. Start sorting today — they tell you when they collect:`;
+    return `${place} has enough scanned containers for a The Good Sort volume run. Scan eligible cans and bottles — 5¢ sorting credit each. Bag out when they collect:`;
   }
-  if (opts?.households && opts.households > 0 && opts.needed != null) {
-    return `${place}${day} is ${opts.households}/${LIVE_HOUSEHOLD_THRESHOLD} for a The Good Sort collection night. Start sorting today. ${opts.needed} more neighbours on that day and they collect:`;
+  if (count != null && count > 0 && opts?.needed != null) {
+    return `${place} is ${count}/${LIVE_VOLUME_THRESHOLD} containers toward a The Good Sort driver trip. Scan today for 5¢. ${opts.needed} more and they run to the refund point:`;
   }
-  return `Start sorting with The Good Sort in ${place}. ${LIVE_HOUSEHOLD_THRESHOLD} neighbours on the same recycling day start the collection night:`;
+  return `Scan eligible cans and bottles with The Good Sort in ${place}. Earn 5¢ each. When the suburb hits ${LIVE_VOLUME_THRESHOLD} containers they run a driver trip to the refund point:`;
 }
 
-export function inviteMessage(url: string, suburb?: string | null, opts?: { dayName?: string | null; households?: number; needed?: number; live?: boolean }) {
+export function inviteMessage(url: string, suburb?: string | null, opts?: { dayName?: string | null; households?: number; containers?: number; needed?: number; live?: boolean }) {
   return `${inviteShareText(suburb, opts)} ${url}`;
 }
 

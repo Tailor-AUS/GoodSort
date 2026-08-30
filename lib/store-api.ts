@@ -107,15 +107,19 @@ export async function addScanApi(
   barcode: string,
   containerName: string,
   material: string,
-): Promise<User> {
+): Promise<{ user: User; creditedCents: number | null; bonusRemaining: number | null }> {
   const userId = getStoredUserId();
 
   // Always save locally first (offline-first)
   const localUser = addLocalScan(barcode, containerName, material);
 
-  // Then sync to API
+  // Then sync to API. The server decides the credit (the launch bonus doubles
+  // a member's first containers), so report back what it actually granted
+  // rather than assuming the standard rate.
+  let creditedCents: number | null = null;
+  let bonusRemaining: number | null = null;
   if (userId) {
-    await apiFetch("/api/scans", {
+    const res = await apiFetch<{ creditedCents?: number; bonusRemaining?: number }>("/api/scans", {
       method: "POST",
       body: JSON.stringify({
         userId,
@@ -124,9 +128,11 @@ export async function addScanApi(
         material,
       }),
     });
+    if (res && typeof res.creditedCents === "number") creditedCents = res.creditedCents;
+    if (res && typeof res.bonusRemaining === "number") bonusRemaining = res.bonusRemaining;
   }
 
-  return localUser;
+  return { user: localUser, creditedCents, bonusRemaining };
 }
 
 // ── Routes ──

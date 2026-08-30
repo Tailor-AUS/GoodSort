@@ -1,6 +1,6 @@
 # End-to-End Dogfood Playbook
 
-**Superseded for acquisition:** The growth loop is waitlist + street invite, not scanning every container. Use this playbook only after a street is `delivered` / `collecting`. Runners collect our purple bin. Do not rummage the council yellow bin.
+**Superseded for acquisition:** The growth loop is scan + street invite, not scanning every container once. Use this playbook after a suburb volume run is `delivered` / `collecting`. Runners collect bagged containers from the kerb.
 
 **Goal:** Walk the complete user + runner journey with real production data before inviting collecting households.
 
@@ -17,10 +17,10 @@
 ### Phase 1: Be the household
 
 1. Open thegoodsort.org on your phone
-2. Log in → complete onboarding if needed (pick address, bin day, consent, divider)
+2. Log in → complete onboarding if needed (pick address, bin day, consent)
 3. Scan 10–20 containers using the camera (Photo scan → confirm)
 4. Go to /household — confirm pending containers + next pickup date are showing
-5. The evening before your council bin day, open /household and tap "Bin is on the kerb"
+5. When we announce collection, open /household and tap bags on kerb
 
 ### Phase 2: Be the runner
 
@@ -33,7 +33,7 @@
    - If still nothing, manually trigger via /admin → "Trigger reminders now" (this tests emails but won't create a run — run generation is separate)
    - As a last resort: POST /api/admin/seed-marketplace was deleted. You can create a run manually by posting to the Runs endpoint via curl (see API below)
 5. Once claimed: tap "Start Run" → drive to the address → tap "Arrived"
-6. Collect our purple The Good Sort bin (do not open the council yellow bin) → enter actual count → tap "Picked Up"
+6. Collect sorted bags on the kerb → enter actual count → tap "Picked Up"
 7. Drive to Tomra Yeerongpilly (201 Montague Rd, West End)
 8. Feed containers through the machine or hand over to staff
 9. In the app: tap "Delivering" → then "Delivered" / "Complete"
@@ -43,7 +43,7 @@
 
 1. **Runner side:** your Profile.ClearedCents should increase by (containers × perContainerCents)
 2. **Household side:** go to /household — PendingContainers should be 0, ClearedCents should reflect the scanned amount
-3. **Email:** check inbox — you should have received a "Bin collected ✨" email with your updated balance
+3. **Email:** check inbox — you should have received a "Containers collected" email with your updated balance
 4. **Admin:** /admin → stats should show updated cleared earnings, activation should tick up
 
 ### Phase 4: Test cashout
@@ -80,7 +80,7 @@ curl -s "$BASE/api/admin/stats" -H "Authorization: Bearer $TOKEN"
 
 - [ ] Does the scan toast say "+5¢ added to your account" (not "pending")?
 - [ ] Does /household show the correct next-pickup date?
-- [ ] Does the "Bin is on the kerb" toggle persist after refresh?
+- [ ] Does the "bags on kerb" toggle persist after refresh?
 - [ ] Does the runner see the household address (not just coordinates)?
 - [ ] After settle, does the household email arrive within 2 minutes?
 - [ ] After settle, does PendingCents → ClearedCents move correctly?

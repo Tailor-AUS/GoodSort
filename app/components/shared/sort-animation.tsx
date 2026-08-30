@@ -1,9 +1,8 @@
 "use client";
 
 /**
- * Pixel-art loop: house drops eligible cans into a purple The Good Sort
- * bin → runner collects that bin → depot → sorting credit back.
- * No phone scan. No council yellow bin. Respects prefers-reduced-motion.
+ * Pixel-art loop: scan → sort into bags → bag out → runner → refund point → 5¢ credit.
+ * Sort streams animation. Respects prefers-reduced-motion.
  */
 export function SortAnimation() {
   return (
@@ -117,7 +116,7 @@ export function SortAnimation() {
           </g>
         </g>
 
-        {/* ─── Can going into our purple bin ─── */}
+        {/* ─── Can going into sorted bag ─── */}
         <g className="sa-can-bin">
           <rect x="91" y="78" width="4" height="8" fill="#64748b" />
           <rect x="91" y="78" width="4" height="2" fill="#475569" />

@@ -66,7 +66,7 @@ app/
 ├── household/       # household management
 ├── privacy/ terms/  # static legal pages
 lib/
-├── brisbane.ts        # BCC suburbs, waitlist density threshold (12), invite copy
+├── brisbane.ts        # BCC suburbs, LIVE_VOLUME_THRESHOLD (1000 containers), invite copy
 ├── config.ts          # API_URL from NEXT_PUBLIC_API_URL env var
 ├── store.ts           # Types, constants (SORTER_PAYOUT_CENTS=5), localStorage state, 4-bag system
 ├── store-api.ts       # API wrapper — apiFetch() adds Bearer token; offline-first (writes local first, then syncs)
@@ -128,12 +128,12 @@ src/GoodSort.Api/
 
 ### Key domain concepts
 
-- **Sort today, collect when ready**: Join starts sorting at home (own bags, 4 streams). We announce the collection night (night before council). Runs stay density-gated: 12 houses on the **same recycling day in the same suburb**. Waitlisted houses never join tonight's run. `Household.BinStatus` is `waitlisted` → `allocated` → `delivered` → `collecting`. `GET /next-pickup` always returns the night; `confirmed` only when delivered/collecting. Ops allocate from `/admin/waitlist`.
-- **Purple TGS bin**: When a street is live we may deliver our bin. Until then households sort in their own bags. We do not rummage the council yellow bin.
-- **4-bag sorting system**: Blue (aluminium), Teal (PET), Amber (glass), Green (other). Scanner is optional verification, not the growth loop.
+- **Scan first, collect on volume**: Join, then scan eligible containers (5¢ sorting credit pending). Sort into own bags (4 streams). A suburb **volume run** unlocks when there are enough scanned containers for one driver trip (~`LIVE_VOLUME_THRESHOLD` = 1000). Households bag out; we take containers to a refund point/depot. Waitlisted houses can scan but are not on a run until `delivered`/`collecting`. `GET /next-pickup` is confirmed only when delivered/collecting. Ops allocate from `/admin/waitlist`.
+- **Bag-out collection**: Households sort in their own bags. Collection is bag-out → refund point/depot.
+- **4-bag sorting system**: Blue (aluminium), Teal (PET), Amber (glass), Green (other). **Scanner is the growth loop** — scan → 5¢ → suburb volume.
 - **Two balance types**: `pendingCents` (scan credited, not yet cleared) and `clearedCents` (cashout-eligible). $20 minimum to cash out.
-- **Runs**: Collection routes generated for runners. Runner picks up The Good Sort bins from collecting households, delivers to depot, settles.
-- **CDS**: QLD Container Refund Scheme (Containers for Change). 10¢ refund per eligible container. GoodSort pays 5¢ to sorter. Sorting credits are a private reward, not the scheme refund.
+- **Runs**: Volume-gated collection routes for runners. Runner picks up bagged containers (or TGS bins) from collecting households, delivers to refund point/depot, settles.
+- **CDS**: QLD Container Refund Scheme (Containers for Change). 10¢ refund per eligible container when presented at a refund point. GoodSort pays 5¢ sorting credit to sorter. Sorting credits are a private reward, not the scheme refund.
 
 ## Environment Variables
 

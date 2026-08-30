@@ -13,14 +13,14 @@ public class Household
     // Customer segmentation
     public string Type { get; set; } = "residential"; // "residential" | "unit_complex"
 
-    // Council recycling day — used to cluster waitlist density, then to time collection
-    // of our purple bin (same night as council). We do not rummage the council yellow bin.
+    // Council recycling day — used for optional clustering labels and pickup timing.
+    // Collection is bagged containers from the kerb after suburb volume unlocks.
     public int? CouncilCollectionDay { get; set; } // 0=Sun .. 6=Sat; null until user sets
     public string? CouncilArea { get; set; }        // "BCC", "Logan", "Redlands", "Moreton Bay", "Gold Coast"
-    public bool UsesDivider { get; set; } = true;   // divider ships inside the purple TGS bin
-    public bool AccessConsent { get; set; } = false; // waitlist + later collection of our purple bin
+    public bool UsesDivider { get; set; } = true;   // optional divider for four-stream sorting at home
+    public bool AccessConsent { get; set; } = false; // scan + kerbside collection consent
     public DateTime? AccessConsentAt { get; set; }
-    public bool BinIsOut { get; set; } = false;      // purple bin is on the kerb / full, ready for pickup
+    public bool BinIsOut { get; set; } = false;      // sorted bags on kerb / ready for pickup
     public DateTime? BinIsOutAt { get; set; }
     public DateTime? LastPickupAt { get; set; }
 

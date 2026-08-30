@@ -49,12 +49,12 @@ const structuredData = {
         addressCountry: "AU",
       },
       description:
-        "Join with your Brisbane address and start sorting eligible drink containers at home today. We tell you the collection night — the night before council recycling — once 12 houses on the same recycling day join. 5¢ sorting credit after depot verification.",
+        "Scan eligible drink containers in Brisbane for a 5¢ sorting credit. When your suburb has enough containers for one driver trip, bag out — we take them to a refund point or depot. The scheme pays 10¢ when we present; you keep the 5¢ credit.",
       offers: {
         "@type": "Offer",
         price: "0",
         priceCurrency: "AUD",
-        description: "Free to join. Sort today. Collection night starts when your recycling day unlocks.",
+        description: "Free to join. Scan for 5¢. Suburb volume run when there are enough containers for one driver trip.",
       },
     },
     {
@@ -66,7 +66,7 @@ const structuredData = {
           name: "How does The Good Sort work?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Join with your address and start sorting at home today — four streams, you manage them. We tell you the collection night: the night before your council recycling day. That night starts when 12 houses in your suburb on the same recycling day join. We do not rummage the council yellow bin. Scan is optional.",
+            text: "Scan eligible cans and bottles. Earn a 5¢ sorting credit each. Sort into four streams at home. When your suburb has enough scanned containers for one driver trip, bag out — we collect and present them at a refund point or depot.",
           },
         },
         {
@@ -74,7 +74,7 @@ const structuredData = {
           name: "Is The Good Sort live across Brisbane?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "You can start sorting today. Collection nights start only when a suburb and recycling day hit 12 houses. City-wide totals never unlock a run.",
+            text: "You can start scanning today. A suburb volume run starts when there are enough containers for one driver trip. City-wide totals never unlock a run.",
           },
         },
         {
@@ -82,7 +82,7 @@ const structuredData = {
           name: "Do I need to drive to a depot?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "No. Keep sorting at home. When your recycling day is live, we collect from the kerb. You do not drive to a depot.",
+            text: "No. Keep scanning and sorting at home. When suburb volume is enough, bag out — we take the containers to a refund point or depot.",
           },
         },
         {
@@ -90,7 +90,7 @@ const structuredData = {
           name: "Is this the Containers for Change 10¢ refund?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "No. The scheme pays 10¢ when eligible containers reach a refund point. You earn a 5¢ sorting credit from The Good Sort. We are not claiming approval as a Containers for Change refund point.",
+            text: "No. The scheme pays 10¢ when eligible containers are presented at a refund point. You earn a 5¢ sorting credit from The Good Sort. We are not claiming approval as a Containers for Change refund point.",
           },
         },
         {
@@ -98,7 +98,7 @@ const structuredData = {
           name: "Do I have to scan every container?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "No. Scanning is optional. Credits are based on the runner count when we collect, after a depot verifies the containers.",
+            text: "Scan is how you earn the 5¢ sorting credit and build suburb volume. Pending credits clear after we collect and containers are verified at a refund point or depot.",
           },
         },
       ],

@@ -3,19 +3,19 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ShieldCheck, ChevronRight, Recycle, Banknote, Truck, ArrowDown, Check, MapPin, Home } from "lucide-react";
+import { launchBonusHeadline } from "@/lib/credit";
 import { apiUrl, clearAuth, hasValidToken, persistWaitlistFromUrl, readDayHint, readReferrerId, waitlistContinuePath, writeDayHint } from "@/lib/config";
 import { track } from "@/lib/analytics";
-import { BCC_BIN_DAY_DATASET, DAY_NAMES, LIVE_HOUSEHOLD_THRESHOLD, dayClusterStats, daySlug, findSuburb, inviteMessage, sameSuburb, streetInviteUrl, type GrowthSuburb } from "@/lib/brisbane";
+import { BCC_BIN_DAY_DATASET, LIVE_VOLUME_THRESHOLD, dayClusterStats, daySlug, findSuburb, inviteMessage, sameSuburb, streetInviteUrl, type GrowthSuburb } from "@/lib/brisbane";
 import { Logo } from "@/app/components/shared/logo";
 import { SortAnimation } from "@/app/components/shared/sort-animation";
 import { InviteActions } from "@/app/components/shared/invite-actions";
 import { SuburbFinder } from "@/app/components/marketing/suburb-finder";
 import { DensityBoard } from "@/app/components/marketing/density-board";
-import { BinDayFinder } from "@/app/components/marketing/bin-day-finder";
 
 const APP_HOME_PATH = "/sort";
 
-type GrowthResponse = { liveThreshold: number; totalHouseholds: number; suburbs: GrowthSuburb[] };
+type GrowthResponse = { liveThreshold: number; launchBonusContainers?: number; totalHouseholds: number; totalContainers?: number; suburbs: GrowthSuburb[] };
 
 export function MarketingHome({ suburbName }: { suburbName?: string }) {
   const router = useRouter();
@@ -78,28 +78,16 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
       ? growth?.suburbs.find((s) => sameSuburb(s.suburb, place))
     : null;
   const cluster = dayClusterStats(local, dayHint) ?? dayClusterStats(local);
-  const signedUp = place ? (cluster?.households ?? 0) : null;
-  const needed = cluster?.needed ?? LIVE_HOUSEHOLD_THRESHOLD;
-  const dayLive = !!cluster?.live;
+  const scanned = place ? (local?.containers ?? cluster?.containers ?? 0) : null;
+  const needed = local?.needed ?? cluster?.needed ?? LIVE_VOLUME_THRESHOLD;
+  const dayLive = !!(local?.live ?? cluster?.live);
   const shareUrl = streetInviteUrl({ suburb: place, day: dayHint, dayName: cluster?.dayName });
   const shareMessage = inviteMessage(shareUrl, place, {
     dayName: cluster?.dayName,
-    households: place ? (signedUp ?? 0) : undefined,
+    containers: place ? (scanned ?? 0) : undefined,
     needed: place ? needed : undefined,
     live: dayLive,
   });
-  const dayLabel = dayHint != null ? DAY_NAMES[dayHint] : cluster?.dayName;
-
-  async function startJoin() {
-    track("waitlist_cta", { suburb: place });
-    if (hasValidToken()) {
-      router.push(await waitlistContinuePath());
-      return;
-    }
-    if (localStorage.getItem("goodsort_token")) clearAuth();
-    setShowAuth(true);
-    if (email.includes("@")) void sendOtp();
-  }
 
   async function sendOtp() {
     if (!email.includes("@")) return;
@@ -155,8 +143,8 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
             <>
               <div className="text-center mb-8">
                 <div className="flex justify-center mb-5"><Logo size="lg" /></div>
-                <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-2">Start sorting today</h1>
-                <p className="text-slate-400 text-[13px]">Your email. Then your address. We tell you the night we collect.</p>
+                <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-2">Start scanning today</h1>
+                <p className="text-slate-400 text-[13px]">Your email. Then your address. Scan for 5¢ — suburb volume unlocks a driver trip.</p>
               </div>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com"
                 onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}
@@ -174,7 +162,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
                   <ShieldCheck className="w-8 h-8 text-green-600" />
                 </div>
                 <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-1">Check your email</h1>
-                <p className="text-slate-400 text-[13px]">Code sent to {email}. Check inbox and spam — it expires in 5 minutes.</p>
+                <p className="text-slate-400 text-[13px]">Code sent to {email}. The code is in the subject line — check spam too. It expires in 15 minutes.</p>
                 {devCode && <p className="text-[12px] text-violet-700 mt-2">Local code {devCode} — ACS email is not configured on this machine.</p>}
               </div>
               <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp}
@@ -202,48 +190,33 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
           <div className="mb-9"><Logo size="lg" /></div>
 
           <div className="inline-flex items-center gap-2 bg-white/82 text-violet-800 text-[12px] font-semibold px-3.5 py-1.5 rounded-full mb-6 border border-violet-200">
-            <MapPin className="w-3.5 h-3.5" /> {suburbName ? `${suburbName} · start sorting` : "Brisbane · start sorting"}
+            <MapPin className="w-3.5 h-3.5" /> {suburbName ? `${suburbName} · scan first` : "Brisbane · scan first"}
           </div>
 
           {inviteFrom && (
             <p className="max-w-xl mb-5 text-[15px] font-semibold text-violet-900 bg-violet-50/90 border border-violet-200 rounded-2xl px-4 py-3">
-              {inviteFrom.name} invited you{suburbName ? ` to start sorting on ${inviteFrom.dayName ? `${inviteFrom.dayName} ` : ""}${suburbName}` : ""}. Join so your recycling day can unlock.
+              {inviteFrom.name} invited you{suburbName ? ` to scan in ${suburbName}` : ""}. Join and scan — suburb volume unlocks a driver trip.
             </p>
           )}
 
           <h1 className="text-[40px] sm:text-[60px] max-w-2xl leading-[0.98] font-display font-extrabold text-slate-950 mb-6">
-            Start sorting today. We&apos;ll tell you when we collect.
+            Scan, sort, skip the depot.
           </h1>
-          <p className="text-slate-700 text-[17px] sm:text-[19px] leading-relaxed mb-3 max-w-xl">
-            Join with your address. Sort eligible cans and bottles at home — four streams, you manage them. We collect the night before your council recycling day, once 12 houses on that day join.
+          <p className="text-slate-700 text-[17px] sm:text-[19px] leading-relaxed mb-4 max-w-xl">
+            Scan a can, earn 5¢. We collect from your kerb — you never drive to a depot.
           </p>
+          {launchBonusHeadline(growth?.launchBonusContainers) && (
+            <p className="inline-block rounded-full bg-violet-100 text-violet-900 text-[13px] font-semibold px-4 py-2 mb-6">
+              {launchBonusHeadline(growth?.launchBonusContainers)}
+            </p>
+          )}
           <p className="text-slate-500 text-[13px] mb-8 max-w-xl">
-            Not a live city-wide pickup. You earn a 5¢ sorting credit per eligible container. Cash out from $20 once payouts are live. Recycling day comes from{" "}
-            <a href={BCC_BIN_DAY_DATASET} target="_blank" rel="noopener noreferrer" className="underline text-violet-800">Brisbane City Council open data</a>.
+            A 5¢ sorting credit, not the 10¢ scheme refund. <a href="/terms" className="underline text-violet-800">How it works</a>.
           </p>
-
-          {!suburbName && <SuburbFinder />}
-          <BinDayFinder
-            suburbName={suburbName}
-            onResolved={({ day, suburb }) => {
-              if (day != null) {
-                writeDayHint(day);
-                setDayHint(day);
-              }
-              const named = suburb ? (findSuburb(suburb)?.name ?? suburb) : null;
-              if (named) {
-                setLookedUpSuburb(named);
-                try { sessionStorage.setItem("goodsort_suburb_hint", named); } catch { /* ignore */ }
-              }
-            }}
-          />
 
           <div className="w-full max-w-xs">
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com"
-              onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}
-              className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 bg-white/90 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 mb-3" />
-            <GreenButton onClick={() => { void startJoin(); }}>
-              {place ? `Start sorting in ${dayLabel ? `${dayLabel} ` : ""}${place}` : "Start sorting today"} <ChevronRight className="w-5 h-5 inline ml-1" />
+            <GreenButton onClick={() => { track("waitlist_cta", { suburb: place }); router.push("/scan"); }}>
+              Scan a container <ChevronRight className="w-5 h-5 inline ml-1" />
             </GreenButton>
             <button onClick={() => {
               track("waitlist_cta", { suburb: place });
@@ -254,27 +227,21 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
             </button>
           </div>
 
-          <div className="mt-10 max-w-md bg-white/85 border border-violet-200 rounded-2xl px-4 py-3">
-            <p className="text-[12px] text-slate-500 uppercase tracking-wider mb-1">Your street</p>
-            <p className="text-[15px] font-semibold text-slate-900">
-              {dayLive
-                ? `${place ?? "Your suburb"}${cluster?.dayName ? ` ${cluster.dayName}` : ""} has enough neighbours on the same recycling day — we can start the night.`
-                : place
-                  ? signedUp === 0
-                    ? `Be the first house on a recycling day in ${place}. ${LIVE_HOUSEHOLD_THRESHOLD} neighbours on the same day and we start the collection night.`
-                    : `${signedUp} household${signedUp === 1 ? "" : "s"} on ${cluster?.dayName ?? "a recycling day"} in ${place}. ${needed} more on that day and we start the collection night.`
-                  : `Pick your suburb first. Then share that street — a city-wide link never starts a collection night.`}
-            </p>
-            {place ? (
+          {place && (
+            <div className="mt-10 max-w-md bg-white/85 border border-violet-200 rounded-2xl px-4 py-3">
+              <p className="text-[12px] text-slate-500 uppercase tracking-wider mb-1">{place}</p>
+              <p className="text-[15px] font-semibold text-slate-900">
+                {dayLive
+                  ? `Enough containers for a driver trip — bag out when we collect.`
+                  : scanned === 0
+                    ? `Be the first scan here.`
+                    : `${scanned?.toLocaleString()}/${LIVE_VOLUME_THRESHOLD.toLocaleString()} containers. ${needed.toLocaleString()} more and we drive.`}
+              </p>
               <div className="mt-3">
                 <InviteActions url={shareUrl} message={shareMessage} compact />
               </div>
-            ) : (
-              <p className="text-[12px] text-slate-500 mt-2">
-                Suburb chips above, or type your address. Same recycling day is the unlock.
-              </p>
-            )}
-          </div>
+            </div>
+          )}
 
           <div className="mt-10 text-slate-500 animate-bounce lg:hidden">
             <ArrowDown className="w-5 h-5 mx-auto" />
@@ -282,14 +249,16 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
           </div>
           <div className="hidden lg:block pt-8">
             <SortAnimation />
-            <p className="text-center text-[12px] text-slate-500 mt-3">Our purple bin. We collect it. Not the council yellow bin.</p>
+            <p className="text-center text-[12px] text-slate-500 mt-3">Scan → sort into bags → bag out for a volume run.</p>
           </div>
         </div>
       </section>
 
       {!suburbName && (
         <section className="px-6 py-10 max-w-lg mx-auto">
-          <DensityBoard />
+          <h2 className="text-center text-[12px] text-slate-400 font-semibold uppercase tracking-[0.15em] mb-4">Your suburb</h2>
+          <SuburbFinder />
+          <div className="mt-8"><DensityBoard /></div>
         </section>
       )}
 
@@ -297,77 +266,64 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
         <div className="max-w-lg mx-auto text-center">
           <p className="text-slate-400 text-[12px] uppercase tracking-[0.15em] mb-5">The leak</p>
           <h2 className="text-[24px] sm:text-[28px] font-display font-extrabold leading-tight mb-4">
-            The yellow bin is where<br /><span className="text-green-400">the 10¢ goes to die</span>
+            The depot trip is where<br /><span className="text-green-400">the 10¢ goes unclaimed</span>
           </h2>
           <p className="text-slate-400 text-[14px] leading-relaxed max-w-sm mx-auto mb-8">
-            About a third of eligible containers in Queensland go into kerbside recycling unclaimed. People are recycling. They are not driving to a depot.
+            About a third of eligible containers in Queensland never reach a refund point. People are recycling. They are not driving to a depot for 10¢ a bottle.
           </p>
           <div className="grid grid-cols-3 gap-3 max-w-xs mx-auto">
             <MiniStat value="10¢" label="scheme refund" />
             <MiniStat value="5¢" label="your credit" />
-            <MiniStat value="0 min" label="extra habit" />
+            <MiniStat value="scan" label="the habit" />
           </div>
         </div>
       </section>
 
       <section id="how-it-works" className="px-6 py-14 max-w-lg mx-auto">
         <h2 className="text-center text-[12px] text-slate-400 font-semibold uppercase tracking-[0.15em] mb-3">How it works</h2>
-        <p className="text-center text-slate-500 text-[14px] mb-6">Join. Sort at home today. We tell you when we collect.</p>
         <div className="mb-10"><SortAnimation /></div>
 
         <div className="relative">
           <div className="absolute left-[23px] top-6 bottom-6 w-[2px] bg-slate-200 rounded-full" />
           <div className="space-y-10">
             <StepRow icon={<Home className="w-5 h-5" />} color="from-violet-400 to-violet-600" num={1}
-              title="Join with your address"
-              body="Email, address, recycling day. That puts you on the street list and opens sort-at-home."
-              tag="30 seconds" tagColor="bg-violet-100 text-violet-700" />
+              title="Scan a container"
+              body="Point your camera at a can or bottle. 5¢ pending, straight away."
+              tag="Scan first" tagColor="bg-violet-100 text-violet-700" />
             <StepRow icon={<Recycle className="w-5 h-5" />} color="from-blue-400 to-blue-600" num={2}
-              title="Sort at home today"
-              body="You manage four streams: cans, PET, glass, other. Scan is optional. Invite the street so the night can start."
+              title="Sort into your bags"
+              body="Four streams at home: cans, PET, glass, other."
               tag="Your bags, your sort" tagColor="bg-blue-100 text-blue-700" />
             <StepRow icon={<Truck className="w-5 h-5" />} color="from-amber-400 to-amber-600" num={3}
-              title="We tell you when we collect"
-              body={`${LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day start the night. We collect the night before council recycling. We do not rummage the yellow bin.`}
-              tag="Night before council" tagColor="bg-amber-100 text-amber-700" />
+              title="Suburb volume run"
+              body={`At about ${LIVE_VOLUME_THRESHOLD} containers in your suburb, we drive. Bag out; we do the depot run.`}
+              tag="One driver trip" tagColor="bg-amber-100 text-amber-700" />
             <StepRow icon={<Banknote className="w-5 h-5" />} color="from-emerald-400 to-emerald-600" num={4}
               title="Get paid after the depot"
-              body="Credits clear when containers are verified at a depot. Bank transfer from $20 once payouts are live."
+              body="Credits clear after the depot verifies. Bank transfer from $20 once payouts are live."
               tag="5¢ sorting credit" tagColor="bg-emerald-100 text-emerald-700" />
-          </div>
-        </div>
-      </section>
-
-      <section className="px-6 py-12 bg-slate-50">
-        <div className="max-w-lg mx-auto">
-          <h2 className="text-center text-[12px] text-slate-400 font-semibold uppercase tracking-[0.15em] mb-8">Why this works</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <ValueCard title="You sort at home" body="Four streams, your bags. We do not rummage your council yellow bin." />
-            <ValueCard title="Street density" body={`${LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day start a collection night.`} />
-            <ValueCard title="Honest 5¢" body="When we take eligible containers to a refund point, the scheme pays 10¢. You get a 5¢ sorting credit — not the scheme refund. Terms say so." />
-            <ValueCard title="Scan is optional" body="Photo scan can confirm a count. It is not required to start sorting." />
           </div>
         </div>
       </section>
 
       <section className="px-6 py-10">
         <div className="max-w-lg mx-auto flex flex-wrap justify-center gap-6">
-          <TrustItem icon={<MapPin className="w-4 h-4" />} text="Sort today in Brisbane" />
-          <TrustItem icon={<Check className="w-4 h-4" />} text="Told when we collect" />
-          <TrustItem icon={<Check className="w-4 h-4" />} text="Paid after depot verify" />
+          <TrustItem icon={<MapPin className="w-4 h-4" />} text="Scan today in Brisbane" />
+          <TrustItem icon={<Check className="w-4 h-4" />} text="Volume run when ready" />
+          <TrustItem icon={<Check className="w-4 h-4" />} text="Credits clear after depot verify" />
         </div>
       </section>
 
       <section className="px-6 py-14 text-center">
         <div className="max-w-sm mx-auto">
           <h2 className="text-[28px] font-display font-extrabold text-slate-900 mb-3 leading-tight">
-            Start sorting on your street
+            Start scanning in your suburb
           </h2>
           <p className="text-slate-400 text-[14px] mb-8">
-            Sort today. We collect when {LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day join. Invite the neighbours.
+            About {LIVE_VOLUME_THRESHOLD} containers in your suburb and we drive.
           </p>
-          <GreenButton onClick={() => { void startJoin(); }}>
-            Start sorting today <ChevronRight className="w-5 h-5 inline ml-1" />
+          <GreenButton onClick={() => { track("waitlist_cta", { suburb: place }); router.push("/scan"); }}>
+            Scan a container <ChevronRight className="w-5 h-5 inline ml-1" />
           </GreenButton>
         </div>
       </section>

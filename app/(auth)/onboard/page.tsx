@@ -67,7 +67,7 @@ export default function OnboardPage() {
     const ln = override?.lng ?? lng;
     const suburb = canonicalSuburb(override?.suburb) ?? canonicalSuburb(pickedSuburb) ?? canonicalSuburb(suburbHint);
     if (!addr || la == null || ln == null || collectionDay == null) { setError("Pick your address and collection day."); return; }
-    if (!accessConsent) { setError("Tick the box so we can tell you when we collect."); return; }
+    if (!accessConsent) { setError("Tick the box so we can tell you when to bag out."); return; }
     if (!hasValidToken()) { clearAuth(); setError("Your session expired — please sign in again."); router.push("/login"); return; }
     setLoading(true); setError("");
 
@@ -176,7 +176,7 @@ export default function OnboardPage() {
       return;
     }
     if (collectionDay == null) {
-      setError("Pick your recycling day — we unlock a street only when neighbours share the same day.");
+      setError("Pick your recycling day — we use it for routing when suburb volume unlocks a run.");
       return;
     }
     await handleResidentialSubmit({ address: resolved, lat: la, lng: ln, suburb });
@@ -187,10 +187,10 @@ export default function OnboardPage() {
       icon={type === "unit_complex" ? Building2 : Recycle}
       title={type === "unit_complex" ? "Your building" : "Your street"}
       sub={type === "unit_complex"
-        ? "High-rise common-area pickups are phase 2. If you put a bin on the street, join as a house so your recycling day can unlock."
+        ? "High-rise common-area pickups are phase 2. If you put bags on the street, join as a house so your scans count toward suburb volume."
         : suburbHint
-          ? `Start sorting in ${suburbHint}. Address, recycling day, done.`
-          : "Address and recycling day. Start sorting today — we tell you when we collect."}
+          ? `Start scanning in ${suburbHint}. Address, done — then scan for 5¢.`
+          : "Address, then scan. Earn 5¢ each. Suburb volume unlocks a driver trip."}
     >
       <div className="space-y-3 mb-4">
         {type === "residential" && (
@@ -242,15 +242,15 @@ export default function OnboardPage() {
             ))}
           </div>
           <div className="p-3 bg-violet-50 border border-violet-200 rounded-xl mb-3">
-            <p className="text-[13px] font-semibold text-slate-900">Sort at home today. We tell you the collection night.</p>
-            <p className="text-[11px] text-slate-500 mt-0.5">You manage the four streams. We collect the night before council recycling once 12 houses on your day join. We do not rummage the yellow bin.</p>
+            <p className="text-[13px] font-semibold text-slate-900">Scan first. Earn 5¢. Volume unlocks a run.</p>
+            <p className="text-[11px] text-slate-500 mt-0.5">Scan eligible cans and bottles. Sort into four streams. When your suburb has enough containers for one driver trip, bag out — we take them to a refund point.</p>
           </div>
           <label className="flex items-start gap-3 p-3 bg-white border border-slate-200 rounded-xl mb-4 cursor-pointer">
             <input type="checkbox" checked={accessConsent} onChange={e => setAccessConsent(e.target.checked)} className="w-4 h-4 accent-green-600 mt-0.5" />
             <div className="flex-1">
-              <p className="text-[13px] font-semibold text-slate-900">Start sorting today. Tell me when you will collect.</p>
+              <p className="text-[13px] font-semibold text-slate-900">Start scanning today. Tell me when to bag out.</p>
               <p className="text-[11px] text-slate-500">
-                I will sort eligible containers at home. Contact me with the collection night. When you collect, I authorise The Good Sort to take the sorted containers from my kerb. See our <a href="/terms" target="_blank" className="underline text-green-600">Terms</a> and <a href="/privacy" target="_blank" className="underline text-green-600">Privacy Policy</a>.
+                I will scan and sort eligible containers at home. Contact me when suburb volume unlocks a pickup. When you collect, I authorise The Good Sort to take my bagged containers from the kerb. See our <a href="/terms" target="_blank" className="underline text-green-600">Terms</a> and <a href="/privacy" target="_blank" className="underline text-green-600">Privacy Policy</a>.
               </p>
             </div>
           </label>
@@ -263,7 +263,7 @@ export default function OnboardPage() {
           <div className="flex-1">
             <p className="text-[13px] font-semibold text-slate-900">Put this building on the waitlist</p>
             <p className="text-[11px] text-slate-500">
-              Contact me about common-area pickups. I can invite houses on my street — they unlock a run first. See our <a href="/terms" target="_blank" className="underline text-green-600">Terms</a> and <a href="/privacy" target="_blank" className="underline text-green-600">Privacy Policy</a>.
+              Contact me about common-area pickups. I can invite houses on my street to scan — their volume unlocks a run first. See our <a href="/terms" target="_blank" className="underline text-green-600">Terms</a> and <a href="/privacy" target="_blank" className="underline text-green-600">Privacy Policy</a>.
             </p>
           </div>
         </label>
@@ -273,7 +273,7 @@ export default function OnboardPage() {
       <Continue
         onClick={continueFromPlace}
         disabled={loading || !address.trim() || !accessConsent || (type === "unit_complex" ? !buildingName.trim() : !name.trim() || collectionDay == null)}
-        label={loading ? "Saving..." : "Start sorting"}
+        label={loading ? "Saving..." : "Start scanning"}
       />
       <button
         type="button"
@@ -292,8 +292,8 @@ export default function OnboardPage() {
     const place = suburbHint ?? pickedSuburb;
     const inviteUrl = streetInviteUrl({ suburb: place, profileId: readStoredProfileId() });
     return (
-    <Shell icon={Check} title="You're on the building list" sub="We'll email you when we launch common-area pickups. Invite houses on your street — they unlock a run first.">
-      <p className="text-[13px] text-slate-500 mb-4">Body-corporate bins are phase 2. A neighbour in a house on the same recycling day still gets you closer to a purple-bin night.</p>
+    <Shell icon={Check} title="You're on the building list" sub="We'll email you when we launch common-area pickups. Invite houses on your street to scan — their volume unlocks a run first.">
+      <p className="text-[13px] text-slate-500 mb-4">Body-corporate bins are phase 2. A neighbour scanning in a house still builds suburb volume toward a driver trip.</p>
       <div className="mb-4">
         <InviteActions url={inviteUrl} message={inviteMessage(inviteUrl, place)} />
       </div>

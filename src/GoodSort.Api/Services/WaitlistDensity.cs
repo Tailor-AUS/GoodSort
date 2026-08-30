@@ -1,15 +1,20 @@
 using GoodSort.Api.Data;
+using GoodSort.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace GoodSort.Api.Services;
 
 /// <summary>
-/// Public waitlist board. A run unlocks at 12 residential households on the
-/// same recycling day in the same suburb. City-wide totals never unlock.
+/// Public waitlist board. A suburb run unlocks when residential households
+/// there have enough eligible container volume (scan tally) to cover a
+/// single driver trip. See docs/collection-economics.md — break-even at
+/// 1,000 containers if the trip is $50. City-wide totals never unlock.
 /// </summary>
 public static class WaitlistDensity
 {
-    public const int LiveThreshold = 12;
+    /// <summary>Container volume that opens a suburb run ($50 ÷ 5¢ household share).</summary>
+    public const int LiveThreshold = 1000;
+
     public static readonly string[] DayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
     /// <summary>
@@ -19,9 +24,9 @@ public static class WaitlistDensity
     public static async Task<List<HouseholdClusterRow>> LoadRowsAsync(GoodSortDbContext db, CancellationToken ct = default)
     {
         var raw = await db.Households.AsNoTracking()
-            .Select(h => new { h.Suburb, h.CouncilCollectionDay, h.Type })
+            .Select(h => new { h.Suburb, h.CouncilCollectionDay, h.Type, h.PendingContainers, h.BinStatus })
             .ToListAsync(ct);
-        return raw.ConvertAll(r => new HouseholdClusterRow(r.Suburb, r.CouncilCollectionDay, r.Type));
+        return raw.ConvertAll(r => new HouseholdClusterRow(r.Suburb, r.CouncilCollectionDay, r.Type, r.PendingContainers, r.BinStatus));
     }
 
     public static bool CountsTowardCluster(string? type, string? suburb)
@@ -33,7 +38,7 @@ public static class WaitlistDensity
 
     /// <summary>
     /// Admin board grouping. City-wide labels collapse to UNKNOWN and must
-    /// never show a Buy bins action — 12 UNKNOWN houses is not a street.
+    /// never show a Buy bins action.
     /// </summary>
     public static string AdminGroupKey(string? suburb) =>
         BinDayService.CanonicalSuburb(suburb) ?? "UNKNOWN";
@@ -44,78 +49,163 @@ public static class WaitlistDensity
         return key is not null && key != "UNKNOWN";
     }
 
-    /// <summary>Buy bins only when that suburb+day already has 12 houses. Thin streets stay waitlisted.</summary>
-    public static bool CanPurchase(int householdsOnDay) => householdsOnDay >= LiveThreshold;
+    /// <summary>Ops may allocate when suburb container volume hits the trip threshold.</summary>
+    public static bool CanPurchase(int containersInSuburb) => containersInSuburb >= LiveThreshold;
 
-    public static GrowthResponse Aggregate(IEnumerable<HouseholdClusterRow> rows)
+    /// <summary>
+    /// A driver trip needs doors, not just a number. One household reporting the
+    /// whole threshold is a data fault or an attack, not a collectable suburb —
+    /// a runner sent to a single address earns per container and eats the trip.
+    /// </summary>
+    public const int MinHouseholdsForRun = 3;
+
+    public static bool CanDispatch(int containersInSuburb, int householdsInSuburb) =>
+        CanPurchase(containersInSuburb) && householdsInSuburb >= MinHouseholdsForRun;
+
+    /// <summary>
+    /// Ops have committed bins to this household: allocated, delivered or
+    /// collecting. PendingContainers is a credit ledger and is drained at
+    /// settle, so volume alone cannot tell us a suburb is already served.
+    /// </summary>
+    public static bool IsCommitted(string? binStatus) =>
+        binStatus == BinStatuses.Allocated || BinStatuses.IsServiceable(binStatus);
+
+    /// <summary>
+    /// Announce a suburb unlock to residents and ops. Fires once: only while
+    /// no household there has bins committed, and only for the household whose
+    /// containers crossed the threshold. Compares SUBURB volume — a suburb
+    /// splitting 600/400 across two recycling days still unlocks.
+    /// </summary>
+    public static bool ShouldAnnounceUnlock(bool suburbCommitted, int suburbContainers, int householdContainers)
+    {
+        if (suburbCommitted) return false;
+        if (suburbContainers < LiveThreshold) return false;
+        return suburbContainers - Math.Max(0, householdContainers) < LiveThreshold;
+    }
+
+    public static GrowthResponse Aggregate(IEnumerable<HouseholdClusterRow> rows, int launchBonusContainers = 0)
     {
         var counted = rows
             .Where(r => CountsTowardCluster(r.Type, r.Suburb))
             .Select(r => new HouseholdClusterRow(
                 BinDayService.CanonicalSuburb(r.Suburb)!,
                 r.CouncilCollectionDay,
-                "residential"))
+                "residential",
+                Math.Max(0, r.PendingContainers),
+                r.BinStatus))
             .ToList();
 
         var suburbs = counted
             .GroupBy(r => r.Suburb)
             .Select(g =>
             {
+                var households = g.Count();
+                var containers = g.Sum(x => x.PendingContainers);
+                // Once ops commit bins the suburb stays live. Settling a run
+                // drains PendingContainers to 0; that must not push an active
+                // collection route back onto the waitlist board.
+                var committed = g.Any(x => IsCommitted(x.BinStatus));
+                var live = committed || containers >= LiveThreshold;
+                var needed = live ? 0 : Math.Max(0, LiveThreshold - containers);
+
                 var byDay = g.Where(x => x.CouncilCollectionDay != null)
                     .GroupBy(x => x.CouncilCollectionDay!.Value)
                     .Select(d =>
                     {
+                        var dayContainers = d.Sum(x => x.PendingContainers);
                         var n = d.Count();
                         return new GrowthDayDto(
                             d.Key,
                             d.Key is >= 0 and <= 6 ? DayNames[d.Key] : "recycling day",
                             n,
-                            n >= LiveThreshold,
-                            Math.Max(0, LiveThreshold - n));
+                            dayContainers,
+                            live,
+                            needed);
                     })
-                    .OrderByDescending(d => d.Households)
+                    .OrderByDescending(d => d.Containers)
+                    .ThenByDescending(d => d.Households)
                     .ThenBy(d => d.Day)
                     .ToList();
                 var best = byDay.FirstOrDefault();
                 return new GrowthSuburbDto(
                     g.Key!,
-                    g.Count(),
-                    byDay.Any(d => d.Live),
-                    best?.Needed ?? LiveThreshold,
+                    households,
+                    containers,
+                    live,
+                    committed,
+                    needed,
                     best?.Day,
                     best?.DayName,
                     byDay);
             })
             .OrderBy(s => s.Needed)
-            .ThenByDescending(s => s.ByDay.FirstOrDefault()?.Households ?? 0)
+            .ThenByDescending(s => s.Containers)
             .ThenBy(s => s.Suburb)
             .ToList();
 
-        return new GrowthResponse(LiveThreshold, counted.Count, suburbs);
+        return new GrowthResponse(
+            LiveThreshold,
+            launchBonusContainers,
+            counted.Count,
+            counted.Sum(r => r.PendingContainers),
+            suburbs);
     }
 
-    public static GrowthDayDto? DayCluster(GrowthResponse board, string? suburb, int? day)
+    public static GrowthSuburbDto? SuburbCluster(GrowthResponse board, string? suburb)
     {
         var key = BinDayService.CanonicalSuburb(suburb);
         if (key is null) return null;
-        var match = board.Suburbs.FirstOrDefault(s => s.Suburb == key);
+        return board.Suburbs.FirstOrDefault(s => s.Suburb == key);
+    }
+
+    /// <summary>
+    /// Progress for join/email. Unlock is suburb volume, not same-day house count.
+    /// Day is retained only as an optional label.
+    /// </summary>
+    public static GrowthDayDto? DayCluster(GrowthResponse board, string? suburb, int? day)
+    {
+        var match = SuburbCluster(board, suburb);
         if (match is null) return null;
-        if (day is int d) return match.ByDay.FirstOrDefault(x => x.Day == d);
-        return match.ByDay.FirstOrDefault();
+        if (day is int d)
+        {
+            var onDay = match.ByDay.FirstOrDefault(x => x.Day == d);
+            if (onDay is not null) return onDay;
+        }
+        // Suburb-level progress exposed as a synthetic day row for callers that
+        // still read Households/Needed/Live off GrowthDayDto.
+        return new GrowthDayDto(
+            day ?? match.BestDay ?? -1,
+            match.BestDayName ?? "suburb",
+            match.Households,
+            match.Containers,
+            match.Live,
+            match.Needed);
     }
 }
 
-public record HouseholdClusterRow(string? Suburb, int? CouncilCollectionDay, string Type = "residential");
+public record HouseholdClusterRow(
+    string? Suburb,
+    int? CouncilCollectionDay,
+    string Type = "residential",
+    int PendingContainers = 0,
+    string? BinStatus = null);
 
-public record GrowthDayDto(int Day, string DayName, int Households, bool Live, int Needed);
+public record GrowthDayDto(int Day, string DayName, int Households, int Containers, bool Live, int Needed);
 
 public record GrowthSuburbDto(
     string Suburb,
     int Households,
+    int Containers,
     bool Live,
+    bool Committed,
     int Needed,
     int? BestDay,
     string? BestDayName,
     IReadOnlyList<GrowthDayDto> ByDay);
 
-public record GrowthResponse(int LiveThreshold, int TotalHouseholds, IReadOnlyList<GrowthSuburbDto> Suburbs);
+public record GrowthResponse(
+    int LiveThreshold,
+    int LaunchBonusContainers,
+    int TotalHouseholds,
+    int TotalContainers,
+    IReadOnlyList<GrowthSuburbDto> Suburbs);

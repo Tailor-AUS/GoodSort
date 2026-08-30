@@ -3,14 +3,13 @@ using GoodSort.Api.Data.Entities;
 namespace GoodSort.Api.Services;
 
 /// <summary>
-/// Neighbour-join emails. The waitlist compounds when existing members hear
-/// density moved and WhatsApp the street again. City-wide totals never
-/// trigger a nudge. Unlock at 12 is a different email.
+/// Neighbour emails when suburb scan volume moves. City-wide totals never
+/// trigger a nudge. Crossing LiveThreshold is a different email.
 /// </summary>
 public static class WaitlistNudge
 {
-    public static bool ShouldNudgeOthers(int householdsOnDay, bool live) =>
-        householdsOnDay >= 2 && !live && householdsOnDay < WaitlistDensity.LiveThreshold;
+    public static bool ShouldNudgeOthers(int containersInSuburb, bool live) =>
+        containersInSuburb >= 2 && !live && containersInSuburb < WaitlistDensity.LiveThreshold;
 
     public static IReadOnlyList<Profile> Recipients(IEnumerable<Profile> members, Guid? excludeProfileId)
     {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { LIVE_HOUSEHOLD_THRESHOLD, inviteMessage, streetInviteUrl, titleSuburb } from "@/lib/brisbane";
+import { LIVE_VOLUME_THRESHOLD, inviteMessage, streetInviteUrl, titleSuburb } from "@/lib/brisbane";
 import { readStoredProfileId } from "@/lib/config";
 import { InviteActions } from "@/app/components/shared/invite-actions";
 
@@ -15,36 +15,37 @@ type WaitlistCardProps = {
   day?: number | null;
   building?: boolean;
   hideInvite?: boolean;
+  containers?: number;
 };
 
-export function WaitlistCard({ suburb, households, needed, live, binStatus, dayName, day, building, hideInvite }: WaitlistCardProps) {
+export function WaitlistCard({ suburb, households, needed, live, binStatus, dayName, day, building, hideInvite, containers }: WaitlistCardProps) {
   const place = suburb ? titleSuburb(suburb) : "your suburb";
-  const dayLabel = dayName ?? "your recycling day";
   const ordered = binStatus === "allocated";
   const arriving = binStatus === "delivered" || binStatus === "collecting";
   const [profileId, setProfileId] = useState<string | undefined>(undefined);
   useEffect(() => { setProfileId(readStoredProfileId()); }, []);
   const inviteUrl = streetInviteUrl({ suburb, day, dayName, profileId });
-  const message = inviteMessage(inviteUrl, suburb, { dayName, households, needed, live });
+  const volume = containers ?? 0;
+  const message = inviteMessage(inviteUrl, suburb, { dayName, containers: volume, households, needed, live });
 
-  let title = building ? `Building list in ${place}` : `Keep sorting in ${place}`;
+  let title = building ? `Building list in ${place}` : `Keep scanning in ${place}`;
   let body = building
-    ? `${households} house${households === 1 ? "" : "s"} on ${dayLabel} so far. You do not count toward the 12. Invite a house on the street.`
-    : `${households} household${households === 1 ? "" : "s"} on ${dayLabel}. ${needed} more on that day and we start the collection night. Invite the street.`;
+    ? `${volume} container${volume === 1 ? "" : "s"} scanned on the street so far. You do not count toward suburb volume. Invite a house to scan.`
+    : `${volume}/${LIVE_VOLUME_THRESHOLD} containers in ${place}. ${needed} more and we run a driver trip to the refund point. Invite neighbours to scan.`;
   if (arriving) {
     title = `${place} is collecting`;
-    body = "Put your sorted containers on the kerb the night before council recycling.";
+    body = "Bag out your sorted containers when we collect. We take them to a refund point or depot.";
   } else if (ordered) {
-    title = `${place} unlocked — collection night is on`;
-    body = "We'll tell you when we collect. Invite the rest of the street so the first night is dense.";
+    title = `${place} unlocked — volume run is on`;
+    body = "We'll tell you when to bag out. Invite neighbours to scan so the first trip is full.";
   } else if (live) {
-    title = `${place} ${dayLabel} has enough neighbours`;
-    body = `We've hit ${LIVE_HOUSEHOLD_THRESHOLD} households on the same recycling day. We'll tell you when we collect.`;
+    title = `${place} has enough volume`;
+    body = `We've hit about ${LIVE_VOLUME_THRESHOLD} scanned containers — enough for one driver trip. We'll tell you when to bag out.`;
   }
 
   return (
     <div className="bg-violet-50 border border-violet-200 rounded-2xl px-4 py-3 mb-3">
-      <p className="text-[11px] uppercase tracking-wider text-violet-700/70 mb-1">Street</p>
+      <p className="text-[11px] uppercase tracking-wider text-violet-700/70 mb-1">Suburb</p>
       <p className="text-[15px] font-display font-extrabold text-slate-900">{title}</p>
       <p className="text-[12px] text-slate-600 mt-1">{body}</p>
       {!arriving && !hideInvite && (

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ScanBarcode } from "lucide-react";
-import { LIVE_HOUSEHOLD_THRESHOLD, inviteMessage, residentialNeedsStreet, streetInviteUrl, titleSuburb } from "@/lib/brisbane";
+import { LIVE_VOLUME_THRESHOLD, inviteMessage, residentialNeedsStreet, streetInviteUrl, titleSuburb } from "@/lib/brisbane";
 import { readStoredProfileId } from "@/lib/config";
 import { Logo } from "@/app/components/shared/logo";
 import { WaitlistCard } from "@/app/components/shared/waitlist-card";
@@ -31,30 +31,31 @@ export function WaitlistHome({
   const suburb = household?.suburb;
   const building = household?.type === "unit_complex";
   const have = household?.households ?? (building ? 0 : 1);
-  const needed = household?.needed ?? Math.max(0, LIVE_HOUSEHOLD_THRESHOLD - have);
+  const containers = household?.containers ?? 0;
+  const needed = household?.needed ?? Math.max(0, LIVE_VOLUME_THRESHOLD - containers);
   const live = !!household?.areaLive;
   const dayName = household?.dayName;
-  const pct = Math.min(100, Math.round((have / LIVE_HOUSEHOLD_THRESHOLD) * 100));
-  const place = suburb ? titleSuburb(suburb) : "your street";
+  const pct = Math.min(100, Math.round((containers / LIVE_VOLUME_THRESHOLD) * 100));
+  const place = suburb ? titleSuburb(suburb) : "your suburb";
   const [profileId, setProfileId] = useState<string | undefined>(undefined);
   useEffect(() => { setProfileId(readStoredProfileId()); }, []);
   const inviteUrl = streetInviteUrl({ suburb, day: household?.councilCollectionDay, dayName, profileId });
-  const message = inviteMessage(inviteUrl, suburb, { dayName, households: have, needed, live });
+  const message = inviteMessage(inviteUrl, suburb, { dayName, containers, households: have, needed, live });
 
   return (
     <div className="min-h-dvh bg-white px-6 py-10 flex flex-col items-center" style={{ paddingTop: "max(5.5rem, calc(env(safe-area-inset-top) + 4.5rem))" }}>
       <div className="w-full max-w-sm">
         <div className="flex justify-center mb-6"><Logo size="md" /></div>
         <p className="text-[12px] uppercase tracking-wider text-violet-700/70 font-semibold mb-2">
-          {building ? "Building list" : "Your street"}
+          {building ? "Building list" : "Your suburb"}
         </p>
         <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-2">
-          {building ? `Sort at home in ${place}` : "Start sorting today"}
+          {building ? `Scan in ${place}` : "Scan. Earn 5¢."}
         </h1>
         <p className="text-[14px] text-slate-500 mb-5">
           {building
-            ? "You manage your own four streams. Common-area pickups are phase 2 — invite a house on the street so a collection night can start."
-            : `You manage the four streams at home. We tell you the night we collect — the night before ${dayName ?? "your recycling day"}.`}
+            ? "Scan eligible containers and sort into four streams. Common-area pickups are phase 2 — invite a house on the street to build suburb volume."
+            : "Scan eligible cans and bottles for 5¢ each. Sort into four streams. When suburb volume is enough for one driver trip, bag out — we take them to a refund point."}
         </p>
 
         <CollectionNightCard
@@ -71,21 +72,21 @@ export function WaitlistHome({
           <p className="text-[13px] font-semibold text-slate-800 mt-2">
             {building
               ? live
-                ? "Houses on a recycling day have hit 12. You do not count toward the 12."
-                : `${have} house${have === 1 ? "" : "s"} on ${dayName ?? "a recycling day"} in ${place}. You do not count toward the 12.`
+                ? "Street volume has hit a driver trip. You do not count toward suburb volume."
+                : `${containers} containers scanned near ${place}. You do not count toward suburb volume.`
               : live
-                ? `${have} household${have === 1 ? "" : "s"} on ${dayName ?? "that recycling day"} — enough to start the night`
-                : `${have}/${LIVE_HOUSEHOLD_THRESHOLD} on ${dayName ?? "your recycling day"}${needed > 0 ? ` · text ${needed} more ${dayName ?? "same-day"} house${needed === 1 ? "" : "s"}` : ""}`}
+                ? `${containers} containers — enough for a driver trip`
+                : `${containers}/${LIVE_VOLUME_THRESHOLD} containers${needed > 0 ? ` · ${needed} more to unlock a run` : ""}`}
           </p>
         </div>
 
         {!live && !pickupConfirmed && (
           <div className="mb-5">
             <p className="text-[15px] font-display font-extrabold text-slate-900 mb-1">
-              {building ? "Invite a house on the street" : `Text 3 ${dayName ?? "same-day"} houses now`}
+              {building ? "Invite a house to scan" : "Invite neighbours to scan"}
             </p>
             <p className="text-[12px] text-slate-500 mb-3">
-              The collection night starts when {LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day join. Same day is the unlock.
+              A volume run starts at about {LIVE_VOLUME_THRESHOLD} containers — enough for one driver trip. Scan is the unlock.
             </p>
             <InviteActions url={inviteUrl} message={message} />
           </div>
@@ -105,21 +106,22 @@ export function WaitlistHome({
           <button
             type="button"
             onClick={onScanPress}
-            className="w-full bg-white border border-slate-200 text-slate-700 font-semibold py-3 rounded-2xl text-[13px] mb-5 flex items-center justify-center gap-2 min-h-[44px]"
+            className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-2xl text-[14px] mb-5 flex items-center justify-center gap-2 min-h-[48px] shadow-lg shadow-green-600/20"
           >
             <ScanBarcode className="w-4 h-4" />
-            Optional: photo a container
+            Scan a container
           </button>
         )}
 
         {residentialNeedsStreet(household) && (
           <a href="/onboard" className="block mb-4 text-center text-[13px] font-semibold text-violet-800 bg-violet-50 border border-violet-200 rounded-xl py-3">
-            Add your suburb and recycling day so we can tell you the collection night
+            Add your suburb so we can count your scans toward a volume run
           </a>
         )}
         <WaitlistCard
           suburb={suburb}
           households={have}
+          containers={containers}
           needed={needed}
           live={live}
           binStatus={household?.binStatus ?? "waitlisted"}
@@ -129,7 +131,7 @@ export function WaitlistHome({
           hideInvite={!live && !pickupConfirmed}
         />
         <p className="text-[12px] text-slate-400 text-center mt-4">
-          Credits start after we collect and a depot verifies the containers. Scan is optional.
+          Credits clear after we collect and a refund point or depot verifies the containers.
         </p>
       </div>
     </div>

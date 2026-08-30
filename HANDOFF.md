@@ -4,7 +4,7 @@
 revoked the Sovrgn consumer. Do not set `SOVRGN_API_KEY`. The live product
 block is the waitlist ship — see
 `C:\TailorOS\_session_handoffs\HANDOFF_TGS_WAITLIST_SHIP_2026-08-25.md`.
-Conversion is request a purple bin, not scan-every-can. Do not fill ABA.
+Conversion is scan-first suburb volume, not scan-every-can. Do not fill ABA.
 Do not send mail.
 
 ---

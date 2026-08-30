@@ -6,7 +6,7 @@ import { type SortBin, type User, formatCents } from "@/lib/store";
 import { PoweredByTailor } from "@/app/components/shared/powered-by-tailor";
 import { WaitlistCard } from "@/app/components/shared/waitlist-card";
 import { CollectionNightCard } from "@/app/components/shared/collection-night-card";
-import { isCollecting } from "@/lib/brisbane";
+import { isCollecting, LIVE_VOLUME_THRESHOLD } from "@/lib/brisbane";
 import Link from "next/link";
 
 export type HouseholdStatus = {
@@ -19,6 +19,7 @@ export type HouseholdStatus = {
   areaLive?: boolean;
   needed?: number;
   households?: number;
+  containers?: number;
   dayName?: string | null;
 };
 
@@ -104,11 +105,13 @@ export function SorterSheet({
                 <WaitlistCard
                   suburb={household.suburb}
                   households={household.households ?? (household.type === "unit_complex" ? 0 : 1)}
+                  containers={household.containers ?? 0}
                   building={household.type === "unit_complex"}
-                  needed={household.needed ?? 12}
+                  needed={household.needed ?? LIVE_VOLUME_THRESHOLD}
                   live={!!household.areaLive}
                   binStatus={household.binStatus}
                   dayName={household.dayName}
+                  day={household.councilCollectionDay}
                 />
               )}
 
@@ -126,7 +129,7 @@ export function SorterSheet({
                       ? "bg-green-50 border-green-500 text-green-800"
                       : "bg-gradient-to-b from-green-500 to-green-600 text-white border-transparent"
                   }`}>
-                  {household.binIsOut ? "Purple bin is on the kerb — tap if it's back in" : "Purple bin is on the kerb"}
+                  {household.binIsOut ? "Bags on kerb — tap if brought back in" : "Bag out sorted containers?"}
                 </button>
               )}
 

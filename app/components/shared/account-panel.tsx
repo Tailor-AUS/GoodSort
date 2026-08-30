@@ -5,7 +5,7 @@ import Link from "next/link";
 import { X, Package, Leaf, Truck, Wallet, LogOut, CheckCircle, Users, Gift, Trash2, Car } from "lucide-react";
 import { apiUrl, authHeaders, readStoredProfileId } from "@/lib/config";
 import { formatCents, type User } from "@/lib/store";
-import { inviteMessage, isCollecting, sameSuburb, streetInviteUrl, streetStatsForViewer, type GrowthSuburb } from "@/lib/brisbane";
+import { inviteMessage, isCollecting, LIVE_VOLUME_THRESHOLD, sameSuburb, streetInviteUrl, streetStatsForViewer, titleSuburb, type GrowthSuburb } from "@/lib/brisbane";
 import { InviteActions } from "@/app/components/shared/invite-actions";
 
 interface AccountPanelProps {
@@ -16,7 +16,7 @@ interface AccountPanelProps {
 
 export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
   const [binStatus, setBinStatus] = useState<string | null>(null);
-  const [streetStats, setStreetStats] = useState<{ households: number; needed: number; dayName: string | null } | null>(null);
+  const [streetStats, setStreetStats] = useState<{ households: number; containers: number; needed: number; dayName: string | null } | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -30,7 +30,7 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
         if (hh?.binStatus) setBinStatus(hh.binStatus);
         const match = g?.suburbs?.find((s: GrowthSuburb) => sameSuburb(s.suburb, hh?.suburb));
         const cluster = streetStatsForViewer(match, hh?.councilCollectionDay, hh?.type !== "unit_complex");
-        setStreetStats({ households: cluster.households, needed: cluster.needed, dayName: cluster.dayName });
+        setStreetStats({ households: cluster.households, containers: cluster.containers, needed: cluster.needed, dayName: cluster.dayName });
       }).catch(() => {});
     } catch { /* ignore */ }
   }, [open]);
@@ -70,9 +70,9 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
         <div className="p-6 border-b border-slate-100">
           {waiting ? (
             <div className="grid grid-cols-3 gap-2">
-              <StatCard icon={Users} label="On your day" value={(streetStats?.households ?? 0).toString()} />
-              <StatCard icon={Gift} label="Still need" value={(streetStats?.needed ?? 12).toString()} />
-              <StatCard icon={Truck} label="Day" value={streetStats?.dayName?.slice(0, 3) ?? "—"} />
+              <StatCard icon={Package} label="Scanned" value={(streetStats?.containers ?? 0).toLocaleString()} />
+              <StatCard icon={Gift} label="Still need" value={(streetStats?.needed ?? LIVE_VOLUME_THRESHOLD).toLocaleString()} />
+              <StatCard icon={Users} label="Scanners" value={(streetStats?.households ?? 0).toString()} />
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-2">
@@ -85,7 +85,7 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
 
         <div className="p-6">
           {waiting ? (
-            <p className="text-[13px] text-slate-500 mb-1">Start sorting today. Invite the street so the collection night can start. Scan is optional.</p>
+            <p className="text-[13px] text-slate-500 mb-1">Scan for 5¢. Invite neighbours to scan — suburb volume unlocks a driver trip.</p>
           ) : (
             <>
           <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-[0.15em] mb-3">
@@ -222,6 +222,7 @@ function InviteFriends({ user: _user }: { user: User }) {
   const dayLive = cluster.live;
   const message = inviteMessage(inviteUrl, suburb, {
     dayName: cluster?.dayName,
+    containers: cluster.containers,
     households: waiting,
     needed,
     live: dayLive,
@@ -236,11 +237,11 @@ function InviteFriends({ user: _user }: { user: User }) {
       <p className="text-[12px] text-green-700/70 mb-3">
         {building
           ? (dayLive
-            ? "Houses on a recycling day have hit 12. You are on the building list — invite more houses. $1 pending after they join; cash-out after we start collecting."
-            : `${waiting} house${waiting === 1 ? "" : "s"} on ${cluster?.dayName ?? "a recycling day"}. You do not count toward the 12. Invite a house — $1 pending after they join.`)
+            ? "Suburb volume can run a driver trip. Common-area pickups are phase 2 — invite more houses to scan."
+            : `${waiting} house${waiting === 1 ? "" : "s"} scanning near ${titleSuburb(suburb ?? "") || "your suburb"}. You do not count toward suburb volume. Invite a house to scan.`)
           : (dayLive
-          ? "Your recycling day has enough neighbours. Share so the first run is dense. A neighbour you invite earns you $1 pending — cash-out after we start collecting."
-          : `${waiting} household${waiting === 1 ? "" : "s"} on ${cluster?.dayName ?? "your recycling day"}. ${needed} more on that day unlocks bins. A neighbour you invite earns you $1 pending — cash-out after we start collecting.`)}
+          ? "Enough scanned volume for a driver trip. Share so the first run is full."
+          : `${(cluster.containers ?? waiting).toLocaleString()} container${(cluster.containers ?? waiting) === 1 ? "" : "s"} scanned in ${titleSuburb(suburb ?? "") || "your suburb"}. ${needed.toLocaleString()} more for a driver trip. Every neighbour who scans gets your suburb collected sooner.`)}
       </p>
       <InviteActions url={inviteUrl} message={message} compact />
     </div>

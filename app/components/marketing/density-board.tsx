@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiUrl } from "@/lib/config";
-import { LIVE_HOUSEHOLD_THRESHOLD, clusterForDay, rankByUnlockProximity, streetInvitePath, titleSuburb, wedgeSuburbs, type GrowthSuburb } from "@/lib/brisbane";
+import { LIVE_VOLUME_THRESHOLD, clusterForDay, rankByUnlockProximity, streetInvitePath, titleSuburb, wedgeSuburbs, type GrowthSuburb } from "@/lib/brisbane";
 
 export function DensityBoard() {
   const [suburbs, setSuburbs] = useState<GrowthSuburb[]>([]);
@@ -24,17 +24,17 @@ export function DensityBoard() {
   }, []);
 
   const closest = rankByUnlockProximity(suburbs)
-    .filter((s) => (clusterForDay(s)?.households ?? 0) > 0)
+    .filter((s) => (clusterForDay(s)?.containers ?? clusterForDay(s)?.households ?? 0) > 0)
     .slice(0, 8);
 
   if (state === "loading") {
-    return <p className="text-[13px] text-slate-400 mb-8">Checking which streets are closest to a run…</p>;
+    return <p className="text-[13px] text-slate-400 mb-8">Checking which suburbs are closest to a volume run…</p>;
   }
 
   if (state === "unavailable") {
     return (
       <p className="text-[13px] text-slate-400 mb-8">
-        Street counts load when the API is reachable. {LIVE_HOUSEHOLD_THRESHOLD} houses on the same recycling day start a collection night — city-wide totals never do.
+        Suburb volume loads when the API is reachable. About {LIVE_VOLUME_THRESHOLD} containers — enough for one driver trip — unlock a run. City-wide totals never do.
       </p>
     );
   }
@@ -44,7 +44,7 @@ export function DensityBoard() {
     return (
       <div className="mb-10">
         <p className="text-[13px] text-slate-500 mb-3">
-          No streets on the list yet. Be the first house. Start sorting today — {LIVE_HOUSEHOLD_THRESHOLD} neighbours on the same recycling day start the collection night.
+          No scanned volume yet. Be the first scan. About {LIVE_VOLUME_THRESHOLD} containers and we run a trip to the refund point.
         </p>
         <div className="flex flex-wrap gap-2">
           {wedge.map((s) => (
@@ -63,20 +63,18 @@ export function DensityBoard() {
 
   return (
     <div className="mb-10">
-      <h2 className="text-[12px] uppercase tracking-wider text-slate-400 font-semibold mb-3">Closest to a run</h2>
+      <h2 className="text-[12px] uppercase tracking-wider text-slate-400 font-semibold mb-3">Closest to a volume run</h2>
       <ul className="space-y-2">
         {closest.map((s) => {
           const day = clusterForDay(s);
-          const label = day?.dayName
-            ? `${titleSuburb(s.suburb)} · ${day.dayName}`
-            : titleSuburb(s.suburb);
-          const have = day?.households ?? 0;
+          const label = titleSuburb(s.suburb);
+          const have = day?.containers ?? 0;
           return (
             <li key={s.suburb}>
               <Link href={streetInvitePath({ suburb: s.suburb, day: day?.day, dayName: day?.dayName })} className="flex items-center justify-between border border-slate-200 rounded-xl px-3 py-3 hover:border-violet-400">
                 <span className="text-[14px] font-semibold text-slate-900">{label}</span>
                 <span className="text-[12px] text-slate-500">
-                  {day?.live ? "Ready to order" : `${have}/${LIVE_HOUSEHOLD_THRESHOLD}`}
+                  {day?.live ? "Ready to run" : `${have}/${LIVE_VOLUME_THRESHOLD}`}
                 </span>
               </Link>
             </li>

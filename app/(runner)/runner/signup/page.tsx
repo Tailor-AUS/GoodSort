@@ -53,7 +53,7 @@ export default function RunnerSignupPage() {
           <Car className="w-8 h-8 text-green-600" />
         </div>
         <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-1">Become a Runner</h1>
-        <p className="text-[13px] text-slate-500 mb-6">Collect purple The Good Sort bins the night before council recycling. Do not open the yellow bin. Paid on the runner count at the marketplace rate — not the household 5¢.</p>
+        <p className="text-[13px] text-slate-500 mb-6">Collect sorted bags from the kerb on suburb volume runs. Deliver to a refund point or depot we nominate. Paid on the runner count — not the household 5¢.</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -94,7 +94,7 @@ export default function RunnerSignupPage() {
             {loading ? "Registering..." : "Register as Runner"}
           </button>
           <p className="text-[11px] text-slate-400 text-center">
-            By registering you agree to collect our purple bins and drop them at a depot we nominate.
+            By registering you agree to collect sorted containers from the kerb and drop them at a depot or refund point we nominate.
           </p>
         </form>
       </div>
