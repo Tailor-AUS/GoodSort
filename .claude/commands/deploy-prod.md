@@ -44,15 +44,22 @@ Deploy changes to production.
 - `ADMIN_SEED_EMAIL` and `OPS_ALERT_EMAIL` are both set to `knox@tailor.au` on
   prod (verified 2026-08-30 — earlier handoffs saying otherwise are stale), so
   a suburb crossing the threshold does reach ops.
-- **Email deliverability.** `ACS_EMAIL_SENDER` is `DoNotReply@thegoodsort.org`
-  on the CustomerManaged ACS domain, and Domain/SPF/DKIM/DKIM2 are all
-  `Verified` — the "sender is an azurecomm.net domain" note in older handoffs is
-  stale. What is missing is **DMARC (`NotStarted`)**. Gmail and Yahoo have
-  required DMARC from bulk senders since Feb 2024, so its absence is the most
-  likely reason OTP codes land in spam. Fixing it is a DNS change on
-  `thegoodsort.org` (GoDaddy), not a deploy — add a TXT record at
-  `_dmarc.thegoodsort.org`, starting at `v=DMARC1; p=none; rua=mailto:...` to
-  monitor before tightening. Check state with:
+- **Email deliverability.** The stack is correctly configured, contrary to
+  older handoffs. `ACS_EMAIL_SENDER` is `DoNotReply@thegoodsort.org` on the
+  CustomerManaged ACS domain; Domain/SPF/DKIM/DKIM2 all report `Verified`; SPF
+  is `v=spf1 include:spf.protection.outlook.com include:azurecomm.net -all`;
+  and `_dmarc.thegoodsort.org` exists as
+  `v=DMARC1; p=quarantine; adkim=r; aspf=r;`.
+
+  Note ACS reports `DMARC: NotStarted` — that is ACS's own optional
+  verification tracking, **not** the DNS reality. Do not chase it.
+
+  The one real weakness is that the DMARC policy is `p=quarantine` (failures go
+  straight to spam) with **no `rua=`**, so nobody ever sees a failure report.
+  `tailor.au` by contrast uses `p=none; rua=mailto:postmaster@tailor.au`.
+  Adding a `rua=` address changes no enforcement and would turn the
+  "codes land in spam" theory into something measurable. Re-check with:
   ```
+  nslookup -type=TXT _dmarc.thegoodsort.org 8.8.8.8
   az communication email domain show --email-service-name tailor-prod-email     --resource-group rg-tailor-app-prod --name thegoodsort.org     --query verificationStates -o json
   ```
