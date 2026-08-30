@@ -41,6 +41,18 @@ Deploy changes to production.
 - `LAUNCH_BONUS_CONTAINERS` controls the double-credit launch promotion
   (defaults to 20 when unset). Set it to `0` on the Container App to switch the
   promotion off without a deploy; the homepage banner goes with it.
-- `ADMIN_SEED_EMAIL` / `OPS_ALERT_EMAIL` are **not set on prod**. Until one is,
-  `SendOpsStreetReady` logs a warning and returns — so when a suburb crosses the
-  threshold, residents get emailed but nobody is told to buy bins.
+- `ADMIN_SEED_EMAIL` and `OPS_ALERT_EMAIL` are both set to `knox@tailor.au` on
+  prod (verified 2026-08-30 — earlier handoffs saying otherwise are stale), so
+  a suburb crossing the threshold does reach ops.
+- **Email deliverability.** `ACS_EMAIL_SENDER` is `DoNotReply@thegoodsort.org`
+  on the CustomerManaged ACS domain, and Domain/SPF/DKIM/DKIM2 are all
+  `Verified` — the "sender is an azurecomm.net domain" note in older handoffs is
+  stale. What is missing is **DMARC (`NotStarted`)**. Gmail and Yahoo have
+  required DMARC from bulk senders since Feb 2024, so its absence is the most
+  likely reason OTP codes land in spam. Fixing it is a DNS change on
+  `thegoodsort.org` (GoDaddy), not a deploy — add a TXT record at
+  `_dmarc.thegoodsort.org`, starting at `v=DMARC1; p=none; rua=mailto:...` to
+  monitor before tightening. Check state with:
+  ```
+  az communication email domain show --email-service-name tailor-prod-email     --resource-group rg-tailor-app-prod --name thegoodsort.org     --query verificationStates -o json
+  ```
