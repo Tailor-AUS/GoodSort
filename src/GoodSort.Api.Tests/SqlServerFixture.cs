@@ -109,7 +109,13 @@ public class SqlServerFixture : IAsyncLifetime
     public async Task<Guid> SeedRun(string status)
     {
         await using var db = NewContext();
-        var run = new Run { Status = status };
+        // Run.DropPointId is a real foreign key. InMemory ignores that and let
+        // an unset Guid through; SQL Server rejects it with
+        // FK_Runs_Depots_DropPointId, which is the sort of thing testing
+        // against the actual database is for.
+        var dropPoint = new Depot { Name = "Test Drop Point", Address = "2 Test St", Lat = -27.5, Lng = 153.0 };
+        db.Depots.Add(dropPoint);
+        var run = new Run { Status = status, DropPointId = dropPoint.Id };
         db.Runs.Add(run);
         await db.SaveChangesAsync();
         return run.Id;
