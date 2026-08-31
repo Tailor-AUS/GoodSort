@@ -30,6 +30,11 @@ export default function RunnerApp() {
   const [earnings, setEarnings] = useState<RunnerEarnings | null>(null);
   const [leaderboard, setLeaderboardData] = useState<LeaderboardEntry[]>([]);
   const [runnerId, setRunnerId] = useState<string | undefined>();
+  // Every marketplace call returns null on any failure — offline, 4xx, 5xx
+  // alike. Without somewhere to put that, a failed pickup was a no-op: the tap
+  // did nothing, said nothing, and the stop went unrecorded. At settle the
+  // driver is not paid for it and the household's credit never clears.
+  const [actionError, setActionError] = useState<string | null>(null);
   const [userLat, setUserLat] = useState(-27.4810);
   const [userLng, setUserLng] = useState(153.0230);
   const heartbeatRef = useRef<NodeJS.Timeout>(undefined);
@@ -106,7 +111,14 @@ export default function RunnerApp() {
 
   const handleClaim = useCallback(async (runId: string) => {
     const result = await claimRun(runId);
-    if (result) {
+    if (!result) {
+      // Silence here is the worst of the set: another runner may have taken it,
+      // and a driver who thinks they hold a run will drive to it for nothing.
+      setActionError("Could not claim that run. Someone may have taken it — pull down to refresh the list.");
+      return;
+    }
+    setActionError(null);
+    {
       setActiveRun(result);
       setAvailableRuns((prev) => prev.filter((r) => r.id !== runId));
     }
@@ -115,12 +127,22 @@ export default function RunnerApp() {
   const handleStart = useCallback(async () => {
     if (!activeRun) return;
     const result = await startRun(activeRun.id);
-    if (result) setActiveRun(result);
+    if (!result) {
+      setActionError("Could not start the run. Check your signal and try again.");
+      return;
+    }
+    setActionError(null);
+    setActiveRun(result);
   }, [activeRun]);
 
   const handleArrive = useCallback(async (stopId: string) => {
     if (!activeRun) return;
-    await arriveAtStop(activeRun.id, stopId);
+    const arrived = await arriveAtStop(activeRun.id, stopId);
+    if (!arrived) {
+      setActionError("Could not record arriving at that stop. Check your signal and try again.");
+      return;
+    }
+    setActionError(null);
     // Refresh active run to get updated stop status
     const updated = await getActiveRun();
     if (updated) setActiveRun(updated);
@@ -129,25 +151,45 @@ export default function RunnerApp() {
   const handlePickup = useCallback(async (stopId: string, count: number, photoUrl?: string) => {
     if (!activeRun) return;
     const result = await pickupStop(activeRun.id, stopId, count, photoUrl);
-    if (result) setActiveRun(result);
+    if (!result) {
+      setActionError("That pickup did not save. Check your signal and tap it again — you will not be paid for a stop we never recorded.");
+      return;
+    }
+    setActionError(null);
+    setActiveRun(result);
   }, [activeRun]);
 
   const handleSkip = useCallback(async (stopId: string) => {
     if (!activeRun) return;
     const result = await skipStop(activeRun.id, stopId);
-    if (result) setActiveRun(result);
+    if (!result) {
+      setActionError("Could not skip that stop. Check your signal and try again.");
+      return;
+    }
+    setActionError(null);
+    setActiveRun(result);
   }, [activeRun]);
 
   const handleDeliver = useCallback(async () => {
     if (!activeRun) return;
     const result = await deliverRun(activeRun.id);
-    if (result) setActiveRun(result);
+    if (!result) {
+      setActionError("Could not mark the run as delivering. Check your signal and try again.");
+      return;
+    }
+    setActionError(null);
+    setActiveRun(result);
   }, [activeRun]);
 
   const handleComplete = useCallback(async () => {
     if (!activeRun) return;
     const result = await completeRun(activeRun.id);
-    if (result) setActiveRun(result);
+    if (!result) {
+      setActionError("Could not complete the run. Check your signal and try again — settling is what pays you.");
+      return;
+    }
+    setActionError(null);
+    setActiveRun(result);
   }, [activeRun]);
 
   if (loading || !user) {
@@ -178,6 +220,23 @@ export default function RunnerApp() {
         activeRunStops={activeRun?.stops}
         onMapTap={() => {}}
       />
+
+      {actionError && (
+        <div
+          role="alert"
+          className="fixed left-1/2 -translate-x-1/2 z-[60] max-w-sm w-[92%] bg-red-600 text-white text-[13px] font-semibold px-4 py-3 rounded-2xl shadow-xl"
+          style={{ top: "calc(env(safe-area-inset-top, 16px) + 3.5rem)" }}
+        >
+          {actionError}
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            className="ml-3 underline font-bold"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <div className="fixed z-30" style={{ top: "calc(env(safe-area-inset-top, 16px) + 0.5rem)", left: "1rem" }}>
         <AccountButton onClick={() => setShowAccount(true)} />
