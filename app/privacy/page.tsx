@@ -72,7 +72,32 @@ export default function PrivacyPage() {
           You can disable location access in your device settings at any time.
         </p>
 
-        <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">7. Contact</h2>
+        <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">7. Services We Rely On</h2>
+        <p className="text-slate-600 text-sm mb-4">
+          Some parts of the app are provided by other organisations, and reach them rather than us.
+        </p>
+        <ul className="list-disc pl-5 text-slate-600 text-sm space-y-1 mb-4">
+          <li>
+            <strong>Address suggestions.</strong> Once you have typed three characters of an address,
+            what you have typed is sent from your browser to Photon, an address-lookup service
+            operated by Komoot, a German company. It is sent as you type, not when you choose a
+            suggestion, so it happens even if you ignore the suggestions or never finish signing up,
+            and it reaches them before it reaches us.
+          </li>
+          <li>
+            <strong>Maps.</strong> Map images come from OpenFreeMap, which is outside Australia. Loading
+            them tells that service roughly which area of the map you are looking at.
+          </li>
+          <li>
+            <strong>Route planning.</strong> When we plan a collection run we send the stop locations to
+            a public routing service (OSRM), from our servers rather than your device.
+          </li>
+        </ul>
+        <p className="text-slate-600 text-sm mb-4">
+          None of these receive your email address, your scan history or your balance.
+        </p>
+
+        <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">8. Contact</h2>
         <p className="text-slate-600 text-sm mb-4">
           For privacy inquiries, contact us at privacy@thegoodsort.org or write to:
           Crispr Projects Pty Ltd (ABN 85 680 798 770), trading as The Good Sort, Moorooka QLD 4105, Australia.
