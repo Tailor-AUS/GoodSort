@@ -1,0 +1,4 @@
+# Shell scripts here are executed by Linux CI runners. A Windows checkout
+# committing CRLF would break them with "bad interpreter: ...^M" — a failure
+# that reads as a missing file rather than a line-ending problem.
+*.sh text eol=lf
