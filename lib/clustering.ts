@@ -1,6 +1,6 @@
 // Bin clustering for route generation
-import type { SortBin, Route, RouteStop, Depot } from "./store";
-import { calcDriverPayout, CONTAINERS_PER_BAG, SORTER_PAYOUT_CENTS } from "./store";
+import type { SortBin, Route, RouteStop, Depot } from "./store.ts";
+import { calcDriverPayout, CONTAINERS_PER_BAG, SORTER_PAYOUT_CENTS } from "./store.ts";
 
 export const CLUSTER_THRESHOLD_CONTAINERS = 500; // Lower threshold for bins (not households)
 export const CLUSTER_RADIUS_KM = 3;

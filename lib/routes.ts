@@ -15,7 +15,7 @@ import {
   emptyMaterials,
   saveUser,
   CONTAINERS_PER_BAG,
-} from "./store";
+} from "./store.ts";
 
 // ── Route Lifecycle ──
 

@@ -1,7 +1,7 @@
 // The Good Sort — Marketplace API Client
 // All runner marketplace, gamification, and pricing API calls
 
-import { apiUrl } from "./config";
+import { apiUrl } from "./config.ts";
 import type {
   RunnerProfile,
   MarketplaceRun,
@@ -9,7 +9,7 @@ import type {
   RunnerEarnings,
   LeaderboardEntry,
   PricingResult,
-} from "./marketplace";
+} from "./marketplace.ts";
 
 // ── Helpers ──
 

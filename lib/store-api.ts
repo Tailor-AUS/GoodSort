@@ -1,8 +1,8 @@
 // API-backed store — calls .NET API on Azure Container Apps
 // Falls back to localStorage store when API is unavailable
 
-import { apiUrl } from "./config";
-import type { User, Household, Route, Depot, ScanRecord, CollectionRecord, SortBin } from "./store";
+import { apiUrl } from "./config.ts";
+import type { User, Household, Route, Depot, ScanRecord, CollectionRecord, SortBin } from "./store.ts";
 import {
   getUser as getLocalUser,
   getOrCreateDefaultUser as getLocalDefault,
@@ -10,10 +10,11 @@ import {
   getRoutes as getLocalRoutes,
   getDepots as getLocalDepots,
   addScan as addLocalScan,
+  removeScan as removeLocalScan,
   getPendingRoutes as getLocalPendingRoutes,
   getActiveRoute as getLocalActiveRoute,
   saveUser as saveLocalUser,
-} from "./store";
+} from "./store.ts";
 
 // ── Helpers ──
 
@@ -33,6 +34,38 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T | nul
     return await res.json();
   } catch {
     return null;
+  }
+}
+
+/**
+ * Like `apiFetch`, but says why it failed.
+ *
+ * `apiFetch` collapses "the network is down" and "the server refused" into the
+ * same null, which is deliberate for reads. For a write that has already been
+ * applied locally the difference decides whether to keep it: a network failure
+ * syncs later, a refusal never will.
+ */
+async function apiSend<T>(path: string, options: RequestInit): Promise<{
+  data: T | null;
+  /** True when the server answered and rejected it. The write will never land. */
+  refused: boolean;
+  status: number | null;
+}> {
+  try {
+    const token = typeof window !== "undefined" ? localStorage.getItem("goodsort_token") : null;
+    const res = await fetch(apiUrl(path), {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options?.headers,
+      },
+    });
+    if (!res.ok) return { data: null, refused: res.status >= 400 && res.status < 500, status: res.status };
+    return { data: (await res.json()) as T, refused: false, status: res.status };
+  } catch {
+    // No response at all — offline, DNS, CORS. Keep the local write.
+    return { data: null, refused: false, status: null };
   }
 }
 
@@ -119,7 +152,7 @@ export async function addScanApi(
   let creditedCents: number | null = null;
   let bonusRemaining: number | null = null;
   if (userId) {
-    const res = await apiFetch<{ creditedCents?: number; bonusRemaining?: number }>("/api/scans", {
+    const { data: res, refused } = await apiSend<{ creditedCents?: number; bonusRemaining?: number }>("/api/scans", {
       method: "POST",
       body: JSON.stringify({
         userId,
@@ -128,6 +161,18 @@ export async function addScanApi(
         material,
       }),
     });
+
+    // A refusal is final — over the daily cap, past the rate limit, not signed
+    // in. The scan will never be accepted, so the local copy has to go back
+    // out, or the member is looking at credit and a container count the server
+    // does not have. A network failure is the opposite case and keeps its local
+    // write: that is the whole point of writing locally first.
+    if (refused) {
+      const scanId = localUser.scans[0]?.id;
+      const corrected = scanId ? removeLocalScan(scanId) : null;
+      return { user: corrected ?? localUser, creditedCents: null, bonusRemaining: null };
+    }
+
     if (res && typeof res.creditedCents === "number") creditedCents = res.creditedCents;
     if (res && typeof res.bonusRemaining === "number") bonusRemaining = res.bonusRemaining;
   }
