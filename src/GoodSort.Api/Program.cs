@@ -423,7 +423,8 @@ app.MapPost("/api/scan/photo", async (HttpContext ctx, PhotoScanRequest req, Vis
 // unlimited credit. The token also pins userId, so cross-user spoofing is
 // blocked even if /confirm is hit with the wrong token.
 app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmRequest req,
-    GoodSortDbContext db, ScanTokenService tokens, IConfiguration cfg, NotificationService notif) =>
+    GoodSortDbContext db, ScanTokenService tokens, IConfiguration cfg, NotificationService notif,
+    ILogger<Program> log) =>
 {
     var userId = ctx.GetCallerId();
     if (userId is null) return Results.Unauthorized();
@@ -611,7 +612,15 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
                 await notif.SendOpsStreetReady(household.Suburb!, unlockDay);
             }
         }
-        catch { /* ACS optional */ }
+        // The suburb-unlocked announcement. Must not fail the scan that
+        // triggered it — the member's credit is already written — but a
+        // suburb unlocking is the single moment this product exists to
+        // deliver, and losing it silently means nobody is told the thing
+        // they have been scanning towards.
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Area-unlocked announcement failed for {Suburb} - the scan itself succeeded", household.Suburb);
+        }
     }
 
     return Results.Ok(new
@@ -1705,7 +1714,7 @@ app.MapGet("/api/admin/waitlist", async (GoodSortDbContext db) =>
     return Results.Ok(new { liveThreshold, total = rows.Count, suburbs });
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
-app.MapPost("/api/admin/areas/{suburb}/allocate", async (string suburb, int? day, GoodSortDbContext db, NotificationService notif) =>
+app.MapPost("/api/admin/areas/{suburb}/allocate", async (string suburb, int? day, GoodSortDbContext db, NotificationService notif, ILogger<Program> log) =>
 {
     if (!WaitlistDensity.CanAllocateSuburb(suburb))
         return Results.BadRequest(new { error = "Not a residential suburb cluster." });
@@ -1723,11 +1732,16 @@ app.MapPost("/api/admin/areas/{suburb}/allocate", async (string suburb, int? day
     var rows = await q.ToListAsync();
     foreach (var h in rows) h.BinStatus = BinStatuses.Allocated;
     await db.SaveChangesAsync();
-    try { await notif.SendBinsOnOrder(key, day); } catch { /* ACS optional */ }
+    // Must not fail the allocation, but must not be silent either: this is the
+    // message telling a suburb their bins are coming, and a failure has no
+    // other symptom. The ACS outage that opened this week was invisible for
+    // exactly this reason.
+    try { await notif.SendBinsOnOrder(key, day); }
+    catch (Exception ex) { log.LogError(ex, "Bins-on-order email failed for {Suburb} day {Day} - allocation still applied", key, day); }
     return Results.Ok(new { suburb = key, day, allocated = rows.Count, containers });
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
-app.MapPost("/api/admin/areas/{suburb}/advance", async (string suburb, int? day, string to, GoodSortDbContext db, NotificationService notif) =>
+app.MapPost("/api/admin/areas/{suburb}/advance", async (string suburb, int? day, string to, GoodSortDbContext db, NotificationService notif, ILogger<Program> log) =>
 {
     if (!WaitlistDensity.CanAllocateSuburb(suburb))
         return Results.BadRequest(new { error = "Not a residential suburb cluster." });
@@ -1749,13 +1763,17 @@ app.MapPost("/api/admin/areas/{suburb}/advance", async (string suburb, int? day,
     {
         foreach (var h in rows)
         {
-            try { await notif.SendCollectingNow(h); } catch { /* ACS optional */ }
+            // Must not fail the status change, but must not be silent either:
+            // this is the message telling a member to put their bags out, and
+            // a failure here has no other symptom.
+            try { await notif.SendCollectingNow(h); }
+            catch (Exception ex) { log.LogError(ex, "Collecting-now email failed for household {HouseholdId} — status still changed", h.Id); }
         }
     }
     return Results.Ok(new { suburb = key, day, to = next, updated = rows.Count });
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
-app.MapPost("/api/admin/households/{id:guid}/bin-status", async (Guid id, BinStatusRequest req, GoodSortDbContext db, NotificationService notif) =>
+app.MapPost("/api/admin/households/{id:guid}/bin-status", async (Guid id, BinStatusRequest req, GoodSortDbContext db, NotificationService notif, ILogger<Program> log) =>
 {
     var allowed = new[] { BinStatuses.Waitlisted, BinStatuses.Allocated, BinStatuses.Delivered, BinStatuses.Collecting };
     if (!allowed.Contains(req.Status)) return Results.BadRequest(new { error = "Invalid status" });
@@ -1766,7 +1784,11 @@ app.MapPost("/api/admin/households/{id:guid}/bin-status", async (Guid id, BinSta
     await db.SaveChangesAsync();
     if (previous != req.Status && BinStatuses.IsServiceable(req.Status))
     {
-        try { await notif.SendCollectingNow(h); } catch { /* ACS optional */ }
+        // Must not fail the status change, but must not be silent either:
+        // this is the message telling a member to put their bags out, and
+        // a failure here has no other symptom.
+        try { await notif.SendCollectingNow(h); }
+        catch (Exception ex) { log.LogError(ex, "Collecting-now email failed for household {HouseholdId} — status still changed", h.Id); }
     }
     return Results.Ok(new { h.Id, h.BinStatus });
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
