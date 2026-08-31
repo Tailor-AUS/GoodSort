@@ -4,40 +4,61 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * Every external host the client fetches must be listed in the CSP.
+ * Every external host in client code is either allowed by the CSP or declared
+ * here as something we never connect to.
  *
  * This is a silent failure by construction, and it had already happened. The
- * container lookup's second tier fetched openfoodfacts.org directly, that host
- * was not in connect-src in staticwebapp.config.json, and CSP refused the
- * request. The call site caught the error and returned null, so the tier read
- * as implemented and returned nothing in production from the day it shipped —
- * no error, no failing build, nothing in a code review to notice.
+ * container lookup's second tier fetched openfoodfacts.org, that host was not
+ * in connect-src, CSP refused it, and the call site caught the error and
+ * returned null — so the tier read as implemented and returned nothing in
+ * production from the day it shipped. `next dev` serves no CSP, so it worked
+ * locally the whole time.
  *
- * It only bites in production, too: `next dev` serves no CSP, so the same code
- * works locally. That is the worst shape a bug can have.
+ * The first version of this test matched hosts written literally inside a
+ * fetch() call. That was the shape of the bug, but not the shape of this
+ * codebase: every real fetch here builds its URL in a variable first
+ * (PHOTON_URL, MAP_STYLE_URL, apiUrl(...)), so once the openfoodfacts literal
+ * was gone the check found nothing and passed vacuously.
+ *
+ * So it now works the way IntentionallyPublic does in the endpoint posture
+ * tests: look at every external host, and make each one a decision someone
+ * wrote down. A host that is genuinely never connected to goes in the list
+ * below with the reason. That catches `const X = "https://…"; fetch(X)`, which
+ * the literal-only version could not.
  */
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+
+/**
+ * External hosts that appear in client code but are never fetched, so
+ * connect-src is not the directive that governs them.
+ */
+const NOT_CONNECTED_TO: Record<string, string> = {
+  "https://www.google.com": "Maps directions, opened as navigation from the runner screen — not fetched.",
+  "https://data.brisbane.qld.gov.au": "Cited as the source of the bin-day dataset. A link and a comment; the data is baked into brisbane-suburbs.ts.",
+  "https://schema.org": "JSON-LD vocabulary in the SEO structured data. An identifier, never dereferenced.",
+  "https://thegoodsort.org": "Our own public origin — canonical URLs and invite links.",
+  "https://tailor.au": "Attribution link in the footer.",
+  "https://wa.me": "WhatsApp share link, opened as navigation.",
+  "https://fonts.googleapis.com": "Stylesheet, governed by style-src (which does list it), not connect-src.",
+};
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(join(ROOT, dir))) {
     const rel = join(dir, entry);
-    const full = join(ROOT, rel);
-    if (statSync(full).isDirectory()) out.push(...sourceFiles(rel));
-    else if (/\.tsx?$/.test(entry) && !entry.includes(".test.")) out.push(rel);
+    if (statSync(join(ROOT, rel)).isDirectory()) out.push(...sourceFiles(rel));
+    else if (/\.(tsx?|css)$/.test(entry) && !entry.includes(".test.")) out.push(rel);
   }
   return out;
 }
 
-/** Hosts passed as a literal first argument to fetch(). */
-function fetchedHosts(): Map<string, string[]> {
+/** Every https:// host written anywhere in client source, with where it came from. */
+function externalHosts(): Map<string, string[]> {
   const found = new Map<string, string[]>();
   for (const rel of [...sourceFiles("lib"), ...sourceFiles("app")]) {
-    const text = readFileSync(join(ROOT, rel), "utf8");
-    for (const m of text.matchAll(/fetch\(\s*[`"'](https:\/\/[^`"'/\s]+)/g)) {
-      const host = m[1];
-      found.set(host, [...(found.get(host) ?? []), rel]);
+    for (const m of readFileSync(join(ROOT, rel), "utf8").matchAll(/https:\/\/[a-zA-Z0-9.-]+\.[a-z]{2,}/g)) {
+      found.set(m[0], [...new Set([...(found.get(m[0]) ?? []), rel])]);
     }
   }
   return found;
@@ -50,36 +71,53 @@ function connectSrc(): string[] {
   return [...(directive ?? "").matchAll(/https:\/\/[^\s;]+/g)].map((m) => m[0]);
 }
 
-test("the CSP is actually readable, so this test cannot pass by finding nothing", () => {
-  // If the config moves or the header is renamed, an empty allowlist would make
-  // every check below vacuous rather than failing.
+test("the CSP parses, so nothing below can pass by finding nothing", () => {
   const allowed = connectSrc();
   assert.ok(allowed.length >= 3, `connect-src parsed as ${allowed.length} hosts — the extraction is broken, not the CSP.`);
   assert.ok(allowed.some((h) => h.includes("azurecontainerapps.io")), "the API's own origin should be in connect-src");
 });
 
-test("every host the client fetches is allowed by the CSP", () => {
-  const allowed = new Set(connectSrc());
-  const offenders: string[] = [];
+test("the scan finds the hosts that are actually there", () => {
+  // The counterpart guard: if this found nothing, every check below would pass
+  // while testing nothing. That is how the first version of this file broke.
+  const hosts = externalHosts();
+  assert.ok(hosts.size >= 5, `only found ${hosts.size} external hosts in client source — the scan is broken, not the code.`);
+  assert.ok([...hosts.keys()].includes("https://photon.komoot.io"), "the geocoder host should have been found");
+});
 
-  for (const [host, files] of fetchedHosts()) {
-    if (!allowed.has(host)) offenders.push(`${host}  (fetched from ${files.join(", ")})`);
+test("every external host is either allowed by the CSP or declared unconnected", () => {
+  const allowed = new Set(connectSrc());
+  const undeclared: string[] = [];
+
+  for (const [host, files] of externalHosts()) {
+    if (allowed.has(host)) continue;
+    if (host in NOT_CONNECTED_TO) continue;
+    undeclared.push(`${host}  (in ${files.join(", ")})`);
   }
 
   assert.deepEqual(
-    offenders,
+    undeclared,
     [],
-    "These hosts are fetched by client code but missing from connect-src in " +
-      "staticwebapp.config.json. CSP will refuse them in production, and a " +
-      "catch around the fetch will make that look like an empty result:\n  " +
-      offenders.join("\n  "),
+    "These hosts appear in client code but are neither in connect-src nor declared as never-fetched.\n" +
+      "If the client connects to it, add it to connect-src in staticwebapp.config.json — CSP will\n" +
+      "refuse it in production and a catch around the fetch will make that look like an empty result.\n" +
+      "If it is a link or a citation, add it to NOT_CONNECTED_TO with the reason:\n  " +
+      undeclared.join("\n  "),
   );
 });
 
+test("the unconnected list does not outlive the hosts it describes", () => {
+  // A stale entry silently pre-approves a future host that reuses the name —
+  // the same failure the endpoint posture tests guard against.
+  const hosts = new Set(externalHosts().keys());
+  const stale = Object.keys(NOT_CONNECTED_TO).filter((h) => !hosts.has(h)).sort();
+  assert.deepEqual(stale, [], "NOT_CONNECTED_TO names hosts no longer in the source:\n  " + stale.join("\n  "));
+});
+
 test("the scan path does not call a third party directly", () => {
-  // Specifically pinned: the container lookup goes through our own API, which
-  // can send a User-Agent (a browser cannot — it is a forbidden header name),
-  // apply a timeout, and rate-limit an anonymous caller.
+  // Pinned specifically: the container lookup goes through our own API, which
+  // can send a User-Agent (a browser cannot — forbidden header name), apply a
+  // timeout, cache, and rate-limit an anonymous caller.
   const text = readFileSync(join(ROOT, "lib", "containers.ts"), "utf8");
   assert.ok(
     !/fetch\(\s*[`"']https:\/\//.test(text),
