@@ -41,6 +41,36 @@ public static class GrowthEventRetention
 }
 
 /// <summary>
+/// Spent scan tokens only need to outlive the tokens themselves, which expire
+/// ten minutes after issue. Seven days is far past any legitimate replay and
+/// keeps the table from growing for the life of the product.
+/// </summary>
+public static class UsedScanTokenRetention
+{
+    public const int RetentionDays = 7;
+
+    public static async Task<int> SweepAsync(GoodSortDbContext db, CancellationToken ct = default)
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-RetentionDays);
+        var stale = db.UsedScanTokens.Where(t => t.UsedAt < cutoff);
+
+        try
+        {
+            return await stale.ExecuteDeleteAsync(ct);
+        }
+        catch (InvalidOperationException)
+        {
+            // Same InMemory limitation as the sweep above.
+            var rows = await stale.ToListAsync(ct);
+            if (rows.Count == 0) return 0;
+            db.UsedScanTokens.RemoveRange(rows);
+            await db.SaveChangesAsync(ct);
+            return rows.Count;
+        }
+    }
+}
+
+/// <summary>
 /// Daily sweep. Mirrors PickupReminderHost: resolve a scoped DbContext per
 /// pass, log and continue on failure, never let a background fault take the
 /// API down.
@@ -57,6 +87,9 @@ public class GrowthEventRetentionHost(IServiceProvider services, ILogger<GrowthE
                 using var scope = services.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
                 var removed = await GrowthEventRetention.SweepAsync(db, stoppingToken);
+                var spent = await UsedScanTokenRetention.SweepAsync(db, stoppingToken);
+                if (spent > 0)
+                    log.LogInformation("Pruned {Count} spent scan tokens older than {Days} days", spent, UsedScanTokenRetention.RetentionDays);
                 if (removed > 0)
                     log.LogInformation("Pruned {Count} growth events older than {Days} days", removed, GrowthEventRetention.RetentionDays);
             }

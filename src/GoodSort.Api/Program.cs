@@ -429,6 +429,27 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
             return Results.BadRequest(new { error = $"You appear to be {depositDistanceM:F0}m from the bin. Move closer to deposit." });
     }
 
+    // ── Spend the token (anti-fraud) ──
+    // The signature proves this token is genuine. It says nothing about whether
+    // it has already been redeemed, and the perceptual-hash check below cannot
+    // cover that gap on its own: it is fail-open by design, and ImageSharp does
+    // not decode HEIC, so a photo picked from an iPhone library arrives with
+    // PhotoHash null and no replay defence at all. Without this, that member
+    // could confirm the same token in a loop for the ten minutes it lives.
+    //
+    // Insert-then-catch rather than check-then-insert: two concurrent confirms
+    // can both pass a check, but only one can win a primary key.
+    db.UsedScanTokens.Add(new UsedScanToken { Jti = payload.Jti, UserId = userId.Value });
+    try
+    {
+        await db.SaveChangesAsync();
+    }
+    catch (Exception ex) when (ex is DbUpdateException or InvalidOperationException or ArgumentException)
+    {
+        db.ChangeTracker.Clear();
+        return Results.BadRequest(new { error = "Those containers have already been added. Take a fresh photo to scan more." });
+    }
+
     // ── Photo-replay defence (anti-fraud) ──
     // The simplest farm is "snap one can, resubmit the same photo forever". A
     // perceptual hash (committed in the token) lets us catch it: if this photo is

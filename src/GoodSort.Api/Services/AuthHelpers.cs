@@ -111,6 +111,13 @@ public class ScanTokenService
 
 public class ScanTokenPayload
 {
+    /// <summary>
+    /// Unique id for this token, so /confirm can spend it exactly once. A
+    /// signature proves the token is genuine; it says nothing about whether it
+    /// has already been redeemed.
+    /// </summary>
+    public Guid Jti { get; set; } = Guid.NewGuid();
+
     public Guid Uid { get; set; }
     public List<ScanTokenItem> Items { get; set; } = [];
     public long Exp { get; set; }
