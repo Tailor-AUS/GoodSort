@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { lookupLocal, lookupContainer, createUnknownContainer, toBagMaterial } from "./containers.ts";
+import { lookupLocal, lookupContainer, createUnknownContainer, toBagMaterial, LOCAL_DB } from "./containers.ts";
 
 /**
  * Finding a scanned container in the local table.
@@ -78,4 +78,65 @@ test("materials map onto the four bags with no gaps", () => {
   assert.equal(toBagMaterial("glass"), "glass");
   assert.equal(toBagMaterial("hdpe"), "other");
   assert.equal(toBagMaterial("liquid_paperboard"), "other");
+});
+
+/**
+ * Every row in the table has to be a barcode a reader can actually produce.
+ *
+ * Nine of the original 48 were not. Eight had invalid EAN-13 check digits and
+ * were visibly sequential fabrications (...200019, ...200026, ...200033), and
+ * one was eleven digits, which is not a retail length. A reader cannot emit a
+ * barcode whose check digit does not compute, so those rows were unreachable —
+ * coverage on paper that no scan could ever hit. Real coverage was 39.
+ *
+ * This is worth a build-breaking test rather than a comment, because the
+ * failure is invisible: a fabricated row looks exactly like a real one in the
+ * diff, matches nothing at runtime, and produces no error. It just quietly
+ * isn't there. And the cost of a miss is high — Open Food Facts has no record
+ * for any Australian beverage barcode in this table (measured 2026-08-31,
+ * 48/48 HTTP 404), so a miss goes straight to the aluminium guess.
+ */
+
+/** Standard GS1 modulo-10 check digit, for EAN-8, UPC-A and EAN-13. */
+function checkDigitValid(barcode: string): boolean {
+  const d = [...barcode].map(Number);
+  const body = d.slice(0, -1);
+  // Weights alternate 3,1,... from the RIGHT of the body, which is what makes
+  // this work for all three lengths without special-casing each.
+  const sum = body
+    .reverse()
+    .reduce((acc, digit, i) => acc + digit * (i % 2 === 0 ? 3 : 1), 0);
+  return (10 - (sum % 10)) % 10 === d[d.length - 1];
+}
+
+test("the check digit helper agrees with known-good and known-bad barcodes", () => {
+  // Pin the helper itself, so a broken helper cannot silently pass the table.
+  assert.equal(checkDigitValid("9300675024457"), true, "real EAN-13");
+  assert.equal(checkDigitValid("3017620422003"), true, "real EAN-13 (Nutella)");
+  assert.equal(checkDigitValid("90162602"), true, "real EAN-8");
+  assert.equal(checkDigitValid("9310015200019"), false, "fabricated, removed");
+  assert.equal(checkDigitValid("9300675024458"), false, "last digit altered");
+});
+
+test("every table entry is a barcode a reader could produce", () => {
+  assert.ok(LOCAL_DB.length > 0, "table is empty");
+  for (const c of LOCAL_DB) {
+    assert.ok(/^\d+$/.test(c.barcode), `${c.name}: barcode is not all digits`);
+    assert.ok(
+      [8, 12, 13].includes(c.barcode.length),
+      `${c.name}: ${c.barcode} is ${c.barcode.length} digits — not EAN-8, UPC-A or EAN-13`,
+    );
+    assert.ok(
+      checkDigitValid(c.barcode),
+      `${c.name}: ${c.barcode} has an invalid check digit — no reader can emit this`,
+    );
+  }
+});
+
+test("no two entries share a barcode", () => {
+  const seen = new Map();
+  for (const c of LOCAL_DB) {
+    assert.equal(seen.get(c.barcode), undefined, `${c.barcode} appears twice (${seen.get(c.barcode)} / ${c.name})`);
+    seen.set(c.barcode, c.name);
+  }
 });
