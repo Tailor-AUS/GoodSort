@@ -66,12 +66,22 @@ jobs:
       # is missing or the connection string is wrong. Fail loudly instead.
       - name: Concurrency tests must have actually run
         run: |
-          dotnet test src/GoodSort.Api.Tests/GoodSort.Api.Tests.csproj -c Release --nologo --no-restore             --filter "FullyQualifiedName~SqlConcurrencyTests" --logger "console;verbosity=normal" > sql-tests.txt 2>&1 || true
+          set +e
+          dotnet test src/GoodSort.Api.Tests/GoodSort.Api.Tests.csproj -c Release --nologo --no-restore --filter "FullyQualifiedName~SqlConcurrencyTests" --logger "console;verbosity=normal" > sql-tests.txt 2>&1
+          code=$?
+          set -e
           cat sql-tests.txt
+
           if grep -q "Skipped GoodSort.Api.Tests.SqlConcurrencyTests" sql-tests.txt; then
             echo "::error title=Concurrency tests skipped::SqlConcurrencyTests did not run. GOODSORT_TEST_SQL is unset or the SQL Server service is unreachable, so nothing verified the money-path races."
             exit 1
           fi
-          grep -qE "Passed!.*Failed:[[:space:]]+0" sql-tests.txt
+
+          if ! grep -qE "Total tests: [1-9]" sql-tests.txt; then
+            echo "::error title=Concurrency tests did not execute::No tests were discovered or run, so nothing verified the money-path races."
+            exit 1
+          fi
+
+          exit $code
         env:
           GOODSORT_TEST_SQL: "Server=localhost,1433;User Id=sa;Password=GoodSortCI!2026;TrustServerCertificate=True;"
