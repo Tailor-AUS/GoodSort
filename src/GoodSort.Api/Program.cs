@@ -542,7 +542,53 @@ app.MapPost("/api/scan/photo", async (HttpContext ctx, PhotoScanRequest req, Vis
     var globalCallsToday = await db.VisionCalls.CountAsync(v => v.CreatedAt >= since);
     if (globalCallsToday >= globalCap) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
 
-    var result = await vision.IdentifyContainers(base64, userId);
+    // Take the slot BEFORE spending it, or the cap counts the wrong thing.
+    //
+    // The row that closes the window is written by VisionService.LogCall, which
+    // runs only after the upstream response comes back — up to the 8s Tailor
+    // Vision timeout plus the Azure OpenAI fallback. So the two counts above
+    // were a check-then-act with a multi-second gap: every request in flight
+    // reads the same total, every one passes, and every one makes a billed
+    // call. The comment on the cap says "without it, one client can drain the
+    // whole day's BAINK budget" — which is exactly what the gap allows, one
+    // burst at a time. Same shape as the money-path double-spends, against
+    // spend rather than credit.
+    //
+    // A reservation row makes in-flight calls visible to concurrent callers.
+    // It is removed in the finally below, so a completed call is counted once,
+    // by LogCall's real record. If the process dies mid-call the reservation
+    // survives its 24h window and slightly over-counts — erring toward the cap,
+    // which is the safe direction for a spend control.
+    var reservation = new VisionCall
+    {
+        Provider = VisionReservation.Provider,
+        Success = false,
+        UserId = userId,
+    };
+    db.VisionCalls.Add(reservation);
+    await db.SaveChangesAsync();
+
+    VisionResult result;
+    try
+    {
+        result = await vision.IdentifyContainers(base64, userId);
+    }
+    finally
+    {
+        try
+        {
+            db.VisionCalls.Remove(reservation);
+            await db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            // Losing the row is not worth failing the member's scan over — it
+            // expires from the 24h window on its own. Say so rather than
+            // swallowing it, because a build-up here would quietly tighten the
+            // cap on everyone.
+            app.Logger.LogWarning(ex, "Could not release vision reservation {Id}", reservation.Id);
+        }
+    }
     var totalItems = result.Containers.Sum(c => c.Count);
     // Preview must quote what /confirm will actually credit, launch bonus included.
     var previewProfile = await db.Profiles.FindAsync(userId.Value);
