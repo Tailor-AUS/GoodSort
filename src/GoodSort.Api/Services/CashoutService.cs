@@ -155,6 +155,18 @@ public class CashoutService
         // payments marked processing with no file. That direction is deliberate:
         // nobody is paid, which an admin can recover from via the batch id,
         // whereas the other direction pays twice and cannot be undone.
+        // Claim and build together. The claim commits on its own statement, so
+        // without a transaction a failure while building the file — a malformed
+        // account name, a formatting slip — leaves those payments marked
+        // processing with no file. They are then invisible to the next export,
+        // which only looks at "pending", so nobody is paid until someone
+        // intervenes by hand.
+        //
+        // I called this direction "safe" in #42 on the grounds that nobody is
+        // overpaid. Nobody being paid at all is not safe, it is just quiet.
+        // Rolling back returns them to pending and the next export takes them.
+        return await Atomic.RunAsync(_db, async () =>
+        {
         var batchId = Guid.NewGuid();
         var claimed = await ClaimPendingInto(batchId);
         if (claimed == 0) return "";
@@ -230,6 +242,7 @@ public class CashoutService
         await _db.SaveChangesAsync();
 
         return sb.ToString();
+        });
     }
 
     /// <summary>
