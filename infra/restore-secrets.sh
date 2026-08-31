@@ -63,48 +63,13 @@ if [ -n "${SOVRGN_API_KEY:-}" ]; then
   echo "WARNING: SOVRGN_API_KEY is set in azd env but will not be restored (revoked)."
 fi
 
-# Ensure thegoodsort.org is linked to the ACS resource we send through.
-#
-# It gets dropped because tailor-app's Bicep declares the shared linkedDomains
-# array (tailor-app/infra/main.bicep:753) as [AzureManagedDomain, tailor.au]
-# and ARM applies it declaratively, so every tailor-app infra deploy removes
-# our domain. It is NOT "M365 DNS changes" as an earlier comment here claimed;
-# DNS cannot alter an ARM resource association.
-#
-# Read-modify-write: append ours, never replace the array, or we clobber
-# tailor-app's domains exactly the way theirs clobbers ours.
+# thegoodsort.org must stay linked to goodsort-comm or every OTP fails with
+# DomainNotLinked. One implementation, shared with both workflows — this used
+# to be a third copy of the same code, and it carried the same latent crash.
 echo "Ensuring thegoodsort.org email domain is linked to ACS..."
-COMM_ID="/subscriptions/5745cb5e-8c39-470f-ab6f-8a5897b7f9af/resourceGroups/rg-tailor-app-prod/providers/Microsoft.Communication/communicationServices/tailor-prod-comm"
-GS_DOMAIN="/subscriptions/5745cb5e-8c39-470f-ab6f-8a5897b7f9af/resourceGroups/rg-tailor-app-prod/providers/Microsoft.Communication/emailServices/tailor-prod-email/domains/thegoodsort.org"
-
-CURRENT_DOMAINS=$(az communication show -n tailor-prod-comm -g rg-tailor-app-prod   --query linkedDomains -o json) || {
-    echo "ERROR: cannot read ACS linkedDomains. Every OTP will fail with DomainNotLinked." >&2
-    exit 1
-  }
-
-if echo "$CURRENT_DOMAINS" | grep -q "domains/thegoodsort.org"; then
-  echo "  already linked."
-else
-  echo "  missing - appending."
-  BODY=$(printf '%s' "$CURRENT_DOMAINS" | python3 -c "
-import json,sys
-current = json.load(sys.stdin) or []
-gs = sys.argv[1]
-if gs not in current:
-    current.append(gs)
-print(json.dumps({'properties': {'linkedDomains': current}}))
-" "$GS_DOMAIN")
-  az rest --method patch --url "${COMM_ID}?api-version=2023-04-01"     --body "$BODY" --output none || {
-      echo "ERROR: ACS domain re-link failed. Every OTP will fail with DomainNotLinked." >&2
-      exit 1
-    }
+if ! bash "$(dirname "$0")/../scripts/ensure-acs-domain-linked.sh"; then
+  echo "ERROR: ACS sender domain is not linked. Every OTP will fail." >&2
+  exit 1
 fi
-
-# Prove it, rather than trusting that the PATCH returned 200.
-az communication show -n tailor-prod-comm -g rg-tailor-app-prod   --query linkedDomains -o json | grep -q "domains/thegoodsort.org" || {
-    echo "ERROR: thegoodsort.org still not linked after PATCH." >&2
-    exit 1
-  }
-echo "  verified."
 
 echo "Done."

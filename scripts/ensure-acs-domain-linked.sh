@@ -1,27 +1,38 @@
 #!/usr/bin/env bash
-# Keep thegoodsort.org linked to the Communication Service we send OTP codes
-# through. Unlinked means every signup fails with DomainNotLinked — the domain
-# stays fully *verified* the whole time, so nothing about DNS looks wrong.
+# Keep thegoodsort.org linked to goodsort-comm, the Communication Service we
+# send OTP codes through. Unlinked means every signup fails with
+# DomainNotLinked, while the domain stays fully *verified* the whole time — so
+# nothing about DNS looks wrong and the failure reads as a code bug.
 #
-# Root cause is not in this repo: tailor-app's Bicep declares the shared
-# linkedDomains array (infra/main.bicep:753) and ARM applies it declaratively,
-# so its deploys drop our domain. Activity log names the principal:
-# tailor-dev-deploy. Until that Bicep includes this domain, we re-link.
+# We used to send through tailor-app's shared tailor-prod-comm, and that is
+# what made this a recurring outage: tailor-app's Bicep declares the shared
+# linkedDomains array (infra/main.bicep:753), ARM applies it declaratively, and
+# every one of their infra deploys silently dropped our domain. It happened
+# three times on 2026-08-31 alone. We now own the service, so nobody else's
+# deploy can reach it, and the domain resource itself was never the thing that
+# broke — only the association.
 #
-# Exit codes are the contract, because the two callers want different things:
+# This is therefore a safety net rather than a repair loop. If it ever fires,
+# something changed that we did not expect.
+#
+# Exit codes are the contract, because the callers want different things:
 #   0  linked (already, or repaired and verified)
 #   1  repair was needed and failed — email is down
 #   2  could not even check (no permission on the ACS resource)
 set -uo pipefail
 
 SUB="5745cb5e-8c39-470f-ab6f-8a5897b7f9af"
-RG="rg-tailor-app-prod"
-COMM="tailor-prod-comm"
+RG="rg-GoodSort"
+COMM="goodsort-comm"
 COMM_ID="/subscriptions/${SUB}/resourceGroups/${RG}/providers/Microsoft.Communication/communicationServices/${COMM}"
-GS="/subscriptions/${SUB}/resourceGroups/${RG}/providers/Microsoft.Communication/emailServices/tailor-prod-email/domains/thegoodsort.org"
+# The domain resource still lives in tailor-app's email service. That is fine:
+# it is only ever referenced, never rewritten, and re-verifying it under our own
+# email service would mean new DNS records for no gain.
+DOMAIN_RG="rg-tailor-app-prod"
+GS="/subscriptions/${SUB}/resourceGroups/${DOMAIN_RG}/providers/Microsoft.Communication/emailServices/tailor-prod-email/domains/thegoodsort.org"
 
 if ! CURRENT=$(az communication show -n "$COMM" -g "$RG" --query linkedDomains -o json 2>&1); then
-  echo "::warning title=ACS self-heal unavailable::Cannot read ${COMM} (likely AuthorizationFailed: this identity is scoped to rg-GoodSort, the ACS resource lives in ${RG}). Email cannot be self-healed here."
+  echo "::warning title=ACS self-heal unavailable::Cannot read ${COMM} in ${RG}. Email cannot be self-healed here."
   printf '%s\n' "$CURRENT" | tail -3
   exit 2
 fi

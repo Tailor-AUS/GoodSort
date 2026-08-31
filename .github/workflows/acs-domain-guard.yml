@@ -1,19 +1,24 @@
 name: ACS domain guard
 
-# thegoodsort.org keeps getting unlinked from the Communication Service we send
-# through, which takes every signup down with it — twice on 2026-08-31 alone.
+# Safety net for OTP email. thegoodsort.org must stay linked to goodsort-comm
+# or every signup fails with DomainNotLinked while the domain still reads as
+# fully verified — a failure that looks like a code bug and is not.
 #
-# Root cause is not in this repo. tailor-app's Bicep declares the shared
-# linkedDomains array (infra/main.bicep:753) as [AzureManagedDomain, tailor.au]
-# and ARM applies it declaratively, so its deploys silently drop our domain.
-# Confirmed from the activity log: the clobbering principal is tailor-dev-deploy.
+# This used to run every 30 minutes because we sent through tailor-app's shared
+# tailor-prod-comm, whose linkedDomains array their Bicep declares and ARM
+# therefore rewrites on every infra deploy. That took signups down three times
+# on 2026-08-31. We now own goodsort-comm, so no other team's deploy can reach
+# it and there is nothing left to race.
 #
-# The real fix is for that Bicep to include this domain. Until it does, the
-# deploy-time re-link only helps when WE deploy — a tailor-app deploy can leave
-# signups dead until our next release. This closes that window.
+# Cadence is deliberately 6-hourly, not 30-minutely. The send probe below is a
+# real email to an address with no mailbox, so it hard-bounces off our own
+# Exchange Online MX. At 48/day against a sending domain with almost no
+# legitimate volume that is a bounce ratio ACS can throttle us for; at 4/day it
+# is noise. Detection latency is an acceptable trade now that the recurring
+# clobberer is gone.
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "0 */6 * * *"
   workflow_dispatch:
 
 jobs:
