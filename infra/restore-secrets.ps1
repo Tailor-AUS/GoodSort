@@ -1,71 +1,63 @@
-# azd postdeploy hook (Windows): re-apply production env vars onto the api
-# Container App. See restore-secrets.sh for rationale.
+# azd postdeploy hook (Windows). Delegates to restore-secrets.sh — it does not
+# reimplement it.
+#
+# It used to be a parallel implementation, and it silently rotted. It stopped
+# receiving commits at #8 while the .sh went on to gain #18, #25 and #26, so on
+# Windows `azd deploy` did the opposite of what the repo documents:
+#
+#   * it wrote ACS_CONNECTION_STRING as a plaintext env var, undoing #26, which
+#     had moved it to a container-app secret referenced by secretref;
+#   * it had no goodsort-comm guard, so it restored whatever it was handed;
+#   * it PATCHed tailor-app's tailor-prod-comm linkedDomains with a hardcoded
+#     array containing thegoodsort.org — re-creating the exact coupling #25
+#     removed, and assigning the array wholesale, which is what
+#     scripts/ensure-acs-domain-linked.sh warns never to do because it clobbers
+#     tailor-app's own domains.
+#
+# None of that was visible. Nothing builds, lints or tests a .ps1; CI never runs
+# it; the GitHub deploy path uses `az acr build` and never touches it. It
+# executes only on a manual `azd deploy` from Windows, and it printed
+# "Env vars restored." and "Done." whichever branch it took. Two files sitting
+# side by side in a directory listing look like siblings, not like one being
+# three security fixes behind the other.
+#
+# So there is one implementation now, the same way there is one ACS link
+# implementation. This file exists solely because azure.yaml routes Windows to
+# pwsh.
 
 $ErrorActionPreference = "Stop"
 
-# gpt-5-mini is the only deployment in oai-tailor-app-prod verified to work
-# for the vision fallback (gpt-4.1 does not exist there).
-if (-not [Environment]::GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT")) {
-  $env:AZURE_OPENAI_DEPLOYMENT = "gpt-5-mini"
+$script = Join-Path $PSScriptRoot "restore-secrets.sh"
+if (-not (Test-Path $script)) {
+    Write-Error "restore-secrets.sh not found next to this script at $script."
+    exit 1
 }
 
-$required = @(
-  "JWT_SECRET", "TAILOR_VISION_API_KEY", "TAILOR_VISION_API_URL",
-  "ACS_CONNECTION_STRING", "ACS_EMAIL_SENDER",
-  "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_KEY", "AZURE_OPENAI_DEPLOYMENT",
-  "GOODSORTDB_CONNECTION_STRING"
-)
-
-$missing = @()
-foreach ($k in $required) {
-  if (-not [Environment]::GetEnvironmentVariable($k)) { $missing += $k }
+# Git for Windows ships bash; azd itself does not. Fail loudly rather than
+# quietly doing something different from the Linux path — a postdeploy hook that
+# half-runs is how the drift above started.
+$bash = (Get-Command bash -ErrorAction SilentlyContinue)?.Source
+if (-not $bash) {
+    foreach ($candidate in @("$env:ProgramFiles\Git\bin\bash.exe", "${env:ProgramFiles(x86)}\Git\bin\bash.exe")) {
+        if (Test-Path $candidate) { $bash = $candidate; break }
+    }
 }
-if ($missing.Count -gt 0) {
-  Write-Error "Missing azd env vars: $($missing -join ', ')`nSet them with: azd env set <NAME> <VALUE>"
-  exit 1
-}
+if (-not $bash) {
+    Write-Error @"
+bash was not found, so infra/restore-secrets.sh cannot run.
 
-$rg = "rg-GoodSort"
-$app = "api"
-Write-Host "Restoring env vars on $app in $rg..."
+This hook deliberately does not reimplement it: the reimplementation went three
+security fixes stale without anyone noticing. Install Git for Windows (which
+provides bash), or run the script yourself:
 
-$jwt   = [Environment]::GetEnvironmentVariable("JWT_SECRET")
-$tvKey = [Environment]::GetEnvironmentVariable("TAILOR_VISION_API_KEY")
-$tvUrl = [Environment]::GetEnvironmentVariable("TAILOR_VISION_API_URL")
-$acs   = [Environment]::GetEnvironmentVariable("ACS_CONNECTION_STRING")
-$acsSend = [Environment]::GetEnvironmentVariable("ACS_EMAIL_SENDER")
-$oaiEnd = [Environment]::GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT")
-$oaiKey = [Environment]::GetEnvironmentVariable("AZURE_OPENAI_KEY")
-$oaiDep = [Environment]::GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT")
-$db     = [Environment]::GetEnvironmentVariable("GOODSORTDB_CONNECTION_STRING")
-
-az containerapp update -n $app -g $rg `
-  --set-env-vars `
-    "JWT_SECRET=$jwt" `
-    "TAILOR_VISION_API_KEY=$tvKey" `
-    "TAILOR_VISION_API_URL=$tvUrl" `
-    "ACS_CONNECTION_STRING=$acs" `
-    "ACS_EMAIL_SENDER=$acsSend" `
-    "AZURE_OPENAI_ENDPOINT=$oaiEnd" `
-    "AZURE_OPENAI_KEY=$oaiKey" `
-    "AZURE_OPENAI_DEPLOYMENT=$oaiDep" `
-    "ConnectionStrings__goodsortdb=$db" `
-  --output none
-
-Write-Host "Env vars restored."
-
-# Direct Sovrgn consumers were revoked (TailorAU/tailor-app#5223). Strip any
-# leftover SOVRGN_* so the next azd deploy cannot re-inject a dead bearer.
-az containerapp update -n $app -g $rg `
-  --remove-env-vars SOVRGN_API_KEY SOVRGN_API_URL SOVRGN_MODEL `
-  --output none
-if ([Environment]::GetEnvironmentVariable("SOVRGN_API_KEY")) {
-  Write-Host "WARNING: SOVRGN_API_KEY is set in azd env but will not be restored (revoked)."
+    bash infra/restore-secrets.sh
+"@
+    exit 1
 }
 
-# Re-link thegoodsort.org to ACS (keeps getting unlinked by M365 DNS changes)
-Write-Host "Re-linking thegoodsort.org email domain to ACS..."
-$commId = "/subscriptions/5745cb5e-8c39-470f-ab6f-8a5897b7f9af/resourceGroups/rg-tailor-app-prod/providers/Microsoft.Communication/communicationServices/tailor-prod-comm"
-$body = '{"properties":{"linkedDomains":["/subscriptions/5745cb5e-8c39-470f-ab6f-8a5897b7f9af/resourceGroups/rg-tailor-app-prod/providers/Microsoft.Communication/emailServices/tailor-prod-email/domains/AzureManagedDomain","/subscriptions/5745cb5e-8c39-470f-ab6f-8a5897b7f9af/resourceGroups/rg-tailor-app-prod/providers/Microsoft.Communication/emailServices/tailor-prod-email/domains/tailor.au","/subscriptions/5745cb5e-8c39-470f-ab6f-8a5897b7f9af/resourceGroups/rg-tailor-app-prod/providers/Microsoft.Communication/emailServices/tailor-prod-email/domains/thegoodsort.org"]}}'
-try { az rest --method patch --url "$commId`?api-version=2023-04-01" --body $body --output none 2>$null } catch { Write-Host "WARNING: ACS domain re-link failed (non-fatal)" }
-Write-Host "Done."
+Write-Host "Delegating to restore-secrets.sh via $bash ..."
+
+# Hand it a POSIX path; git bash does not accept C:\... as a script argument.
+$posix = ($script -replace '\', '/') -replace '^([A-Za-z]):', '/$1'
+& $bash -lc "'$posix'"
+exit $LASTEXITCODE
