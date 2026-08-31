@@ -5,7 +5,7 @@ import Link from "next/link";
 import { X, Package, Leaf, Truck, Wallet, LogOut, CheckCircle, Users, Gift, Trash2, Car } from "lucide-react";
 import { apiUrl, authHeaders, readStoredProfileId } from "@/lib/config";
 import { formatCents, type User } from "@/lib/store";
-import { inviteMessage, isCollecting, LIVE_VOLUME_THRESHOLD, sameSuburb, streetInviteUrl, streetStatsForViewer, titleSuburb, type GrowthSuburb, householdCountsTowardUnlock } from "@/lib/brisbane";
+import { inviteMessage, isCollecting, LIVE_VOLUME_THRESHOLD, sameSuburb, streetInviteUrl, streetStatsForViewer, titleSuburb, type GrowthSuburb, householdCountsTowardUnlock, canonicalSuburb } from "@/lib/brisbane";
 import { InviteActions } from "@/app/components/shared/invite-actions";
 
 interface AccountPanelProps {
@@ -243,7 +243,9 @@ function InviteFriends({ user: _user }: { user: User }) {
           ? "Enough scanned volume for a driver trip. Share so the first run is full."
           : `${(cluster.containers ?? waiting).toLocaleString()} container${(cluster.containers ?? waiting) === 1 ? "" : "s"} scanned in ${titleSuburb(suburb ?? "") || "your suburb"}. ${needed.toLocaleString()} more for a driver trip. Every neighbour who scans gets your suburb collected sooner.`)}
       </p>
-      <InviteActions url={inviteUrl} message={message} compact />
+      {(building || canonicalSuburb(suburb) !== null) && (
+        <InviteActions url={inviteUrl} message={message} compact />
+      )}
     </div>
   );
 }

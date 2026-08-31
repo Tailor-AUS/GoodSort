@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ScanBarcode } from "lucide-react";
-import { LIVE_VOLUME_THRESHOLD, inviteMessage, residentialNeedsStreet, streetInviteUrl, titleSuburb } from "@/lib/brisbane";
+import { LIVE_VOLUME_THRESHOLD, inviteMessage, residentialNeedsStreet, streetInviteUrl, titleSuburb, canonicalSuburb } from "@/lib/brisbane";
 import { readStoredProfileId } from "@/lib/config";
 import { Logo } from "@/app/components/shared/logo";
 import { WaitlistCard } from "@/app/components/shared/waitlist-card";
@@ -80,7 +80,9 @@ export function WaitlistHome({
           </p>
         </div>
 
-        {!live && !pickupConfirmed && (
+        {/* No suburb means streetInvitePath resolves to "/" — the bare
+            city-wide link 2a8ea09 removed. Prompt for the suburb instead. */}
+        {!live && !pickupConfirmed && (building || canonicalSuburb(suburb) !== null) && (
           <div className="mb-5">
             <p className="text-[15px] font-display font-extrabold text-slate-900 mb-1">
               {building ? "Invite a house to scan" : "Invite neighbours to scan"}
