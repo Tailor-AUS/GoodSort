@@ -24,9 +24,19 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
     public DbSet<VisionCall> VisionCalls => Set<VisionCall>();
     public DbSet<Recycler> Recyclers => Set<Recycler>();
     public DbSet<GrowthEvent> GrowthEvents => Set<GrowthEvent>();
+    public DbSet<UsedScanToken> UsedScanTokens => Set<UsedScanToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<UsedScanToken>(e =>
+        {
+            // Jti as the key is the point: it is what makes a second confirm of
+            // the same token fail at the database rather than at a check two
+            // concurrent requests can both pass.
+            e.HasKey(x => x.Jti);
+            e.HasIndex(x => x.UsedAt);
+        });
+
         // Household — owned JSON type for Materials
         modelBuilder.Entity<GrowthEvent>(e =>
         {
