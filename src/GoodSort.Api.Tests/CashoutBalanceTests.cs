@@ -26,8 +26,12 @@ namespace GoodSort.Api.Tests;
 /// provider cannot express it — it also cannot translate ExecuteUpdate, so the
 /// fallback these tests exercise is check-then-act as well. The atomicity
 /// guarantee is a property of the single UPDATE statement SQL Server runs in
-/// production. Nothing here demonstrates it, so do not read these as proof the
-/// race is closed.
+/// production, and nothing in THIS file demonstrates it.
+///
+/// SqlConcurrencyTests does: eight concurrent cash-outs against a balance
+/// covering one. Restoring the original read-compare-write makes it fail with
+/// eight successes instead of one — $160 of payout rows against $20 of credit,
+/// measured in CI. Keep these too, for the rules they pin on every run.
 /// </summary>
 public class CashoutBalanceTests
 {
