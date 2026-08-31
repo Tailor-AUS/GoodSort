@@ -192,6 +192,47 @@ public class SqlConcurrencyTests : IClassFixture<SqlServerFixture>
     }
 
     [SkippableFact]
+    public async Task A_failed_export_leaves_its_payments_claimable_again()
+    {
+        Skip.IfNot(_sql.Available, SqlServerFixture.SkipReason);
+
+        // The export claims pending payments into a batch, then builds the ABA
+        // file. Without a transaction, a failure while building leaves them
+        // marked "processing" with no file — invisible to the next export,
+        // which only looks at "pending", so nobody is paid until someone
+        // intervenes by hand. Rolling back returns them.
+        var userId = await _sql.SeedProfile(clearedCents: 0);
+        await using (var seed = _sql.NewContext())
+        {
+            seed.Set<CashoutRequest>().Add(new CashoutRequest
+            {
+                UserId = userId, AmountCents = 2500, Bsb = "084234",
+                AccountNumber = "123456789", AccountName = "MEMBER NAME", Status = "pending",
+            });
+            await seed.SaveChangesAsync();
+        }
+
+        await using (var db = _sql.NewContext())
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await Atomic.RunAsync<bool>(db, async () =>
+                {
+                    await db.Set<CashoutRequest>()
+                        .Where(c => c.Status == "pending")
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(c => c.Status, "processing")
+                            .SetProperty(c => c.BatchId, Guid.NewGuid()));
+                    throw new InvalidOperationException("file build blew up");
+                }));
+        }
+
+        await using var check = _sql.NewContext();
+        var row = await check.Set<CashoutRequest>().AsNoTracking().FirstAsync(c => c.UserId == userId);
+        Assert.Equal("pending", row.Status);
+        Assert.Null(row.BatchId);
+    }
+
+    [SkippableFact]
     public async Task A_failure_after_the_claim_rolls_the_claim_back()
     {
         Skip.IfNot(_sql.Available, SqlServerFixture.SkipReason);
