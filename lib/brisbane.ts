@@ -1,4 +1,4 @@
-import { BRISBANE_SUBURBS, type BrisbaneSuburb } from "./brisbane-suburbs";
+import { BRISBANE_SUBURBS, type BrisbaneSuburb } from "./brisbane-suburbs.ts";
 
 export { BRISBANE_SUBURBS, type BrisbaneSuburb };
 

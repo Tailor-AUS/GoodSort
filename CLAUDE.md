@@ -14,7 +14,8 @@ npm ci                    # install deps
 npm run build             # production build (no map API keys required — OSS stack)
 npm run dev               # dev server
 npx tsc --noEmit          # typecheck
-dotnet test src/GoodSort.Api.Tests --nologo   # density / address-parse invariants
+npm test                  # Node test runner over lib/**/*.test.ts (needs Node 22.6+)
+dotnet test src/GoodSort.Api.Tests --nologo   # density / address-parse invariants + HTTP-level tests
 ```
 
 ### Backend (.NET 9 — minimal API)
@@ -171,7 +172,8 @@ src/GoodSort.Api/
 - **Postdeploy secrets**: `azd deploy` strips env vars not in the Aspire manifest. The `infra/restore-secrets.sh` postdeploy hook re-applies them from the azd environment.
 - **CORS origins**: Backend restricts to `thegoodsort.org` + the SWA staging domain. Add new origins in `Program.cs` if needed.
 - **Single-file API**: All ~67 endpoints live in `Program.cs`. When adding endpoints, follow the existing minimal API pattern there — don't create controllers.
-- **Thin test suite**: `GoodSort.Api.Tests` covers address parse / city-wide Brisbane must never cluster. CI and API deploy run those tests. Frontend still has no unit tests — browser-QA marketing and onboard flows.
+- **Tests, and what they actually cover**: `GoodSort.Api.Tests` mixes unit tests with tests that boot the real app over HTTP (`ActivationPathTests`, `VolumeMechanicTests`, `EndpointAuthPostureTests`) via `WebApplicationFactory<Program>` — Development + no connection string selects the in-memory provider, and Development + no `ACS_CONNECTION_STRING` makes `SendOtp` return the code instead of mailing it, so the real auth flow runs without a database or sending email. Frontend tests are Node's own runner over `lib/**/*.test.ts` (`npm test`), which is why `tsconfig.json` sets `allowImportingTsExtensions` and `lib/brisbane.ts` imports `./brisbane-suburbs.ts` with the extension — Node ESM will not resolve it otherwise. CI runs Node 22 for `--experimental-strip-types`.
+- **Adding an endpoint? It is anonymous by default.** A minimal-API route has no auth unless you add `.RequireAuthorization()`, and forgetting it produces a working endpoint that leaks with nothing unusual in the build or the diff. It has happened twice — runner pickup coordinates, then `GET /api/routes` returning every `RouteStop`'s household name, address and coordinates. `EndpointAuthPostureTests` now fails unless every route is either authorized or listed in `IntentionallyPublic` **with a reason**, and separately requires every `/api/admin` route to use `AuthHelpers.AdminPolicy` — `.RequireAuthorization()` with no policy means any signed-in member, not staff.
 - **SWA preview environments are capped at 3.** Once the cap is hit, every PR's preview deploy fails with `already has the maximum number of staging environments` — and it fails *quietly*: `gh pr checks` shows the newest run per workflow, which for a merged PR is the close job, so the failed preview never appears. PRs #24 and #25 both merged with a failed preview that looked green. `prune-swa-previews.yml` reconciles this every 4h (an environment should exist only while its PR is open), but if PR previews start failing, check the environment list first.
 - **App version meta**: `app/layout.tsx` has `<meta name="app-version" content="YYYYMMDD-HHMM">`. `debug-prod` reads this to confirm a deploy actually landed; bump it when shipping user-visible changes.
 - **JSON cycle handling**: `Program.cs` sets `ReferenceHandler.IgnoreCycles` because `Run ↔ RunnerProfile` (and similar EF nav properties) would otherwise blow up serialization. Keep this in mind when adding entities with circular relationships.
