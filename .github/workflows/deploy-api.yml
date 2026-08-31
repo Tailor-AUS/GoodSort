@@ -44,37 +44,19 @@ jobs:
               -g ${{ secrets.AZURE_RESOURCE_GROUP }} \
               --image acrnyjfw2pdfsrie.azurecr.io/api:${{ github.sha }}
 
-      # The OTP is the only way into the product and fails closed with
-      # DomainNotLinked if thegoodsort.org is not linked to the ACS resource we
-      # send through. tailor-app's Bicep declares that shared array and drops
-      # our domain on each of its infra deploys (see the 2026-08-30 outage).
+      # thegoodsort.org keeps getting dropped from the shared Communication
+      # Service's linkedDomains array, which takes every signup down with it.
+      # Root cause is tailor-app's Bicep declaring that array; until it includes
+      # our domain, we re-link on the way past.
       #
-      # The Communication Service lives in rg-tailor-app-prod, NOT rg-GoodSort,
-      # so this deploy identity may not be authorised to read or patch it. That
-      # is a real architectural gap, but it must not red-line a deploy that
-      # otherwise succeeded: we warn loudly and let alert gs-otp-email-down be
-      # the backstop. We only fail the job when we CAN see the resource and the
-      # domain is genuinely missing or unfixable.
+      # Non-blocking by design. The Communication Service lives in
+      # rg-tailor-app-prod, not rg-GoodSort, so this identity may not be able to
+      # read or patch it at all - and more importantly, failing the deploy on a
+      # broken sender link also blocks shipping the fix for it. That is not a
+      # hypothetical: it is what run 33352157022 did. Escalation is the
+      # scheduled ACS domain guard plus alert gs-otp-email-down.
       - name: Ensure ACS sender domain is linked
         uses: azure/cli@v2
         with:
           inlineScript: |
-            COMM_ID="/subscriptions/5745cb5e-8c39-470f-ab6f-8a5897b7f9af/resourceGroups/rg-tailor-app-prod/providers/Microsoft.Communication/communicationServices/tailor-prod-comm"
-            GS="/subscriptions/5745cb5e-8c39-470f-ab6f-8a5897b7f9af/resourceGroups/rg-tailor-app-prod/providers/Microsoft.Communication/emailServices/tailor-prod-email/domains/thegoodsort.org"
-
-            if ! CURRENT=$(az communication show -n tailor-prod-comm -g rg-tailor-app-prod --query linkedDomains -o json 2>&1); then
-              echo "::warning title=ACS self-heal unavailable::Cannot read tailor-prod-comm (likely AuthorizationFailed: this deploy identity is scoped to rg-GoodSort, the ACS resource lives in rg-tailor-app-prod). Email cannot be self-healed by this deploy. Alert gs-otp-email-down remains the backstop. Grant this SP reader+contributor on the ACS resource to enable self-heal."
-              echo "$CURRENT" | tail -3
-              exit 0
-            fi
-
-            if echo "$CURRENT" | grep -q "domains/thegoodsort.org"; then
-              echo "thegoodsort.org already linked."
-              exit 0
-            fi
-
-            echo "::error title=ACS sender domain was unlinked::thegoodsort.org missing from linkedDomains - every OTP would fail. Appending."
-            BODY=$(printf '%s' "$CURRENT" | python3 -c 'import json,sys; c=json.load(sys.stdin) or []; gs=sys.argv[1]; c.append(gs) if gs not in c else None; print(json.dumps({"properties":{"linkedDomains":c}}))' "$GS")
-            az rest --method patch --url "${COMM_ID}?api-version=2023-04-01" --body "$BODY" --output none
-            az communication show -n tailor-prod-comm -g rg-tailor-app-prod --query linkedDomains -o json | grep -q "domains/thegoodsort.org"
-            echo "Re-linked and verified."
+            bash scripts/ensure-acs-domain-linked.sh || echo "::warning title=ACS link not repaired::Deploy continued anyway; the scheduled ACS domain guard retries within 30 minutes."

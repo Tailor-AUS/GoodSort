@@ -21,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     name: Ensure ACS sender domain is linked
     steps:
+      - uses: actions/checkout@v4
+
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -29,24 +31,10 @@ jobs:
       - name: Check and repair
         uses: azure/cli@v2
         with:
-          inlineScript: |
-            COMM_ID="/subscriptions/5745cb5e-8c39-470f-ab6f-8a5897b7f9af/resourceGroups/rg-tailor-app-prod/providers/Microsoft.Communication/communicationServices/tailor-prod-comm"
-            GS="/subscriptions/5745cb5e-8c39-470f-ab6f-8a5897b7f9af/resourceGroups/rg-tailor-app-prod/providers/Microsoft.Communication/emailServices/tailor-prod-email/domains/thegoodsort.org"
-            CURRENT=$(az communication show -n tailor-prod-comm -g rg-tailor-app-prod --query linkedDomains -o json)
-
-            if echo "$CURRENT" | grep -q "domains/thegoodsort.org"; then
-              echo "Linked. Nothing to do."
-              exit 0
-            fi
-
-            # Read-modify-write: append ours, never replace the array, or we
-            # clobber tailor-app's domains exactly the way theirs clobbers ours.
-            echo "::warning title=ACS sender domain was unlinked::thegoodsort.org had been dropped from tailor-prod-comm - every signup was failing with DomainNotLinked. Re-linking. Root cause is tailor-app's Bicep declaring the shared array."
-            BODY=$(printf '%s' "$CURRENT" | python3 -c 'import json,sys; c=json.load(sys.stdin) or []; gs=sys.argv[1]; c.append(gs) if gs not in c else None; print(json.dumps({"properties":{"linkedDomains":c}}))' "$GS")
-            az rest --method patch --url "${COMM_ID}?api-version=2023-04-01" --body "$BODY" --output none
-
-            az communication show -n tailor-prod-comm -g rg-tailor-app-prod --query linkedDomains -o json | grep -q "domains/thegoodsort.org"
-            echo "Re-linked and verified."
+          # Shared with deploy-api.yml on purpose: this logic was duplicated in
+          # both workflows, and so was the bug that made it crash on exactly
+          # the state it was written to repair.
+          inlineScript: bash scripts/ensure-acs-domain-linked.sh
 
       - name: Confirm a code can actually be sent
         run: |
