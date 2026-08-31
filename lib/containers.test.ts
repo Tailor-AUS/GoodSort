@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { lookupLocal, lookupContainer, createUnknownContainer, toBagMaterial, LOCAL_DB } from "./containers.ts";
+import { lookupLocal, lookupContainer, createUnknownContainer, toBagMaterial, classifyMaterialFromOFF, LOCAL_DB } from "./containers.ts";
 
 /**
  * Finding a scanned container in the local table.
@@ -139,4 +139,50 @@ test("no two entries share a barcode", () => {
     assert.equal(seen.get(c.barcode), undefined, `${c.barcode} appears twice (${seen.get(c.barcode)} / ${c.name})`);
     seen.set(c.barcode, c.name);
   }
+});
+
+/**
+ * Packaging tags from Open Food Facts decide which bag a member is told to use.
+ *
+ * These were unreachable until the lookup that feeds them started working — the
+ * client fetched openfoodfacts.org directly, CSP refused it, and the failure
+ * was swallowed — so the mapping had never actually run in production. Two
+ * entries were wrong: HDPE and polypropylene both returned "pet".
+ *
+ * That is not a cosmetic mislabel. PET clear is the highest-value plastic
+ * stream, so putting a milk or juice bottle in the PET bag downgrades the whole
+ * load at the depot. The four-bag system already has an "other" section for
+ * exactly these materials.
+ */
+
+const tagged = (...tags: string[]) => classifyMaterialFromOFF({ packaging_materials_tags: tags });
+
+test("HDPE and polypropylene are not PET", () => {
+  // The bug. Both used to return "pet".
+  assert.equal(tagged("en:hdpe-2-high-density-polyethylene"), "hdpe");
+  assert.equal(tagged("en:pp-5-polypropylene"), "hdpe");
+  assert.equal(tagged("en:polypropylene"), "hdpe");
+});
+
+test("actual PET is still PET", () => {
+  // The other direction, which an over-broad fix breaks.
+  assert.equal(tagged("en:pet-1-polyethylene-terephthalate"), "pet");
+  assert.equal(tagged("en:pet"), "pet");
+});
+
+test("the other materials still map where they did", () => {
+  assert.equal(tagged("en:aluminium"), "aluminium");
+  assert.equal(tagged("en:steel"), "aluminium");
+  assert.equal(tagged("en:glass"), "glass");
+  assert.equal(tagged("en:tetra-pak"), "liquid_paperboard");
+  assert.equal(tagged("en:paperboard"), "liquid_paperboard");
+});
+
+test("what the member is actually told: the bag, not the material name", () => {
+  // The mapping only matters through this. A wrong material is a wrong bag.
+  assert.equal(toBagMaterial(tagged("en:hdpe-2-high-density-polyethylene")), "other");
+  assert.equal(toBagMaterial(tagged("en:pp-5-polypropylene")), "other");
+  assert.equal(toBagMaterial(tagged("en:pet-1-polyethylene-terephthalate")), "pet");
+  assert.equal(toBagMaterial(tagged("en:aluminium")), "aluminium");
+  assert.equal(toBagMaterial(tagged("en:glass")), "glass");
 });

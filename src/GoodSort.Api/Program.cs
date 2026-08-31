@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using GoodSort.Api.Data;
 using GoodSort.Api.Data.Entities;
 using GoodSort.Api.Services;
@@ -32,6 +33,21 @@ builder.Services.AddHttpClient();
 
 // Tailor Vision (TV) — api.tailor.au/api/vision/classify
 // GoodSort dogfoods Tailor Vision, billed via BAINK (baink.tailor.au)
+// Open Food Facts asks callers to identify themselves. A browser cannot:
+// User-Agent is a forbidden header name in fetch, so the one lib/containers.ts
+// set was silently dropped. Server-side it actually gets sent.
+//
+// The timeout matters more than it looks. OFF is volunteer-run and its
+// availability is genuinely variable — its search API was returning 503 while
+// this was written. The default HttpClient timeout is 100 seconds, and this
+// call sits in the scan path behind a "Looking up..." spinner.
+builder.Services.AddHttpClient("OpenFoodFacts", client =>
+{
+    client.BaseAddress = new Uri("https://world.openfoodfacts.org/");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("TheGoodSort/1.0 (noreply@thegoodsort.org)");
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+
 builder.Services.AddHttpClient("TailorVision", client =>
 {
     var url = builder.Configuration["TAILOR_VISION_API_URL"] ?? "https://api.tailor.au";
@@ -56,6 +72,22 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    // The barcode lookup makes an outbound request per call and is anonymous,
+    // so without a ceiling anyone can use this API to generate unlimited
+    // traffic to Open Food Facts under our name — which gets us blocked by a
+    // volunteer-run service, not them.
+    options.AddPolicy("barcode-lookup", ctx =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                // A member scans one container at a time; 60/min is far more
+                // than a person produces and far less than a loop wants.
+                PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+
     options.AddPolicy("growth-events", ctx =>
         System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -761,27 +793,77 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
 }).RequireAuthorization();
 
 // ── Barcode Lookup (Open Food Facts proxy) ──
-app.MapGet("/api/barcode/{barcode}", async (string barcode, IHttpClientFactory httpFactory) =>
+// Container lookup, proxied to Open Food Facts.
+//
+// This exists rather than the browser calling OFF directly for three reasons,
+// and the first one is why the fallback tier never worked at all:
+//
+//  1. openfoodfacts.org is not in staticwebapp.config.json's connect-src, so a
+//     direct call from the page is refused by CSP. lib/containers.ts caught the
+//     failure and returned null, so the tier looked implemented and was dead in
+//     production. `LookupHostsAreAllowedTests` now fails if client code fetches
+//     a host the CSP does not list.
+//  2. OFF asks callers to identify themselves, and a browser cannot —
+//     User-Agent is a forbidden header name in fetch, so the one the client set
+//     was silently dropped. The named HttpClient sends it for real.
+//  3. Anonymous and unthrottled, this endpoint is a way to make our API
+//     generate unlimited traffic to a volunteer-run service under our name.
+//     It now has a per-IP ceiling and a 5s timeout.
+//
+// Projected, not proxied raw. It used to return the whole OFF record
+// deserialized as `object`; a public endpoint should return the fields the
+// caller actually needs, and nothing it happens to receive.
+app.MapGet("/api/barcode/{barcode}", async (string barcode, IHttpClientFactory httpFactory, ILoggerFactory logFactory) =>
 {
-    // Validate barcode format
-    if (barcode.Length < 8 || barcode.Length > 13 || !barcode.All(char.IsDigit))
+    if (barcode.Length is < 8 or > 14 || !barcode.All(char.IsDigit))
         return Results.BadRequest(new { error = "Invalid barcode format" });
 
     try
     {
-        var client = httpFactory.CreateClient();
-        client.DefaultRequestHeaders.Add("User-Agent", "TheGoodSort/1.0 (noreply@thegoodsort.org)");
-        var res = await client.GetAsync($"https://world.openfoodfacts.org/api/v2/product/{barcode}.json");
+        var client = httpFactory.CreateClient("OpenFoodFacts");
+        var res = await client.GetAsync($"api/v2/product/{barcode}.json");
         if (!res.IsSuccessStatusCode) return Results.Ok(new { found = false, barcode });
 
-        var json = await res.Content.ReadAsStringAsync();
-        return Results.Ok(new { found = true, barcode, data = System.Text.Json.JsonSerializer.Deserialize<object>(json) });
+        using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+        if (!doc.RootElement.TryGetProperty("product", out var product))
+            return Results.Ok(new { found = false, barcode });
+
+        string? Str(string name) =>
+            product.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String
+                ? v.GetString()
+                : null;
+
+        var packagingTags = product.TryGetProperty("packaging_materials_tags", out var tags)
+                            && tags.ValueKind == JsonValueKind.Array
+            ? tags.EnumerateArray()
+                .Where(t => t.ValueKind == JsonValueKind.String)
+                .Select(t => t.GetString()!)
+                .Take(12)
+                .ToArray()
+            : [];
+
+        return Results.Ok(new
+        {
+            found = true,
+            barcode,
+            productName = Str("product_name") ?? Str("product_name_en"),
+            brands = Str("brands"),
+            quantity = Str("quantity"),
+            packaging = Str("packaging"),
+            categories = Str("categories"),
+            packagingMaterialsTags = packagingTags,
+        });
     }
-    catch
+    catch (Exception ex)
     {
+        // Including the 5s timeout. A miss is a normal answer here — the local
+        // table is the primary source and OFF has no record for most Australian
+        // beverage barcodes — but a silent catch is how the CSP failure hid, so
+        // this one says something.
+        logFactory.CreateLogger("BarcodeLookup").LogWarning(ex, "Open Food Facts lookup failed for {Barcode}", barcode);
         return Results.Ok(new { found = false, barcode });
     }
-});
+}).RequireRateLimiting("barcode-lookup");
 
 // ── Households ──
 app.MapGet("/api/households", async (GoodSortDbContext db) =>
