@@ -26,6 +26,7 @@ builder.Services.AddScoped<NotificationService>();
 builder.Services.AddHostedService<RunGenerationService>();
 builder.Services.AddScoped<PickupReminderService>();
 builder.Services.AddHostedService<PickupReminderHost>();
+builder.Services.AddHostedService<GrowthEventRetentionHost>();
 builder.Services.AddSingleton<ScanTokenService>();
 builder.Services.AddHttpClient();
 
@@ -805,30 +806,66 @@ var waitlistEvents = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     "invite_whatsapp", "invite_sms", "invite_share", "invite_landed", "suburb_picked",
     "bin_day_looked_up",
 };
-var waitlistFunnel = new System.Collections.Concurrent.ConcurrentDictionary<string, long>(StringComparer.OrdinalIgnoreCase);
-var waitlistFunnelStarted = DateTime.UtcNow;
-app.MapPost("/api/growth/events", (WaitlistEventRequest req, ILoggerFactory logFactory) =>
+app.MapPost("/api/growth/events", async (WaitlistEventRequest req, GoodSortDbContext db, ILoggerFactory logFactory) =>
 {
     var name = req.Name?.Trim();
     if (string.IsNullOrWhiteSpace(name) || !waitlistEvents.Contains(name))
         return Results.BadRequest();
     var key = name.ToLowerInvariant();
-    waitlistFunnel.AddOrUpdate(key, 1, (_, n) => n + 1);
+
+    // Canonicalise on WRITE, not just on the log line. CanonicalSuburb also
+    // drops city-wide labels to null, so the stored row stays coarse.
+    var suburb = BinDayService.CanonicalSuburb(req.Suburb);
+
+    // Path only, and only if it looks like a path. The client sends
+    // location.pathname rather than href precisely so that ?r={profileId}
+    // never arrives here; refuse anything carrying a query anyway.
+    var path = req.Path is { Length: > 0 } p && p.StartsWith('/') && !p.Contains('?')
+        ? (p.Length > 256 ? p[..256] : p)
+        : null;
+
+    // Fire-and-forget: telemetry must never break the request it measures.
+    try
+    {
+        db.GrowthEvents.Add(new GrowthEvent { Name = key, Suburb = suburb, Path = path });
+        await db.SaveChangesAsync();
+    }
+    catch (Exception ex)
+    {
+        logFactory.CreateLogger("WaitlistGrowth").LogWarning(ex, "Could not persist growth event {Name}", key);
+    }
+
     logFactory.CreateLogger("WaitlistGrowth").LogInformation(
-        "waitlist_event name={Name} suburb={Suburb} path={Path}",
-        key,
-        BinDayService.CanonicalSuburb(req.Suburb),
-        req.Path);
+        "waitlist_event name={Name} suburb={Suburb} path={Path}", key, suburb, path);
     return Results.Accepted();
 });
 
-app.MapGet("/api/admin/funnel", () =>
-    Results.Ok(new
+// Durable now. The old version counted into an in-process dictionary, so every
+// push to main rolled the image and reset the board, and each replica held its
+// own partial view. `days` defaults to 30 to match the retention sweep.
+app.MapGet("/api/admin/funnel", async (int? days, GoodSortDbContext db) =>
+{
+    var window = Math.Clamp(days ?? 30, 1, GrowthEventRetention.RetentionDays);
+    var since = DateTime.UtcNow.AddDays(-window);
+
+    var counts = await db.GrowthEvents
+        .Where(e => e.CreatedAt >= since)
+        .GroupBy(e => e.Name)
+        .Select(g => new { Name = g.Key, Count = g.LongCount() })
+        .ToListAsync();
+    var byName = counts.ToDictionary(c => c.Name, c => c.Count, StringComparer.OrdinalIgnoreCase);
+
+    // Zero-fill so a step that never fired is visibly 0 rather than absent —
+    // an absent step reads as "not instrumented", which is what we just fixed.
+    return Results.Ok(new
     {
-        since = waitlistFunnelStarted,
-        note = "Counts since this API process started. Restarts reset the board.",
-        events = waitlistEvents.OrderBy(n => n).ToDictionary(n => n, n => waitlistFunnel.TryGetValue(n, out var c) ? c : 0L),
-    }))
+        since,
+        windowDays = window,
+        note = $"Counts over the last {window} days. Durable across restarts and deploys.",
+        events = waitlistEvents.OrderBy(n => n)
+            .ToDictionary(n => n, n => byName.TryGetValue(n, out var c) ? c : 0L),
+    });
+})
     .RequireAuthorization(AuthHelpers.AdminPolicy);
 
 // Neighbour invite card for ?r= landings. First name + suburb only.

@@ -23,10 +23,22 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
     public DbSet<PricingConfig> PricingConfigs => Set<PricingConfig>();
     public DbSet<VisionCall> VisionCalls => Set<VisionCall>();
     public DbSet<Recycler> Recyclers => Set<Recycler>();
+    public DbSet<GrowthEvent> GrowthEvents => Set<GrowthEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // Household — owned JSON type for Materials
+        modelBuilder.Entity<GrowthEvent>(e =>
+        {
+            // Every funnel query is "this event, over this window", and the
+            // retention sweep deletes by age alone.
+            e.HasIndex(g => new { g.Name, g.CreatedAt });
+            e.HasIndex(g => g.CreatedAt);
+            e.Property(g => g.Name).HasMaxLength(64);
+            e.Property(g => g.Suburb).HasMaxLength(128);
+            e.Property(g => g.Path).HasMaxLength(256);
+        });
+
         modelBuilder.Entity<Household>(e =>
         {
             e.OwnsOne(h => h.Materials, b => b.ToJson());
