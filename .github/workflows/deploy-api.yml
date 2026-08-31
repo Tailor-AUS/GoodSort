@@ -38,6 +38,8 @@ jobs:
           inlineScript: |
             az acr build --registry acrnyjfw2pdfsrie \
               --image api:${{ github.sha }} \
+              --build-arg GIT_SHA=${{ github.sha }} \
+              --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
               --file Dockerfile .
             az containerapp update \
               -n ${{ secrets.AZURE_CONTAINER_APP_NAME }} \

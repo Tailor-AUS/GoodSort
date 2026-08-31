@@ -83,6 +83,7 @@ public class EndpointAuthPostureTests : IClassFixture<EndpointAuthPostureTests.H
         ["/api/marketplace/runs"] = "Available-work board for runners. Deliberately projected to run centroid, stop COUNT and aggregate materials — never a stop address or a household coordinate.",
         ["/api/runner/leaderboard"] = "Public runner standings.",
         ["/api/cashout/status"] = "Whether payouts are switched on. A flag, not a balance.",
+        ["/api/version"] = "Which commit is serving. A deploy check that required a token would be unusable by an uptime probe. Sha and build time only — never config or environment.",
     };
 
     private static IEnumerable<(string Route, bool Authorized)> Surface(IServiceProvider services) =>

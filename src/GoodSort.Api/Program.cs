@@ -250,6 +250,28 @@ for (var i = 0; i < 10; i++)
 // ── Health ──
 app.MapGet("/api/health", () => Results.Ok(new { status = "healthy", service = "goodsort-api" }));
 
+// Which commit is actually serving.
+//
+// The deploy workflow tags the image with the sha and points the container app
+// at that tag, so the sha exists — but only in the registry, where verifying it
+// means having Azure access. From outside, a deploy could only be confirmed by
+// trusting that a green workflow run reached production, and that inference has
+// already been wrong here: a run can go green having taken a path that never
+// shipped the component you changed. Asking the running app is the check that
+// cannot be satisfied by a workflow that did not deploy.
+//
+// Anonymous on purpose — a deploy check that needs a token is not usable by the
+// thing most likely to need it (an uptime probe, or someone verifying a rollout
+// at 2am). Nothing here is a secret: a commit sha is public in the repo, and
+// the build time is not sensitive. Deliberately NOT the environment name, the
+// config, or anything read from a secret.
+app.MapGet("/api/version", () => Results.Ok(new
+{
+    sha = Environment.GetEnvironmentVariable("GIT_SHA") ?? "unknown",
+    buildTime = Environment.GetEnvironmentVariable("BUILD_TIME") ?? "unknown",
+    service = "goodsort-api",
+}));
+
 // ── Admin bootstrap ──
 // One-shot escape hatch for setting Profile.IsAdmin without DB access. Gated by
 // a shared secret in the ADMIN_BOOTSTRAP_SECRET env var — when the env var is
