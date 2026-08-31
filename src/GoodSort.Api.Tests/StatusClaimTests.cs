@@ -27,8 +27,12 @@ namespace GoodSort.Api.Tests;
 /// Sharper still, and worth knowing before trusting this file: the
 /// ExecuteUpdate branch is never executed here at all. InMemory throws on it,
 /// so every test takes the fallback. Replacing `return rows > 0` with
-/// `return true` in the production branch leaves all six green. Coverage of
-/// that branch is zero, and only a SQL-backed test could change that.
+/// `return true` in the production branch leaves all six green.
+///
+/// SqlConcurrencyTests is what covers that branch and the race itself, against
+/// a real SQL Server with genuinely overlapping requests. Keep these too: they
+/// run everywhere and catch the rule breaking, whereas the SQL ones skip
+/// without a database.
 /// </summary>
 public class StatusClaimTests
 {
