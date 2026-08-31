@@ -127,6 +127,39 @@ public class AnonymousBinLookupTests : IClassFixture<AnonymousBinLookupTests.Hos
     }
 
     [Fact]
+    public async Task The_public_leaderboard_never_carries_a_surname()
+    {
+        // Tests the CALLER, not the helper. PublicNameExposureTests proves the
+        // rule works; it cannot see an endpoint that skips it — and skipping it
+        // is exactly what the leaderboard did. Deleting the trim leaves every
+        // helper test green, so this is the one that catches it.
+        using var scope = _host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
+        var profile = new Profile
+        {
+            Name = "Sarah Chen",
+            Email = $"leaderboard-{Guid.NewGuid():N}@example.test",
+            Phone = "leaderboard@example.test",
+        };
+        db.Profiles.Add(profile);
+        db.RunnerProfiles.Add(new RunnerProfile
+        {
+            ProfileId = profile.Id,
+            Level = "gold",
+            TotalContainersCollected = 500,
+            TotalRuns = 12,
+        });
+        await db.SaveChangesAsync();
+
+        var res = await _host.CreateClient().GetAsync("/api/runner/leaderboard");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var body = await res.Content.ReadAsStringAsync();
+
+        Assert.Contains("Sarah", body);
+        Assert.DoesNotContain("Chen", body);
+    }
+
+    [Fact]
     public async Task An_unknown_code_is_a_plain_not_found()
     {
         var (status, _) = await Lookup("GS-H99999");

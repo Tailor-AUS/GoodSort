@@ -233,6 +233,14 @@ public class RunnerService
             })
             .ToListAsync();
 
+        // First name only. This endpoint is anonymous — no account needed — and
+        // it was returning runners' full names to anyone who asked. The invite
+        // card already had this rule and a helper for it; the leaderboard
+        // simply did not use it. Applied after materialising because EF cannot
+        // translate the call into SQL.
+        foreach (var r in runners)
+            r.Name = InvitePreview.PublicFirstName(r.Name, fallback: "A runner");
+
         // Assign rank
         for (var i = 0; i < runners.Count; i++)
             runners[i].Rank = i + 1;
