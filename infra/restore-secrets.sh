@@ -38,19 +38,36 @@ fi
 RG="rg-GoodSort"
 APP="api"
 
+# GoodSort sends OTP email through its OWN Communication Service, goodsort-comm
+# in rg-GoodSort. It used to send through tailor-app's shared tailor-prod-comm,
+# whose linkedDomains array their Bicep declares - so every tailor-app infra
+# deploy silently dropped our domain and killed every signup.
+#
+# A stale azd env is the one way that could quietly come back: this hook would
+# restore the old connection string and email would keep "working" while being
+# one tailor-app deploy away from dead again. Refuse instead of reverting.
+case "$ACS_CONNECTION_STRING" in
+  *goodsort-comm*) ;;
+  *)
+    echo "ERROR: ACS_CONNECTION_STRING does not point at goodsort-comm." >&2
+    echo "  Refusing to restore it - this is how email silently reverts to" >&2
+    echo "  tailor-app's shared service, which their deploys unlink us from." >&2
+    echo "  Fix: azd env set ACS_CONNECTION_STRING \\" >&2
+    echo "    \"\$(az communication list-key -n goodsort-comm -g rg-GoodSort \\" >&2
+    echo "        --query primaryConnectionString -o tsv)\"" >&2
+    exit 1
+    ;;
+esac
+
+# Credentials go in Container App secrets, not plaintext env vars. They were
+# plaintext until 2026-08-31, which meant anyone with read access on the app
+# could read the database connection string, the JWT signing key and two API
+# keys straight out of `az containerapp show`.
+echo "Storing credentials as Container App secrets..."
+az containerapp secret set -n "$APP" -g "$RG" --secrets     "jwt-secret=$JWT_SECRET"     "tailor-vision-api-key=$TAILOR_VISION_API_KEY"     "acs-connection-string=$ACS_CONNECTION_STRING"     "azure-openai-key=$AZURE_OPENAI_KEY"     "goodsortdb-connection-string=$GOODSORTDB_CONNECTION_STRING"   --output none
+
 echo "Restoring env vars on $APP in $RG..."
-az containerapp update -n "$APP" -g "$RG" \
-  --set-env-vars \
-    "JWT_SECRET=$JWT_SECRET" \
-    "TAILOR_VISION_API_KEY=$TAILOR_VISION_API_KEY" \
-    "TAILOR_VISION_API_URL=$TAILOR_VISION_API_URL" \
-    "ACS_CONNECTION_STRING=$ACS_CONNECTION_STRING" \
-    "ACS_EMAIL_SENDER=$ACS_EMAIL_SENDER" \
-    "AZURE_OPENAI_ENDPOINT=$AZURE_OPENAI_ENDPOINT" \
-    "AZURE_OPENAI_KEY=$AZURE_OPENAI_KEY" \
-    "AZURE_OPENAI_DEPLOYMENT=$AZURE_OPENAI_DEPLOYMENT" \
-    "ConnectionStrings__goodsortdb=$GOODSORTDB_CONNECTION_STRING" \
-  --output none
+az containerapp update -n "$APP" -g "$RG"   --set-env-vars     "JWT_SECRET=secretref:jwt-secret"     "TAILOR_VISION_API_KEY=secretref:tailor-vision-api-key"     "TAILOR_VISION_API_URL=$TAILOR_VISION_API_URL"     "ACS_CONNECTION_STRING=secretref:acs-connection-string"     "ACS_EMAIL_SENDER=$ACS_EMAIL_SENDER"     "AZURE_OPENAI_ENDPOINT=$AZURE_OPENAI_ENDPOINT"     "AZURE_OPENAI_KEY=secretref:azure-openai-key"     "AZURE_OPENAI_DEPLOYMENT=$AZURE_OPENAI_DEPLOYMENT"     "ConnectionStrings__goodsortdb=secretref:goodsortdb-connection-string"   --output none
 
 echo "Env vars restored."
 
