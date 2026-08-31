@@ -1,3 +1,5 @@
+using System.Linq;
+
 namespace GoodSort.Api.Data.Entities;
 
 public class Household
@@ -49,8 +51,22 @@ public static class BinStatuses
     public const string Delivered = "delivered";
     public const string Collecting = "collecting";
 
+    /// <summary>
+    /// The statuses where a household actually gets collected from.
+    ///
+    /// An array as well as a predicate because EF cannot translate a method
+    /// call into SQL, so every query needing this used to spell out
+    /// "Delivered || Collecting" by hand — three copies of a rule that already
+    /// had a name. Contains() translates to a SQL IN, so the queries can use
+    /// the same definition the in-memory callers do.
+    ///
+    /// IsServiceable is defined in terms of this array rather than repeating
+    /// it, so the two cannot disagree. Adding a status means changing one line.
+    /// </summary>
+    public static readonly string[] Serviceable = [Delivered, Collecting];
+
     public static bool IsServiceable(string? status) =>
-        status == Delivered || status == Collecting;
+        status is not null && Serviceable.Contains(status);
 }
 
 public class MaterialBreakdown

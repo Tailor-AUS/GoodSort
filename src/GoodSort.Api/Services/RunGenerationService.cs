@@ -288,7 +288,7 @@ public class RunGenerationService : BackgroundService
         var fullHouseholdIds = fullBins.Select(b => b.HouseholdId!.Value).ToList();
         var flaggedHouseholds = await db.Households
             .Where(h => fullHouseholdIds.Contains(h.Id) && h.BinIsOut
-                     && (h.BinStatus == BinStatuses.Delivered || h.BinStatus == BinStatuses.Collecting))
+                     && BinStatuses.Serviceable.Contains(h.BinStatus))
             .ToListAsync();
 
         if (flaggedHouseholds.Count == 0) return;
