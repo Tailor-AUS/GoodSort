@@ -4,6 +4,7 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import { X, Camera, ScanBarcode, Plus, Minus, Check, RotateCcw } from "lucide-react";
 import { lookupContainer, lookupContainerAsync } from "@/lib/containers";
 import { CENTS_PER_CONTAINER, formatCredit, launchBonusNote } from "@/lib/credit";
+import { track } from "@/lib/analytics";
 import { apiUrl, authHeaders } from "@/lib/config";
 import { mapToMaterialType, type BagInfo } from "@/lib/store";
 import { addScanApi } from "@/lib/store-api";
@@ -189,6 +190,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
         }),
       });
       if (res.ok) {
+        track("scan_credited");
         const data = await res.json();
         totalItems = data.totalContainers || eligible.reduce((s, e) => s + e.count, 0);
         totalCents = typeof data.totalCents === "number" ? data.totalCents : totalItems * CENTS_PER_CONTAINER;

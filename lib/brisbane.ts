@@ -82,6 +82,21 @@ export function justYouStats(dayName?: string | null): DayClusterStats {
   };
 }
 
+/**
+ * Whether this household is one the server will actually count. Residential is
+ * necessary but not sufficient: without a canonical suburb `CountsTowardCluster`
+ * drops it, so showing such a member a household count of 1 states the very
+ * fact in dispute.
+ */
+export function householdCountsTowardUnlock(hh: {
+  type?: string | null;
+  suburb?: string | null;
+} | null | undefined): boolean {
+  if (!hh) return false;
+  if (hh.type === "unit_complex") return false;
+  return canonicalSuburb(hh.suburb) !== null;
+}
+
 /** Suburb volume for a viewer. A unit/building viewer must not appear as a fake unlock. */
 export function streetStatsForViewer(
   suburb: GrowthSuburb | null | undefined,
@@ -102,8 +117,11 @@ export function residentialNeedsStreet(hh: {
 } | null | undefined): boolean {
   if (!hh) return true;
   if (hh.type === "unit_complex") return false;
-  const suburb = typeof hh.suburb === "string" ? hh.suburb.trim() : "";
-  return !suburb || hh.councilCollectionDay == null;
+  // Must match the server's rule, not merely "non-empty". A legacy row holding
+  // the literal string "BRISBANE" is non-empty yet canonicalises to null, so a
+  // looser check leaves that member with no redirect and no prompt at all —
+  // invisible and unwarned.
+  return canonicalSuburb(hh.suburb) === null || hh.councilCollectionDay == null;
 }
 
 /** Closest to a run = fewest more containers needed. Suburb-wide totals never rank a street. */
@@ -241,6 +259,14 @@ export function wedgeSuburbs(): BrisbaneSuburb[] {
 }
 
 /** City-wide labels Photon uses. Never a density cluster. */
+// Must match BinDayService.CanonicalSuburb on the server — that single
+// null-or-not decision determines whether a member counts toward a run at all,
+// and a divergence would be silent: the client accepts a suburb, the member
+// believes they joined, the server drops them from every cluster.
+// Locked server-side by CanonicalSuburbParityTests; change both together.
+//
+// Note this list is checked AFTER findSuburb(), so adding any of these names to
+// brisbane-suburbs.ts would make the client accept what the server rejects.
 const NOT_A_CLUSTER = new Set(["brisbane", "qld", "queensland", "australia"]);
 
 export function canonicalSuburb(raw?: string | null): string | null {

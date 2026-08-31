@@ -132,14 +132,30 @@ export default function AdminWaitlistPage() {
         {err && <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-[13px] text-red-700 mb-4">{err}</div>}
 
         <div className="space-y-4">
-          {rows.map((s) => (
-            <div key={s.suburb} className="bg-white border border-slate-200 rounded-2xl p-4">
+          {/* Members needing a nudge sort first — with 0 containers they
+              otherwise fall to the bottom of a volume-ordered list. */}
+          {[...rows].sort((a, b) => Number(b.suburb === "UNKNOWN") - Number(a.suburb === "UNKNOWN")).map((s) => (
+            // UNKNOWN is not a quiet suburb — it is members who joined and gave
+            // no usable suburb. Rendered identically to a real one, its missing
+            // Buy-bins button read as "waiting for volume" rather than
+            // "these people need chasing".
+            <div key={s.suburb} className={`border rounded-2xl p-4 ${s.suburb === "UNKNOWN" ? "bg-amber-50 border-amber-300" : "bg-white border-slate-200"}`}>
               <div className="flex items-start justify-between gap-3 mb-3">
                 <div>
-                  <p className="text-[16px] font-display font-extrabold text-slate-900">{titleSuburb(s.suburb)}</p>
-                  <p className="text-[12px] text-slate-500">
-                    {(s.containers ?? 0).toLocaleString()}/{threshold.toLocaleString()} containers · {s.households} houses · {s.waitlisted} waitlisted · {s.allocated} allocated · {s.delivered + s.collecting} delivered
+                  <p className="text-[16px] font-display font-extrabold text-slate-900">
+                    {s.suburb === "UNKNOWN" ? "Signed up, no suburb yet" : titleSuburb(s.suburb)}
                   </p>
+                  {s.suburb === "UNKNOWN" ? (
+                    <p className="text-[12px] text-amber-800">
+                      {s.households} {s.households === 1 ? "member" : "members"} joined but gave no usable suburb, so they
+                      cannot be counted toward a run or collected from. They need a nudge to finish onboarding — a
+                      city-wide answer like “Brisbane” does not count.
+                    </p>
+                  ) : (
+                    <p className="text-[12px] text-slate-500">
+                      {(s.containers ?? 0).toLocaleString()}/{threshold.toLocaleString()} containers · {s.households} houses · {s.waitlisted} waitlisted · {s.allocated} allocated · {s.delivered + s.collecting} delivered
+                    </p>
+                  )}
                 </div>
               </div>
               {s.days?.length > 0 && (

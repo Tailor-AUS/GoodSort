@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { type User, type SortBin, type Depot, type BagInfo, getUser } from "@/lib/store";
 import { getUserApi, getDepotsApi, getBinsApi } from "@/lib/store-api";
 import { apiUrl, authHeaders } from "@/lib/config";
-import { isCollecting, LIVE_VOLUME_THRESHOLD, residentialNeedsStreet, sameSuburb, streetStatsForViewer, type GrowthSuburb } from "@/lib/brisbane";
+import { isCollecting, LIVE_VOLUME_THRESHOLD, sameSuburb, streetStatsForViewer, type GrowthSuburb, householdCountsTowardUnlock } from "@/lib/brisbane";
 import { getDepots } from "@/lib/store";
 import { MapView } from "@/app/components/shared/map-view";
 import { SorterSheet, type HouseholdStatus } from "./components/sorter-sheet";
@@ -77,7 +77,7 @@ export default function SorterApp() {
         try {
           const g = await fetch(apiUrl("/api/growth/brisbane")).then((r) => (r.ok ? r.json() : null));
           const match = g?.suburbs?.find((s: GrowthSuburb) => sameSuburb(s.suburb, hh.suburb));
-          const cluster = streetStatsForViewer(match, hh.councilCollectionDay, hh.type !== "unit_complex");
+          const cluster = streetStatsForViewer(match, hh.councilCollectionDay, householdCountsTowardUnlock(hh));
           areaLive = cluster.live;
           needed = cluster.needed;
           households = cluster.households;
@@ -127,15 +127,12 @@ export default function SorterApp() {
         setLoading(false);
         return;
       }
-      if (profile.householdId) {
-        try {
-          const hh = await fetch(apiUrl(`/api/households/${profile.householdId}`), { headers: authHeaders() }).then(r => r.ok ? r.json() : null);
-          if (residentialNeedsStreet(hh)) {
-            router.push("/onboard");
-            return;
-          }
-        } catch { /* ignore, let user in */ }
-      }
+      // Deliberately no redirect for an incomplete household. Bouncing to
+      // /onboard is the wall removed from the scan path, and it was also half
+      // of a loop: if the suburb failed to save, /onboard pushed here and this
+      // pushed straight back. WaitlistHome renders its own prompt
+      // ("Add your suburb so we can count your scans") — that control only
+      // becomes reachable because we stop evicting people before it renders.
       setLoading(false);
     });
   }, [refreshData, router]);

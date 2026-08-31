@@ -26,6 +26,7 @@ builder.Services.AddScoped<NotificationService>();
 builder.Services.AddHostedService<RunGenerationService>();
 builder.Services.AddScoped<PickupReminderService>();
 builder.Services.AddHostedService<PickupReminderHost>();
+builder.Services.AddHostedService<GrowthEventRetentionHost>();
 builder.Services.AddSingleton<ScanTokenService>();
 builder.Services.AddHttpClient();
 
@@ -45,6 +46,27 @@ builder.Services.AddHttpClient("TailorVision", client =>
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
+});
+
+// Rate limiting. /api/growth/events is anonymous by design (it must work
+// before a member has an account), and it now WRITES A ROW, so leaving it
+// unthrottled would make it a free database-write amplifier. Counts from an
+// unthrottled anonymous endpoint are also not defensible the moment one goes
+// in a deck.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("growth-events", ctx =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                // Generous for a real member — a scan session emits a handful —
+                // but a hard ceiling on a scripted loop.
+                PermitLimit = 120,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
 });
 
 // CORS — restrict to actual domains
@@ -119,6 +141,7 @@ var app = builder.Build();
 // Tune via RUNNER_STOP_MAX_CONTAINERS; the default is intentionally lenient.
 var maxContainersPerStop = int.TryParse(builder.Configuration["RUNNER_STOP_MAX_CONTAINERS"], out var mc) ? mc : 2000;
 
+app.UseRateLimiter();
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -721,7 +744,18 @@ app.MapPatch("/api/households/{id:guid}/street", async (HttpContext ctx, Guid id
     }
     if (req.Lat is double lat) h.Lat = lat;
     if (req.Lng is double lng) h.Lng = lng;
+
+    // A city-wide answer is not a suburb. Photon regularly returns "Brisbane"
+    // for an address, and CanonicalSuburb maps that to null — so silently
+    // skipping the assignment used to return 200 with nothing saved. The
+    // client then sent the member to /sort, which bounced them back here,
+    // forever, behind a green success path. Say so instead.
     var suburb = BinDayService.CanonicalSuburb(req.Suburb);
+    if (suburb is null && !string.IsNullOrWhiteSpace(req.Suburb))
+        return Results.BadRequest(new
+        {
+            error = $"“{req.Suburb.Trim()}” covers the whole city, so we cannot tell which street to collect. Pick your actual suburb — for example Moorooka.",
+        });
     if (suburb is not null) h.Suburb = suburb;
     if (req.CouncilCollectionDay is int day && day is >= 0 and <= 6)
         h.CouncilCollectionDay = day;
@@ -782,36 +816,78 @@ app.MapGet("/api/growth/brisbane", async (GoodSortDbContext db, IConfiguration c
 
 // First-party funnel (no PII). City-wide totals here would be a product bug —
 // this endpoint only records that a named waitlist action happened.
+// Must stay in step with TRACKED_EVENTS in lib/analytics.ts. A name present on
+// one side only is dropped silently — the client discards our 400 and nothing
+// surfaces. Scanning is the core action and what the launch bonus pays for, so
+// it is instrumented camera-to-credit; first_scan_credited is activation.
 var waitlistEvents = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
 {
-    "waitlist_cta", "otp_sent", "otp_verified", "household_joined",
+    "waitlist_cta",
+    "scan_camera_opened", "scan_captured", "scan_credited", "first_scan_credited",
+    "otp_sent", "otp_verified", "household_joined",
     "invite_whatsapp", "invite_sms", "invite_share", "invite_landed", "suburb_picked",
     "bin_day_looked_up",
 };
-var waitlistFunnel = new System.Collections.Concurrent.ConcurrentDictionary<string, long>(StringComparer.OrdinalIgnoreCase);
-var waitlistFunnelStarted = DateTime.UtcNow;
-app.MapPost("/api/growth/events", (WaitlistEventRequest req, ILoggerFactory logFactory) =>
+app.MapPost("/api/growth/events", async (WaitlistEventRequest req, GoodSortDbContext db, ILoggerFactory logFactory) =>
 {
     var name = req.Name?.Trim();
     if (string.IsNullOrWhiteSpace(name) || !waitlistEvents.Contains(name))
         return Results.BadRequest();
     var key = name.ToLowerInvariant();
-    waitlistFunnel.AddOrUpdate(key, 1, (_, n) => n + 1);
-    logFactory.CreateLogger("WaitlistGrowth").LogInformation(
-        "waitlist_event name={Name} suburb={Suburb} path={Path}",
-        key,
-        BinDayService.CanonicalSuburb(req.Suburb),
-        req.Path);
-    return Results.Accepted();
-});
 
-app.MapGet("/api/admin/funnel", () =>
-    Results.Ok(new
+    // Canonicalise on WRITE, not just on the log line. CanonicalSuburb also
+    // drops city-wide labels to null, so the stored row stays coarse.
+    var suburb = BinDayService.CanonicalSuburb(req.Suburb);
+
+    // Path only, and only if it looks like a path. The client sends
+    // location.pathname rather than href precisely so that ?r={profileId}
+    // never arrives here; refuse anything carrying a query anyway.
+    var path = req.Path is { Length: > 0 } p && p.StartsWith('/') && !p.Contains('?')
+        ? (p.Length > 256 ? p[..256] : p)
+        : null;
+
+    // Fire-and-forget: telemetry must never break the request it measures.
+    try
     {
-        since = waitlistFunnelStarted,
-        note = "Counts since this API process started. Restarts reset the board.",
-        events = waitlistEvents.OrderBy(n => n).ToDictionary(n => n, n => waitlistFunnel.TryGetValue(n, out var c) ? c : 0L),
-    }))
+        db.GrowthEvents.Add(new GrowthEvent { Name = key, Suburb = suburb, Path = path });
+        await db.SaveChangesAsync();
+    }
+    catch (Exception ex)
+    {
+        logFactory.CreateLogger("WaitlistGrowth").LogWarning(ex, "Could not persist growth event {Name}", key);
+    }
+
+    logFactory.CreateLogger("WaitlistGrowth").LogInformation(
+        "waitlist_event name={Name} suburb={Suburb} path={Path}", key, suburb, path);
+    return Results.Accepted();
+}).RequireRateLimiting("growth-events");
+
+// Durable now. The old version counted into an in-process dictionary, so every
+// push to main rolled the image and reset the board, and each replica held its
+// own partial view. `days` defaults to 30 to match the retention sweep.
+app.MapGet("/api/admin/funnel", async (int? days, GoodSortDbContext db) =>
+{
+    var window = Math.Clamp(days ?? 30, 1, GrowthEventRetention.RetentionDays);
+    var since = DateTime.UtcNow.AddDays(-window);
+
+    var counts = await db.GrowthEvents
+        .Where(e => e.CreatedAt >= since)
+        .GroupBy(e => e.Name)
+        .Select(g => new { Name = g.Key, Count = g.LongCount() })
+        .ToListAsync();
+    var byName = counts.ToDictionary(c => c.Name, c => c.Count, StringComparer.OrdinalIgnoreCase);
+
+    // Zero-fill so a step that never fired is visibly 0 rather than absent —
+    // an absent step reads as "not instrumented", which is what we just fixed.
+    return Results.Ok(new
+    {
+        since,
+        windowDays = window,
+        note = $"Counts over the last {window} days. Durable across restarts and deploys.",
+        events = waitlistEvents.OrderBy(n => n)
+            .ToDictionary(n => n, n => byName.TryGetValue(n, out var c) ? c : 0L),
+    });
+})
     .RequireAuthorization(AuthHelpers.AdminPolicy);
 
 // Neighbour invite card for ?r= landings. First name + suburb only.
