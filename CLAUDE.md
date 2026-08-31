@@ -149,6 +149,7 @@ src/GoodSort.Api/
 - `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_KEY` / `AZURE_OPENAI_DEPLOYMENT` — vision fallback after Tailor Vision
 - `ACS_CONNECTION_STRING` / `ACS_EMAIL_SENDER` — Azure Communication Services (OTP emails)
 - `OSRM_URL` (optional) — defaults to `https://router.project-osrm.org` (public demo). Override with a self-hosted OSRM instance for production scale.
+- `RECOVERY_EMAIL_ENABLED` (optional, **default off**) — set to `true` to let the hourly pass email members whose household has no usable suburb. Those members are invisible to every other recipient query in `NotificationService`, so without this nothing ever reaches them again. Left off deliberately: the code being ready is not the same as deciding to email real members. Selection rules and the 7-day cooldown are in `IncompleteHouseholdRecovery`.
 
 ### Mapping stack (open-source, no API keys)
 - **Map renderer**: `maplibre-gl` (MIT)
