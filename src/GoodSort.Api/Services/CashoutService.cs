@@ -43,9 +43,6 @@ public class CashoutService
     public async Task<(bool Success, string? Error)> RequestCashout(Guid userId, int amountCents, string bsb, string accountNumber, string accountName)
     {
         if (!PayoutsOpen()) return (false, "Payouts are not open yet. Credits stay on your account until bank transfers are live.");
-        var profile = await _db.Profiles.FindAsync(userId);
-        if (profile is null) return (false, "User not found");
-        if (profile.ClearedCents < amountCents) return (false, "Insufficient balance");
         if (amountCents < 2000) return (false, "Minimum cash-out is $20");
 
         // Validate BSB (6 digits) and account number (5-9 digits)
@@ -53,7 +50,24 @@ public class CashoutService
         if (accountNumber.Length < 5 || accountNumber.Length > 9 || !accountNumber.All(char.IsDigit))
             return (false, "Invalid account number");
 
-        profile.ClearedCents -= amountCents;
+        var exists = await _db.Profiles.AsNoTracking().AnyAsync(p => p.Id == userId);
+        if (!exists) return (false, "User not found");
+
+        // Deduct before writing the payout row, and deduct conditionally.
+        //
+        // This used to read ClearedCents, compare it, and write the difference
+        // back. Two concurrent requests both read the same balance, both pass
+        // the comparison, and both write balance-minus-amount — so the member
+        // ends up with two pending CashoutRequest rows and a single deduction.
+        // GenerateAbaFile pays every pending row, so that is a real bank
+        // transfer of money the member did not have. There is no concurrency
+        // token on Profile to catch it.
+        //
+        // Ordering is deliberate. If the payout row failed to write after a
+        // successful deduction the member would be short, which is wrong but
+        // recoverable; the reverse would pay out money that was never debited.
+        if (!await TryDeductCleared(userId, amountCents))
+            return (false, "Insufficient balance");
 
         var request = new CashoutRequest
         {
@@ -67,6 +81,36 @@ public class CashoutService
         _db.Set<CashoutRequest>().Add(request);
         await _db.SaveChangesAsync();
         return (true, null);
+    }
+
+    /// <summary>
+    /// Subtracts the amount only if the balance still covers it, in one
+    /// statement. The WHERE clause and the subtraction are evaluated together
+    /// by the database, so a second concurrent attempt sees the reduced balance
+    /// and affects no rows.
+    /// </summary>
+    private async Task<bool> TryDeductCleared(Guid userId, int amountCents)
+    {
+        try
+        {
+            var rows = await _db.Profiles
+                .Where(p => p.Id == userId && p.ClearedCents >= amountCents)
+                .ExecuteUpdateAsync(setters =>
+                    setters.SetProperty(p => p.ClearedCents, p => p.ClearedCents - amountCents));
+            return rows > 0;
+        }
+        catch (InvalidOperationException)
+        {
+            // The InMemory provider used by tests and local dev cannot
+            // translate ExecuteUpdate. This fallback keeps the balance rule
+            // correct but NOT atomic — the atomicity guarantee comes from the
+            // single UPDATE above, which is what production runs.
+            var profile = await _db.Profiles.FindAsync(userId);
+            if (profile is null || profile.ClearedCents < amountCents) return false;
+            profile.ClearedCents -= amountCents;
+            await _db.SaveChangesAsync();
+            return true;
+        }
     }
 
     // Generate ABA (Australian Banking Association) file for batch bank transfers
