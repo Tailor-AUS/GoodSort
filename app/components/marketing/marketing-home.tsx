@@ -205,10 +205,26 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
           <p className="text-slate-700 text-[17px] sm:text-[19px] leading-relaxed mb-4 max-w-xl">
             Scan a can, earn 5¢. We collect from your kerb — you never drive to a depot.
           </p>
-          {launchBonusHeadline(growth?.launchBonusContainers) && (
-            <p className="inline-block rounded-full bg-violet-100 text-violet-900 text-[13px] font-semibold px-4 py-2 mb-6">
-              {launchBonusHeadline(growth?.launchBonusContainers)}
+          {/* The badge depends on /api/growth/brisbane, so on first paint it is
+              absent and everything below sits higher — then it pops in and
+              shoves the primary CTA down, under a finger already reaching for
+              it. Reserve its row while the answer is unknown.
+
+              The placeholder is a copy of the badge rather than a min-height,
+              so the reserved box matches whatever the badge's own padding and
+              line-height work out to, with no measured constant to drift. It
+              collapses once we know the promo is off, so a permanently-off
+              promo does not leave dead space forever. */}
+          {growth === null ? (
+            <p aria-hidden className="inline-block rounded-full text-[13px] font-semibold px-4 py-2 mb-6 opacity-0 select-none">
+              {launchBonusHeadline(20)}
             </p>
+          ) : (
+            launchBonusHeadline(growth.launchBonusContainers) && (
+              <p className="inline-block rounded-full bg-violet-100 text-violet-900 text-[13px] font-semibold px-4 py-2 mb-6">
+                {launchBonusHeadline(growth.launchBonusContainers)}
+              </p>
+            )
           )}
           <p className="text-slate-500 text-[13px] mb-8 max-w-xl">
             A 5¢ sorting credit, not the 10¢ scheme refund. <a href="/terms" className="underline text-violet-800">How it works</a>.
