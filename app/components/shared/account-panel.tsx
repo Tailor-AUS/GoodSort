@@ -75,10 +75,18 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
               <StatCard icon={Users} label="Scanners" value={(streetStats?.households ?? 0).toString()} />
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-2">
+            // "Routes" used to sit here, counting user.collections.length. That
+            // is structurally always zero: getUserApi hardcodes collections to
+            // an empty array, /api/profiles does not return them, and the live
+            // marketplace settle never creates a Collection at all — only the
+            // dead /api/routes settle does. So a runner who had completed
+            // twenty collections was shown zero.
+            //
+            // Their real figures come from getRunnerEarnings on the runner
+            // stats surface. Two true stats beat three with one invented.
+            <div className="grid grid-cols-2 gap-2">
               <StatCard icon={Package} label="Scanned" value={user.totalContainers.toString()} />
               <StatCard icon={Leaf} label="CO2" value={`${user.totalCO2SavedKg.toFixed(1)}kg`} />
-              <StatCard icon={Truck} label="Routes" value={user.collections.length.toString()} />
             </div>
           )}
         </div>

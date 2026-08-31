@@ -17,6 +17,10 @@ interface Stats {
   bins: number;
   scans: number;
   routes: number;
+  runs: number;
+  runsAvailable: number;
+  runsInFlight: number;
+  runsSettled: number;
   totalContainers: number;
   totalPending: number;
   totalCleared: number;
@@ -136,7 +140,10 @@ export default function AdminPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
           <StatCard icon={Users} label="Users" value={stats?.users ?? 0} />
           <StatCard icon={Package} label="Containers" value={stats?.totalContainers ?? 0} />
-          <StatCard icon={Truck} label="Routes" value={stats?.routes ?? 0} />
+          {/* "Routes" counted the CollectionRoute table, which nothing writes
+              to, so it read 0 forever and hid all real collection activity.
+              Runs is the live one. */}
+          <StatCard icon={Truck} label="Runs" value={stats?.runs ?? 0} />
           <StatCard icon={DollarSign} label="Pending" value={`$${((stats?.totalPending ?? 0) / 100).toFixed(2)}`} />
         </div>
 

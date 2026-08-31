@@ -1441,7 +1441,15 @@ app.MapGet("/api/admin/stats", async (GoodSortDbContext db) =>
     var users = await db.Profiles.CountAsync();
     var bins = await db.Bins.CountAsync();
     var scans = await db.Scans.CountAsync();
+    // db.Routes is the CollectionRoute table, which nothing ever writes to —
+    // see CLAUDE.md. Counting it told ops "Routes: 0" forever and showed
+    // nothing about actual collection activity, which lives in db.Runs.
     var routes = await db.Routes.CountAsync();
+    var runs = await db.Runs.CountAsync();
+    var runsAvailable = await db.Runs.CountAsync(r => r.Status == "available");
+    var runsInFlight = await db.Runs.CountAsync(r =>
+        r.Status == "claimed" || r.Status == "in_progress" || r.Status == "delivering");
+    var runsSettled = await db.Runs.CountAsync(r => r.Status == "settled");
     var totalContainers = await db.Profiles.SumAsync(p => p.TotalContainers);
     var totalPending = await db.Profiles.SumAsync(p => p.PendingCents);
     var totalCleared = await db.Profiles.SumAsync(p => p.ClearedCents);
@@ -1464,6 +1472,7 @@ app.MapGet("/api/admin/stats", async (GoodSortDbContext db) =>
     return Results.Ok(new
     {
         users, bins, scans, routes, totalContainers, totalPending, totalCleared,
+        runs, runsAvailable, runsInFlight, runsSettled,
         activation = new
         {
             activatedUsers,
