@@ -42,7 +42,7 @@ Never hand-author migration files — always use `dotnet ef migrations add`.
 
 ### Two-tier: static SPA + REST API
 
-**Frontend** — Next.js 16 with `output: "export"` (fully static, no SSR). Deployed to **Azure Static Web Apps** (`kind-mushroom-0fe89a200`). Triggered on push to `main`.
+**Frontend** — Next.js 16 with `output: "export"` (fully static, no SSR). Deployed to **Azure Static Web Apps** — resource `swa-goodsort-prod` in **`rg-goodsort-prod`** (note: *not* `rg-GoodSort`, which holds the API); `kind-mushroom-0fe89a200` is only its hostname prefix. Triggered on push to `main`.
 
 **Backend** — .NET 9 minimal API (`src/GoodSort.Api/Program.cs` — single file with all endpoints). Deployed to **Azure Container Apps** via Docker. Triggered on push to `main` when `src/**` changes. API base: `https://api.livelyfield-64227152.eastasia.azurecontainerapps.io`.
 
@@ -172,6 +172,7 @@ src/GoodSort.Api/
 - **CORS origins**: Backend restricts to `thegoodsort.org` + the SWA staging domain. Add new origins in `Program.cs` if needed.
 - **Single-file API**: All ~67 endpoints live in `Program.cs`. When adding endpoints, follow the existing minimal API pattern there — don't create controllers.
 - **Thin test suite**: `GoodSort.Api.Tests` covers address parse / city-wide Brisbane must never cluster. CI and API deploy run those tests. Frontend still has no unit tests — browser-QA marketing and onboard flows.
+- **SWA preview environments are capped at 3.** Once the cap is hit, every PR's preview deploy fails with `already has the maximum number of staging environments` — and it fails *quietly*: `gh pr checks` shows the newest run per workflow, which for a merged PR is the close job, so the failed preview never appears. PRs #24 and #25 both merged with a failed preview that looked green. `prune-swa-previews.yml` reconciles this every 4h (an environment should exist only while its PR is open), but if PR previews start failing, check the environment list first.
 - **App version meta**: `app/layout.tsx` has `<meta name="app-version" content="YYYYMMDD-HHMM">`. `debug-prod` reads this to confirm a deploy actually landed; bump it when shipping user-visible changes.
 - **JSON cycle handling**: `Program.cs` sets `ReferenceHandler.IgnoreCycles` because `Run ↔ RunnerProfile` (and similar EF nav properties) would otherwise blow up serialization. Keep this in mind when adding entities with circular relationships.
 - **We own our own Communication Service.** OTP email goes through `goodsort-comm` in `rg-GoodSort`, with `thegoodsort.org` linked to it. It used to go through tailor-app's shared `tailor-prod-comm`; their Bicep declares that service's `linkedDomains` array, so every tailor-app infra deploy silently dropped our domain and took signups down — three times on 2026-08-31 alone. The domain *resource* still lives under `tailor-prod-email` and is only ever referenced, never rewritten. A domain can be linked to two Communication Services at once, which is why this needed no DNS change. Don't point anything back at `tailor-prod-comm`.
