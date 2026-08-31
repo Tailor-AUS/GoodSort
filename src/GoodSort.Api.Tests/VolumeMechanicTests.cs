@@ -42,6 +42,13 @@ public class VolumeMechanicTests : IClassFixture<VolumeMechanicTests.Host>
             builder.UseEnvironment(Environments.Development);
             builder.UseSetting("ConnectionStrings:goodsortdb", string.Empty);
             builder.UseSetting("JWT_SECRET", "test-only-signing-key-not-a-real-secret-0123456789");
+            // These tests drive a whole suburb's volume through one account for
+            // convenience — which is precisely the pattern the scan limits
+            // exist to bound. Raised here so the volume mechanic is what is
+            // under test; VisionCostCapTests and ScanFaucetLimitTests cover the
+            // limits themselves.
+            builder.UseSetting("SCAN_RATE_PER_MINUTE", "100000");
+            builder.UseSetting("SCAN_DAILY_CAP", "100000");
 
             builder.ConfigureServices(services =>
             {

@@ -67,6 +67,30 @@ builder.Services.AddRateLimiter(options =>
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+
+    // /api/scans takes the barcode, name and material straight from the client
+    // and has no way to prove a container was physically scanned — the photo
+    // path has a signed token, this one has nothing. Pending credit is not the
+    // exposure: it only becomes cashable through a runner's physical count at
+    // settlement. Suburb volume is. Fabricated scans unlock a run, and a run is
+    // a real van driven to a real kerb.
+    //
+    // Partitioned by member, not by IP: the endpoint is authenticated, and an
+    // IP partition would let one account spread a script across connections
+    // while punishing a household behind a shared address.
+    options.AddPolicy("scans", ctx =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: ctx.GetCallerId()?.ToString() ?? "anonymous",
+            factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                // A person emptying a bag manages roughly one container a
+                // second at best. Sixty a minute is out of reach for a human
+                // and a hard ceiling on a loop. Tunable so ops can loosen it
+                // without a deploy if a real member ever hits it.
+                PermitLimit = int.TryParse(builder.Configuration["SCAN_RATE_PER_MINUTE"], out var spm) && spm > 0 ? spm : 60,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
 });
 
 // CORS — restrict to actual domains
@@ -141,9 +165,15 @@ var app = builder.Build();
 // Tune via RUNNER_STOP_MAX_CONTAINERS; the default is intentionally lenient.
 var maxContainersPerStop = int.TryParse(builder.Configuration["RUNNER_STOP_MAX_CONTAINERS"], out var mc) ? mc : 2000;
 
-app.UseRateLimiter();
 app.UseCors();
 app.UseAuthentication();
+// After authentication, deliberately. The "scans" policy partitions by member
+// id, and GetCallerId reads claims — which are not populated until
+// UseAuthentication has run. With the rate limiter first, every caller
+// partitions to "anonymous", so the per-member limit silently becomes one
+// global bucket and a single scripted account throttles every real member.
+// Caught by ScanFaucetLimitTests.One_members_burst_does_not_throttle_another.
+app.UseRateLimiter();
 app.UseAuthorization();
 app.MapDefaultEndpoints();
 
@@ -1078,6 +1108,21 @@ app.MapPost("/api/scans", async (HttpContext ctx, ScanRequest req, GoodSortDbCon
     var profile = await db.Profiles.FindAsync(userId.Value);
     if (profile is null) return Results.NotFound("User not found");
 
+    // Daily ceiling per member, alongside the per-minute rate limit.
+    //
+    // This is mitigation, not prevention. Nothing here can prove a container
+    // was physically scanned — the client supplies the barcode — so the honest
+    // goal is to bound how much suburb volume one account can fabricate, since
+    // volume is what sends a driver. The default is deliberately far above any
+    // real household: 2000 containers is about $100 of refunds in a day.
+    var scanCap = int.TryParse(cfg["SCAN_DAILY_CAP"], out var sc) ? sc : 2000;
+    if (scanCap > 0)
+    {
+        var since = DateTime.UtcNow.AddHours(-24);
+        var scansToday = await db.Scans.CountAsync(x => x.UserId == profile.Id && x.CreatedAt >= since);
+        if (scansToday >= scanCap) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+    }
+
     // Launch bonus on a member's first N containers ever. Marketing spend with a
     // hard ceiling — not a change to the sorting-credit rate.
     var cents = LaunchBonus.CentsForContainerAt(profile.TotalContainers, LaunchBonus.CapFrom(cfg));
@@ -1127,7 +1172,7 @@ app.MapPost("/api/scans", async (HttpContext ctx, ScanRequest req, GoodSortDbCon
         bonusApplied = cents > HouseholdCredit.CentsPerContainer,
         bonusRemaining = Math.Max(0, LaunchBonus.CapFrom(cfg) - profile.TotalContainers),
     });
-}).RequireAuthorization();
+}).RequireAuthorization().RequireRateLimiting("scans");
 
 app.MapGet("/api/scans", async (HttpContext ctx, Guid userId, int? limit, GoodSortDbContext db) =>
 {
