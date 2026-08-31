@@ -86,7 +86,7 @@ public class RunGenerationService : BackgroundService
     private async Task ExpireOldRuns(GoodSortDbContext db)
     {
         var expired = await db.Runs
-            .Where(r => (r.Status == "available" || r.Status == "below_threshold")
+            .Where(r => RunLifecycle.Unclaimed.Contains(r.Status)
                      && r.ExpiresAt <= DateTime.UtcNow)
             .ToListAsync();
 
@@ -107,9 +107,7 @@ public class RunGenerationService : BackgroundService
 
         // Find all bins with pending containers NOT already in an active run
         var activeBinIds = await db.RunStops
-            .Where(s => s.Run.Status == "available" || s.Run.Status == "below_threshold"
-                     || s.Run.Status == "claimed" || s.Run.Status == "in_progress"
-                     || s.Run.Status == "delivering")
+            .Where(s => RunLifecycle.HoldsBin.Contains(s.Run.Status))
             .Select(s => s.BinId)
             .Distinct()
             .ToListAsync();
@@ -272,9 +270,11 @@ public class RunGenerationService : BackgroundService
     {
         // Find households with BinIsOut=true (user flagged "bin is full")
         // whose bin is NOT already in an active run
+        // Was missing "delivering", so a bin whose containers were already in a
+        // driver's vehicle counted as free and could be absorbed into a second
+        // run — sending another driver to an emptied kerb.
         var activeBinIds = await db.RunStops
-            .Where(s => s.Run.Status == "available" || s.Run.Status == "below_threshold"
-                     || s.Run.Status == "claimed" || s.Run.Status == "in_progress")
+            .Where(s => RunLifecycle.HoldsBin.Contains(s.Run.Status))
             .Select(s => s.BinId)
             .Distinct()
             .ToListAsync();
@@ -296,7 +296,7 @@ public class RunGenerationService : BackgroundService
         // Find nearby available/below_threshold runs to absorb them into
         var openRuns = await db.Runs
             .Include(r => r.Stops)
-            .Where(r => r.Status == "available" || r.Status == "below_threshold")
+            .Where(r => RunLifecycle.Unclaimed.Contains(r.Status))
             .ToListAsync();
 
         var absorbed = 0;
