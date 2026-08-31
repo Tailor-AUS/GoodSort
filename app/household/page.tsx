@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Home, Package, Users, Weight, Recycle } from "lucide-react";
 import { apiUrl, authHeaders } from "@/lib/config";
 import { formatCents } from "@/lib/store";
-import { DAY_NAMES, isCollecting, LIVE_VOLUME_THRESHOLD, sameSuburb, streetStatsForViewer, type GrowthSuburb } from "@/lib/brisbane";
+import { DAY_NAMES, isCollecting, LIVE_VOLUME_THRESHOLD, sameSuburb, streetStatsForViewer, type GrowthSuburb, householdCountsTowardUnlock } from "@/lib/brisbane";
 import { WaitlistCard } from "@/app/components/shared/waitlist-card";
 import { CollectionNightCard } from "@/app/components/shared/collection-night-card";
 
@@ -59,7 +59,7 @@ export default function HouseholdPage() {
           .then(r => r.ok ? r.json() : null)
           .then(house => {
             const match = g.suburbs.find((s: GrowthSuburb) => sameSuburb(s.suburb, house?.suburb));
-            setGrowth(streetStatsForViewer(match, house?.councilCollectionDay, house?.type !== "unit_complex"));
+            setGrowth(streetStatsForViewer(match, house?.councilCollectionDay, householdCountsTowardUnlock(house)));
           });
       })
       .catch(() => {});

@@ -721,7 +721,18 @@ app.MapPatch("/api/households/{id:guid}/street", async (HttpContext ctx, Guid id
     }
     if (req.Lat is double lat) h.Lat = lat;
     if (req.Lng is double lng) h.Lng = lng;
+
+    // A city-wide answer is not a suburb. Photon regularly returns "Brisbane"
+    // for an address, and CanonicalSuburb maps that to null — so silently
+    // skipping the assignment used to return 200 with nothing saved. The
+    // client then sent the member to /sort, which bounced them back here,
+    // forever, behind a green success path. Say so instead.
     var suburb = BinDayService.CanonicalSuburb(req.Suburb);
+    if (suburb is null && !string.IsNullOrWhiteSpace(req.Suburb))
+        return Results.BadRequest(new
+        {
+            error = $"“{req.Suburb.Trim()}” covers the whole city, so we cannot tell which street to collect. Pick your actual suburb — for example Moorooka.",
+        });
     if (suburb is not null) h.Suburb = suburb;
     if (req.CouncilCollectionDay is int day && day is >= 0 and <= 6)
         h.CouncilCollectionDay = day;

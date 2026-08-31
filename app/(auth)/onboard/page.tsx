@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Building2, Recycle, Check } from "lucide-react";
 import { apiUrl, authHeaders, hasValidToken, clearAuth, readDayHint, readPlaceHint, readStoredProfileId } from "@/lib/config";
 import { track } from "@/lib/analytics";
-import { canonicalSuburb, DAY_NAMES, inviteMessage, streetInviteUrl } from "@/lib/brisbane";
+import { canonicalSuburb, DAY_NAMES, inviteMessage, streetInviteUrl, residentialNeedsStreet } from "@/lib/brisbane";
 import { AddressAutocomplete, geocodeAddress } from "@/app/components/shared/address-autocomplete";
 import { InviteActions } from "@/app/components/shared/invite-actions";
 
@@ -102,6 +102,17 @@ export default function OnboardPage() {
         return;
       }
       const hh = await hhRes.json();
+
+      // A 2xx is not the same as "done". If the household came back still
+      // missing a suburb or day, pushing to /sort just bounces the member
+      // straight back here — and firing household_joined would record the
+      // failure as a success. Stop, and say what is missing.
+      if (residentialNeedsStreet(hh)) {
+        setError("We saved what we could, but still need your suburb and recycling day before you count toward a run.");
+        setLoading(false);
+        return;
+      }
+
       if (profile.id) {
         await fetch(apiUrl(`/api/profiles/${profile.id}`), {
           method: "PATCH", headers: authHeaders(),

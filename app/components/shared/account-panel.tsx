@@ -5,7 +5,7 @@ import Link from "next/link";
 import { X, Package, Leaf, Truck, Wallet, LogOut, CheckCircle, Users, Gift, Trash2, Car } from "lucide-react";
 import { apiUrl, authHeaders, readStoredProfileId } from "@/lib/config";
 import { formatCents, type User } from "@/lib/store";
-import { inviteMessage, isCollecting, LIVE_VOLUME_THRESHOLD, sameSuburb, streetInviteUrl, streetStatsForViewer, titleSuburb, type GrowthSuburb } from "@/lib/brisbane";
+import { inviteMessage, isCollecting, LIVE_VOLUME_THRESHOLD, sameSuburb, streetInviteUrl, streetStatsForViewer, titleSuburb, type GrowthSuburb, householdCountsTowardUnlock } from "@/lib/brisbane";
 import { InviteActions } from "@/app/components/shared/invite-actions";
 
 interface AccountPanelProps {
@@ -29,7 +29,7 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
       ]).then(([hh, g]) => {
         if (hh?.binStatus) setBinStatus(hh.binStatus);
         const match = g?.suburbs?.find((s: GrowthSuburb) => sameSuburb(s.suburb, hh?.suburb));
-        const cluster = streetStatsForViewer(match, hh?.councilCollectionDay, hh?.type !== "unit_complex");
+        const cluster = streetStatsForViewer(match, hh?.councilCollectionDay, householdCountsTowardUnlock(hh));
         setStreetStats({ households: cluster.households, containers: cluster.containers, needed: cluster.needed, dayName: cluster.dayName });
       }).catch(() => {});
     } catch { /* ignore */ }
