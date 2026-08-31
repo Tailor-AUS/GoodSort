@@ -2262,3 +2262,11 @@ record MarketplaceClaimRequest(Guid ProfileId);
 record RunStopPickupRequest(int ActualContainers, string? PhotoUrl);
 record PricingSimulateRequest(int Containers, double DistanceKm, int StopCount);
 record AdminBootstrapRequest(string Email);
+
+/// <summary>
+/// Exposed so the test project can boot the real application with
+/// WebApplicationFactory. Every test before ActivationPathTests called services
+/// directly, so routing, auth, model binding and DI were never exercised — all
+/// 153 could pass with every endpoint broken.
+/// </summary>
+public partial class Program { }
