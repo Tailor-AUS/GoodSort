@@ -60,6 +60,20 @@ public class AnonymousBinLookupTests : IClassFixture<AnonymousBinLookupTests.Hos
         await db.SaveChangesAsync();
     }
 
+    /// <summary>A signed-in member with no relationship to anything seeded.</summary>
+    private async Task<HttpClient> SignedInStranger(string email)
+    {
+        var client = _host.CreateClient();
+        var send = await client.PostAsJsonAsync("/api/auth/send-otp", new { email });
+        var code = (await send.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("devCode").GetString();
+        var verify = await client.PostAsJsonAsync("/api/auth/verify-otp", new { email, code });
+        Assert.Equal(HttpStatusCode.OK, verify.StatusCode);
+        var token = (await verify.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        return client;
+    }
+
     /// <summary>Anonymous — no Authorization header, as the scanner is.</summary>
     private async Task<(HttpStatusCode Status, string Body)> Lookup(string code)
     {
@@ -203,6 +217,45 @@ public class AnonymousBinLookupTests : IClassFixture<AnonymousBinLookupTests.Hos
 
         Assert.Contains("The Burrow Cafe", svg);
         Assert.Contains("GS-0099", svg);
+    }
+
+    [Fact]
+    public async Task Another_members_household_bin_is_not_readable_with_any_account()
+    {
+        // The third door. Signing in costs nothing — an OTP to any address — so
+        // a token is not a barrier. #64 projected the anonymous code lookup and
+        // #66 stripped the printed label, but the code lookup still hands out
+        // the bin id, so an account was all that stood between the enumerable
+        // code space and the household's name, address and coordinates.
+        var someoneElsesBin = new Bin
+        {
+            Code = "GS-H44444",
+            Name = "The Nguyen House",
+            Address = "3 Private Rd, Yeronga",
+            Lat = -27.51, Lng = 153.01,
+            HouseholdId = Guid.NewGuid(),
+        };
+        await Seed(someoneElsesBin);
+
+        var stranger = await SignedInStranger("bin-idor@example.test");
+        var res = await stranger.GetAsync($"/api/bins/{someoneElsesBin.Id}");
+
+        Assert.Equal(HttpStatusCode.Forbidden, res.StatusCode);
+        Assert.DoesNotContain("Nguyen", await res.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task A_public_bin_stays_readable_to_any_signed_in_member()
+    {
+        // The gate is household ownership, not "logged in at all". A hosted bin
+        // has no household, and members legitimately look those up.
+        var publicBin = new Bin { Code = "GS-0077", Name = "The Burrow Cafe", HostedBy = "The Burrow Cafe", HouseholdId = null };
+        await Seed(publicBin);
+
+        var member = await SignedInStranger("bin-public@example.test");
+        var res = await member.GetAsync($"/api/bins/{publicBin.Id}");
+
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
     }
 
     [Fact]

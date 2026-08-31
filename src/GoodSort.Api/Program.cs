@@ -296,9 +296,27 @@ app.MapGet("/api/bins", async (GoodSortDbContext db) =>
     Results.Ok(await db.Bins.Where(b => b.Status != "disabled").OrderByDescending(b => b.PendingContainers).ToListAsync()))
     .RequireAuthorization();
 
-app.MapGet("/api/bins/{id:guid}", async (Guid id, GoodSortDbContext db) =>
-    await db.Bins.FindAsync(id) is { } b ? Results.Ok(b) : Results.NotFound())
-    .RequireAuthorization();
+// Requires a token AND that the bin be yours. Signing in costs nothing here —
+// an OTP to any address — so "authenticated" is not a meaningful barrier on
+// its own, and this returns the whole Bin: household Name, full Address, exact
+// Lat/Lng, HouseholdId.
+//
+// That made it the third door to the same data. #64 projected the anonymous
+// code lookup and #66 stripped the printed label, but the code lookup still
+// hands out the bin id, so: walk GS-H{hash % 100000}, take an id, create an
+// account, and read the household off this endpoint. Closing two doors while
+// the third stood open closed nothing.
+//
+// A public or hosted bin carries no household, and members legitimately look
+// those up, so they stay readable to any signed-in caller.
+app.MapGet("/api/bins/{id:guid}", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
+{
+    var b = await db.Bins.FindAsync(id);
+    if (b is null) return Results.NotFound();
+    if (b.HouseholdId is Guid hid && !await CallerCanAccessHousehold(ctx, hid, db))
+        return Results.Forbid();
+    return Results.Ok(b);
+}).RequireAuthorization();
 
 // Anonymous by necessity: the scanner resolves a bin from the code printed on
 // it before the member has signed in. It returned the whole Bin entity, which
