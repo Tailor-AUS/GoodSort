@@ -169,7 +169,25 @@ src/GoodSort.Api/
 
 - **No SSR**: `next.config.ts` has `output: "export"` — everything is static. No server components, no API routes in Next.js, no `getServerSideProps`.
 - **Auth in direct fetch()**: If you add a new `fetch()` call to the backend outside of `lib/store-api.ts`, you must manually attach the Bearer token from `localStorage.getItem("goodsort_token")`. The `apiFetch()` wrapper does this automatically.
-- **CSP updates**: When adding new external script or API origins, update `staticwebapp.config.json` — not just the code. Map stack needs `tiles.openfreemap.org`, `photon.komoot.io`, and `router.project-osrm.org` in `connect-src`.
+- **CSP updates**: When adding new external script or API origins, update
+  `public/staticwebapp.config.json` — not just the code. Map stack needs
+  `tiles.openfreemap.org`, `photon.komoot.io`, and `router.project-osrm.org` in
+  `connect-src`. `lib/csp.test.ts` fails if client code names a host that is
+  neither in `connect-src` nor declared as never-fetched.
+- **The SWA config must live in `public/`, and did not until 2026-08-31.** It sat
+  at the repo root for the whole life of the site. The workflow uploads `out/`
+  with `skip_app_build: true`, and a Next static export only copies `public/`
+  into `out/` — so the file never reached the artifact and **every header it
+  declares was absent in production**: no CSP, no `X-Frame-Options`, no
+  `Referrer-Policy`, no `Permissions-Policy`. Only SWA's own two defaults were
+  served. Nothing about this is visible from the repo: the file exists, the JSON
+  is valid, the build is green and the deploy succeeds. Check a real response,
+  not the file:
+  ```
+  curl -s -D - -o /dev/null https://thegoodsort.org/ | grep -i content-security
+  ```
+  `lib/swa-config.test.ts` now fails if it moves back or a second copy appears
+  at the root.
 - **Auto-migrations**: The backend runs EF Core migrations on startup (with retry logic for SQL container readiness). No manual `database update` needed in prod.
 - **Postdeploy secrets**: `azd deploy` strips env vars not in the Aspire manifest. The `infra/restore-secrets.sh` postdeploy hook re-applies them from the azd environment.
 - **CORS origins**: Backend restricts to `thegoodsort.org` + the SWA staging domain. Add new origins in `Program.cs` if needed.

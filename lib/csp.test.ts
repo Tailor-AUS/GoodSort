@@ -7,12 +7,13 @@ import { join } from "node:path";
  * Every external host in client code is either allowed by the CSP or declared
  * here as something we never connect to.
  *
- * This is a silent failure by construction, and it had already happened. The
- * container lookup's second tier fetched openfoodfacts.org, that host was not
- * in connect-src, CSP refused it, and the call site caught the error and
- * returned null — so the tier read as implemented and returned nothing in
- * production from the day it shipped. `next dev` serves no CSP, so it worked
- * locally the whole time.
+ * Worth keeping honest for a reason found the hard way: for the whole life of
+ * this site the CSP was not being served at all. The config lived at the repo
+ * root, the SWA workflow uploads `out/` with skip_app_build, and Next only
+ * copies `public/` into `out/` — so staticwebapp.config.json never reached
+ * production, and with it no CSP, no X-Frame-Options, no Referrer-Policy and no
+ * Permissions-Policy. It lives in public/ now, and swa-config.test.ts keeps it
+ * there.
  *
  * The first version of this test matched hosts written literally inside a
  * fetch() call. That was the shape of the bug, but not the shape of this
@@ -65,7 +66,7 @@ function externalHosts(): Map<string, string[]> {
 }
 
 function connectSrc(): string[] {
-  const cfg = JSON.parse(readFileSync(join(ROOT, "staticwebapp.config.json"), "utf8"));
+  const cfg = JSON.parse(readFileSync(join(ROOT, "public", "staticwebapp.config.json"), "utf8"));
   const csp: string = cfg?.globalHeaders?.["Content-Security-Policy"] ?? "";
   const directive = csp.split(";").map((d) => d.trim()).find((d) => d.startsWith("connect-src"));
   return [...(directive ?? "").matchAll(/https:\/\/[^\s;]+/g)].map((m) => m[0]);
