@@ -192,7 +192,9 @@ export default function AdminPage() {
             <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-1">Waitlist funnel</p>
             <p className="text-[11px] text-slate-400 mb-3">{funnel.note ?? "Since this API process started."}</p>
             <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
-              {["waitlist_cta", "otp_sent", "otp_verified", "household_joined", "invite_landed", "invite_whatsapp", "invite_sms", "invite_share", "suburb_picked", "bin_day_looked_up"].map((name) => (
+              {/* Derived from the API response, not a fourth hardcoded list —
+                  a name added to the allowlists used to stay invisible here. */}
+              {Object.keys(funnel.events ?? {}).map((name) => (
                 <div key={name}>
                   <p className="text-2xl font-display font-extrabold text-slate-900">{funnel.events?.[name] ?? 0}</p>
                   <p className="text-[11px] text-slate-400">{name.replaceAll("_", " ")}</p>

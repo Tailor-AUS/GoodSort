@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Camera, RotateCcw, Check, Mail, ShieldCheck, ImagePlus, X, Home } from "lucide-react";
+import { track } from "@/lib/analytics";
 import { apiUrl, authHeaders, persistWaitlistFromUrl, readReferrerId, hasValidToken } from "@/lib/config";
 
 interface BinInfo {
@@ -53,6 +54,7 @@ function ScanPageContent() {
   // camera. The API credits a scan with a null HouseholdId, and those
   // containers are attached to the household when one is created.
   function openCamera() {
+    track("scan_camera_opened");
     setStep("camera");
   }
 
@@ -83,6 +85,7 @@ function ScanPageContent() {
     if (!email.includes("@")) return;
     setAuthLoading(true); setAuthError("");
     try {
+      track("otp_sent");
       const res = await fetch(apiUrl("/api/auth/send-otp"), {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim() }),
@@ -109,6 +112,7 @@ function ScanPageContent() {
       });
       if (!res.ok) { setAuthError("Invalid code"); setAuthLoading(false); return; }
       const data = await res.json();
+      track("otp_verified");
       localStorage.setItem("goodsort_token", data.token);
       localStorage.setItem("goodsort_profile", JSON.stringify(data.profile));
       document.cookie = `goodsort_token=${data.token}; path=/; max-age=${30*24*60*60}; SameSite=Lax; Secure`;
@@ -218,6 +222,7 @@ function ScanPageContent() {
 
   // ── Send to AI ──
   async function analyzeImage(base64: string) {
+    track("scan_captured");
     // Ask who they are only once there is something to keep.
     if (!hasValidToken()) {
       try { sessionStorage.setItem(PENDING_CAPTURE_KEY, base64); } catch { /* quota — retake */ }
@@ -245,6 +250,20 @@ function ScanPageContent() {
     setStep("results");
   }
 
+  /**
+   * Credit landed. `first_scan_credited` is the activation metric — the moment
+   * the launch bonus paid for — so it must fire once per member, not per scan.
+   */
+  function trackScanCredited() {
+    track("scan_credited");
+    try {
+      if (!localStorage.getItem("goodsort_first_scan")) {
+        localStorage.setItem("goodsort_first_scan", new Date().toISOString());
+        track("first_scan_credited");
+      }
+    } catch { /* private mode — the per-scan event still counts */ }
+  }
+
   // ── Confirm ──
   async function confirm() {
     const eligible = results.filter((r) => r.eligible);
@@ -269,6 +288,7 @@ function ScanPageContent() {
         setStep("results");
         return;
       }
+      trackScanCredited();
     } catch { /* best effort — offline */ }
     setStep("done");
   }

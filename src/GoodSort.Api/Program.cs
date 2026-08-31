@@ -793,9 +793,15 @@ app.MapGet("/api/growth/brisbane", async (GoodSortDbContext db, IConfiguration c
 
 // First-party funnel (no PII). City-wide totals here would be a product bug —
 // this endpoint only records that a named waitlist action happened.
+// Must stay in step with TRACKED_EVENTS in lib/analytics.ts. A name present on
+// one side only is dropped silently — the client discards our 400 and nothing
+// surfaces. Scanning is the core action and what the launch bonus pays for, so
+// it is instrumented camera-to-credit; first_scan_credited is activation.
 var waitlistEvents = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
 {
-    "waitlist_cta", "otp_sent", "otp_verified", "household_joined",
+    "waitlist_cta",
+    "scan_camera_opened", "scan_captured", "scan_credited", "first_scan_credited",
+    "otp_sent", "otp_verified", "household_joined",
     "invite_whatsapp", "invite_sms", "invite_share", "invite_landed", "suburb_picked",
     "bin_day_looked_up",
 };
