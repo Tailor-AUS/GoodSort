@@ -68,7 +68,7 @@ public class NotificationService
         var members = await _db.Profiles
             .Include(p => p.Household)
             .Where(p => p.Household != null
-                        && p.Household.Type == "residential"
+                        && p.Household.Type != "unit_complex"
                         && p.Household.Suburb != null
                         && p.Household.Suburb.ToUpper() == suburb.ToUpper()
                         && !string.IsNullOrWhiteSpace(p.Email))
@@ -120,7 +120,7 @@ public class NotificationService
         var members = await _db.Profiles
             .Include(p => p.Household)
             .Where(p => p.Household != null
-                        && p.Household.Type == "residential"
+                        && p.Household.Type != "unit_complex"
                         && p.Household.Suburb != null
                         && p.Household.Suburb.ToUpper() == suburb.ToUpper()
                         && p.Household.BinStatus == BinStatuses.Waitlisted
@@ -158,7 +158,7 @@ public class NotificationService
         var q = _db.Profiles
             .Include(p => p.Household)
             .Where(p => p.Household != null
-                        && p.Household.Type == "residential"
+                        && p.Household.Type != "unit_complex"
                         && p.Household.Suburb != null
                         && p.Household.Suburb.ToUpper() == suburb.ToUpper()
                         && p.Household.BinStatus == BinStatuses.Allocated

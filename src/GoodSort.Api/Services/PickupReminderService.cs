@@ -48,7 +48,7 @@ public class PickupReminderService
     private async Task<int> NotifyHouseholds(int tomorrowDow, DateTime tomorrowLocal, bool forceResend)
     {
         var todayLocal = tomorrowLocal.AddDays(-1);
-        var q = _db.Households.Where(h => h.Type == "residential"
+        var q = _db.Households.Where(h => h.Type != "unit_complex"
             && h.CouncilCollectionDay == tomorrowDow
             && (h.BinStatus == BinStatuses.Delivered || h.BinStatus == BinStatuses.Collecting));
         if (!forceResend) q = q.Where(h => h.LastPickupAt == null || h.LastPickupAt < todayLocal);
