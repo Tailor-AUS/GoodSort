@@ -36,6 +36,14 @@ public static class BarcodeCache
     /// Entries to hold before evicting. Bounded on purpose: this runs in every
     /// replica, and an unbounded cache keyed on caller-supplied input is a way
     /// to grow memory until the container is killed.
+    ///
+    /// Per replica also means partial: with ten instances, consecutive requests
+    /// for the same barcode can land on a cold one and pay full price. Measured
+    /// on production, most repeats returned at the network floor and an
+    /// occasional one did not — that is this, not a broken cache. It still cuts
+    /// outbound calls to OFF substantially, which is the point; making every
+    /// repeat cheap would need shared state, and at current volume that is not
+    /// worth an extra dependency.
     /// </summary>
     public const int MaxEntries = 5_000;
 

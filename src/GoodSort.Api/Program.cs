@@ -74,6 +74,16 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 // unthrottled would make it a free database-write amplifier. Counts from an
 // unthrottled anonymous endpoint are also not defensible the moment one goes
 // in a deck.
+// Every limiter below keeps its counters IN PROCESS, and this app scales to
+// ten replicas (maxReplicas on the `api` Container App). So a per-IP permit of
+// N is a real ceiling of up to N x 10 for a caller whose requests spread across
+// instances — the stated numbers are per replica, not per caller.
+//
+// Written down because a rate limit reads like a guarantee. These are sized to
+// blunt a scripted loop and to keep us inside what a free upstream will
+// tolerate, not to stop a determined attacker; a limit that actually holds
+// across replicas needs shared state, the same way background passes needed
+// SingletonLease.
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -86,8 +96,9 @@ builder.Services.AddRateLimiter(options =>
             partitionKey: ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
             factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
             {
-                // A member scans one container at a time; 60/min is far more
-                // than a person produces and far less than a loop wants.
+                // A member scans one container at a time, so 60/min is far
+                // more than a person produces. Per replica — see the note on
+                // AddRateLimiter above before treating it as a hard ceiling.
                 PermitLimit = 60,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
@@ -98,8 +109,9 @@ builder.Services.AddRateLimiter(options =>
             partitionKey: ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
             factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
             {
-                // Generous for a real member — a scan session emits a handful —
-                // but a hard ceiling on a scripted loop.
+                // Generous for a real member — a scan session emits a handful.
+                // Not a hard ceiling: per replica, so up to ten times this for
+                // a caller spread across instances. See AddRateLimiter above.
                 PermitLimit = 120,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
