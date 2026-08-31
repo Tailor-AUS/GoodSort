@@ -259,6 +259,36 @@ public class AnonymousBinLookupTests : IClassFixture<AnonymousBinLookupTests.Hos
     }
 
     [Fact]
+    public async Task The_bin_list_does_not_hand_a_member_everyone_elses_address()
+    {
+        // The one that made the door-by-door fixing beside the point. This
+        // returned every bin in the database to any signed-in member, and a Bin
+        // carries the household's name, full address and exact coordinates — so
+        // the whole roster came back in a single request, no enumeration
+        // needed. Signing in costs nothing, so a token was no barrier.
+        await Seed(new Bin
+        {
+            Code = "GS-H55555",
+            Name = "The Adeyemi House",
+            Address = "77 Elsewhere St, Annerley",
+            Lat = -27.51, Lng = 153.03,
+            HouseholdId = Guid.NewGuid(),
+        });
+        await Seed(new Bin { Code = "GS-0088", Name = "Corner Store", HostedBy = "Corner Store", HouseholdId = null });
+
+        var stranger = await SignedInStranger("binlist-stranger@example.test");
+        var res = await stranger.GetAsync("/api/bins");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var body = await res.Content.ReadAsStringAsync();
+
+        // The public bin is what the map is for, and it stays.
+        Assert.Contains("Corner Store", body);
+        // Someone else's home is not.
+        Assert.DoesNotContain("Adeyemi", body);
+        Assert.DoesNotContain("Elsewhere St", body);
+    }
+
+    [Fact]
     public async Task An_unknown_code_is_a_plain_not_found()
     {
         var (status, _) = await Lookup("GS-H99999");
