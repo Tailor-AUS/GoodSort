@@ -192,6 +192,76 @@ public class SqlConcurrencyTests : IClassFixture<SqlServerFixture>
     }
 
     [SkippableFact]
+    public async Task A_failure_after_the_claim_rolls_the_claim_back()
+    {
+        Skip.IfNot(_sql.Available, SqlServerFixture.SkipReason);
+
+        // The regression introduced in #37 and fixed by Atomic. Settling claims
+        // the status transition first, then generates a rating, updates runner
+        // stats, credits the runner and moves every household's credit. A throw
+        // anywhere in that sequence used to leave the run marked settled with
+        // nobody paid — and unretryable, because the status guard then rejects
+        // it. Settling twice overpays and can be reconciled; settling zero
+        // times owes money with no way to reach it.
+        var runId = await _sql.SeedRun("completed");
+
+        await using (var db = _sql.NewContext())
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await Atomic.RunAsync<bool>(db, async () =>
+                {
+                    Assert.True(await StatusClaim.TryClaimRun(db, runId, "completed", "settled"));
+                    throw new InvalidOperationException("rating generation blew up");
+                }));
+        }
+
+        await using var check = _sql.NewContext();
+        var run = await check.Runs.AsNoTracking().FirstAsync(r => r.Id == runId);
+        Assert.Equal("completed", run.Status);
+        Assert.Null(run.SettledAt);
+    }
+
+    [SkippableFact]
+    public async Task Without_the_transaction_the_claim_would_survive_the_failure()
+    {
+        Skip.IfNot(_sql.Available, SqlServerFixture.SkipReason);
+
+        // The same sequence with no transaction around it, to show the bug was
+        // real rather than theoretical. The claim commits on its own statement,
+        // so the run ends up settled while the work that pays people never ran.
+        var runId = await _sql.SeedRun("completed");
+
+        await using (var db = _sql.NewContext())
+        {
+            Assert.True(await StatusClaim.TryClaimRun(db, runId, "completed", "settled"));
+            // ...and here the handler would throw, before crediting anyone.
+        }
+
+        await using var check = _sql.NewContext();
+        var run = await check.Runs.AsNoTracking().FirstAsync(r => r.Id == runId);
+        Assert.Equal("settled", run.Status);   // stranded: settled, nobody paid
+    }
+
+    [SkippableFact]
+    public async Task A_successful_pass_commits_the_claim_and_the_work_together()
+    {
+        Skip.IfNot(_sql.Available, SqlServerFixture.SkipReason);
+
+        // The transaction must not swallow the happy path.
+        var runId = await _sql.SeedRun("completed");
+
+        await using (var db = _sql.NewContext())
+        {
+            var claimed = await Atomic.RunAsync(db, async () =>
+                await StatusClaim.TryClaimRun(db, runId, "completed", "settled"));
+            Assert.True(claimed);
+        }
+
+        await using var check = _sql.NewContext();
+        Assert.Equal("settled", (await check.Runs.AsNoTracking().FirstAsync(r => r.Id == runId)).Status);
+    }
+
+    [SkippableFact]
     public async Task Only_one_replica_wins_the_background_pass()
     {
         Skip.IfNot(_sql.Available, SqlServerFixture.SkipReason);
