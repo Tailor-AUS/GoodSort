@@ -160,6 +160,52 @@ public class AnonymousBinLookupTests : IClassFixture<AnonymousBinLookupTests.Hos
     }
 
     [Fact]
+    public async Task The_printable_label_does_not_carry_a_household_name()
+    {
+        // The second door. Projecting the code lookup in #64 stopped it
+        // returning the address, but it still returns the bin id — and this
+        // endpoint is anonymous too, and rendered bin.Name into the SVG. So the
+        // enumerable GS-H{hash % 100000} space still led to the household name:
+        // code -> id -> QR -> name. Closing one door is not closing the leak.
+        var householdBin = new Bin
+        {
+            Code = "GS-H33333",
+            Name = "The Okafor House",
+            Address = "9 Sample St, Moorooka",
+            HouseholdId = Guid.NewGuid(),
+        };
+        await Seed(householdBin);
+
+        var res = await _host.CreateClient().GetAsync($"/api/bins/{householdBin.Id}/qr");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var svg = await res.Content.ReadAsStringAsync();
+
+        Assert.Contains("GS-H33333", svg);            // the code still identifies it
+        Assert.DoesNotContain("Okafor", svg);
+        Assert.DoesNotContain("Sample St", svg);
+    }
+
+    [Fact]
+    public async Task A_hosted_bins_label_still_shows_its_venue()
+    {
+        // The label has to stay useful: a venue name belongs on a public bin.
+        var hosted = new Bin
+        {
+            Code = "GS-0099",
+            Name = "The Burrow Cafe",
+            HostedBy = "The Burrow Cafe",
+            HouseholdId = null,
+        };
+        await Seed(hosted);
+
+        var res = await _host.CreateClient().GetAsync($"/api/bins/{hosted.Id}/qr");
+        var svg = await res.Content.ReadAsStringAsync();
+
+        Assert.Contains("The Burrow Cafe", svg);
+        Assert.Contains("GS-0099", svg);
+    }
+
+    [Fact]
     public async Task An_unknown_code_is_a_plain_not_found()
     {
         var (status, _) = await Lookup("GS-H99999");

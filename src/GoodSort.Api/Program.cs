@@ -349,13 +349,24 @@ app.MapGet("/api/bins/{id:guid}/qr", (Guid id, GoodSortDbContext db) =>
     var bin = db.Bins.Find(id);
     if (bin is null) return Results.NotFound();
 
+    // The label is printed and stuck on a physical bin, so it needs the code
+    // and nothing else identifying. bin.Name for a household bin IS the
+    // household's name, and this endpoint is anonymous — so rendering it here
+    // reopens the leak closed in #64 through a second door: walk the
+    // GS-H{hash % 100000} code space, take the id from the code lookup, ask
+    // for the QR, and read the household's name off the SVG.
+    //
+    // A hosted bin's name is a venue ("The Burrow Cafe") and belongs on the
+    // label; a household's does not, and its own occupants do not need to be
+    // told their own house name by a sticker.
+    var label = bin.HouseholdId is null ? bin.Name : "";
     var url = $"https://thegoodsort.org/scan?bin={bin.Code}";
     var svg = $@"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 380'>
         <rect width='300' height='380' fill='white' rx='16'/>
         <rect x='20' y='20' width='260' height='260' fill='#f1f5f9' rx='12'/>
         <text x='150' y='160' text-anchor='middle' font-family='system-ui' font-size='48' font-weight='800' fill='#16a34a'>{bin.Code}</text>
         <text x='150' y='200' text-anchor='middle' font-family='system-ui' font-size='14' fill='#64748b'>Optional count</text>
-        <text x='150' y='310' text-anchor='middle' font-family='system-ui' font-size='13' font-weight='700' fill='#0f172a'>{bin.Name}</text>
+        <text x='150' y='310' text-anchor='middle' font-family='system-ui' font-size='13' font-weight='700' fill='#0f172a'>{label}</text>
         <text x='150' y='335' text-anchor='middle' font-family='system-ui' font-size='11' fill='#94a3b8'>{url}</text>
         <text x='150' y='365' text-anchor='middle' font-family='system-ui' font-size='10' fill='#16a34a'>thegoodsort.org</text>
     </svg>";
