@@ -5,12 +5,45 @@ on:
     branches: [main]
     paths:
       - 'src/**'
+      # The image is built from the repo-root Dockerfile, so a change to it must
+      # trigger a deploy. Without this, a base-image bump or a runtime CVE patch
+      # merges green and never ships.
+      - 'Dockerfile'
       - '.github/workflows/deploy-api.yml'
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     name: Build and Deploy .NET API
+
+    # The money-path concurrency tests need a real SQL Server: the InMemory
+    # provider cannot translate ExecuteUpdate, so it runs a non-atomic fallback
+    # and a read-compare-write implementation passes exactly the same tests as
+    # the atomic one.
+    #
+    # This service is duplicated from ci.yml on purpose. ci.yml runs in a
+    # separate workflow with no `needs:` and no `workflow_run:`, and both
+    # workflows trigger on the same push to main — so they race, and a red CI
+    # cannot stop or roll back a deploy that is already running. Until a deploy
+    # actually depends on CI, the only way for the shipping path to be gated is
+    # for the gate to live on the shipping path.
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          # Throwaway credential for an ephemeral container that exists only for
+          # the length of this job and is never reachable from outside it.
+          MSSQL_SA_PASSWORD: "GoodSortCI!2026"
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'GoodSortCI!2026' -C -Q 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 30s
+
     steps:
       - uses: actions/checkout@v4
 
@@ -20,6 +53,35 @@ jobs:
 
       - name: Test density invariants
         run: dotnet test src/GoodSort.Api.Tests/GoodSort.Api.Tests.csproj -c Release --nologo
+        env:
+          GOODSORT_TEST_SQL: "Server=localhost,1433;User Id=sa;Password=GoodSortCI!2026;TrustServerCertificate=True;"
+
+      # Without this, the step above passes while the twelve tests that check
+      # for double-spends silently skip. That is not hypothetical: run
+      # 33360405276 deliberately restored the pre-fix cash-out race, and the
+      # ONLY tests that failed were these. On this workflow, which had no SQL
+      # service, that commit would have gone green and shipped the double-spend.
+      - name: Concurrency tests must have actually run before we ship
+        run: |
+          set +e
+          dotnet test src/GoodSort.Api.Tests/GoodSort.Api.Tests.csproj -c Release --nologo             --filter "FullyQualifiedName~SqlConcurrencyTests"             --logger "console;verbosity=normal" > sql-tests.txt 2>&1
+          code=$?
+          set -e
+          cat sql-tests.txt
+
+          if grep -q "Skipped GoodSort.Api.Tests.SqlConcurrencyTests" sql-tests.txt; then
+            echo "::error title=Concurrency tests skipped::SqlConcurrencyTests did not run, so nothing verified the money-path races. Refusing to deploy."
+            exit 1
+          fi
+
+          if ! grep -qE "Total tests: [1-9]" sql-tests.txt; then
+            echo "::error title=Concurrency tests did not execute::No tests were discovered, so nothing verified the money-path races. Refusing to deploy."
+            exit 1
+          fi
+
+          exit $code
+        env:
+          GOODSORT_TEST_SQL: "Server=localhost,1433;User Id=sa;Password=GoodSortCI!2026;TrustServerCertificate=True;"
 
       - name: Build
         run: dotnet publish src/GoodSort.Api/GoodSort.Api.csproj -c Release -o publish
