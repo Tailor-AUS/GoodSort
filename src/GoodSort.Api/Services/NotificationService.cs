@@ -127,7 +127,9 @@ public class NotificationService
                         && !string.IsNullOrWhiteSpace(p.Email))
             .ToListAsync();
 
-        foreach (var member in WaitlistNudge.Recipients(members, excludeProfileId))
+        var nudgeAt = DateTime.UtcNow;
+        var nudged = WaitlistNudge.NudgeRecipients(members, excludeProfileId, nudgeAt);
+        foreach (var member in nudged)
         {
             var hello = string.IsNullOrWhiteSpace(member.Name) ? "there" : member.Name;
             var invite = InviteLink.StreetUrl(suburb, day, member.Id);
@@ -142,7 +144,12 @@ public class NotificationService
                 <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {place}</p>
               </div>";
             await Send(member.Email!, $"{place}: {needed} more containers for a run", body);
+            member.LastNudgedAt = nudgeAt;
         }
+
+        // Stamp once, after the batch. Without this the cooldown never engages
+        // and the fan-out stays quadratic in suburb size.
+        if (nudged.Count > 0) await _db.SaveChangesAsync();
     }
 
     public async Task SendBinsOnOrder(string suburb, int? day = null)

@@ -29,9 +29,24 @@ public static class WaitlistDensity
         return raw.ConvertAll(r => new HouseholdClusterRow(r.Suburb, r.CouncilCollectionDay, r.Type, r.PendingContainers, r.BinStatus));
     }
 
+    /// <summary>
+    /// A household is a unit complex only if it says so; everything else is a
+    /// house. Matching on == "residential" instead looked equivalent and was
+    /// not: the migration that introduced Type used defaultValue "", so every
+    /// household predating it has an empty Type. Those rows were rejected by
+    /// BOTH this and IsIncompleteResidential — counted nowhere and flagged
+    /// nowhere, which is how the one household in production stayed invisible
+    /// even after we added a count specifically to surface it.
+    ///
+    /// This also matches residentialNeedsStreet in lib/brisbane.ts, which has
+    /// always treated not-a-unit as residential.
+    /// </summary>
+    public static bool IsResidential(string? type) =>
+        !string.Equals(type, "unit_complex", StringComparison.OrdinalIgnoreCase);
+
     public static bool CountsTowardCluster(string? type, string? suburb)
     {
-        if (!string.Equals(type, "residential", StringComparison.OrdinalIgnoreCase)) return false;
+        if (!IsResidential(type)) return false;
         var key = BinDayService.CanonicalSuburb(suburb);
         return key is not null;
     }
@@ -46,8 +61,7 @@ public static class WaitlistDensity
     /// production state on 2026-08-31, when the only household was one of these.
     /// </summary>
     public static bool IsIncompleteResidential(string? type, string? suburb) =>
-        string.Equals(type, "residential", StringComparison.OrdinalIgnoreCase)
-        && BinDayService.CanonicalSuburb(suburb) is null;
+        IsResidential(type) && BinDayService.CanonicalSuburb(suburb) is null;
 
     /// <summary>
     /// Admin board grouping. City-wide labels collapse to UNKNOWN and must
