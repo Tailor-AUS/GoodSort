@@ -94,21 +94,48 @@ builder.Services.AddRateLimiter(options =>
 });
 
 // CORS — restrict to actual domains
+// The origins the browser may call this API from. Kept as a named array so the
+// Development rule below can re-admit them: SetIsOriginAllowed REPLACES the
+// origin check rather than adding to it, so a predicate that only matched
+// loopback would silently stop honouring this list.
+string[] allowedOrigins =
+[
+    "https://www.thegoodsort.org",
+    "https://thegoodsort.org",
+    "https://kind-mushroom-0fe89a200.2.azurestaticapps.net",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+];
+
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.WithOrigins(
-            "https://www.thegoodsort.org",
-            "https://thegoodsort.org",
-            "https://kind-mushroom-0fe89a200.2.azurestaticapps.net",
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-            "http://localhost:3001",
-            "http://127.0.0.1:3001"
-        )
+        policy.WithOrigins(allowedOrigins)
         .AllowAnyHeader()
         .AllowAnyMethod();
+
+        // In Development only, additionally accept any loopback port. The list
+        // above pins 3000 and 3001, but `next dev` silently moves to an
+        // arbitrary high port when 3000 is taken, and every request then fails
+        // CORS. That reads as "the API is down" rather than "wrong port", and
+        // it blocks the live browser pass this project requires before
+        // shipping UI.
+        //
+        // SetIsOriginAllowed REPLACES the origin check rather than adding to
+        // it, so the predicate has to re-admit allowedOrigins itself. A
+        // loopback-only predicate here would quietly stop honouring the list
+        // above — which is easy to write and produces no error.
+        //
+        // Loopback only, Development only. Production keeps the exact list.
+        if (builder.Environment.IsDevelopment())
+        {
+            policy.SetIsOriginAllowed(origin =>
+                allowedOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase)
+                || (Uri.TryCreate(origin, UriKind.Absolute, out var u) && u.IsLoopback));
+        }
     });
 });
 
