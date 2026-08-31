@@ -27,6 +27,9 @@ export default function OnboardPage() {
   const [pickedSuburb, setPickedSuburb] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Set when the member already has a household and is here to finish it,
+  // rather than joining from scratch.
+  const [resuming, setResuming] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -49,6 +52,28 @@ export default function OnboardPage() {
       const p = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
       if (p.name && p.name !== "New User" && p.name !== "You") setName(p.name);
       else if (typeof p.email === "string" && p.email.includes("@")) setName(p.email.split("@")[0]);
+
+      // A member who already has a household is here to FINISH it, not to
+      // start again. Opening a blank form gives them no sign we already hold
+      // their details and makes them retype an address we stored — and legacy
+      // rows land here precisely because something is missing.
+      if (typeof p.householdId === "string" && p.householdId) {
+        fetch(apiUrl(`/api/households/${p.householdId}`), { headers: authHeaders() })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((hh) => {
+            if (!hh) return;
+            setResuming(true);
+            if (hh.address) setAddress(hh.address);
+            if (typeof hh.lat === "number" && hh.lat !== 0) setLat(hh.lat);
+            if (typeof hh.lng === "number" && hh.lng !== 0) setLng(hh.lng);
+            if (hh.councilArea) setCouncilArea(hh.councilArea);
+            if (hh.councilCollectionDay != null) { setCollectionDay(hh.councilCollectionDay); setDayAuto(true); }
+            if (hh.suburb) { setPickedSuburb(hh.suburb); setSuburbHint(hh.suburb); }
+            // Do not make someone consent twice to the same thing.
+            if (hh.accessConsent === true) setAccessConsent(true);
+          })
+          .catch(() => { /* fall back to a blank form */ });
+      }
     } catch { /* ignore */ }
   }, []);
 
@@ -196,12 +221,16 @@ export default function OnboardPage() {
   if (step === "place") return (
     <Shell
       icon={type === "unit_complex" ? Building2 : Recycle}
-      title={type === "unit_complex" ? "Your building" : "Your street"}
+      title={type === "unit_complex" ? "Your building" : resuming ? "Finish your street" : "Your street"}
       sub={type === "unit_complex"
         ? "High-rise common-area pickups are phase 2. If you put bags on the street, join as a house so your scans count toward suburb volume."
-        : suburbHint
-          ? `Start scanning in ${suburbHint}. Address, done — then scan for 5¢.`
-          : "Address, then scan. Earn 5¢ each. Suburb volume unlocks a driver trip."}
+        : resuming
+          // Landing here with a household already means something is missing.
+          // Saying so beats a blank form that looks like starting over.
+          ? "You are already signed up — we just need your suburb and recycling day before your scans count toward a run."
+          : suburbHint
+            ? `Start scanning in ${suburbHint}. Address, done — then scan for 5¢.`
+            : "Address, then scan. Earn 5¢ each. Suburb volume unlocks a driver trip."}
     >
       <div className="space-y-3 mb-4">
         {type === "residential" && (
