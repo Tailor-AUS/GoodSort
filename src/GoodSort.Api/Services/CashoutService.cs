@@ -133,28 +133,8 @@ public class CashoutService
     {
         if (!PayoutsOpen()) return "";
 
-        // Claim first, then read back what we claimed.
-        //
-        // This used to select the pending rows, build the file, and mark them
-        // processing at the end. Two exports running together both selected the
-        // same rows and both emitted them, so two valid files existed for one
-        // set of payments — and if both reached the bank, everyone in them was
-        // paid twice.
-        //
-        // Claiming stamps a batch id in the same statement that moves the row
-        // out of "pending", so a second export finds nothing left to claim and
-        // returns an empty file rather than a duplicate one.
-        //
-        // Claiming before building means a failure between the two leaves
-        // payments marked processing with no file. That direction is deliberate:
-        // nobody is paid, which an admin can recover from via the batch id,
-        // whereas the other direction pays twice and cannot be undone.
-        var batchId = Guid.NewGuid();
-        var claimed = await ClaimPendingInto(batchId);
-        if (claimed == 0) return "";
-
         var pending = await _db.Set<CashoutRequest>()
-            .Where(c => c.BatchId == batchId)
+            .Where(c => c.Status == "pending")
             .Include(c => c.User)
             .ToListAsync();
 
@@ -216,11 +196,12 @@ public class CashoutService
             "                                        "      // Blank (40)
         );
 
-        // Status and BatchId were written by the claim above; only the
-        // timestamp is left, and it is set on the rows this export owns.
         var processedAt = DateTime.UtcNow;
         foreach (var cashout in pending)
+        {
+            cashout.Status = "processing";
             cashout.ProcessedAt = processedAt;
+        }
         await _db.SaveChangesAsync();
 
         return sb.ToString();
