@@ -20,7 +20,13 @@ public static class ScanBackfill
     /// joined, and fold their containers into that household's totals.
     /// Returns the number of containers moved.
     /// </summary>
-    public static int AttachTo(Household household, IReadOnlyList<Scan> orphanScans)
+    /// <param name="bin">
+    /// The household's bin, when it has one. Backfilled scans have to reach the
+    /// bin's counter as well: that is the number dispatch reads, and a member
+    /// who scanned before joining would otherwise have every one of those scans
+    /// invisible to run generation. Null for a unit complex, which has no bin.
+    /// </param>
+    public static int AttachTo(Household household, IReadOnlyList<Scan> orphanScans, Bin? bin = null)
     {
         if (orphanScans.Count == 0) return 0;
 
@@ -45,6 +51,9 @@ public static class ScanBackfill
         household.EstimatedWeightKg = household.PendingContainers * 0.020;
         household.EstimatedBags = (int)Math.Ceiling(household.PendingContainers / 150.0);
         household.LastScanAt = DateTime.UtcNow;
+
+        foreach (var scan in orphanScans)
+            BinCounter.AddScan(bin, 1, scan.RefundCents, scan.Material);
 
         return orphanScans.Count;
     }

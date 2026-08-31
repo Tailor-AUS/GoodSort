@@ -584,6 +584,15 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
                 };
             }
         }
+
+        // Mirror onto the bin, per material, so the bin's breakdown matches the
+        // household's. Dispatch reads the BIN's counter — see BinCounter.
+        var bin = await db.Bins.FirstOrDefaultAsync(b => b.HouseholdId == household.Id);
+        foreach (var item in payload.Items.Where(i => i.Eligible))
+        {
+            var safeCount = Math.Clamp(item.Count, 0, 100);
+            BinCounter.AddScan(bin, safeCount, safeCount * HouseholdCredit.CentsPerContainer, item.Material);
+        }
     }
 
     await db.SaveChangesAsync();
@@ -736,7 +745,10 @@ app.MapPost("/api/households", async (HttpContext ctx, HouseholdCreateRequest re
                 var orphans = await db.Scans
                     .Where(sc => sc.UserId == me.Id && sc.HouseholdId == null && sc.Status == "pending")
                     .ToListAsync();
-                ScanBackfill.AttachTo(household, orphans);
+                // The bin is created for this household a few lines above; pass
+                // it so backfilled scans reach the counter dispatch reads.
+                var backfillBin = await db.Bins.FirstOrDefaultAsync(b => b.HouseholdId == household.Id);
+                ScanBackfill.AttachTo(household, orphans, backfillBin);
             }
         }
     }
@@ -1167,6 +1179,12 @@ app.MapPost("/api/scans", async (HttpContext ctx, ScanRequest req, GoodSortDbCon
             "glass" => household.Materials.Glass++,
             _ => household.Materials.Other++,
         };
+
+        // Mirror onto the bin. Dispatch reads the BIN's counter, not the
+        // household's — see BinCounter. Without this the scan never reaches
+        // the number that decides whether a driver is sent.
+        var bin = await db.Bins.FirstOrDefaultAsync(b => b.HouseholdId == household.Id);
+        BinCounter.AddScan(bin, 1, cents, req.Material);
     }
 
     await db.SaveChangesAsync();
