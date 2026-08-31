@@ -192,6 +192,51 @@ public class SqlConcurrencyTests : IClassFixture<SqlServerFixture>
     }
 
     [SkippableFact]
+    public async Task Only_one_replica_wins_the_background_pass()
+    {
+        Skip.IfNot(_sql.Available, SqlServerFixture.SkipReason);
+
+        // The exclusion the whole lease exists for. Hosted services run inside
+        // every container instance and this app scales to ten, so without it
+        // ten replicas generate runs over the same bins at once — several
+        // drivers paid to collect the same containers.
+        //
+        // Each simulated replica gets its own holder id, or the already-ours
+        // branch would match for all of them and every one would "win".
+        var name = $"race-{Guid.NewGuid():N}";
+
+        var results = await Concurrently(Concurrency, db =>
+            SingletonLease.TryAcquire(db, name, TimeSpan.FromMinutes(60), holder: Guid.NewGuid()));
+
+        Assert.Equal(1, results.Count(won => won));
+
+        await using var check = _sql.NewContext();
+        Assert.Equal(1, await check.SingletonLeases.AsNoTracking().CountAsync(l => l.Name == name));
+    }
+
+    [SkippableFact]
+    public async Task After_the_lease_expires_exactly_one_replica_takes_it_again()
+    {
+        Skip.IfNot(_sql.Available, SqlServerFixture.SkipReason);
+
+        // The recovery path under contention: when a holder dies, the next pass
+        // must be picked up by one replica, not by all of them at once.
+        var name = $"expiry-{Guid.NewGuid():N}";
+
+        await using (var seed = _sql.NewContext())
+        {
+            // Already expired.
+            Assert.True(await SingletonLease.TryAcquire(
+                seed, name, TimeSpan.FromMinutes(-1), DateTime.UtcNow, Guid.NewGuid()));
+        }
+
+        var results = await Concurrently(Concurrency, db =>
+            SingletonLease.TryAcquire(db, name, TimeSpan.FromMinutes(60), holder: Guid.NewGuid()));
+
+        Assert.Equal(1, results.Count(won => won));
+    }
+
+    [SkippableFact]
     public async Task Concurrent_cash_outs_below_the_balance_all_settle_correctly()
     {
         Skip.IfNot(_sql.Available, SqlServerFixture.SkipReason);

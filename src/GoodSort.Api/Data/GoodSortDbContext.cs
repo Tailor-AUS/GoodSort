@@ -25,9 +25,17 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
     public DbSet<Recycler> Recyclers => Set<Recycler>();
     public DbSet<GrowthEvent> GrowthEvents => Set<GrowthEvent>();
     public DbSet<UsedScanToken> UsedScanTokens => Set<UsedScanToken>();
+    public DbSet<SingletonLeaseRow> SingletonLeases => Set<SingletonLeaseRow>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<SingletonLeaseRow>(e =>
+        {
+            // Name as the key is what makes the lease exclusive across replicas.
+            e.HasKey(x => x.Name);
+            e.Property(x => x.Name).HasMaxLength(64);
+        });
+
         modelBuilder.Entity<UsedScanToken>(e =>
         {
             // Jti as the key is the point: it is what makes a second confirm of
