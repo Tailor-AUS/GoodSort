@@ -50,24 +50,10 @@ public class CashoutService
         if (accountNumber.Length < 5 || accountNumber.Length > 9 || !accountNumber.All(char.IsDigit))
             return (false, "Invalid account number");
 
-        var exists = await _db.Profiles.AsNoTracking().AnyAsync(p => p.Id == userId);
-        if (!exists) return (false, "User not found");
-
-        // Deduct before writing the payout row, and deduct conditionally.
-        //
-        // This used to read ClearedCents, compare it, and write the difference
-        // back. Two concurrent requests both read the same balance, both pass
-        // the comparison, and both write balance-minus-amount — so the member
-        // ends up with two pending CashoutRequest rows and a single deduction.
-        // GenerateAbaFile pays every pending row, so that is a real bank
-        // transfer of money the member did not have. There is no concurrency
-        // token on Profile to catch it.
-        //
-        // Ordering is deliberate. If the payout row failed to write after a
-        // successful deduction the member would be short, which is wrong but
-        // recoverable; the reverse would pay out money that was never debited.
-        if (!await TryDeductCleared(userId, amountCents))
-            return (false, "Insufficient balance");
+        var profile = await _db.Profiles.FindAsync(userId);
+        if (profile is null) return (false, "User not found");
+        if (profile.ClearedCents < amountCents) return (false, "Insufficient balance");
+        profile.ClearedCents -= amountCents;
 
         var request = new CashoutRequest
         {
