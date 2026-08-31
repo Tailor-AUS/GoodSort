@@ -1,6 +1,25 @@
 {
   "navigationFallback": {
-    "rewrite": "/index.html"
+    "rewrite": "/404.html",
+    "exclude": [
+      "/_next/*",
+      "/*.js",
+      "/*.css",
+      "/*.map",
+      "/*.png",
+      "/*.jpg",
+      "/*.jpeg",
+      "/*.svg",
+      "/*.ico",
+      "/*.webp",
+      "/*.json",
+      "/*.txt",
+      "/*.xml",
+      "/*.webmanifest",
+      "/*.woff",
+      "/*.woff2",
+      "/*.ttf"
+    ]
   },
   "globalHeaders": {
     "Cache-Control": "no-cache, must-revalidate",
@@ -23,5 +42,11 @@
         "Cache-Control": "no-cache, no-store, must-revalidate"
       }
     }
-  ]
+  ],
+  "responseOverrides": {
+    "404": {
+      "rewrite": "/404.html",
+      "statusCode": 404
+    }
+  }
 }
