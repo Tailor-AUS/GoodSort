@@ -1,6 +1,8 @@
 // Container lookup — multi-source: local DB → Open Food Facts → heuristic
 // QLD Container Refund Scheme: eligible 150ml to 3L beverage containers
 
+import { apiUrl } from "./config.ts";
+
 export type ContainerMaterial = "aluminium" | "pet" | "glass" | "hdpe" | "liquid_paperboard";
 
 export interface Container {
@@ -153,42 +155,53 @@ export function lookupLocal(barcode: string): Container | null {
 
 // ── Source 2: Open Food Facts API ──
 
+/**
+ * Goes through our own API, not to openfoodfacts.org directly.
+ *
+ * The direct call this replaces could not work in production and had not been
+ * working: openfoodfacts.org is absent from connect-src in
+ * staticwebapp.config.json, so CSP refused it, the catch below swallowed the
+ * failure, and the tier looked implemented while returning null every time.
+ * `lib/csp.test.ts` now fails if client code fetches a host the CSP omits.
+ *
+ * The `User-Agent` header the old call set was doing nothing either — it is a
+ * forbidden header name in fetch, so browsers drop it silently, and Open Food
+ * Facts asks callers to identify themselves. The server sends it for real, and
+ * applies a timeout and a per-IP ceiling that a page cannot.
+ */
 export async function lookupOpenFoodFacts(barcode: string): Promise<Container | null> {
   try {
-    const res = await fetch(
-      `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`,
-      { headers: { "User-Agent": "TheGoodSort/1.0 (noreply@thegoodsort.org)" } }
-    );
+    const res = await fetch(apiUrl(`/api/barcode/${encodeURIComponent(barcode)}`));
     if (!res.ok) return null;
-    const data = await res.json();
-    if (data.status !== 1 || !data.product) return null;
+    const p = await res.json();
+    if (!p?.found) return null;
 
-    const p = data.product;
-    const name = p.product_name || p.product_name_en || "Unknown Product";
-    const brand = p.brands || "Unknown";
+    const name = p.productName || "Unknown Product";
     const qty = p.quantity || "";
     const size_ml = parseSize(qty);
-
-    // Try to get material from packaging data
-    const material = classifyMaterialFromOFF(p);
+    const material = classifyMaterialFromOFF({
+      packaging_materials_tags: p.packagingMaterialsTags,
+      packaging: p.packaging,
+      categories: p.categories,
+    });
 
     return {
       barcode,
       name: `${name} ${qty}`.trim(),
-      brand,
+      brand: p.brands || "Unknown",
       size_ml,
       material,
       weight_g: estimateWeight(material, size_ml),
       refund_cents: 5,
       source: "openfoodfacts",
-      confidence: p.packaging_materials_tags?.length > 0 ? "high" : "medium",
+      confidence: p.packagingMaterialsTags?.length > 0 ? "high" : "medium",
     };
   } catch {
     return null;
   }
 }
 
-function classifyMaterialFromOFF(product: Record<string, unknown>): ContainerMaterial {
+export function classifyMaterialFromOFF(product: Record<string, unknown>): ContainerMaterial {
   const tags = (product.packaging_materials_tags as string[]) || [];
   const packaging = ((product.packaging as string) || "").toLowerCase();
   const categories = ((product.categories as string) || "").toLowerCase();
@@ -197,7 +210,17 @@ function classifyMaterialFromOFF(product: Record<string, unknown>): ContainerMat
   for (const tag of tags) {
     const t = tag.toLowerCase();
     if (t.includes("aluminium") || t.includes("aluminum") || t.includes("steel")) return "aluminium";
-    if (t.includes("pet") || t.includes("polyethylene-terephthalate") || t.includes("pp-") || t.includes("hdpe")) return "pet";
+    // HDPE and polypropylene are not PET. They used to be mapped here as "pet",
+    // which sends a milk or juice bottle to the PET bag — and PET clear is the
+    // highest-value plastic stream, so contaminating it downgrades the whole
+    // load at the depot. They belong in the "other" section, which is exactly
+    // what toBagMaterial("hdpe") returns.
+    //
+    // This was unreachable until the lookup started working: the tier that
+    // feeds it was refused by CSP, so nothing ever came through here. Fixing
+    // that made this live, which is why it is corrected in the same change.
+    if (t.includes("hdpe") || t.includes("pp-") || t.includes("polypropylene")) return "hdpe";
+    if (t.includes("pet") || t.includes("polyethylene-terephthalate")) return "pet";
     if (t.includes("glass")) return "glass";
     if (t.includes("cardboard") || t.includes("tetra") || t.includes("paperboard")) return "liquid_paperboard";
   }
