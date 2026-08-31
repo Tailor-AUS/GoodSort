@@ -220,7 +220,18 @@ No containers (blurry):
     {
         var endpoint = _config["AZURE_OPENAI_ENDPOINT"] ?? "";
         var apiKey = _config["AZURE_OPENAI_KEY"] ?? "";
-        var deploymentName = _config["AZURE_OPENAI_DEPLOYMENT"] ?? "gpt-4.1";
+        // gpt-5-mini, not gpt-4.1. infra/restore-secrets.sh says it plainly:
+        // "gpt-5-mini is the only deployment in oai-tailor-app-prod verified to
+        // work for the vision fallback (gpt-4.1 does not exist there)". The
+        // default here named the one that does not exist.
+        //
+        // Harmless while the setting is present, and production does set it —
+        // but `azd deploy` strips env vars, which is the whole reason
+        // restore-secrets.sh exists. Lose this one and every photo scan falls
+        // through to "Something went wrong analysing that photo", with the
+        // cause buried in an Azure OpenAI 404. A fallback should name something
+        // that exists.
+        var deploymentName = _config["AZURE_OPENAI_DEPLOYMENT"] ?? VisionDefaults.OpenAiDeployment;
 
         if (string.IsNullOrEmpty(apiKey))
         {
