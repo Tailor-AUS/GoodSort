@@ -153,6 +153,8 @@ public class PickupReminderService
 /// <summary>Hosted loop that calls PickupReminderService.RunIfDue every hour.</summary>
 public class PickupReminderHost : BackgroundService
 {
+    private const string LeaseName = "pickup-reminders";
+
     private readonly IServiceProvider _services;
     private readonly ILogger<PickupReminderHost> _log;
     public PickupReminderHost(IServiceProvider services, ILogger<PickupReminderHost> log) { _services = services; _log = log; }
@@ -164,6 +166,16 @@ public class PickupReminderHost : BackgroundService
             try
             {
                 using var scope = _services.CreateScope();
+                // One replica only — see SingletonLease. The consequence here
+                // is milder than duplicate driver trips but still reaches
+                // members: ten copies of the same reminder email.
+                var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
+                if (!await SingletonLease.TryAcquire(db, LeaseName, TimeSpan.FromMinutes(120), ct: stoppingToken))
+                {
+                    await Task.Delay(TimeSpan.FromMinutes(60), stoppingToken);
+                    continue;
+                }
+
                 var svc = scope.ServiceProvider.GetRequiredService<PickupReminderService>();
                 await svc.RunIfDue();
 
@@ -173,6 +185,8 @@ public class PickupReminderHost : BackgroundService
                 // No-ops unless RECOVERY_EMAIL_ENABLED is set.
                 var notify = scope.ServiceProvider.GetRequiredService<NotificationService>();
                 await notify.SendIncompleteHouseholdRecovery();
+
+                await SingletonLease.Release(db, LeaseName, ct: stoppingToken);
             }
             catch (Exception ex) { _log.LogError(ex, "PickupReminderHost pass failed"); }
             await Task.Delay(TimeSpan.FromMinutes(60), stoppingToken);
