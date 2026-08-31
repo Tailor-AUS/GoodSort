@@ -300,8 +300,37 @@ app.MapGet("/api/bins/{id:guid}", async (Guid id, GoodSortDbContext db) =>
     await db.Bins.FindAsync(id) is { } b ? Results.Ok(b) : Results.NotFound())
     .RequireAuthorization();
 
+// Anonymous by necessity: the scanner resolves a bin from the code printed on
+// it before the member has signed in. It returned the whole Bin entity, which
+// carries the household's Name, full Address, exact Lat/Lng and HouseholdId.
+//
+// Household bin codes are derived as GS-H{hash % 100000}, so the space is a
+// hundred thousand values and can simply be walked. Anyone could enumerate it
+// and harvest every member's name, address and coordinates without an account.
+// Unlike the /api/routes leak, this one is reachable: a bin is created for
+// every residential household that joins.
+//
+// The scanner needs a label and an identity, nothing else. The geofence reads
+// the bin's position from the signed scan token server-side, not from here, so
+// no caller needs coordinates. A household bin's name is the household's own
+// name, so it is withheld too — a member scanning their own bin does not need
+// to be told their own house name, and nobody else should be.
 app.MapGet("/api/bins/code/{code}", async (string code, GoodSortDbContext db) =>
-    await db.Bins.FirstOrDefaultAsync(b => b.Code == code) is { } b ? Results.Ok(b) : Results.NotFound());
+{
+    var b = await db.Bins.AsNoTracking().FirstOrDefaultAsync(x => x.Code == code);
+    if (b is null) return Results.NotFound();
+
+    return Results.Ok(new
+    {
+        b.Id,
+        b.Code,
+        b.Status,
+        // Only for public and hosted bins, where the name is a venue
+        // ("The Burrow Cafe"), never a household's.
+        Name = b.HouseholdId is null ? b.Name : null,
+        b.HostedBy,
+    });
+});
 
 app.MapPost("/api/bins", async (Bin bin, GoodSortDbContext db) =>
 {
