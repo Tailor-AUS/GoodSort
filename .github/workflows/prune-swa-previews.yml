@@ -4,13 +4,13 @@ name: Prune SWA preview environments
 # cap is hit, EVERY subsequent PR's preview deploy fails with
 # "already has the maximum number of staging environments" - and it fails
 # quietly, because `gh pr checks` surfaces the newest run per workflow, which
-# for a merged PR is the close job. PRs #24 and #25 both had a failed preview
-# deploy that looked green from the PR page.
+# for a merged PR is the close job.
 #
-# The close_pull_request_job in the SWA workflow is supposed to delete the
-# environment on close, but environments for #20, #21 and #22 survived their
-# merges. Rather than debug that action's edge cases, reconcile the desired
-# state on a schedule: an environment should exist only while its PR is open.
+# The SWA workflow's close_pull_request_job is supposed to delete the
+# environment on close, and it reports success, yet environments keep
+# surviving their merges. Rather than debug that action's edge cases,
+# reconcile the desired state here: an environment should exist only while its
+# PR is open.
 on:
   schedule:
     - cron: "0 */4 * * *"
@@ -34,32 +34,55 @@ jobs:
         uses: azure/cli@v2
         with:
           inlineScript: |
+            set -uo pipefail
             SWA="swa-goodsort-prod"
             RG="rg-goodsort-prod"
 
-            # 'default' is production. Never touch it.
-            ENVS=$(az staticwebapp environment list --name "$SWA" -g "$RG" \
-                     --query "[?name!='default'].name" -o tsv)
+            ENVS=$(az staticwebapp environment list --name "$SWA" -g "$RG" --query "[?name!='default'].name" -o tsv)
 
             if [ -z "$ENVS" ]; then
               echo "No preview environments. Nothing to prune."
               exit 0
             fi
 
+            # Queried through the REST API rather than the gh CLI, because this
+            # runs inside the azure/cli image, which has curl and python but NOT
+            # gh. The first version called gh, silently got "command not found",
+            # and its `|| echo MISSING` fallback then deleted every environment
+            # it looked at - previews of OPEN pull requests included. It did no
+            # harm only because everything it reaped happened to be closed.
+            #
+            # So: delete ONLY on a confirmed "closed". A 404, an auth failure, a
+            # network blip, an unparseable body - all keep the environment and
+            # warn. Losing a live preview is worse than leaving a stale one,
+            # which the next run clears anyway.
             for e in $ENVS; do
-              # SWA names a PR preview after the PR number.
               case "$e" in
                 ''|*[!0-9]*) echo "Skipping '$e' - not a PR number, not ours to reap."; continue ;;
               esac
 
-              STATE=$(gh pr view "$e" --repo "$GITHUB_REPOSITORY" --json state --jq .state 2>/dev/null || echo "MISSING")
-              if [ "$STATE" = "OPEN" ]; then
+              CODE=$(curl -sS -o /tmp/pr.json -w '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$GITHUB_REPOSITORY/pulls/$e")
+
+              if [ "$CODE" != "200" ]; then
+                echo "::warning title=Could not check PR #$e::GitHub returned HTTP $CODE. Keeping the environment rather than guessing."
+                continue
+              fi
+
+              if ! STATE=$(python3 -c 'import json; print(json.load(open("/tmp/pr.json")).get("state",""))'); then
+                echo "::warning title=Could not read PR #$e::Response was not the JSON expected. Keeping the environment."
+                continue
+              fi
+
+              if [ "$STATE" = "open" ]; then
                 echo "PR #$e is open - keeping its preview."
                 continue
               fi
 
-              echo "PR #$e is $STATE - deleting preview environment."
-              az staticwebapp environment delete --name "$SWA" -g "$RG" \
-                --environment-name "$e" --yes -o none \
-                || echo "::warning title=Prune failed::Could not delete environment $e."
+              if [ "$STATE" != "closed" ]; then
+                echo "::warning title=Unexpected state for PR #$e::Got '$STATE'. Keeping the environment."
+                continue
+              fi
+
+              echo "PR #$e is closed - deleting preview environment."
+              az staticwebapp environment delete --name "$SWA" -g "$RG" --environment-name "$e" --yes -o none || echo "::warning title=Prune failed::Could not delete environment $e."
             done
