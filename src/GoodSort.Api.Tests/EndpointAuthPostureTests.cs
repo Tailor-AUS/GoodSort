@@ -78,7 +78,7 @@ public class EndpointAuthPostureTests : IClassFixture<EndpointAuthPostureTests.H
         ["/api/households/lookup-bin-day"] = "Council collection-day lookup for an address the caller typed. Reads BCC open data; stores nothing.",
 
         ["/api/bins/code/{code}"] = "Resolving a physical bin from the code printed on it — the scanner hits this before the member signs in.",
-        ["/api/bins/{id:guid}/qr"] = "Renders the QR image for a bin. No member data.",
+        ["/api/bins/{id:guid}/qr"] = "Renders the printable label for a physical bin. The claim here used to be \"no member data\", which was wrong — it rendered bin.Name, and a household bin's name IS the household's name. It now shows a name only for hosted bins, where it is a venue.",
 
         ["/api/marketplace/runs"] = "Available-work board for runners. Deliberately projected to run centroid, stop COUNT and aggregate materials — never a stop address or a household coordinate.",
         ["/api/runner/leaderboard"] = "Public runner standings.",
