@@ -113,6 +113,21 @@ public class CashoutService
         }
     }
 
+    /// <summary>
+    /// Builds the ABA (Cemtex) batch file the bank acts on.
+    ///
+    /// Every record must be exactly 120 characters. Banks read the fields by
+    /// fixed offset, not by delimiter, so a field that is short does not
+    /// truncate a value — it slides everything after it to the left. Two were
+    /// short here: the descriptive record's description field was 10 instead of
+    /// 12, making that record 118, and the file-total record's filler was 6
+    /// instead of 24, making it 102 and putting the record count at position 51
+    /// where the bank looks at 75.
+    ///
+    /// AbaFileFormatTests asserts the lengths and the offsets, because this is
+    /// not the sort of thing that is obvious by reading: the code carries
+    /// correct-looking width comments beside literals that do not match them.
+    /// </summary>
     // Generate ABA (Australian Banking Association) file for batch bank transfers
     public async Task<string> GenerateAbaFile()
     {
@@ -137,7 +152,7 @@ public class CashoutService
             "       " +                                     // Blank (7)
             Pad26(_config["ABA_USER_NAME"] ?? "TAILOR INTELLIGENCE") + // User Name (26)
             (_config["ABA_USER_ID"] ?? "").Trim().PadRight(6).Substring(0, 6) + // User ID (6)
-            "PAYMENTS  " +                                  // Description (12)
+            "PAYMENTS".PadRight(12) +                       // Description (12)
             now.ToString("ddMMyy") +                        // Date
             "                                        "      // Blank (40)
         );
@@ -176,12 +191,25 @@ public class CashoutService
             totalAmount.ToString().PadLeft(10, '0') +       // File Total (10)
             totalAmount.ToString().PadLeft(10, '0') +       // File Credit Total (10)
             "0000000000" +                                  // File Debit Total (10)
-            "      " +                                      // Blank (6)
-            recordCount.ToString().PadLeft(6, '0') +        // Record Count (6)
+            new string(' ', 24) +                           // Blank (24) — positions 51-74
+            recordCount.ToString().PadLeft(6, '0') +        // Record Count (6) — positions 75-80
             "                                        "      // Blank (40)
         );
 
-        // Mark as processing
+        // Mark as processing so the next export does not emit them again.
+        //
+        // KNOWN GAP, deliberately not fixed here: this is read-then-write, the
+        // same shape as the races closed in #34/#36/#37. Two exports running at
+        // once both select the same pending rows and both emit them, so two
+        // valid files exist for one set of payments — and if both reach the
+        // bank, everyone in them is paid twice.
+        //
+        // It is the mildest of the four: /api/admin/aba-export is admin-only
+        // and manual, so it needs two staff clicking at once rather than any
+        // member. Closing it properly needs a batch marker on the row so an
+        // export can select back exactly what it claimed, which means a
+        // migration — and a half-fix on the file that moves money is worse than
+        // a documented gap. Do it as its own change.
         foreach (var cashout in pending)
             cashout.Status = "processing";
         await _db.SaveChangesAsync();
