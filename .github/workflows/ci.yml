@@ -26,6 +26,30 @@ jobs:
   build-backend:
     runs-on: ubuntu-latest
     name: Build .NET API
+
+    # The money paths are guarded by conditional UPDATEs and a primary key, and
+    # the InMemory provider can demonstrate neither: it cannot translate
+    # ExecuteUpdate (so tests run a non-atomic fallback while the production
+    # branch goes uncovered) and it cannot run two contexts at once (so the
+    # broken read-compare-write implementation passes the same assertions).
+    # SqlConcurrencyTests needs a real server to mean anything.
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          # Throwaway credential for an ephemeral container that exists only for
+          # the length of this job and is never reachable from outside it.
+          MSSQL_SA_PASSWORD: "GoodSortCI!2026"
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'GoodSortCI!2026' -C -Q 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 30s
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -34,3 +58,20 @@ jobs:
       - run: dotnet restore src/GoodSort.sln
       - run: dotnet build src/GoodSort.sln --no-restore -c Release
       - run: dotnet test src/GoodSort.Api.Tests/GoodSort.Api.Tests.csproj -c Release --nologo --no-restore
+        env:
+          GOODSORT_TEST_SQL: "Server=localhost,1433;User Id=sa;Password=GoodSortCI!2026;TrustServerCertificate=True;"
+
+      # A skipped concurrency test is indistinguishable from a passing one in
+      # the summary line, and skipping is what happens if the service container
+      # is missing or the connection string is wrong. Fail loudly instead.
+      - name: Concurrency tests must have actually run
+        run: |
+          dotnet test src/GoodSort.Api.Tests/GoodSort.Api.Tests.csproj -c Release --nologo --no-restore             --filter "FullyQualifiedName~SqlConcurrencyTests" --logger "console;verbosity=normal" > sql-tests.txt 2>&1 || true
+          cat sql-tests.txt
+          if grep -q "Skipped GoodSort.Api.Tests.SqlConcurrencyTests" sql-tests.txt; then
+            echo "::error title=Concurrency tests skipped::SqlConcurrencyTests did not run. GOODSORT_TEST_SQL is unset or the SQL Server service is unreachable, so nothing verified the money-path races."
+            exit 1
+          fi
+          grep -qE "Passed!.*Failed:[[:space:]]+0" sql-tests.txt
+        env:
+          GOODSORT_TEST_SQL: "Server=localhost,1433;User Id=sa;Password=GoodSortCI!2026;TrustServerCertificate=True;"
