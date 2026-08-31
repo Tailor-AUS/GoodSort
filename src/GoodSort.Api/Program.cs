@@ -48,6 +48,27 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
 });
 
+// Rate limiting. /api/growth/events is anonymous by design (it must work
+// before a member has an account), and it now WRITES A ROW, so leaving it
+// unthrottled would make it a free database-write amplifier. Counts from an
+// unthrottled anonymous endpoint are also not defensible the moment one goes
+// in a deck.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("growth-events", ctx =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                // Generous for a real member — a scan session emits a handful —
+                // but a hard ceiling on a scripted loop.
+                PermitLimit = 120,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+});
+
 // CORS — restrict to actual domains
 builder.Services.AddCors(options =>
 {
@@ -120,6 +141,7 @@ var app = builder.Build();
 // Tune via RUNNER_STOP_MAX_CONTAINERS; the default is intentionally lenient.
 var maxContainersPerStop = int.TryParse(builder.Configuration["RUNNER_STOP_MAX_CONTAINERS"], out var mc) ? mc : 2000;
 
+app.UseRateLimiter();
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -838,7 +860,7 @@ app.MapPost("/api/growth/events", async (WaitlistEventRequest req, GoodSortDbCon
     logFactory.CreateLogger("WaitlistGrowth").LogInformation(
         "waitlist_event name={Name} suburb={Suburb} path={Path}", key, suburb, path);
     return Results.Accepted();
-});
+}).RequireRateLimiting("growth-events");
 
 // Durable now. The old version counted into an in-process dictionary, so every
 // push to main rolled the image and reset the board, and each replica held its
