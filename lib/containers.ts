@@ -26,7 +26,29 @@ export function toBagMaterial(material: ContainerMaterial): "aluminium" | "pet" 
 
 // ── Local Database (high confidence, instant) ──
 
-const LOCAL_DB: Container[] = [
+// Nine entries were removed on 2026-08-31: eight had invalid EAN-13 check
+// digits and one ("93711400001") was eleven digits, which is not a retail
+// barcode length at all. None of them could ever match a real scan — a reader
+// cannot produce a barcode whose check digit does not compute — so they were
+// coverage on paper only. Real coverage was 39, not 48.
+//
+// The products themselves are still uncovered and worth adding back with
+// barcodes read off an actual container: Pepsi 375ml, Pepsi Max 375ml, Solo
+// 375ml, Balter XPA 375ml, Stone & Wood Pacific Ale 375ml, Just Juice Apple
+// 250ml, Golden Circle Tropical 250ml, Nippy's Chocolate Milk 375ml, Cool Ridge
+// Water 600ml. containers.test.ts rejects any entry whose check digit is wrong,
+// so a guessed barcode will fail the build rather than sit here looking real.
+//
+// One category is now empty rather than thin: all three liquid-paperboard
+// rows (juice poppers and flavoured milk) were among the fabricated ones, so
+// the table covers no cartons at all. Every carton scanned today takes the
+// unknown path.
+//
+// This matters more than a stale row usually would: Open Food Facts has no
+// record for any Australian beverage barcode in this table (measured 2026-08-31,
+// 48/48 returned HTTP 404), so a miss here does not get a second opinion — it
+// falls straight to createUnknownContainer, which assumes aluminium.
+export const LOCAL_DB: Container[] = [
   // ── Aluminium Cans ──
   // Coca-Cola range
   { barcode: "9300675024457", name: "Coca-Cola 375ml", brand: "Coca-Cola", size_ml: 375, material: "aluminium", weight_g: 14, refund_cents: 5, source: "local", confidence: "high" },
@@ -36,10 +58,6 @@ const LOCAL_DB: Container[] = [
   { barcode: "9300675024495", name: "Diet Coke 375ml", brand: "Coca-Cola", size_ml: 375, material: "aluminium", weight_g: 14, refund_cents: 5, source: "local", confidence: "high" },
   { barcode: "9300675024501", name: "Lift 375ml", brand: "Coca-Cola", size_ml: 375, material: "aluminium", weight_g: 14, refund_cents: 5, source: "local", confidence: "high" },
   { barcode: "9300675030014", name: "Kirks Lemonade 375ml", brand: "Coca-Cola", size_ml: 375, material: "aluminium", weight_g: 14, refund_cents: 5, source: "local", confidence: "high" },
-  // Pepsi range
-  { barcode: "9310015200019", name: "Pepsi 375ml", brand: "PepsiCo", size_ml: 375, material: "aluminium", weight_g: 14, refund_cents: 5, source: "local", confidence: "high" },
-  { barcode: "9310015200026", name: "Pepsi Max 375ml", brand: "PepsiCo", size_ml: 375, material: "aluminium", weight_g: 14, refund_cents: 5, source: "local", confidence: "high" },
-  { barcode: "9310015200033", name: "Solo 375ml", brand: "Asahi", size_ml: 375, material: "aluminium", weight_g: 14, refund_cents: 5, source: "local", confidence: "high" },
   // Beer — Lion
   { barcode: "9310058000015", name: "XXXX Gold 375ml", brand: "Lion", size_ml: 375, material: "aluminium", weight_g: 14, refund_cents: 5, source: "local", confidence: "high" },
   { barcode: "9310058000022", name: "Tooheys New 375ml", brand: "Lion", size_ml: 375, material: "aluminium", weight_g: 14, refund_cents: 5, source: "local", confidence: "high" },
@@ -53,9 +71,6 @@ const LOCAL_DB: Container[] = [
   { barcode: "9300652000146", name: "Iron Jack 375ml", brand: "CUB", size_ml: 375, material: "aluminium", weight_g: 14, refund_cents: 5, source: "local", confidence: "high" },
   { barcode: "9300652000153", name: "Great Northern Super Crisp 375ml", brand: "CUB", size_ml: 375, material: "aluminium", weight_g: 14, refund_cents: 5, source: "local", confidence: "high" },
   { barcode: "9300652000160", name: "Carlton Zero 375ml", brand: "CUB", size_ml: 375, material: "aluminium", weight_g: 14, refund_cents: 5, source: "local", confidence: "high" },
-  // Craft
-  { barcode: "9350987000012", name: "Balter XPA 375ml", brand: "Balter", size_ml: 375, material: "aluminium", weight_g: 14, refund_cents: 5, source: "local", confidence: "high" },
-  { barcode: "9350987000029", name: "Stone & Wood Pacific Ale 375ml", brand: "Stone & Wood", size_ml: 375, material: "aluminium", weight_g: 14, refund_cents: 5, source: "local", confidence: "high" },
   // Energy drinks
   { barcode: "90162602", name: "Red Bull 250ml", brand: "Red Bull", size_ml: 250, material: "aluminium", weight_g: 11, refund_cents: 5, source: "local", confidence: "high" },
   { barcode: "9300650000117", name: "V Energy 250ml", brand: "Frucor", size_ml: 250, material: "aluminium", weight_g: 11, refund_cents: 5, source: "local", confidence: "high" },
@@ -75,7 +90,6 @@ const LOCAL_DB: Container[] = [
   { barcode: "9300675025164", name: "Coca-Cola 1.25L PET", brand: "Coca-Cola", size_ml: 1250, material: "pet", weight_g: 42, refund_cents: 5, source: "local", confidence: "high" },
   { barcode: "9300675025171", name: "Mount Franklin 600ml", brand: "Coca-Cola", size_ml: 600, material: "pet", weight_g: 12, refund_cents: 5, source: "local", confidence: "high" },
   { barcode: "9300675025188", name: "Pump Water 750ml", brand: "Coca-Cola", size_ml: 750, material: "pet", weight_g: 20, refund_cents: 5, source: "local", confidence: "high" },
-  { barcode: "93711400001", name: "Cool Ridge Water 600ml", brand: "CCA", size_ml: 600, material: "pet", weight_g: 12, refund_cents: 5, source: "local", confidence: "high" },
   { barcode: "9300675025195", name: "Sprite 1.25L PET", brand: "Coca-Cola", size_ml: 1250, material: "pet", weight_g: 42, refund_cents: 5, source: "local", confidence: "high" },
   { barcode: "9300675025201", name: "Fanta 1.25L PET", brand: "Coca-Cola", size_ml: 1250, material: "pet", weight_g: 42, refund_cents: 5, source: "local", confidence: "high" },
 
@@ -85,11 +99,6 @@ const LOCAL_DB: Container[] = [
   { barcode: "9300652100112", name: "Great Northern Stubby 330ml", brand: "CUB", size_ml: 330, material: "glass", weight_g: 190, refund_cents: 5, source: "local", confidence: "high" },
   { barcode: "9300652100129", name: "Crown Lager 375ml", brand: "CUB", size_ml: 375, material: "glass", weight_g: 220, refund_cents: 5, source: "local", confidence: "high" },
   { barcode: "9300652100136", name: "Peroni Nastro Azzurro 330ml", brand: "Asahi", size_ml: 330, material: "glass", weight_g: 190, refund_cents: 5, source: "local", confidence: "high" },
-
-  // ── Liquid Paperboard ──
-  { barcode: "9310055000115", name: "Just Juice Apple 250ml", brand: "Juice Brothers", size_ml: 250, material: "liquid_paperboard", weight_g: 9, refund_cents: 5, source: "local", confidence: "high" },
-  { barcode: "9310055000122", name: "Golden Circle Tropical 250ml", brand: "Kraft Heinz", size_ml: 250, material: "liquid_paperboard", weight_g: 9, refund_cents: 5, source: "local", confidence: "high" },
-  { barcode: "9310055000139", name: "Nippy's Chocolate Milk 375ml", brand: "Nippy's", size_ml: 375, material: "liquid_paperboard", weight_g: 12, refund_cents: 5, source: "local", confidence: "high" },
 ];
 
 // ── Weight estimates by material ──
