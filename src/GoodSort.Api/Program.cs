@@ -1117,16 +1117,23 @@ app.MapGet("/api/scans", async (HttpContext ctx, Guid userId, int? limit, GoodSo
 }).RequireAuthorization();
 
 // ── Routes ──
+// RouteStop carries HouseholdName, the full street Address and exact Lat/Lng
+// for every collection — and, with a pickup time attached, that is a schedule
+// of which houses have bags at the kerb and when. This was anonymous. It
+// returned nothing only because no run has been generated yet; the first real
+// collection would have published every participating address to the internet.
 app.MapGet("/api/routes", async (string? status, GoodSortDbContext db) =>
 {
     var q = db.Routes.Include(r => r.Stops).AsQueryable();
     if (!string.IsNullOrEmpty(status)) q = q.Where(r => r.Status == status);
     return Results.Ok(await q.OrderByDescending(r => r.CreatedAt).ToListAsync());
-});
+}).RequireAuthorization();
 
+// Same payload as the list above, for one route. Same reason.
 app.MapGet("/api/routes/{id:guid}", async (Guid id, GoodSortDbContext db) =>
     await db.Routes.Include(r => r.Stops.OrderBy(s => s.Sequence)).Include(r => r.Depot)
-        .FirstOrDefaultAsync(r => r.Id == id) is { } r ? Results.Ok(r) : Results.NotFound());
+        .FirstOrDefaultAsync(r => r.Id == id) is { } r ? Results.Ok(r) : Results.NotFound())
+    .RequireAuthorization();
 
 app.MapPost("/api/routes/{id:guid}/claim", async (HttpContext ctx, Guid id, ClaimRequest req, GoodSortDbContext db) =>
 {
