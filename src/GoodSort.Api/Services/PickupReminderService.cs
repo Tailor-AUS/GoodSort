@@ -166,6 +166,13 @@ public class PickupReminderHost : BackgroundService
                 using var scope = _services.CreateScope();
                 var svc = scope.ServiceProvider.GetRequiredService<PickupReminderService>();
                 await svc.RunIfDue();
+
+                // Members whose household has no usable suburb are in no
+                // cluster and therefore in no other email's recipient query.
+                // Without this pass nothing ever reaches them again.
+                // No-ops unless RECOVERY_EMAIL_ENABLED is set.
+                var notify = scope.ServiceProvider.GetRequiredService<NotificationService>();
+                await notify.SendIncompleteHouseholdRecovery();
             }
             catch (Exception ex) { _log.LogError(ex, "PickupReminderHost pass failed"); }
             await Task.Delay(TimeSpan.FromMinutes(60), stoppingToken);

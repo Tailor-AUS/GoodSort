@@ -231,6 +231,51 @@ public class NotificationService
         }
     }
 
+    /// <summary>
+    /// Reaches the members the counting rule made invisible: residential, joined,
+    /// scanning, but with no suburb the server can use — so no cluster contains
+    /// them and no other email in this class selects them.
+    ///
+    /// Returns how many were contacted. Off unless RECOVERY_EMAIL_ENABLED is
+    /// "true": the code being ready is not the same as deciding to email real
+    /// members, and that decision belongs to a person.
+    /// </summary>
+    public async Task<int> SendIncompleteHouseholdRecovery()
+    {
+        if (!IncompleteHouseholdRecovery.Enabled(_config["RECOVERY_EMAIL_ENABLED"]))
+            return 0;
+
+        var candidates = await _db.Profiles
+            .Include(p => p.Household)
+            .Where(p => p.Household != null && !string.IsNullOrWhiteSpace(p.Email))
+            .ToListAsync();
+
+        var now = DateTime.UtcNow;
+        var recipients = IncompleteHouseholdRecovery.Recipients(candidates, now);
+        if (recipients.Count == 0) return 0;
+
+        foreach (var member in recipients)
+        {
+            var hello = string.IsNullOrWhiteSpace(member.Name) ? "there" : member.Name;
+            var body = $@"
+              <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
+                <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>We don't know your suburb yet</h1>
+                <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {hello},</p>
+                <p style='font-size:14px;line-height:1.55'>Your scans and your credit are safe. But we never captured a suburb for you, so they are not counting toward a collection run — and we cannot tell you when one is close.</p>
+                <p style='font-size:14px;line-height:1.55'>It takes a few seconds to fix.</p>
+                <p style='font-size:14px;margin:20px 0'><a href='https://thegoodsort.org/onboard' style='display:inline-block;background:#16a34a;color:#fff;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:12px'>Add your suburb</a></p>
+                <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · this was our gap, not yours</p>
+              </div>";
+
+            await Send(member.Email!, "Add your suburb so your scans count", body);
+            member.LastNudgedAt = now;
+        }
+
+        await _db.SaveChangesAsync();
+        _log.LogInformation("Recovery email sent to {Count} members with no usable suburb", recipients.Count);
+        return recipients.Count;
+    }
+
     private async Task Send(string to, string subject, string html)
     {
         var client = MakeClient();
