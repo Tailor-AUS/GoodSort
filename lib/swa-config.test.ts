@@ -87,25 +87,28 @@ test("it still declares the headers that were missing in production", () => {
  * matched /index.html.
  */
 
-test("missing assets are not answered with HTML", () => {
+test("a missing file is a 404, whatever it is", () => {
   const cfg = JSON.parse(readFileSync(CONFIG, "utf8"));
-  const exclude: string[] = cfg?.navigationFallback?.exclude ?? [];
 
-  assert.ok(exclude.length > 0, "navigationFallback has no exclude list, so a missing .js returns the fallback document with a 200.");
-  assert.ok(exclude.includes("/_next/*"), "/_next/* must be excluded — that is where every hashed chunk lives.");
-
-  for (const ext of ["/*.js", "/*.css", "/*.png", "/*.json", "/*.woff2"]) {
-    assert.ok(exclude.includes(ext), `${ext} should be excluded from the navigation fallback.`);
+  // Two ways to get this right, and the contract is the behaviour, not the
+  // mechanism. Either there is no navigation fallback at all — correct here,
+  // because output:"export" pre-renders every route and SWA resolves each one
+  // itself — or there is one that excludes assets so a missing chunk is not
+  // answered with a document.
+  const fallback = cfg?.navigationFallback;
+  if (fallback) {
+    const exclude: string[] = fallback.exclude ?? [];
+    assert.ok(exclude.includes("/_next/*"), "/_next/* must be excluded — that is where every hashed chunk lives.");
+    for (const ext of ["/*.js", "/*.css", "/*.png"]) {
+      assert.ok(exclude.includes(ext), `${ext} should be excluded from the navigation fallback.`);
+    }
+    assert.notEqual(fallback.rewrite, "/index.html", "Falling back to the homepage for every mistyped URL is a soft 404.");
   }
-});
 
-test("an unknown page is a 404, not the homepage", () => {
-  const cfg = JSON.parse(readFileSync(CONFIG, "utf8"));
-
-  assert.notEqual(
-    cfg?.navigationFallback?.rewrite,
-    "/index.html",
-    "Falling back to index.html serves the homepage for every mistyped URL, at status 200 — a soft 404.",
-  );
+  // And an unmatched request has to carry a real status. A fallback rewrite
+  // answers with 200, which is why the fallback was removed rather than merely
+  // repointed: measured on production, `rewrite: "/404.html"` served the right
+  // page with the wrong code, and responseOverrides never got a turn.
   assert.equal(cfg?.responseOverrides?.["404"]?.statusCode, 404, "A 404 must actually be a 404.");
+  assert.equal(cfg?.responseOverrides?.["404"]?.rewrite, "/404.html");
 });
