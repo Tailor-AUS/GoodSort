@@ -259,6 +259,14 @@ export function wedgeSuburbs(): BrisbaneSuburb[] {
 }
 
 /** City-wide labels Photon uses. Never a density cluster. */
+// Must match BinDayService.CanonicalSuburb on the server — that single
+// null-or-not decision determines whether a member counts toward a run at all,
+// and a divergence would be silent: the client accepts a suburb, the member
+// believes they joined, the server drops them from every cluster.
+// Locked server-side by CanonicalSuburbParityTests; change both together.
+//
+// Note this list is checked AFTER findSuburb(), so adding any of these names to
+// brisbane-suburbs.ts would make the client accept what the server rejects.
 const NOT_A_CLUSTER = new Set(["brisbane", "qld", "queensland", "australia"]);
 
 export function canonicalSuburb(raw?: string | null): string | null {
