@@ -78,6 +78,9 @@ public static class UsedScanTokenRetention
 public class GrowthEventRetentionHost(IServiceProvider services, ILogger<GrowthEventRetentionHost> log)
     : BackgroundService
 {
+    /// <summary>Own name, so it does not block the other passes' leases.</summary>
+    private const string LeaseName = "growth-event-retention";
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
@@ -86,6 +89,22 @@ public class GrowthEventRetentionHost(IServiceProvider services, ILogger<GrowthE
             {
                 using var scope = services.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
+
+                // One replica only. This host mirrored PickupReminderHost in
+                // every respect except the part that matters — it had no lease,
+                // while the app scales to ten replicas, so all ten ran the same
+                // delete sweep at once. The rows deleted are the same either
+                // way, so nothing looked wrong; the cost is ten concurrent
+                // bulk DELETEs over the same ranges of GrowthEvents and
+                // UsedScanTokens, which is how you get lock contention on the
+                // table the funnel writes to on every scan.
+                if (!await SingletonLease.TryAcquire(db, LeaseName, TimeSpan.FromHours(6), ct: stoppingToken))
+                {
+                    try { await Task.Delay(TimeSpan.FromHours(1), stoppingToken); }
+                    catch (TaskCanceledException) { break; }
+                    continue;
+                }
+
                 var removed = await GrowthEventRetention.SweepAsync(db, stoppingToken);
                 var spent = await UsedScanTokenRetention.SweepAsync(db, stoppingToken);
                 if (spent > 0)
