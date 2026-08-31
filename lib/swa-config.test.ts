@@ -63,3 +63,49 @@ test("it still declares the headers that were missing in production", () => {
   // to. "unsafe-url" would do exactly that.
   assert.notEqual(headers["Referrer-Policy"], "unsafe-url");
 });
+
+/**
+ * What the routing rules do now that the file is actually deployed.
+ *
+ * navigationFallback was `{ rewrite: "/index.html" }` with no exclude list, and
+ * it went live for the first time today. Measured against production before
+ * changing it:
+ *
+ *   /_next/static/chunks/does-not-exist.js  ->  200, content-type text/html
+ *   /brisbane/not-a-suburb-xyz              ->  200, byte-identical to the homepage
+ *
+ * Both are wrong, in different ways. A missing script answered with HTML and a
+ * 200 makes the browser parse a document as JavaScript, so a stale tab across a
+ * deploy fails with "Unexpected token '<'" instead of a clean 404. And every
+ * mistyped URL returning the homepage at 200 is a soft 404: the visitor gets
+ * the wrong page and a search engine is told it is a real one.
+ *
+ * The fallback was never load-bearing. `output: "export"` pre-renders every
+ * route to its own .html — all 21, including the 191 suburb pages from
+ * generateStaticParams — and Static Web Apps resolves /scan to /scan.html
+ * itself. Verified: /scan and /scan.html came back byte-identical, and neither
+ * matched /index.html.
+ */
+
+test("missing assets are not answered with HTML", () => {
+  const cfg = JSON.parse(readFileSync(CONFIG, "utf8"));
+  const exclude: string[] = cfg?.navigationFallback?.exclude ?? [];
+
+  assert.ok(exclude.length > 0, "navigationFallback has no exclude list, so a missing .js returns the fallback document with a 200.");
+  assert.ok(exclude.includes("/_next/*"), "/_next/* must be excluded — that is where every hashed chunk lives.");
+
+  for (const ext of ["/*.js", "/*.css", "/*.png", "/*.json", "/*.woff2"]) {
+    assert.ok(exclude.includes(ext), `${ext} should be excluded from the navigation fallback.`);
+  }
+});
+
+test("an unknown page is a 404, not the homepage", () => {
+  const cfg = JSON.parse(readFileSync(CONFIG, "utf8"));
+
+  assert.notEqual(
+    cfg?.navigationFallback?.rewrite,
+    "/index.html",
+    "Falling back to index.html serves the homepage for every mistyped URL, at status 200 — a soft 404.",
+  );
+  assert.equal(cfg?.responseOverrides?.["404"]?.statusCode, 404, "A 404 must actually be a 404.");
+});
