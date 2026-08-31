@@ -162,6 +162,33 @@ public class AbaFileFormatTests
     }
 
     [Fact]
+    public async Task A_second_export_finds_nothing_left_to_claim()
+    {
+        // Every payment belongs to exactly one export. The first claims the
+        // pending rows into its batch; the second has nothing to take and must
+        // return an empty file rather than the same payments again.
+        var (first, db) = await Generate(2500, 5000);
+        Assert.NotEmpty(first);
+
+        var second = await new CashoutService(db, OpenPayouts()).GenerateAbaFile();
+        Assert.Equal("", second);
+    }
+
+    [Fact]
+    public async Task Every_exported_payment_carries_the_batch_that_claimed_it()
+    {
+        // The batch id is what lets an export read back exactly its own rows,
+        // and what an admin uses to recover a file that was generated but never
+        // sent — the rows are marked processing either way.
+        var (_, db) = await Generate(2500, 5000, 12345);
+
+        var rows = await db.Set<CashoutRequest>().AsNoTracking().ToListAsync();
+        Assert.All(rows, r => Assert.NotNull(r.BatchId));
+        Assert.Single(rows.Select(r => r.BatchId).Distinct());
+        Assert.All(rows, r => Assert.NotNull(r.ProcessedAt));
+    }
+
+    [Fact]
     public async Task No_pending_payouts_produces_no_file()
     {
         var db = NewDb();

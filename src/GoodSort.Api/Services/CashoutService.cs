@@ -133,8 +133,28 @@ public class CashoutService
     {
         if (!PayoutsOpen()) return "";
 
+        // Claim first, then read back what we claimed.
+        //
+        // This used to select the pending rows, build the file, and mark them
+        // processing at the end. Two exports running together both selected the
+        // same rows and both emitted them, so two valid files existed for one
+        // set of payments — and if both reached the bank, everyone in them was
+        // paid twice.
+        //
+        // Claiming stamps a batch id in the same statement that moves the row
+        // out of "pending", so a second export finds nothing left to claim and
+        // returns an empty file rather than a duplicate one.
+        //
+        // Claiming before building means a failure between the two leaves
+        // payments marked processing with no file. That direction is deliberate:
+        // nobody is paid, which an admin can recover from via the batch id,
+        // whereas the other direction pays twice and cannot be undone.
+        var batchId = Guid.NewGuid();
+        var claimed = await ClaimPendingInto(batchId);
+        if (claimed == 0) return "";
+
         var pending = await _db.Set<CashoutRequest>()
-            .Where(c => c.Status == "pending")
+            .Where(c => c.BatchId == batchId)
             .Include(c => c.User)
             .ToListAsync();
 
@@ -196,25 +216,45 @@ public class CashoutService
             "                                        "      // Blank (40)
         );
 
-        // Mark as processing so the next export does not emit them again.
-        //
-        // KNOWN GAP, deliberately not fixed here: this is read-then-write, the
-        // same shape as the races closed in #34/#36/#37. Two exports running at
-        // once both select the same pending rows and both emit them, so two
-        // valid files exist for one set of payments — and if both reach the
-        // bank, everyone in them is paid twice.
-        //
-        // It is the mildest of the four: /api/admin/aba-export is admin-only
-        // and manual, so it needs two staff clicking at once rather than any
-        // member. Closing it properly needs a batch marker on the row so an
-        // export can select back exactly what it claimed, which means a
-        // migration — and a half-fix on the file that moves money is worse than
-        // a documented gap. Do it as its own change.
+        // Status and BatchId were written by the claim above; only the
+        // timestamp is left, and it is set on the rows this export owns.
+        var processedAt = DateTime.UtcNow;
         foreach (var cashout in pending)
-            cashout.Status = "processing";
+            cashout.ProcessedAt = processedAt;
         await _db.SaveChangesAsync();
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Moves every pending payout into one batch in a single statement, so two
+    /// exports cannot both take the same rows. Returns how many were claimed.
+    /// </summary>
+    private async Task<int> ClaimPendingInto(Guid batchId)
+    {
+        try
+        {
+            return await _db.Set<CashoutRequest>()
+                .Where(c => c.Status == "pending")
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(c => c.Status, "processing")
+                    .SetProperty(c => c.BatchId, batchId));
+        }
+        catch (InvalidOperationException)
+        {
+            // InMemory (tests, local dev) cannot translate ExecuteUpdate. Keeps
+            // the batching correct but NOT atomic; the atomicity comes from the
+            // single UPDATE above, which is what production runs.
+            // SqlConcurrencyTests covers the real behaviour.
+            var rows = await _db.Set<CashoutRequest>().Where(c => c.Status == "pending").ToListAsync();
+            foreach (var row in rows)
+            {
+                row.Status = "processing";
+                row.BatchId = batchId;
+            }
+            if (rows.Count > 0) await _db.SaveChangesAsync();
+            return rows.Count;
+        }
     }
 
     private static string Digits(string? raw) =>
@@ -240,6 +280,16 @@ public class CashoutRequest
     public string? AccountNumber { get; set; }
     public string? AccountName { get; set; }
     public string Status { get; set; } = "pending";
+
+    /// <summary>
+    /// Which export claimed this payment. Set by GenerateAbaFile as part of the
+    /// same statement that moves the row out of "pending", so an export can
+    /// select back exactly the rows it claimed and never a row another export
+    /// took. Also makes a produced file reproducible: the batch is a stable
+    /// handle if a file is lost between generating it and sending it.
+    /// </summary>
+    public Guid? BatchId { get; set; }
+
     public DateTime? ProcessedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
