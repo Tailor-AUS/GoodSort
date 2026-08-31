@@ -111,8 +111,35 @@ function estimateWeight(material: ContainerMaterial, size_ml: number): number {
 
 // ── Source 1: Local DB lookup ──
 
+/**
+ * Same product, different digits.
+ *
+ * Robustness, not a live bug — worth being precise about which. The table is
+ * currently 46 Australian 93x EAN-13s plus two short codes, none starting with
+ * a zero, and the only caller (scanner.tsx processBarcodeResult) already strips
+ * non-digits before it gets here. So no real scan misses today.
+ *
+ * It matters as the table grows. UPC-A widens to EAN-13 by gaining a leading
+ * zero, and EAN-13 widens to GTIN-14 the same way, so an imported product added
+ * in its 13-digit form will not match the 12 digits a reader hands back. That
+ * miss is not harmless: the lookup falls through to createUnknownContainer,
+ * which assumes aluminium — a glass bottle would be named "Unknown Container"
+ * and sent to the aluminium bag.
+ *
+ * Leading zeros only. Stripping zeros anywhere would collide distinct products,
+ * and no two current entries collide that way, so the suite would not have
+ * noticed — containers.test.ts carries two synthetic colliders for exactly that.
+ */
+function canonicalBarcode(barcode: string): string {
+  const digits = barcode.trim().replace(/\D/g, "");
+  const trimmed = digits.replace(/^0+/, "");
+  return trimmed.length > 0 ? trimmed : digits;
+}
+
 export function lookupLocal(barcode: string): Container | null {
-  return LOCAL_DB.find((c) => c.barcode === barcode) || null;
+  const wanted = canonicalBarcode(barcode);
+  if (wanted.length === 0) return null;
+  return LOCAL_DB.find((c) => canonicalBarcode(c.barcode) === wanted) || null;
 }
 
 // ── Source 2: Open Food Facts API ──
