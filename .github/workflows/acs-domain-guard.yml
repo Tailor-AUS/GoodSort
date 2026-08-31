@@ -1,0 +1,63 @@
+name: ACS domain guard
+
+# thegoodsort.org keeps getting unlinked from the Communication Service we send
+# through, which takes every signup down with it — twice on 2026-08-31 alone.
+#
+# Root cause is not in this repo. tailor-app's Bicep declares the shared
+# linkedDomains array (infra/main.bicep:753) as [AzureManagedDomain, tailor.au]
+# and ARM applies it declaratively, so its deploys silently drop our domain.
+# Confirmed from the activity log: the clobbering principal is tailor-dev-deploy.
+#
+# The real fix is for that Bicep to include this domain. Until it does, the
+# deploy-time re-link only helps when WE deploy — a tailor-app deploy can leave
+# signups dead until our next release. This closes that window.
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ensure-linked:
+    runs-on: ubuntu-latest
+    name: Ensure ACS sender domain is linked
+    steps:
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Check and repair
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            COMM_ID="/subscriptions/5745cb5e-8c39-470f-ab6f-8a5897b7f9af/resourceGroups/rg-tailor-app-prod/providers/Microsoft.Communication/communicationServices/tailor-prod-comm"
+            GS="/subscriptions/5745cb5e-8c39-470f-ab6f-8a5897b7f9af/resourceGroups/rg-tailor-app-prod/providers/Microsoft.Communication/emailServices/tailor-prod-email/domains/thegoodsort.org"
+            CURRENT=$(az communication show -n tailor-prod-comm -g rg-tailor-app-prod --query linkedDomains -o json)
+
+            if echo "$CURRENT" | grep -q "domains/thegoodsort.org"; then
+              echo "Linked. Nothing to do."
+              exit 0
+            fi
+
+            # Read-modify-write: append ours, never replace the array, or we
+            # clobber tailor-app's domains exactly the way theirs clobbers ours.
+            echo "::warning title=ACS sender domain was unlinked::thegoodsort.org had been dropped from tailor-prod-comm - every signup was failing with DomainNotLinked. Re-linking. Root cause is tailor-app's Bicep declaring the shared array."
+            BODY=$(printf '%s' "$CURRENT" | python3 -c 'import json,sys; c=json.load(sys.stdin) or []; gs=sys.argv[1]; c.append(gs) if gs not in c else None; print(json.dumps({"properties":{"linkedDomains":c}}))' "$GS")
+            az rest --method patch --url "${COMM_ID}?api-version=2023-04-01" --body "$BODY" --output none
+
+            az communication show -n tailor-prod-comm -g rg-tailor-app-prod --query linkedDomains -o json | grep -q "domains/thegoodsort.org"
+            echo "Re-linked and verified."
+
+      - name: Confirm a code can actually be sent
+        run: |
+          # Linkage is necessary, not sufficient - the only proof that matters
+          # is the API accepting a send. 400 here means still broken.
+          CODE=$(curl -sS -m 25 -o /dev/null -w "%{http_code}" -X POST \
+            https://api.livelyfield-64227152.eastasia.azurecontainerapps.io/api/auth/send-otp \
+            -H 'content-type: application/json' \
+            -d '{"email":"acs-guard@thegoodsort.org"}')
+          echo "send-otp returned $CODE"
+          if [ "$CODE" != "200" ]; then
+            echo "::error title=Signups are down::send-otp returned $CODE after the linkage check. Email is still broken."
+            exit 1
+          fi
