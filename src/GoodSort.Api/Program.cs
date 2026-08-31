@@ -292,9 +292,28 @@ app.MapPost("/api/auth/verify-otp", async (VerifyOtpRequest req, AuthService aut
 });
 
 // ── Bins (QR-coded drop points) ──
-app.MapGet("/api/bins", async (GoodSortDbContext db) =>
-    Results.Ok(await db.Bins.Where(b => b.Status != "disabled").OrderByDescending(b => b.PendingContainers).ToListAsync()))
-    .RequireAuthorization();
+// Public and hosted bins, plus the caller's own. It used to return every bin
+// in the database to any signed-in member, and a Bin carries the household's
+// Name, full Address and exact Lat/Lng — so the whole member roster was one
+// authenticated GET away, no enumeration needed. Signing in costs nothing
+// here, so a token was not a barrier.
+//
+// This is what #64, #66 and #67 were narrowing door by door while this stood
+// open. The map needs drop-off points and the member's own bin; it has never
+// needed to show where other members live.
+app.MapGet("/api/bins", async (HttpContext ctx, GoodSortDbContext db) =>
+{
+    var callerId = ctx.GetCallerId();
+    var myHouseholdId = callerId is Guid cid
+        ? await db.Profiles.Where(p => p.Id == cid).Select(p => p.HouseholdId).FirstOrDefaultAsync()
+        : null;
+
+    var q = db.Bins.Where(b => b.Status != "disabled");
+    if (!ctx.IsAdmin())
+        q = q.Where(b => b.HouseholdId == null || b.HouseholdId == myHouseholdId);
+
+    return Results.Ok(await q.OrderByDescending(b => b.PendingContainers).ToListAsync());
+}).RequireAuthorization();
 
 // Requires a token AND that the bin be yours. Signing in costs nothing here —
 // an OTP to any address — so "authenticated" is not a meaningful barrier on
@@ -718,6 +737,10 @@ app.MapGet("/api/barcode/{barcode}", async (string barcode, IHttpClientFactory h
 // ── Households ──
 app.MapGet("/api/households", async (GoodSortDbContext db) =>
     Results.Ok(await db.Households.OrderByDescending(h => h.PendingContainers).ToListAsync()))
+    // Admin-only already, and correctly so: every household with names,
+    // addresses and coordinates. Noted here because getHouseholdsApi in
+    // lib/store-api.ts calls it and has no callers of its own — dead client
+    // code that would 403 if anything ever used it.
     .RequireAuthorization(AuthHelpers.AdminPolicy);
 
 app.MapGet("/api/households/{id:guid}", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
