@@ -17,7 +17,7 @@ public class PickupReminderService
     private readonly GoodSortDbContext _db;
     private readonly IConfiguration _config;
     private readonly ILogger<PickupReminderService> _log;
-    private static readonly TimeSpan Brisbane = TimeSpan.FromHours(10);
+    private static readonly TimeSpan Brisbane = BrisbaneTime.Offset;
 
     public PickupReminderService(GoodSortDbContext db, IConfiguration config, ILogger<PickupReminderService> log)
     { _db = db; _config = config; _log = log; }
