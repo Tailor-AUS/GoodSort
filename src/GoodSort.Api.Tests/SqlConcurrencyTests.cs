@@ -148,6 +148,50 @@ public class SqlConcurrencyTests : IClassFixture<SqlServerFixture>
     }
 
     [SkippableFact]
+    public async Task Concurrent_ABA_exports_never_emit_the_same_payment_twice()
+    {
+        Skip.IfNot(_sql.Available, SqlServerFixture.SkipReason);
+
+        // Two staff hitting Export at once used to produce two valid files
+        // containing the same payments. If both reached the bank, everyone in
+        // them was paid twice.
+        var amounts = new[] { 2100, 2200, 2300, 2400, 2500 };
+        foreach (var amount in amounts)
+        {
+            var userId = await _sql.SeedProfile(clearedCents: 0);
+            await using var seed = _sql.NewContext();
+            seed.Set<CashoutRequest>().Add(new CashoutRequest
+            {
+                UserId = userId, AmountCents = amount, Bsb = "084234",
+                AccountNumber = "123456789", AccountName = "MEMBER NAME", Status = "pending",
+            });
+            await seed.SaveChangesAsync();
+        }
+
+        var files = await Concurrently(Concurrency, db =>
+            new CashoutService(db, OpenPayouts()).GenerateAbaFile());
+
+        var produced = files.Where(f => !string.IsNullOrEmpty(f)).ToList();
+
+        // Every payment must appear in exactly one file, across all of them.
+        var paymentLines = produced
+            .SelectMany(f => f.Split('\n').Select(l => l.TrimEnd('\r')))
+            .Where(l => l.StartsWith('1'))
+            .ToList();
+
+        Assert.Equal(amounts.Length, paymentLines.Count);
+        Assert.Equal(amounts.Length, paymentLines.Distinct().Count());
+
+        await using var check = _sql.NewContext();
+        var rows = await check.Set<CashoutRequest>().AsNoTracking().ToListAsync();
+        Assert.All(rows, r => Assert.Equal("processing", r.Status));
+
+        // Whichever export won, all five rows belong to one batch — nothing
+        // was split across two files.
+        Assert.Single(rows.Select(r => r.BatchId).Distinct());
+    }
+
+    [SkippableFact]
     public async Task Concurrent_cash_outs_below_the_balance_all_settle_correctly()
     {
         Skip.IfNot(_sql.Available, SqlServerFixture.SkipReason);
