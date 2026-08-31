@@ -639,7 +639,7 @@ app.MapPost("/api/households", async (HttpContext ctx, HouseholdCreateRequest re
 
     // Placeholder bin for the household. RunGeneration skips waitlisted/allocated
     // households until ops marks the area collecting.
-    if (household.Type == "residential")
+    if (household.Type != "unit_complex")
     {
         var code = $"GS-H{Math.Abs(household.Id.GetHashCode()) % 100000:D5}";
         db.Bins.Add(new Bin
@@ -899,8 +899,8 @@ app.MapGet("/api/growth/invite/{id:guid}", async (Guid id, GoodSortDbContext db)
     {
         name = InvitePreview.PublicFirstName(p.Name),
         suburb = BinDayService.CanonicalSuburb(p.Household?.Suburb),
-        day = p.Household?.Type == "residential" ? p.Household.CouncilCollectionDay : null,
-        dayName = p.Household?.Type == "residential" ? InviteLink.PublicDayName(p.Household.CouncilCollectionDay) : null,
+        day = p.Household != null && p.Household.Type != "unit_complex" ? p.Household.CouncilCollectionDay : null,
+        dayName = p.Household != null && p.Household.Type != "unit_complex" ? InviteLink.PublicDayName(p.Household.CouncilCollectionDay) : null,
     });
 });
 
@@ -919,7 +919,7 @@ app.MapGet("/api/households/{id:guid}/next-pickup", async (HttpContext ctx, Guid
     var h = await db.Households.FindAsync(id);
     if (h is null) return Results.NotFound();
     if (!await CallerCanAccessHousehold(ctx, id, db)) return Results.Forbid();
-    if (h.Type != "residential" || h.CouncilCollectionDay is null)
+    if (h.Type == "unit_complex" || h.CouncilCollectionDay is null)
         return Results.Ok(new { nextPickup = (string?)null, confirmed = false, binStatus = h.BinStatus, reason = "Not a residential household with a council collection day set." });
 
     var next = KerbsideNight.NextRunnerLocalDate(h.CouncilCollectionDay, DateTime.UtcNow);
@@ -1467,7 +1467,7 @@ app.MapGet("/api/admin/pickups/tomorrow", async (GoodSortDbContext db) =>
 
     var households = await db.Households
         .Include(h => h.Members)
-        .Where(h => h.Type == "residential"
+        .Where(h => h.Type != "unit_complex"
                     && h.CouncilCollectionDay == tomorrowDow
                     && (h.BinStatus == BinStatuses.Delivered || h.BinStatus == BinStatuses.Collecting))
         .ToListAsync();
@@ -1517,7 +1517,10 @@ app.MapGet("/api/admin/waitlist", async (GoodSortDbContext db) =>
     var liveThreshold = WaitlistDensity.LiveThreshold;
     var dayNames = WaitlistDensity.DayNames;
     var rows = await db.Households.AsNoTracking()
-        .Where(h => h.Type == "residential")
+        // Not == "residential": legacy rows carry an empty Type from the
+        // migration default, and excluding them here while WaitlistDensity
+        // counts them would make ops blind to households driving a run.
+        .Where(h => h.Type != "unit_complex")
         .Select(h => new
         {
             h.Id, h.Name, h.Address, h.Suburb, h.Street,
@@ -1581,14 +1584,14 @@ app.MapPost("/api/admin/areas/{suburb}/allocate", async (string suburb, int? day
         return Results.BadRequest(new { error = "Not a residential suburb cluster." });
     var key = BinDayService.CanonicalSuburb(suburb)!;
     var inSuburb = db.Households
-        .Where(h => h.Type == "residential" && h.Suburb != null && h.Suburb.ToUpper() == key);
+        .Where(h => h.Type != "unit_complex" && h.Suburb != null && h.Suburb.ToUpper() == key);
     var containers = await inSuburb.SumAsync(h => h.PendingContainers);
     var households = await inSuburb.CountAsync();
     if (!WaitlistDensity.CanPurchase(containers))
         return Results.BadRequest(new { error = $"Need {WaitlistDensity.LiveThreshold} scanned containers in the suburb. This suburb has {containers}." });
     if (!WaitlistDensity.CanDispatch(containers, households))
         return Results.BadRequest(new { error = $"Need at least {WaitlistDensity.MinHouseholdsForRun} households in the suburb to send a driver. This suburb has {households}." });
-    var q = db.Households.Where(h => h.Type == "residential" && h.Suburb != null && h.Suburb.ToUpper() == key && h.BinStatus == BinStatuses.Waitlisted);
+    var q = db.Households.Where(h => h.Type != "unit_complex" && h.Suburb != null && h.Suburb.ToUpper() == key && h.BinStatus == BinStatuses.Waitlisted);
     if (day is int d) q = q.Where(h => h.CouncilCollectionDay == d);
     var rows = await q.ToListAsync();
     foreach (var h in rows) h.BinStatus = BinStatuses.Allocated;
@@ -1610,7 +1613,7 @@ app.MapPost("/api/admin/areas/{suburb}/advance", async (string suburb, int? day,
     };
     if (from is null) return Results.BadRequest(new { error = "Advance to delivered or collecting only." });
     var key = BinDayService.CanonicalSuburb(suburb)!;
-    var q = db.Households.Where(h => h.Type == "residential" && h.Suburb != null && h.Suburb.ToUpper() == key && h.BinStatus == from);
+    var q = db.Households.Where(h => h.Type != "unit_complex" && h.Suburb != null && h.Suburb.ToUpper() == key && h.BinStatus == from);
     if (day is int d) q = q.Where(h => h.CouncilCollectionDay == d);
     var rows = await q.ToListAsync();
     foreach (var h in rows) h.BinStatus = next;
