@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test": "node --experimental-strip-types --test \"lib/**/*.test.ts\"",
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "@zxing/browser": "^0.1.5",

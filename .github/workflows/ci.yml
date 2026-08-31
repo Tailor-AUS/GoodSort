@@ -14,9 +14,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # 22, not 20: `npm test` runs Node's own test runner with
+          # --experimental-strip-types, which needs 22.6+. Matches quotefor-app.
+          node-version: "22"
           cache: npm
       - run: npm ci
+      - run: npm run type-check
+      - run: npm test
       - run: npm run build
 
   build-backend:
