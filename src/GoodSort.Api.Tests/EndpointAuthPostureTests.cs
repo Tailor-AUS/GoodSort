@@ -172,14 +172,13 @@ public class EndpointAuthPostureTests : IClassFixture<EndpointAuthPostureTests.H
     }
 
     [Fact]
-    public void Admin_bootstrap_is_secret_gated_not_open()
+    public async Task Admin_bootstrap_is_secret_gated_not_open()
     {
         // The one anonymous route that grants admin, so it gets its own
         // assertion rather than a line in a list. With no secret configured it
         // must not exist at all — which is its state in production.
-        var res = _host.CreateClient()
-            .PostAsJsonAsync("/api/admin/bootstrap", new { email = "attacker@example.test" })
-            .GetAwaiter().GetResult();
+        var res = await _host.CreateClient()
+            .PostAsJsonAsync("/api/admin/bootstrap", new { email = "attacker@example.test" });
 
         Assert.Equal(System.Net.HttpStatusCode.NotFound, res.StatusCode);
     }
