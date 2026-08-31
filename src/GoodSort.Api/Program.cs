@@ -1217,12 +1217,23 @@ app.MapPost("/api/routes/{id:guid}/settle", async (HttpContext ctx, Guid id, Goo
     if (route is null || route.Status != "at_depot") return Results.BadRequest();
     if (route.DriverId != ctx.GetCallerId() && !ctx.IsAdmin()) return Results.Forbid();
 
+    // Claim the transition before crediting anyone. The check above is a
+    // courtesy for a clear error message; it is not the guard. Two settles
+    // arriving together both pass it, and everything below hands out money —
+    // the driver's cash-out-eligible balance twice, and every household's
+    // pending credit moved to cleared twice, which invents money that was
+    // never scanned. A double-tap on a Settle button sends two requests.
+    if (!await StatusClaim.TryClaimRoute(db, route.Id, from: "at_depot", to: "settled"))
+        return Results.BadRequest(new { error = "This route has already been settled." });
+
     var pickedUp = route.Stops.Where(s => s.Status == "picked_up").ToList();
     var totalCollected = pickedUp.Sum(s => s.ActualContainerCount ?? s.ContainerCount);
     var driverPayout = totalCollected * 5; // 5c per container, no base
 
     route.DriverPayoutCents = driverPayout;
-    route.Status = "settled"; route.SettledAt = DateTime.UtcNow;
+    // Status and SettledAt were written by the claim above; mirror them onto
+    // the tracked entity so the response body matches what is stored.
+    route.Status = "settled"; route.SettledAt ??= DateTime.UtcNow;
 
     foreach (var stop in pickedUp)
     {
@@ -2013,10 +2024,16 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
     if (run is null || run.Status != "completed") return Results.BadRequest();
     if (!await CallerOwnsRun(ctx, run, db)) return Results.Forbid();
 
+    // Same reasoning as /api/routes/{id}/settle: claim the transition first,
+    // because everything below credits ClearedCents and moves household credit
+    // from pending to cleared. Doing that twice mints cash-out-eligible money.
+    if (!await StatusClaim.TryClaimRun(db, run.Id, from: "completed", to: "settled"))
+        return Results.BadRequest(new { error = "This run has already been settled." });
+
     // Calculate actual payout
     run.ActualPayoutCents = run.ActualContainers * run.PerContainerCents;
     run.Status = "settled";
-    run.SettledAt = DateTime.UtcNow;
+    run.SettledAt ??= DateTime.UtcNow;
 
     // Generate rating
     var rating = await runnerService.GenerateRating(run);
