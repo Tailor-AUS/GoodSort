@@ -183,4 +183,37 @@ public class EndpointAuthPostureTests : IClassFixture<EndpointAuthPostureTests.H
         Assert.Equal(System.Net.HttpStatusCode.NotFound, res.StatusCode);
     }
 
+    [Fact]
+    public void No_handler_falls_back_to_a_client_supplied_caller_id()
+    {
+        // `ctx.GetCallerId() ?? somethingFromTheBody` means "if I cannot
+        // identify you, trust what you sent". /api/profiles had the only one:
+        // it assigned the body's id and then read that profile straight back.
+        // Every sibling returns Unauthorized instead.
+        //
+        // A grep test because the shape is what matters, not any one endpoint,
+        // and it is the kind of line that reads as a harmless null-guard.
+        var root = FindApiSource();
+        var offenders = Directory
+            .EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
+            .Where(f => !f.Contains(Path.Combine("Migrations", "")))
+            .Where(f => File.ReadLines(f).Any(l =>
+                l.Contains("GetCallerId() ??") && !l.TrimStart().StartsWith("//")))
+            .Select(Path.GetFileName)
+            .ToList();
+
+        Assert.True(offenders.Count == 0,
+            "These fall back to a client-supplied caller id instead of refusing: " +
+            string.Join(", ", offenders));
+    }
+
+    private static string FindApiSource()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "GoodSort.Api")))
+            dir = dir.Parent;
+        Assert.NotNull(dir);
+        return Path.Combine(dir!.FullName, "GoodSort.Api");
+    }
+
 }
