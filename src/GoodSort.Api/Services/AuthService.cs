@@ -105,12 +105,36 @@ public class AuthService
             _logger.LogInformation("OTP email sent to {Email}", email);
             return (true, null, null);
         }
+        catch (Azure.RequestFailedException ex) when (IsSenderMisconfigured(ex))
+        {
+            // Configuration fault, not a blip: EVERY signup is failing right
+            // now and retrying cannot help. Logged at Critical so the alert
+            // rule fires and this is never again discovered by a user giving
+            // up silently. See the 2026-08-30 outage: thegoodsort.org was
+            // dropped from the ACS linkedDomains array by a tailor-app deploy.
+            _logger.LogCritical(ex,
+                "OTP EMAIL IS DOWN FOR EVERYONE — sender {Sender} rejected with {ErrorCode}. "
+                + "No signup can complete until this is fixed.",
+                _config["ACS_EMAIL_SENDER"] ?? "(default)", ex.ErrorCode);
+            return (false, "We can't send codes right now — this is our fault, not yours. Please try again later.", null);
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send OTP email to {Email}", email);
             return (false, "Failed to send email. Try again.", null);
         }
     }
+
+    /// <summary>
+    /// True when ACS rejected the send for a configuration reason rather than a
+    /// transient one — the sender domain is not linked to the Communication
+    /// Service, or the sender address is not provisioned. These fail for every
+    /// recipient until someone changes infrastructure, so they must not be
+    /// reported to the user as "try again".
+    /// </summary>
+    private static bool IsSenderMisconfigured(Azure.RequestFailedException ex) =>
+        ex.ErrorCode is "DomainNotLinked" or "SenderNotFound" or "SenderDomainNotVerified"
+            or "InvalidSenderAddress" or "Unauthorized";
 
     public async Task<(string? Token, Profile? Profile)> VerifyOtp(string email, string code, Guid? referrerId = null)
     {
