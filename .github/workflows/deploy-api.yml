@@ -43,3 +43,27 @@ jobs:
               -n ${{ secrets.AZURE_CONTAINER_APP_NAME }} \
               -g ${{ secrets.AZURE_RESOURCE_GROUP }} \
               --image acrnyjfw2pdfsrie.azurecr.io/api:${{ github.sha }}
+
+      # The OTP is the only way into the product, and it fails closed with
+      # DomainNotLinked if thegoodsort.org is not linked to the ACS resource we
+      # send through. tailor-app's Bicep declares that shared array and drops
+      # our domain on every one of its infra deploys, so re-assert it here.
+      # This step FAILS the job on error: a deploy that silently leaves email
+      # broken is worse than one that fails loudly, because either way nobody
+      # can sign up but only one of them tells us.
+      - name: Ensure ACS sender domain is linked
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            COMM_ID="/subscriptions/5745cb5e-8c39-470f-ab6f-8a5897b7f9af/resourceGroups/rg-tailor-app-prod/providers/Microsoft.Communication/communicationServices/tailor-prod-comm"
+            GS="/subscriptions/5745cb5e-8c39-470f-ab6f-8a5897b7f9af/resourceGroups/rg-tailor-app-prod/providers/Microsoft.Communication/emailServices/tailor-prod-email/domains/thegoodsort.org"
+            CURRENT=$(az communication show -n tailor-prod-comm -g rg-tailor-app-prod --query linkedDomains -o json)
+            if echo "$CURRENT" | grep -q "domains/thegoodsort.org"; then
+              echo "thegoodsort.org already linked."
+            else
+              echo "thegoodsort.org missing - appending (never replacing the array)."
+              BODY=$(printf '%s' "$CURRENT" | python3 -c 'import json,sys; c=json.load(sys.stdin) or []; gs=sys.argv[1]; c.append(gs) if gs not in c else None; print(json.dumps({"properties":{"linkedDomains":c}}))' "$GS")
+              az rest --method patch --url "${COMM_ID}?api-version=2023-04-01" --body "$BODY" --output none
+            fi
+            az communication show -n tailor-prod-comm -g rg-tailor-app-prod --query linkedDomains -o json | grep -q "domains/thegoodsort.org"
+            echo "Verified: thegoodsort.org is linked."
