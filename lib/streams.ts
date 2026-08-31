@@ -119,7 +119,13 @@ export function classifyToStream(
 
   // PET — sub-classify by colour
   if (mat === "pet") {
-    if (desc.includes("green") || desc.includes("colour") || desc.includes("color") ||
+    // Word-bounded, because a substring test for "colour" also matches
+    // "colourless" — and a colourless bottle is the clear stream, not the
+    // coloured one. Clear PET sells for more than mixed, so that mistake sends
+    // a member's clear bottles to the lower-value bag and downgrades the load
+    // at the depot. Both spellings, and "coloured"/"colored" still match.
+    const saysColoured = /\bcolou?r(ed)?\b/.test(desc);
+    if (saysColoured || desc.includes("green") ||
         desc.includes("sprite") || desc.includes("fanta") || desc.includes("bundaberg") ||
         desc.includes("brown") || desc.includes("dark") || desc.includes("tinted")) {
       return STREAMS[2]; // PET COLOURED
