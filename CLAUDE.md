@@ -185,6 +185,20 @@ src/GoodSort.Api/
 - **Adding an endpoint? It is anonymous by default.** A minimal-API route has no auth unless you add `.RequireAuthorization()`, and forgetting it produces a working endpoint that leaks with nothing unusual in the build or the diff. It has happened twice — runner pickup coordinates, then `GET /api/routes` returning every `RouteStop`'s household name, address and coordinates. `EndpointAuthPostureTests` now fails unless every route is either authorized or listed in `IntentionallyPublic` **with a reason**, and separately requires every `/api/admin` route to use `AuthHelpers.AdminPolicy` — `.RequireAuthorization()` with no policy means any signed-in member, not staff.
 - **SWA preview environments are capped at 3.** Once the cap is hit, every PR's preview deploy fails with `already has the maximum number of staging environments` — and it fails *quietly*: `gh pr checks` shows the newest run per workflow, which for a merged PR is the close job, so the failed preview never appears. PRs #24 and #25 both merged with a failed preview that looked green. `prune-swa-previews.yml` reconciles this every 4h (an environment should exist only while its PR is open), but if PR previews start failing, check the environment list first.
 - **App version meta**: `app/layout.tsx` has `<meta name="app-version" content="YYYYMMDD-HHMM">`. `debug-prod` reads this to confirm a deploy actually landed; bump it when shipping user-visible changes.
+- **Ask the API which commit it is, rather than inferring it from a green run.**
+  `GET /api/version` returns `{ sha, buildTime, service }` — anonymous, so a
+  probe or a person can use it without a token. The sha comes from a
+  `GIT_SHA` build arg that `deploy-api.yml` passes to `az acr build`.
+  A green workflow run is *not* proof the change is live: a run can go green
+  having taken a path that never shipped the component you changed, which is
+  how three sender-domain incidents in one day each looked fine in Actions.
+  Verify a backend deploy by comparing this sha to the merge commit:
+  ```
+  curl -s https://api.livelyfield-64227152.eastasia.azurecontainerapps.io/api/version
+  ```
+  `"unknown"` means the image was built without the build arg — an unstamped
+  build, not a broken endpoint. Anything added to that response is public;
+  `VersionEndpointTests` fails on any field beyond the three.
 - **JSON cycle handling**: `Program.cs` sets `ReferenceHandler.IgnoreCycles` because `Run ↔ RunnerProfile` (and similar EF nav properties) would otherwise blow up serialization. Keep this in mind when adding entities with circular relationships.
 - **We own our own Communication Service.** OTP email goes through `goodsort-comm` in `rg-GoodSort`, with `thegoodsort.org` linked to it. It used to go through tailor-app's shared `tailor-prod-comm`; their Bicep declares that service's `linkedDomains` array, so every tailor-app infra deploy silently dropped our domain and took signups down — three times on 2026-08-31 alone. The domain *resource* still lives under `tailor-prod-email` and is only ever referenced, never rewritten. A domain can be linked to two Communication Services at once, which is why this needed no DNS change. Don't point anything back at `tailor-prod-comm`.
 - **One ACS link implementation**: `scripts/ensure-acs-domain-linked.sh`, called by `deploy-api.yml`, `acs-domain-guard.yml` and `infra/restore-secrets.sh`. It was previously copy-pasted into all three, and all three carried the same crash — `az ... --query linkedDomains -o json` prints *empty*, not `null`, when the array is absent, so the self-heal only ever died when it was actually needed. Exit codes are the contract: `0` linked, `1` repair failed, `2` could not check.
