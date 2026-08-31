@@ -50,7 +50,7 @@ public class PickupReminderService
         var todayLocal = tomorrowLocal.AddDays(-1);
         var q = _db.Households.Where(h => h.Type != "unit_complex"
             && h.CouncilCollectionDay == tomorrowDow
-            && (h.BinStatus == BinStatuses.Delivered || h.BinStatus == BinStatuses.Collecting));
+            && BinStatuses.Serviceable.Contains(h.BinStatus));
         if (!forceResend) q = q.Where(h => h.LastPickupAt == null || h.LastPickupAt < todayLocal);
         var candidates = await q.Include(h => h.Members).ToListAsync();
         if (candidates.Count == 0) return 0;

@@ -1553,7 +1553,7 @@ app.MapGet("/api/admin/pickups/tomorrow", async (GoodSortDbContext db) =>
         .Include(h => h.Members)
         .Where(h => h.Type != "unit_complex"
                     && h.CouncilCollectionDay == tomorrowDow
-                    && (h.BinStatus == BinStatuses.Delivered || h.BinStatus == BinStatuses.Collecting))
+                    && BinStatuses.Serviceable.Contains(h.BinStatus))
         .ToListAsync();
 
     var hhIds = households.Select(h => h.Id).ToHashSet();
@@ -1721,7 +1721,7 @@ app.MapPost("/api/admin/households/{id:guid}/bin-status", async (Guid id, BinSta
     var previous = h.BinStatus;
     h.BinStatus = req.Status;
     await db.SaveChangesAsync();
-    if (previous != req.Status && (req.Status == BinStatuses.Delivered || req.Status == BinStatuses.Collecting))
+    if (previous != req.Status && BinStatuses.IsServiceable(req.Status))
     {
         try { await notif.SendCollectingNow(h); } catch { /* ACS optional */ }
     }
