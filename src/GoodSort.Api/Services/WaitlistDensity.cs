@@ -37,6 +37,19 @@ public static class WaitlistDensity
     }
 
     /// <summary>
+    /// A member who joined but cannot be counted or collected from: residential,
+    /// yet with no canonical suburb. Distinct from a unit complex, which is a
+    /// deliberate category rather than an unfinished one.
+    ///
+    /// Aggregate used to drop these silently, so the board could not tell
+    /// "nobody joined" from "people joined and we cannot see them" — a real
+    /// production state on 2026-08-31, when the only household was one of these.
+    /// </summary>
+    public static bool IsIncompleteResidential(string? type, string? suburb) =>
+        string.Equals(type, "residential", StringComparison.OrdinalIgnoreCase)
+        && BinDayService.CanonicalSuburb(suburb) is null;
+
+    /// <summary>
     /// Admin board grouping. City-wide labels collapse to UNKNOWN and must
     /// never show a Buy bins action.
     /// </summary>
@@ -85,7 +98,10 @@ public static class WaitlistDensity
 
     public static GrowthResponse Aggregate(IEnumerable<HouseholdClusterRow> rows, int launchBonusContainers = 0)
     {
-        var counted = rows
+        var materialised = rows as IReadOnlyCollection<HouseholdClusterRow> ?? rows.ToList();
+        var incomplete = materialised.Count(r => IsIncompleteResidential(r.Type, r.Suburb));
+
+        var counted = materialised
             .Where(r => CountsTowardCluster(r.Type, r.Suburb))
             .Select(r => new HouseholdClusterRow(
                 BinDayService.CanonicalSuburb(r.Suburb)!,
@@ -146,6 +162,7 @@ public static class WaitlistDensity
         return new GrowthResponse(
             LiveThreshold,
             launchBonusContainers,
+            incomplete,
             counted.Count,
             counted.Sum(r => r.PendingContainers),
             suburbs);
@@ -206,6 +223,9 @@ public record GrowthSuburbDto(
 public record GrowthResponse(
     int LiveThreshold,
     int LaunchBonusContainers,
+    /// <summary>Joined but uncountable — residential with no canonical suburb. A
+    /// count only: who they are stays behind AdminPolicy.</summary>
+    int IncompleteHouseholds,
     int TotalHouseholds,
     int TotalContainers,
     IReadOnlyList<GrowthSuburbDto> Suburbs);

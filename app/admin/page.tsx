@@ -42,6 +42,7 @@ export default function AdminPage() {
   const [denied, setDenied] = useState(false);
   const [funnel, setFunnel] = useState<Funnel | null>(null);
   const [readyDays, setReadyDays] = useState<{ suburb: string; dayName: string }[]>([]);
+  const [stalledHouseholds, setStalledHouseholds] = useState(0);
 
   useEffect(() => {
     const token = localStorage.getItem("goodsort_token");
@@ -63,12 +64,18 @@ export default function AdminPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         const ready: { suburb: string; dayName: string }[] = [];
+        let stalled = 0;
         for (const s of d?.suburbs ?? []) {
+          // UNKNOWN is members who joined with no usable suburb. They
+          // contribute no days and are never readyToOrder, so they were
+          // invisible on this dashboard entirely.
+          if (s.suburb === "UNKNOWN") stalled += s.households ?? 0;
           for (const day of s.days ?? []) {
             if (day.readyToOrder) ready.push({ suburb: s.suburb, dayName: day.dayName });
           }
         }
         setReadyDays(ready);
+        setStalledHouseholds(stalled);
       })
       .catch(() => {});
   }, []);
@@ -109,6 +116,18 @@ export default function AdminPage() {
             <p className="text-[12px] text-violet-800 mt-1">
               {readyDays.slice(0, 4).map((d) => `${titleSuburb(d.suburb)} ${d.dayName}`).join(" · ")}
               {readyDays.length > 4 ? " · …" : ""}. Allocate that day only.
+            </p>
+          </Link>
+        )}
+
+        {!denied && stalledHouseholds > 0 && (
+          <Link href="/admin/waitlist" className="block bg-amber-50 border border-amber-300 rounded-xl p-4 mb-6">
+            <p className="text-[14px] font-bold text-amber-900">
+              {stalledHouseholds} {stalledHouseholds === 1 ? "member" : "members"} joined but cannot be counted
+            </p>
+            <p className="text-[12px] text-amber-800 mt-1">
+              No usable suburb, so they build no volume and cannot be collected from. They need a nudge to finish
+              onboarding.
             </p>
           </Link>
         )}
