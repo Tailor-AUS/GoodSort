@@ -1198,7 +1198,19 @@ app.MapPost("/api/profiles", async (HttpContext ctx, Profile profile, GoodSortDb
 {
     // Self-create only — profile creation should normally happen via /verify-otp.
     // Force IsAdmin=false; admin flag is set out-of-band only.
-    profile.Id = ctx.GetCallerId() ?? profile.Id;
+    // Refuse rather than fall back to the body. `?? profile.Id` meant "if I
+    // cannot identify you, trust the id you sent" — and the next line does
+    // FindAsync on it, returning that profile. A token without a usable caller
+    // claim would have read someone else's record back.
+    //
+    // Not reachable today: every JWT this service mints carries the claim. But
+    // it was the only GetCallerId() ?? fallback in the codebase — every sibling,
+    // /api/runner/register included, returns Unauthorized instead — and
+    // "trust the client when the server is unsure" is the shape behind most of
+    // what this week turned up.
+    var callerId = ctx.GetCallerId();
+    if (callerId is null) return Results.Unauthorized();
+    profile.Id = callerId.Value;
     profile.IsAdmin = false;
     // Idempotent: the authenticated caller almost always already has a profile
     // (minted at verify-otp), so a naive Add would throw a primary-key conflict.
