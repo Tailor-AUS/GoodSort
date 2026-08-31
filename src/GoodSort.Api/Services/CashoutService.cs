@@ -66,21 +66,27 @@ public class CashoutService
         // Ordering is deliberate. If the payout row failed to write after a
         // successful deduction the member would be short, which is wrong but
         // recoverable; the reverse would pay out money that was never debited.
-        if (!await TryDeductCleared(userId, amountCents))
-            return (false, "Insufficient balance");
-
-        var request = new CashoutRequest
+        // Deduction and payout row together, or neither. The deduction commits
+        // on its own statement, so without this a failure in between debits a
+        // member and writes no payout — they are simply short, with nothing to
+        // show for it.
+        return await Atomic.RunAsync(_db, async () =>
         {
-            UserId = userId,
-            AmountCents = amountCents,
-            Bsb = bsb,
-            AccountNumber = accountNumber,
-            AccountName = accountName,
-            Status = "pending",
-        };
-        _db.Set<CashoutRequest>().Add(request);
-        await _db.SaveChangesAsync();
-        return (true, null);
+            if (!await TryDeductCleared(userId, amountCents))
+                return (false, (string?)"Insufficient balance");
+
+            _db.Set<CashoutRequest>().Add(new CashoutRequest
+            {
+                UserId = userId,
+                AmountCents = amountCents,
+                Bsb = bsb,
+                AccountNumber = accountNumber,
+                AccountName = accountName,
+                Status = "pending",
+            });
+            await _db.SaveChangesAsync();
+            return (true, (string?)null);
+        });
     }
 
     /// <summary>

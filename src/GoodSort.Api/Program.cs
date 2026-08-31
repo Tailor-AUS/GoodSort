@@ -469,6 +469,12 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
     //
     // Insert-then-catch rather than check-then-insert: two concurrent confirms
     // can both pass a check, but only one can win a primary key.
+    // Spending the token and crediting the scan must land together. The spend
+    // commits on its own save, so a failure after it leaves the token used and
+    // no containers credited — the member photographed a real haul and got
+    // nothing, with the token now refusing a retry. See Atomic.
+    return await Atomic.RunAsync(db, async () =>
+    {
     db.UsedScanTokens.Add(new UsedScanToken { Jti = payload.Jti, UserId = userId.Value });
     try
     {
@@ -606,6 +612,7 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
         pendingCents = profile.PendingCents,
         bonusApplied = totalCents > totalContainers * HouseholdCredit.CentsPerContainer,
         bonusRemaining = Math.Max(0, bonusCap - profile.TotalContainers),
+    });
     });
 }).RequireAuthorization();
 
@@ -1268,6 +1275,14 @@ app.MapPost("/api/routes/{id:guid}/settle", async (HttpContext ctx, Guid id, Goo
     // the driver's cash-out-eligible balance twice, and every household's
     // pending credit moved to cleared twice, which invents money that was
     // never scanned. A double-tap on a Settle button sends two requests.
+    // The claim and the crediting it authorises must land together. The claim
+    // commits on its own statement, so a failure after it would leave the route
+    // marked settled with the driver unpaid and the households' credit still
+    // pending — and unretryable, because the status guard then rejects it.
+    // Settling twice overpays and can be reconciled; settling zero times owes
+    // money with no way to reach it.
+    return await Atomic.RunAsync(db, async () =>
+    {
     if (!await StatusClaim.TryClaimRoute(db, route.Id, from: "at_depot", to: "settled"))
         return Results.BadRequest(new { error = "This route has already been settled." });
 
@@ -1308,6 +1323,7 @@ app.MapPost("/api/routes/{id:guid}/settle", async (HttpContext ctx, Guid id, Goo
 
     await db.SaveChangesAsync();
     return Results.Ok(new { route.Id, driverPayout, totalCollected });
+    });
 }).RequireAuthorization();
 
 // ── Depots ──
@@ -2072,6 +2088,12 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
     // Same reasoning as /api/routes/{id}/settle: claim the transition first,
     // because everything below credits ClearedCents and moves household credit
     // from pending to cleared. Doing that twice mints cash-out-eligible money.
+    // Claim and crediting in one transaction — see the route settle above and
+    // Atomic. GenerateRating and UpdateRunnerStats both run between the claim
+    // and the final save, so a throw in either used to strand the run: settled,
+    // nobody paid, and no way to retry.
+    return await Atomic.RunAsync(db, async () =>
+    {
     if (!await StatusClaim.TryClaimRun(db, run.Id, from: "completed", to: "settled"))
         return Results.BadRequest(new { error = "This run has already been settled." });
 
@@ -2150,6 +2172,7 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
     });
 
     return Results.Ok(new { run.Id, run.ActualPayoutCents, run.ActualContainers, rating = rating.Stars, householdsCredited = creditedHouseholds.Count });
+    });
 }).RequireAuthorization();
 
 // ── Runner: My runs ──
