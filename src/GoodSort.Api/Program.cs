@@ -2230,6 +2230,14 @@ app.MapPatch("/api/admin/pricing", async (PricingConfig update, GoodSortDbContex
 {
     var config = await db.PricingConfigs.FirstOrDefaultAsync(pc => pc.IsActive);
     if (config is null) return Results.NotFound();
+
+    // Sanity-check before writing. Admin-only is not the same as typo-free,
+    // and this is the one setting that multiplies every driver payout — an
+    // inverted floor and ceiling silently disables the ceiling rather than
+    // erroring. See PricingBounds.
+    if (PricingBounds.Reject(update) is string reason)
+        return Results.BadRequest(new { error = reason });
+
     // Update individual fields
     config.FloorCents = update.FloorCents;
     config.CeilingCents = update.CeilingCents;
