@@ -158,11 +158,12 @@ export function lookupLocal(barcode: string): Container | null {
 /**
  * Goes through our own API, not to openfoodfacts.org directly.
  *
- * The direct call this replaces could not work in production and had not been
- * working: openfoodfacts.org is absent from connect-src in
- * staticwebapp.config.json, so CSP refused it, the catch below swallowed the
- * failure, and the tier looked implemented while returning null every time.
- * `lib/csp.test.ts` now fails if client code fetches a host the CSP omits.
+ * I first justified this by saying CSP refused the direct call. That was wrong:
+ * the CSP was never served, because staticwebapp.config.json sat at the repo
+ * root and never reached the deployed artifact. The direct call worked and
+ * simply found nothing, since OFF has no record for Australian beverage
+ * barcodes. The config is deployed now, so a direct call would be refused —
+ * and lib/csp.test.ts keeps client hosts and connect-src in step.
  *
  * The `User-Agent` header the old call set was doing nothing either — it is a
  * forbidden header name in fetch, so browsers drop it silently, and Open Food

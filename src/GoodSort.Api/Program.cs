@@ -815,11 +815,14 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
 // This exists rather than the browser calling OFF directly for three reasons,
 // and the first one is why the fallback tier never worked at all:
 //
-//  1. openfoodfacts.org is not in staticwebapp.config.json's connect-src, so a
-//     direct call from the page is refused by CSP. lib/containers.ts caught the
-//     failure and returned null, so the tier looked implemented and was dead in
-//     production. `LookupHostsAreAllowedTests` now fails if client code fetches
-//     a host the CSP does not list.
+//  1. openfoodfacts.org is not in the CSP's connect-src. I originally wrote
+//     here that CSP was therefore refusing the call and the tier was dead in
+//     production. That was wrong, and the truth is worse: the CSP was not being
+//     served at all, because staticwebapp.config.json sat at the repo root and
+//     never reached the deployed artifact. So the direct call did work, and the
+//     tier was simply finding nothing — OFF has no record for Australian
+//     beverage barcodes. The config deploys now, so a direct call would be
+//     refused, and lib/csp.test.ts keeps client hosts and the policy in step.
 //  2. OFF asks callers to identify themselves, and a browser cannot —
 //     User-Agent is a forbidden header name in fetch, so the one the client set
 //     was silently dropped. The named HttpClient sends it for real.
