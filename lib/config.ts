@@ -1,4 +1,4 @@
-import { parseDayParam, residentialNeedsStreet } from "./brisbane";
+import { parseDayParam, residentialNeedsStreet } from "./brisbane.ts";
 
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||

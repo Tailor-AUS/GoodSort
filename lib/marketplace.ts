@@ -1,7 +1,7 @@
 // The Good Sort — Runner Marketplace Types
 // Dynamic pricing + gamification for collection runners
 
-import type { MaterialBreakdown } from "./store";
+import type { MaterialBreakdown } from "./store.ts";
 
 // ── Runner Profile ──
 

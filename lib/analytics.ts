@@ -1,4 +1,4 @@
-import { apiUrl } from "./config";
+import { apiUrl } from "./config.ts";
 
 /**
  * The funnel we can actually measure. Must stay in step with the server

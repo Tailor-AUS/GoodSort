@@ -320,6 +320,49 @@ export function addScan(barcode: string, containerName: string, material: string
   return user;
 }
 
+/**
+ * Undoes one local scan, exactly reversing `addScan`.
+ *
+ * Writes here are offline-first: the scan lands in localStorage before the API
+ * is asked, so a member keeps scanning through a dead connection and syncs
+ * later. That is right for a network failure and wrong for a refusal. When the
+ * server says no — over a daily cap, past the rate limit, not signed in — the
+ * scan is never going to be accepted, so leaving it locally shows a balance
+ * and a container count the server does not have, which is the same class of
+ * bug as a screen claiming a household of 1 the server never counted.
+ *
+ * Returns the corrected user, or null if there was nothing to undo.
+ */
+export function removeScan(scanId: string): User | null {
+  const user = getUser();
+  if (!user) return null;
+
+  const index = user.scans.findIndex((s) => s.id === scanId);
+  if (index === -1) return null;
+
+  const [scan] = user.scans.splice(index, 1);
+  user.pendingCents = Math.max(0, user.pendingCents - scan.refundCents);
+  user.totalContainers = Math.max(0, user.totalContainers - 1);
+  user.totalCO2SavedKg = Math.max(0, user.totalCO2SavedKg - CO2_PER_CONTAINER_KG);
+  saveUser(user);
+
+  const households = getHouseholds();
+  const household = households.find((h) => h.id === scan.householdId);
+  if (household) {
+    household.pendingContainers = Math.max(0, household.pendingContainers - 1);
+    household.pendingValueCents = Math.max(0, household.pendingValueCents - scan.refundCents);
+    if (household.materials) {
+      const mat = mapToMaterialType(scan.material);
+      household.materials[mat] = Math.max(0, household.materials[mat] - 1);
+      household.estimatedWeightKg = calcWeightFromMaterials(household.materials);
+    }
+    household.estimatedBags = Math.ceil(household.pendingContainers / CONTAINERS_PER_BAG);
+    saveHouseholds(households);
+  }
+
+  return user;
+}
+
 // ── Depots ──
 
 export function getDepots(): Depot[] {
