@@ -6,6 +6,7 @@ using GoodSort.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -41,6 +42,10 @@ builder.Services.AddHttpClient();
 // availability is genuinely variable — its search API was returning 503 while
 // this was written. The default HttpClient timeout is 100 seconds, and this
 // call sits in the scan path behind a "Looking up..." spinner.
+// Bounded, so a cache keyed on caller-supplied barcodes cannot grow until the
+// container is killed. See BarcodeCache for why misses are cached as well.
+builder.Services.AddMemoryCache(o => o.SizeLimit = BarcodeCache.MaxEntries);
+
 builder.Services.AddHttpClient("OpenFoodFacts", client =>
 {
     client.BaseAddress = new Uri("https://world.openfoodfacts.org/");
@@ -813,20 +818,41 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
 // Projected, not proxied raw. It used to return the whole OFF record
 // deserialized as `object`; a public endpoint should return the fields the
 // caller actually needs, and nothing it happens to receive.
-app.MapGet("/api/barcode/{barcode}", async (string barcode, IHttpClientFactory httpFactory, ILoggerFactory logFactory) =>
+app.MapGet("/api/barcode/{barcode}", async (string barcode, IHttpClientFactory httpFactory, IMemoryCache cache, ILoggerFactory logFactory) =>
 {
     if (barcode.Length is < 8 or > 14 || !barcode.All(char.IsDigit))
         return Results.BadRequest(new { error = "Invalid barcode format" });
+
+    // Answered from memory when we have asked before. The same barcode repeats
+    // constantly — a household bagging a 24-pack scans one barcode 24 times.
+    if (cache.TryGetValue(BarcodeCache.Key(barcode), out object? hit) && hit is not null)
+        return Results.Ok(hit);
+
+    void Remember(object payload, bool found) =>
+        cache.Set(BarcodeCache.Key(barcode), payload, new MemoryCacheEntryOptions
+        {
+            Size = 1,
+            AbsoluteExpirationRelativeToNow = BarcodeCache.LifetimeFor(found),
+        });
 
     try
     {
         var client = httpFactory.CreateClient("OpenFoodFacts");
         var res = await client.GetAsync($"api/v2/product/{barcode}.json");
-        if (!res.IsSuccessStatusCode) return Results.Ok(new { found = false, barcode });
+        if (!res.IsSuccessStatusCode)
+        {
+            var miss = new { found = false, barcode };
+            Remember(miss, found: false);
+            return Results.Ok(miss);
+        }
 
         using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
         if (!doc.RootElement.TryGetProperty("product", out var product))
-            return Results.Ok(new { found = false, barcode });
+        {
+            var miss = new { found = false, barcode };
+            Remember(miss, found: false);
+            return Results.Ok(miss);
+        }
 
         string? Str(string name) =>
             product.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String
@@ -842,7 +868,7 @@ app.MapGet("/api/barcode/{barcode}", async (string barcode, IHttpClientFactory h
                 .ToArray()
             : [];
 
-        return Results.Ok(new
+        var payload = new
         {
             found = true,
             barcode,
@@ -852,7 +878,9 @@ app.MapGet("/api/barcode/{barcode}", async (string barcode, IHttpClientFactory h
             packaging = Str("packaging"),
             categories = Str("categories"),
             packagingMaterialsTags = packagingTags,
-        });
+        };
+        Remember(payload, found: true);
+        return Results.Ok(payload);
     }
     catch (Exception ex)
     {
@@ -860,6 +888,10 @@ app.MapGet("/api/barcode/{barcode}", async (string barcode, IHttpClientFactory h
         // table is the primary source and OFF has no record for most Australian
         // beverage barcodes — but a silent catch is how the CSP failure hid, so
         // this one says something.
+        // Deliberately NOT cached. A timeout or a 503 is OFF having a bad
+        // minute, not a statement about this product — caching it would turn a
+        // brief outage into six hours of wrong answers for every barcode
+        // scanned during it.
         logFactory.CreateLogger("BarcodeLookup").LogWarning(ex, "Open Food Facts lookup failed for {Barcode}", barcode);
         return Results.Ok(new { found = false, barcode });
     }
