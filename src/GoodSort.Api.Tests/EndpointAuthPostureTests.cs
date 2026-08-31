@@ -1,4 +1,6 @@
+using System.Net.Http.Json;
 using GoodSort.Api.Data;
+using GoodSort.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -64,7 +66,7 @@ public class EndpointAuthPostureTests : IClassFixture<EndpointAuthPostureTests.H
 
         ["/api/auth/send-otp"] = "Signing in is what produces a token; it cannot require one.",
         ["/api/auth/verify-otp"] = "Same — this is where the token is issued.",
-        ["/api/admin/bootstrap"] = "First-admin seeding. Gated internally on ADMIN_SEED_EMAIL rather than by a token, because there is no admin yet to authenticate as (AuthSeedAdminTests).",
+        ["/api/admin/bootstrap"] = "First-admin seeding: there is no admin yet to authenticate as. Not open — it 404s unless ADMIN_BOOTSTRAP_SECRET is configured, and then requires a matching X-Bootstrap-Secret header compared with FixedTimeEquals. Currently unset in production, so the route does not exist there. Pinned separately by Admin_bootstrap_is_secret_gated_not_open.",
 
         ["/api/growth/brisbane"] = "The public suburb board. The marketing page reads it before anyone has an account.",
         ["/api/growth/events"] = "First-party funnel events, which must fire before signup. Rate limited per IP and PII-scrubbed on write (GrowthEventPiiTests).",
@@ -143,4 +145,43 @@ public class EndpointAuthPostureTests : IClassFixture<EndpointAuthPostureTests.H
         Assert.True(match.Count > 0, $"{route} not found — did the route change?");
         Assert.All(match, e => Assert.True(e.Authorized, $"{route} must require authorization."));
     }
+    [Fact]
+    public void Every_admin_route_requires_an_admin_not_merely_a_token()
+    {
+        // The dangerous near-miss here is .RequireAuthorization() with no
+        // policy: the route looks protected, the build is green, and any
+        // signed-in member can read /api/admin/waitlist — every member's name,
+        // address and collection day. "Has a token" is not "is staff".
+        var offenders = _host.Services.GetRequiredService<EndpointDataSource>()
+            .Endpoints
+            .OfType<RouteEndpoint>()
+            .Select(e => (Route: "/" + (e.RoutePattern.RawText ?? string.Empty).TrimStart('/'),
+                          Policy: e.Metadata.GetMetadata<IAuthorizeData>()?.Policy))
+            .Where(e => e.Route.StartsWith("/api/admin", StringComparison.OrdinalIgnoreCase))
+            .Where(e => e.Route != "/api/admin/bootstrap")   // see the allowlist entry
+            .Where(e => !string.Equals(e.Policy, AuthHelpers.AdminPolicy, StringComparison.Ordinal))
+            .Select(e => $"{e.Route} (policy: {e.Policy ?? "none"})")
+            .Distinct()
+            .OrderBy(x => x)
+            .ToList();
+
+        Assert.True(offenders.Count == 0,
+            "These /api/admin routes are not behind AuthHelpers.AdminPolicy:" +
+            Environment.NewLine + "  " +
+            string.Join(Environment.NewLine + "  ", offenders));
+    }
+
+    [Fact]
+    public void Admin_bootstrap_is_secret_gated_not_open()
+    {
+        // The one anonymous route that grants admin, so it gets its own
+        // assertion rather than a line in a list. With no secret configured it
+        // must not exist at all — which is its state in production.
+        var res = _host.CreateClient()
+            .PostAsJsonAsync("/api/admin/bootstrap", new { email = "attacker@example.test" })
+            .GetAwaiter().GetResult();
+
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, res.StatusCode);
+    }
+
 }
