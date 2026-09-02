@@ -68,6 +68,30 @@ public class DeployHookParityTests
         }
     }
 
+    [Fact]
+    public void The_posix_hook_refuses_values_carrying_escape_artifacts()
+    {
+        // The azd environment file is machine-local and gitignored, so no test
+        // can check it — but this script is what copies it into production. On
+        // 2026-09-02 the local one held four values ending in a literal
+        // backslash-r plus a JWT_SECRET whose "!!" had become an escaped pair.
+        // Verified against the running app: the cleaned values matched
+        // production exactly, so the file was wrong, not production.
+        //
+        // Applying them would have been quiet and bad — a corrupted vision key
+        // that fails auth and falls through to the paid Azure OpenAI path, and
+        // a different JWT_SECRET, which signs out every member at once. The
+        // deploy would still have succeeded.
+        var sh = File.ReadAllText(FindRepoFile(Path.Combine("infra", "restore-secrets.sh")));
+
+        Assert.Contains("BAD_ESCAPES", sh, StringComparison.Ordinal);
+        Assert.Contains("literal escape sequences", sh, StringComparison.Ordinal);
+
+        // And it has to actually stop the deploy, not just warn.
+        var guard = sh[sh.IndexOf("BAD_ESCAPES=()", StringComparison.Ordinal)..];
+        Assert.Contains("exit 1", guard[..Math.Min(guard.Length, 1400)], StringComparison.Ordinal);
+    }
+
     private static string FindRepoFile(string relative)
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
