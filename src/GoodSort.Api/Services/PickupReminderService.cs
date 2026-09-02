@@ -29,7 +29,7 @@ public class PickupReminderService
         var tomorrow = localToday.AddDays(1);
         var tomorrowDow = (int)tomorrow.DayOfWeek;
         var hhSent = await NotifyHouseholds(tomorrowDow, tomorrow, forceResend: true);
-        var runSent = await NotifyRunners(tomorrowDow, tomorrow);
+        var runSent = await NotifyRunners(tomorrowDow, tomorrow, forceResend: true);
         return (hhSent, runSent);
     }
 
@@ -41,7 +41,7 @@ public class PickupReminderService
         var tomorrow = localNow.Date.AddDays(1);
         var tomorrowDow = (int)tomorrow.DayOfWeek;
         var hhSent = await NotifyHouseholds(tomorrowDow, tomorrow, forceResend: false);
-        var runSent = await NotifyRunners(tomorrowDow, tomorrow);
+        var runSent = await NotifyRunners(tomorrowDow, tomorrow, forceResend: false);
         return (hhSent, runSent);
     }
 
@@ -95,10 +95,19 @@ public class PickupReminderService
         return candidates.Count;
     }
 
-    private async Task<int> NotifyRunners(int tomorrowDow, DateTime tomorrowLocal)
+    private async Task<int> NotifyRunners(int tomorrowDow, DateTime tomorrowLocal, bool forceResend)
     {
-        var runs = await _db.Runs
-            .Where(r => r.Status == "claimed" && r.RunnerId != null)
+        // Once per run per day, the same rule the household half already used.
+        //
+        // This selected every claimed run with no date bound, stamped nothing,
+        // and never called SaveChanges — so a run a runner claimed and did not
+        // start produced one briefing email per night, indefinitely. Nothing
+        // capped it: a Run has ExpiresAt for the unclaimed window, but once
+        // claimed there is no expiry and no reclaim, so "claimed and abandoned"
+        // is a state a row can sit in forever.
+        var todayLocal = tomorrowLocal.AddDays(-1);
+        var q = _db.Runs.Where(forceResend ? RunBriefing.All() : RunBriefing.Due(todayLocal));
+        var runs = await q
             .Include(r => r.Runner).ThenInclude(rp => rp!.Profile)
             .Include(r => r.Stops)
             .Include(r => r.DropPoint)
@@ -127,9 +136,16 @@ public class PickupReminderService
                 <p style='font-size:13px;color:#64748b'>Drop off at: <b>{run.DropPoint?.Name}</b> — {run.DropPoint?.Address}</p>
                 <p style='font-size:12px;color:#94a3b8;margin-top:24px'>Start in the app when you're ready to roll.</p>
               </div>";
-            try { await SendEmail(client, sender, email, subject, body); sent++; }
+            try
+            {
+                await SendEmail(client, sender, email, subject, body);
+                run.LastBriefedAt = todayLocal;
+                sent++;
+            }
             catch (Exception ex) { _log.LogError(ex, "Failed to email runner {RunnerId}", run.RunnerId); }
         }
+        // Stamping without this is the same as not stamping.
+        await _db.SaveChangesAsync();
         _log.LogInformation("Sent runner briefings for {Count} claimed runs on {Date}", sent, tomorrowLocal.Date);
         return sent;
     }

@@ -61,6 +61,14 @@ public class Run
     public DateTime? CompletedAt { get; set; }
     public DateTime? DeliveredAt { get; set; }
     public DateTime? SettledAt { get; set; }
+
+    /// <summary>
+    /// Local date this run's briefing email was last sent, mirroring
+    /// Household.LastPickupAt. Without it the nightly pass re-briefed every
+    /// claimed run every night, forever — a run a runner claimed and never
+    /// started produced one email per day until someone noticed.
+    /// </summary>
+    public DateTime? LastBriefedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public ICollection<RunStop> Stops { get; set; } = [];
