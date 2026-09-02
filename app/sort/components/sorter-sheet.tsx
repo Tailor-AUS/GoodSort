@@ -216,7 +216,7 @@ export function SorterSheet({
                   <p className="text-[13px] text-slate-400 mt-0.5">{selectedBin.address}</p>
                   {selectedBin.hostedBy && <p className="text-[11px] text-slate-500 mt-0.5">Hosted by {selectedBin.hostedBy}</p>}
                 </div>
-                <button onClick={onDeselectBin} className="p-2.5 -mr-1 text-slate-400 hover:text-slate-600 transition-colors duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center">
+                <button onClick={onDeselectBin} aria-label="Close bin details" className="p-2.5 -mr-1 text-slate-400 hover:text-slate-600 transition-colors duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center">
                   <X className="w-5 h-5" />
                 </button>
               </div>

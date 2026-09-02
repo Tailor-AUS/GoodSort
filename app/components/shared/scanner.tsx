@@ -330,7 +330,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
           )}
 
           {/* Close button */}
-          <button onClick={handleClose} className="absolute top-3 right-3 z-10 p-2.5 text-white/70 hover:text-white min-w-[44px] min-h-[44px] flex items-center justify-center">
+          <button onClick={handleClose} aria-label="Close scanner" className="absolute top-3 right-3 z-10 p-2.5 text-white/70 hover:text-white min-w-[44px] min-h-[44px] flex items-center justify-center">
             <X className="w-5 h-5" />
           </button>
 
@@ -522,7 +522,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
             className="px-3 py-1.5 rounded-full bg-white/10 text-white/70 text-[11px] font-bold">
             {mode === "photo" ? "Barcode" : "Photo"}
           </button>
-          <button onClick={handleClose} className="p-2.5 hover:bg-white/5 rounded-full min-w-[44px] min-h-[44px] flex items-center justify-center">
+          <button onClick={handleClose} aria-label="Close scanner" className="p-2.5 hover:bg-white/5 rounded-full min-w-[44px] min-h-[44px] flex items-center justify-center">
             <X className="w-5 h-5 text-neutral-400" />
           </button>
         </div>
@@ -567,6 +567,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
         {mode === "photo" ? (
           <div className="flex flex-col items-center gap-3 py-4">
             <button onClick={capturePhoto} disabled={!scanning || cameraFailed}
+              aria-label="Capture photo"
               className="rounded-full bg-white border-4 border-white/30 shadow-lg active:scale-90 transition-transform disabled:opacity-30"
               style={{ width: "72px", height: "72px", touchAction: "manipulation" }} />
             <p className="text-white/30 text-[11px] text-center">

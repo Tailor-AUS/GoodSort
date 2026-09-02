@@ -53,7 +53,7 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
               <p className="text-[12px] text-slate-400 font-semibold uppercase tracking-[0.12em]">Account</p>
               <h2 className="text-xl font-display font-extrabold text-slate-900 mt-1">{displayName}</h2>
             </div>
-            <button onClick={onClose} className="p-2.5 -mr-1 text-slate-400 hover:text-slate-600 transition-colors duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center">
+            <button onClick={onClose} aria-label="Close account panel" className="p-2.5 -mr-1 text-slate-400 hover:text-slate-600 transition-colors duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center">
               <X className="w-5 h-5" />
             </button>
           </div>
