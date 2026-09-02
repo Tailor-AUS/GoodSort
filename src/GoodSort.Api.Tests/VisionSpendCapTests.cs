@@ -78,7 +78,7 @@ public class VisionSpendCapTests
         // Provider is also how call mix gets reported. A reservation sharing a
         // name with a real backend would quietly skew that.
         foreach (var real in new[] { "tailor", "openai", "none" })
-            Assert.NotEqual(real, VisionReservation.Provider);
+            Assert.NotEqual(VisionReservation.Provider, real);
 
         Assert.False(string.IsNullOrWhiteSpace(VisionReservation.Provider));
     }
