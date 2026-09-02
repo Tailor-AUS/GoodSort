@@ -65,6 +65,15 @@ function externalHosts(): Map<string, string[]> {
   return found;
 }
 
+
+/** One directive's token list, e.g. worker-src -> ["'self'", "blob:"]. */
+function directive(name: string): string[] {
+  const cfg = JSON.parse(readFileSync(join(ROOT, "public", "staticwebapp.config.json"), "utf8"));
+  const csp: string = cfg?.globalHeaders?.["Content-Security-Policy"] ?? "";
+  const found = csp.split(";").map((d) => d.trim()).find((d) => d === name || d.startsWith(name + " "));
+  return found ? found.slice(name.length).trim().split(/\s+/).filter(Boolean) : [];
+}
+
 function connectSrc(): string[] {
   const cfg = JSON.parse(readFileSync(join(ROOT, "public", "staticwebapp.config.json"), "utf8"));
   const csp: string = cfg?.globalHeaders?.["Content-Security-Policy"] ?? "";
@@ -124,4 +133,77 @@ test("the scan path does not call a third party directly", () => {
     !/fetch\(\s*[`"']https:\/\//.test(text),
     "lib/containers.ts fetches an external host directly — route it through /api/ instead.",
   );
+});
+
+/**
+ * The other eight directives.
+ *
+ * Everything above this point reads connect-src and nothing else, which left
+ * nine directives unguarded — including the ones the map and the scanner
+ * actually depend on. Deleting `blob:` from worker-src would leave the whole
+ * suite green while breaking MapLibre on every screen that renders a map,
+ * because MapLibre builds its workers from blob URLs.
+ *
+ * That mattered more than usual after the config went live: every one of these
+ * tokens went from decorative to enforced on the same deploy, and I verified
+ * the load-bearing ones against production by hand at the time. A test is the
+ * only reason that stays verified.
+ *
+ * Each entry says what the token is for and what a member would see without it,
+ * because "why is this here" is exactly what gets lost when someone tightens a
+ * policy later.
+ */
+const REQUIRED_TOKENS: [string, string, string][] = [
+  ["worker-src", "blob:",
+    "MapLibre compiles its workers from blob URLs. Without it the map fails to initialise on every screen that renders one."],
+  ["worker-src", "'self'",
+    "Same-origin workers."],
+  ["img-src", "blob:",
+    "The scanner draws camera frames to a canvas and reads them back as blob URLs. Without it the photo scan preview is blank."],
+  ["img-src", "data:",
+    "Inline data-URI images, including generated QR codes on the bin label."],
+  ["media-src", "blob:",
+    "The <video> element the camera stream is attached to."],
+  ["font-src", "https://fonts.gstatic.com",
+    "Where Google Fonts serves the actual font files. The stylesheet host is not enough — a different directive governs each."],
+  ["style-src", "https://fonts.googleapis.com",
+    "The Google Fonts stylesheet itself."],
+  ["script-src", "'unsafe-eval'",
+    "WebAssembly instantiation, which the barcode decoder needs. Verified working against the live policy."],
+  ["frame-ancestors", "'none'",
+    "Clickjacking protection. Losing this is a security regression, not a broken feature, so nothing would visibly fail."],
+];
+
+test("every directive the app depends on still exists", () => {
+  // A missing directive is not the same as an empty one: with no `media-src`,
+  // `default-src 'self'` applies and blob: is refused just the same.
+  for (const name of ["default-src", "script-src", "style-src", "font-src", "img-src", "media-src", "worker-src", "frame-ancestors"]) {
+    assert.ok(directive(name).length > 0, `${name} is missing from the CSP — default-src takes over and is stricter.`);
+  }
+});
+
+test("the tokens the map and the scanner depend on are still allowed", () => {
+  for (const [name, token, why] of REQUIRED_TOKENS) {
+    assert.ok(
+      directive(name).includes(token),
+      `${name} no longer allows ${token}. ${why}`,
+    );
+  }
+});
+
+test("the policy has not been loosened where it was deliberately tight", () => {
+  // The other direction. These are worth failing on because a wildcard added to
+  // silence one broken resource undoes the whole point of having a policy.
+  assert.deepEqual(directive("default-src"), ["'self'"], "default-src should stay 'self' alone.");
+  assert.deepEqual(directive("frame-ancestors"), ["'none'"], "frame-ancestors must stay 'none'.");
+
+  for (const name of ["script-src", "connect-src", "worker-src", "media-src", "font-src"]) {
+    assert.ok(!directive(name).includes("*"), `${name} contains a bare wildcard.`);
+    assert.ok(!directive(name).includes("https:"), `${name} allows any https origin, which is barely a policy.`);
+  }
+
+  // img-src is the deliberate exception: it carries https: because container
+  // photos and map tiles come from hosts we do not enumerate. Stated here so it
+  // reads as a decision rather than an oversight.
+  assert.ok(directive("img-src").includes("https:"), "img-src is intentionally broad — if that changed, this note should too.");
 });
