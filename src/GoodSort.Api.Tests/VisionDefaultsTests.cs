@@ -32,7 +32,7 @@ public class VisionDefaultsTests
         var end = text.IndexOf('}', start);
         var fromScript = text[start..end];
 
-        Assert.Equal(fromScript, VisionDefaults.OpenAiDeployment);
+        Assert.Equal(VisionDefaults.OpenAiDeployment, fromScript);
     }
 
     [Fact]

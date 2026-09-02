@@ -220,6 +220,36 @@ src/GoodSort.Api/
 - **JSON cycle handling**: `Program.cs` sets `ReferenceHandler.IgnoreCycles` because `Run ↔ RunnerProfile` (and similar EF nav properties) would otherwise blow up serialization. Keep this in mind when adding entities with circular relationships.
 - **We own our own Communication Service.** OTP email goes through `goodsort-comm` in `rg-GoodSort`, with `thegoodsort.org` linked to it. It used to go through tailor-app's shared `tailor-prod-comm`; their Bicep declares that service's `linkedDomains` array, so every tailor-app infra deploy silently dropped our domain and took signups down — three times on 2026-08-31 alone. The domain *resource* still lives under `tailor-prod-email` and is only ever referenced, never rewritten. A domain can be linked to two Communication Services at once, which is why this needed no DNS change. Don't point anything back at `tailor-prod-comm`.
 - **One ACS link implementation**: `scripts/ensure-acs-domain-linked.sh`, called by `deploy-api.yml`, `acs-domain-guard.yml` and `infra/restore-secrets.sh`. It was previously copy-pasted into all three, and all three carried the same crash — `az ... --query linkedDomains -o json` prints *empty*, not `null`, when the array is absent, so the self-heal only ever died when it was actually needed. Exit codes are the contract: `0` linked, `1` repair failed, `2` could not check.
+- **A green CI run does not gate the deploy — they race.** `ci.yml` and
+  `deploy-api.yml` both trigger on the same push to `main`, with no `needs:` and
+  no `workflow_run:` between them, so a red CI cannot stop or roll back a deploy
+  already in flight. That mattered because the elaborate "concurrency tests must
+  have actually run" guard lived only in `ci.yml`, while `deploy-api.yml` ran
+  `dotnet test` with **no SQL service and no `GOODSORT_TEST_SQL`** — so all
+  twelve `SqlConcurrencyTests` skipped on the path that ships the image. The
+  deploy that built the then-current production image logged
+  `Passed: 295, Skipped: 12` and shipped anyway. Run `33360405276` proves the
+  stakes: it restored the pre-fix cash-out race and the *only* failures were
+  those tests. `deploy-api.yml` now carries its own SQL service and its own
+  skip guard. **Until a deploy depends on CI, a gate that is not on the shipping
+  path is not a gate.** Deploy logs should read `Skipped: 0`.
+- **`dotnet ef migrations add --no-build` can silently emit an empty migration.**
+  It uses the already-compiled assembly, so an entity change that has not been
+  rebuilt produces `Up()` and `Down()` bodies that are *blank* — exit code 0, no
+  warning. It then applies cleanly in production, creates nothing, and the first
+  query touching the column throws `Invalid column name`. **Open the generated
+  file and confirm the operation is there.** Verify the column really landed
+  with a read against the altered table in production (a 200 rather than a 500),
+  not with a green deploy.
+- **Config keys the code reads are not all restored after a deploy.**
+  `azd deploy` strips anything the Aspire manifest does not declare;
+  `infra/restore-secrets.sh` restores nine, and the code reads about thirty. The
+  rest fall back to their code defaults, which today is safe by design —
+  `ADMIN_BOOTSTRAP_SECRET` unset makes the bootstrap endpoint 404, ABA payouts
+  stay closed without real remitter details, a missing ops inbox logs a warning
+  naming both variables. `ConfigRestoreCoverageTests` keeps it that way: every
+  key must be either restored or declared safe to lose **with a reason**. Add a
+  key with a fail-open default and it fails.
 - **`ACS_CONNECTION_STRING` is a container-app secret**, referenced via `secretRef` — not a plaintext env var. It held tailor-app's shared access key in plaintext until 2026-08-31.
 
 ## Mandatory QA — live browser preview
