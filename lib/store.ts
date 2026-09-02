@@ -70,6 +70,20 @@ export interface ScanRecord {
   householdId: string;
   routeId: string | null;
   timestamp: string;
+  /**
+   * Written locally but never accepted by the server — scanned with no signal.
+   *
+   * Optional, and absent means synced, so scans already in a member's storage
+   * from before this existed keep their current meaning rather than all
+   * appearing unsent at once.
+   *
+   * It exists because getUserApi rebuilds the user from the server response and
+   * calls saveLocalUser, which overwrites `scans` wholesale. Without a way to
+   * tell which local scans the server has never seen, the first successful
+   * profile fetch after a member scanned offline deleted every one of them —
+   * and nothing re-sent them, so the work was simply gone.
+   */
+  pendingSync?: boolean;
 }
 
 export interface SortBin {
@@ -333,6 +347,35 @@ export function addScan(barcode: string, containerName: string, material: string
  *
  * Returns the corrected user, or null if there was nothing to undo.
  */
+/** Scans written locally that the server has never accepted. */
+export function getUnsyncedScans(): ScanRecord[] {
+  const user = getUser();
+  if (!user) return [];
+  return user.scans.filter((s) => s.pendingSync === true);
+}
+
+/** Mark a scan as never having reached the server, so a later pass re-sends it. */
+export function markScanUnsynced(scanId: string): User | null {
+  const user = getUser();
+  if (!user) return null;
+  const scan = user.scans.find((s) => s.id === scanId);
+  if (!scan) return null;
+  scan.pendingSync = true;
+  saveUser(user);
+  return user;
+}
+
+/** The server has it now. Clearing the flag is what stops it being re-sent. */
+export function markScanSynced(scanId: string): User | null {
+  const user = getUser();
+  if (!user) return null;
+  const scan = user.scans.find((s) => s.id === scanId);
+  if (!scan) return null;
+  delete scan.pendingSync;
+  saveUser(user);
+  return user;
+}
+
 export function removeScan(scanId: string): User | null {
   const user = getUser();
   if (!user) return null;
