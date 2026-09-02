@@ -212,6 +212,12 @@ test("a scan the server refuses is rolled back, not left showing credit", async 
   const result = await addScanApi("111", "Can A", "aluminium");
 
   assert.equal(result.creditedCents, null);
+  // `refused` is separate from a null credit deliberately. A credit is also
+  // null when nobody is signed in, or when the response omitted the field, and
+  // neither means the scan was rejected. The scanner branches on this to decide
+  // whether to say "+5c added to your account", and inferring it from the null
+  // is how a rolled-back scan still got announced as credit.
+  assert.equal(result.refused, true);
   assert.deepEqual(snapshot(), before);
 });
 
@@ -221,8 +227,9 @@ test("an unauthorised scan is rolled back too", async () => {
   const before = snapshot();
 
   stubFetch(401);
-  await addScanApi("111", "Can A", "aluminium");
+  const result = await addScanApi("111", "Can A", "aluminium");
 
+  assert.equal(result.refused, true);
   assert.deepEqual(snapshot(), before);
 });
 
@@ -234,8 +241,10 @@ test("a scan that only failed to reach the server keeps its local credit", async
   signedIn();
 
   stubFetch("network-failure");
-  await addScanApi("111", "Can A", "aluminium");
+  const result = await addScanApi("111", "Can A", "aluminium");
 
+  // Not a refusal — so the scanner keeps showing the credit, correctly.
+  assert.equal(result.refused, false);
   const after = snapshot();
   assert.equal(after.scans, 1);
   assert.equal(after.pendingCents, SORTER_PAYOUT_CENTS);
@@ -249,8 +258,9 @@ test("a server error is treated as a failure to reach, not a refusal", async () 
   signedIn();
 
   stubFetch(503);
-  await addScanApi("111", "Can A", "aluminium");
+  const result = await addScanApi("111", "Can A", "aluminium");
 
+  assert.equal(result.refused, false, "a 5xx is not final, so it is not a refusal");
   assert.equal(snapshot().scans, 1);
 });
 
@@ -261,6 +271,7 @@ test("an accepted scan keeps its local copy and reports the server's credit", as
   stubFetch(200);
   const result = await addScanApi("111", "Can A", "aluminium");
 
+  assert.equal(result.refused, false);
   assert.equal(result.creditedCents, 10);
   assert.equal(snapshot().scans, 1);
 });
