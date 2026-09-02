@@ -41,6 +41,10 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
   const [results, setResults] = useState<IdentifiedItem[] | null>(null);
   const [resultSummary, setResultSummary] = useState("");
   const [confirming, setConfirming] = useState(false);
+  // Why the last Confirm did not go through. Empty means nothing has failed.
+  const [confirmError, setConfirmError] = useState("");
+  // The server refused the last barcode scan, so nothing was credited.
+  const [scanRefused, setScanRefused] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   // Server-issued HMAC over the vision result. /confirm requires this token
   // and reads items out of it; we can't bypass the server's view of what was
@@ -169,6 +173,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
   async function confirmBatch() {
     if (!results || results.length === 0) return;
     setConfirming(true);
+    setConfirmError("");
 
     // Use localStorage addScan for each item (works offline too)
     const eligible = results.filter((r) => r.eligible);
@@ -196,14 +201,32 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
         totalCents = typeof data.totalCents === "number" ? data.totalCents : totalItems * CENTS_PER_CONTAINER;
         setBonusRemaining(typeof data.bonusRemaining === "number" ? data.bonusRemaining : null);
       } else {
-        // Fallback: count from eligible items at the standard rate. Never quote
-        // the bonus rate the server did not confirm.
-        totalItems = eligible.reduce((s, e) => s + e.count, 0);
-        totalCents = totalItems * CENTS_PER_CONTAINER;
+        // A refusal is final for THIS token. The server reads the items out of
+        // the signed scanToken, and that token is single-use and expires after
+        // ten minutes — so re-sending it can never succeed, and the member has
+        // to take the photo again.
+        //
+        // This used to recompute the total locally and carry on to
+        // onBatchComplete + onClose, exactly as if the server had agreed. The
+        // scan was never written, the photo and the token went with the closed
+        // scanner, and there was no error, no retry and no local copy — the
+        // comment above says not to write one, because a success would double
+        // count. So the member's work simply vanished.
+        let reason = "";
+        try {
+          const body = await res.json();
+          reason = typeof body?.error === "string" ? body.error : "";
+        } catch { /* no JSON body */ }
+        setConfirmError(reason || "That did not save. Take the photo again.");
+        setConfirming(false);
+        return;
       }
     } catch {
-      totalItems = eligible.reduce((s, e) => s + e.count, 0);
-      totalCents = totalItems * CENTS_PER_CONTAINER;
+      // The network, not the server. The token may well still be good, so let
+      // them press Confirm again rather than making them re-shoot.
+      setConfirmError("Could not reach the server. Check your connection and press Confirm again.");
+      setConfirming(false);
+      return;
     }
 
     setConfirming(false);
@@ -239,13 +262,21 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     // Server decides the credit (launch bonus doubles a member's first
     // containers). Show what it actually granted, not an assumed rate.
     let credited = CENTS_PER_CONTAINER;
+    let refused = false;
     try {
       const res = await addScanApi(cleaned, container.name, container.material);
+      refused = res.refused;
       if (res.creditedCents != null) credited = res.creditedCents;
       setBonusRemaining(res.bonusRemaining);
     } catch {
       // Offline: the local scan is already saved; quote the standard rate.
     }
+    // addScanApi rolls the local write back when the server refuses, which is
+    // right — but the overlay went on announcing "+5c added to your account"
+    // regardless, because `credited` keeps its default when creditedCents comes
+    // back null. So the member was told their balance moved while the store had
+    // just put it back.
+    setScanRefused(refused);
     setLastCredit(credited);
 
     // Create a BagInfo-compatible object from the stream for the callback
@@ -257,13 +288,18 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     setScanResult({ name: container.name, bag: streamAsBag });
     timeoutRef.current = setTimeout(() => {
       setScanResult(null);
-      onScanComplete(container!.name, credited, streamAsBag);
-    }, 2000);
+      setScanRefused(false);
+      // Only tell the parent when the scan actually counted. onScanComplete is
+      // what raises the "+5c added" toast on /sort, so calling it after a
+      // refusal repeats the false claim on the way out.
+      if (!refused) onScanComplete(container!.name, credited, streamAsBag);
+    }, refused ? 4000 : 2000);
   }
 
   function handleClose() { stopCamera(); onClose(); }
 
   function retake() {
+    setConfirmError("");
     setResults(null);
     setResultSummary("");
     setCapturedImage(null);
@@ -415,6 +451,11 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
 
         {/* Bottom actions — always visible */}
         <div className="bg-black px-5 py-4 border-t border-white/10">
+          {confirmError && (
+            <p className="text-red-400 text-[13px] mb-3 leading-snug" role="alert">
+              {confirmError}
+            </p>
+          )}
           {totalItems > 0 && (
             <div className="flex justify-between items-center mb-3">
               <span className="text-[13px] text-white/50">{totalItems} item{totalItems !== 1 ? "s" : ""}</span>
@@ -461,8 +502,15 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
           </div>
           <p className="text-white/50 text-sm mb-2">{name}</p>
           <p className="text-white text-2xl font-display font-extrabold mb-2">Section {bag.id} · {bag.label}</p>
-          <p className="text-green-400 text-lg font-bold">+{formatCredit(lastCredit)} added to your account</p>
-          {launchBonusNote(bonusRemaining) && (
+          {scanRefused ? (
+            <p className="text-red-400 text-[15px] font-bold leading-snug" role="alert">
+              Not credited — we could not save this scan.<br />
+              <span className="font-normal text-white/60 text-[13px]">Check you are still signed in, then scan it again.</span>
+            </p>
+          ) : (
+            <p className="text-green-400 text-lg font-bold">+{formatCredit(lastCredit)} added to your account</p>
+          )}
+          {!scanRefused && launchBonusNote(bonusRemaining) && (
             <p className="text-white/60 text-[13px] mt-2">{launchBonusNote(bonusRemaining)}</p>
           )}
           <div className={`mt-8 mx-auto w-48 h-2 ${bag.color} rounded-full opacity-60`} />

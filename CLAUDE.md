@@ -250,6 +250,15 @@ src/GoodSort.Api/
   naming both variables. `ConfigRestoreCoverageTests` keeps it that way: every
   key must be either restored or declared safe to lose **with a reason**. Add a
   key with a fail-open default and it fails.
+- **A test that reads source must strip comments first.** Several checks here
+  scan `.tsx`/`.cs` text for a structural property — z-index ordering, accessible
+  names, control flow. Three of them failed on correct code because they matched
+  their own explanatory comment: a comment reading "at z-[60] this sat above the
+  scanner's z-50" scored as a z-60, and one quoting `"+5c added to your account"`
+  was found before the real code. Strip `//` and block comments before matching,
+  and prefer `lastIndexOf` for a closing brace when the block can contain a
+  nested `try`/`catch`. Two empty sets also compare equal, so assert the
+  extraction found something before trusting what it found.
 - **`ACS_CONNECTION_STRING` is a container-app secret**, referenced via `secretRef` — not a plaintext env var. It held tailor-app's shared access key in plaintext until 2026-08-31.
 
 ## Mandatory QA — live browser preview

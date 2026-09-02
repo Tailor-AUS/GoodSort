@@ -140,7 +140,12 @@ export async function addScanApi(
   barcode: string,
   containerName: string,
   material: string,
-): Promise<{ user: User; creditedCents: number | null; bonusRemaining: number | null }> {
+  // `refused` is separate from a null credit on purpose. A null credit also
+  // happens when nobody is signed in, or when the server simply did not include
+  // the field — neither of which means the scan was rejected. Callers that show
+  // the member "+5c added" need to know the difference, and inferring it from a
+  // null got it wrong.
+): Promise<{ user: User; creditedCents: number | null; bonusRemaining: number | null; refused: boolean }> {
   const userId = getStoredUserId();
 
   // Always save locally first (offline-first)
@@ -170,14 +175,14 @@ export async function addScanApi(
     if (refused) {
       const scanId = localUser.scans[0]?.id;
       const corrected = scanId ? removeLocalScan(scanId) : null;
-      return { user: corrected ?? localUser, creditedCents: null, bonusRemaining: null };
+      return { user: corrected ?? localUser, creditedCents: null, bonusRemaining: null, refused: true };
     }
 
     if (res && typeof res.creditedCents === "number") creditedCents = res.creditedCents;
     if (res && typeof res.bonusRemaining === "number") bonusRemaining = res.bonusRemaining;
   }
 
-  return { user: localUser, creditedCents, bonusRemaining };
+  return { user: localUser, creditedCents, bonusRemaining, refused: false };
 }
 
 // ── Routes ──
