@@ -170,9 +170,29 @@ export function lookupLocal(barcode: string): Container | null {
  * Facts asks callers to identify themselves. The server sends it for real, and
  * applies a timeout and a per-IP ceiling that a page cannot.
  */
+/**
+ * How long to wait for a barcode lookup before giving up.
+ *
+ * A member is standing at a bin holding a container. The scanner shows a
+ * full-screen "Looking up container..." while this runs, so an unbounded fetch
+ * is an unbounded black screen — there was no timeout, no AbortController and
+ * no close button, so a stalled request stranded them with no way out but
+ * killing the app.
+ *
+ * Six seconds is longer than the lookup ever legitimately takes and short
+ * enough to stay on the right side of someone waiting at a wheelie bin. On
+ * timeout the caller falls through to createUnknownContainer, which is the same
+ * path an unknown barcode already takes.
+ */
+export const LOOKUP_TIMEOUT_MS = 6000;
+
 export async function lookupOpenFoodFacts(barcode: string): Promise<Container | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), LOOKUP_TIMEOUT_MS);
   try {
-    const res = await fetch(apiUrl(`/api/barcode/${encodeURIComponent(barcode)}`));
+    const res = await fetch(apiUrl(`/api/barcode/${encodeURIComponent(barcode)}`), {
+      signal: controller.signal,
+    });
     if (!res.ok) return null;
     const p = await res.json();
     if (!p?.found) return null;
@@ -198,7 +218,11 @@ export async function lookupOpenFoodFacts(barcode: string): Promise<Container | 
       confidence: p.packagingMaterialsTags?.length > 0 ? "high" : "medium",
     };
   } catch {
+    // An abort lands here too, which is the point: a timeout is just another
+    // reason we could not identify the container.
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
