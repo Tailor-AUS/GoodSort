@@ -14,6 +14,9 @@ import {
   getPendingRoutes as getLocalPendingRoutes,
   getActiveRoute as getLocalActiveRoute,
   saveUser as saveLocalUser,
+  getUnsyncedScans,
+  markScanUnsynced,
+  markScanSynced,
 } from "./store.ts";
 
 // ── Helpers ──
@@ -84,6 +87,12 @@ export async function getUserApi(): Promise<User | null> {
   const userId = getStoredUserId();
   if (!userId) return getLocalUser();
 
+  // Send anything the server has never seen BEFORE reading the profile back.
+  // The response is used to rebuild local state, so a scan that syncs here is
+  // already in that response and is not counted twice. Doing it the other way
+  // round would either lose the scan or double it.
+  await flushUnsyncedScans();
+
   const profile = await apiFetch<{
     id: string; name: string; householdId: string; role: string;
     pendingCents: number; clearedCents: number;
@@ -122,9 +131,75 @@ export async function getUserApi(): Promise<User | null> {
     createdAt: profile.createdAt,
   };
 
+  // Anything the server still has not accepted has to survive this write.
+  // saveLocalUser replaces `scans` wholesale, so without the merge a single
+  // successful profile read deletes every scan made offline.
+  const stillUnsynced = getUnsyncedScans().filter(
+    (local) => !user.scans.some((fromServer) => fromServer.id === local.id),
+  );
+  if (stillUnsynced.length > 0) {
+    user.scans = [...stillUnsynced, ...user.scans];
+  }
+
   // Sync to localStorage for offline
   saveLocalUser(user);
   return user;
+}
+
+
+/**
+ * Re-send scans the server has never accepted.
+ *
+ * Writes are offline-first: a scan lands in localStorage and is then posted. If
+ * that post could not reach the server the local copy stayed — correctly — but
+ * nothing ever tried again, and getUserApi later overwrote local storage with
+ * the server's version, deleting it. A member scanning forty containers at a
+ * kerb with no signal watched their balance climb and then lose every one of
+ * them on the walk back inside.
+ *
+ * Called before a profile read so the server has the scans before its response
+ * is used to rebuild local state. Ordering matters: flush, then fetch, then the
+ * fetched list already contains anything that just synced, so nothing is
+ * counted twice.
+ */
+export async function flushUnsyncedScans(): Promise<{ sent: number; refused: number; stillPending: number }> {
+  const userId = getStoredUserId();
+  const pending = getUnsyncedScans();
+  if (!userId || pending.length === 0) {
+    return { sent: 0, refused: 0, stillPending: pending.length };
+  }
+
+  let sent = 0;
+  let refused = 0;
+
+  for (const scan of pending) {
+    const { data, refused: wasRefused } = await apiSend<{ creditedCents?: number }>("/api/scans", {
+      method: "POST",
+      body: JSON.stringify({
+        userId,
+        barcode: scan.barcode,
+        containerName: scan.containerName,
+        material: scan.material,
+      }),
+    });
+
+    if (wasRefused) {
+      // Final. The scan is never going to be accepted, so the local copy has to
+      // go, exactly as it would have on the original attempt.
+      removeLocalScan(scan.id);
+      refused++;
+      continue;
+    }
+    if (data !== null) {
+      markScanSynced(scan.id);
+      sent++;
+      continue;
+    }
+    // Still unreachable — leave it marked and try again next time.
+    break;
+  }
+
+  return { sent, refused, stillPending: getUnsyncedScans().length };
 }
 
 // ── Households ──
@@ -176,6 +251,15 @@ export async function addScanApi(
       const scanId = localUser.scans[0]?.id;
       const corrected = scanId ? removeLocalScan(scanId) : null;
       return { user: corrected ?? localUser, creditedCents: null, bonusRemaining: null, refused: true };
+    }
+
+    if (res === null) {
+      // Not refused, just unreachable — the local write stays, and this marks
+      // it so flushUnsyncedScans re-sends it. Without the mark it survived in
+      // storage but was never re-sent, and the next successful profile fetch
+      // overwrote it away.
+      const scanId = localUser.scans[0]?.id;
+      if (scanId) markScanUnsynced(scanId);
     }
 
     if (res && typeof res.creditedCents === "number") creditedCents = res.creditedCents;

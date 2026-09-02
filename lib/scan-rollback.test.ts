@@ -275,3 +275,122 @@ test("an accepted scan keeps its local copy and reports the server's credit", as
   assert.equal(result.creditedCents, 10);
   assert.equal(snapshot().scans, 1);
 });
+
+/**
+ * Scans made with no signal have to survive coming back online.
+ *
+ * A write lands in localStorage first and is then posted. When that post could
+ * not reach the server the local copy stayed — right — but nothing ever tried
+ * again, and getUserApi rebuilds the user from the server response and calls
+ * saveLocalUser, which replaces `scans` wholesale. So the first successful
+ * profile read after scanning offline deleted every one of them.
+ *
+ * A member scanning forty containers at a kerb with one bar watched the balance
+ * climb, walked inside onto wifi, and lost the lot with no error.
+ *
+ * Two properties make it safe: unreachable scans are re-sent, and a profile
+ * read merges rather than clobbers. Ordering is what stops double counting —
+ * flush first, then read, so anything that just synced is already in the
+ * response.
+ */
+
+const { flushUnsyncedScans, getUserApi } = await import("./store-api.ts");
+const { getUnsyncedScans } = await import("./store.ts");
+
+test("a scan the server could not be reached about is marked for re-sending", () => {
+  seed();
+  signedIn();
+
+  stubFetch("network-failure");
+  return addScanApi("111", "Can A", "aluminium").then(() => {
+    assert.equal(getUnsyncedScans().length, 1, "an unreachable scan must be marked, or nothing will re-send it");
+    assert.equal(snapshot().scans, 1, "and it must still be there");
+  });
+});
+
+test("a refused scan is NOT marked for re-sending — it is gone", async () => {
+  // Re-sending a refusal would just fail again forever.
+  seed();
+  signedIn();
+
+  stubFetch(429);
+  await addScanApi("111", "Can A", "aluminium");
+
+  assert.equal(getUnsyncedScans().length, 0);
+  assert.equal(snapshot().scans, 0);
+});
+
+test("coming back online re-sends the scan and clears the mark", async () => {
+  seed();
+  signedIn();
+
+  stubFetch("network-failure");
+  await addScanApi("111", "Can A", "aluminium");
+  assert.equal(getUnsyncedScans().length, 1);
+
+  stubFetch(200);
+  const result = await flushUnsyncedScans();
+
+  assert.equal(result.sent, 1);
+  assert.equal(result.stillPending, 0, "a synced scan must stop being re-sent");
+  assert.equal(snapshot().scans, 1, "and must not be duplicated");
+});
+
+test("a scan the server refuses on re-send is dropped, not retried forever", async () => {
+  seed();
+  signedIn();
+
+  stubFetch("network-failure");
+  await addScanApi("111", "Can A", "aluminium");
+
+  stubFetch(401);
+  const result = await flushUnsyncedScans();
+
+  assert.equal(result.refused, 1);
+  assert.equal(result.stillPending, 0);
+  assert.equal(snapshot().scans, 0, "a refused scan must not linger locally showing credit");
+});
+
+test("still offline: the scan keeps its mark and its credit", async () => {
+  seed();
+  signedIn();
+
+  stubFetch("network-failure");
+  await addScanApi("111", "Can A", "aluminium");
+
+  const result = await flushUnsyncedScans();
+
+  assert.equal(result.sent, 0);
+  assert.equal(result.stillPending, 1, "it must stay queued for the next attempt");
+  assert.equal(snapshot().scans, 1);
+});
+
+test("a profile read does not delete a scan the server has never seen", async () => {
+  // The bug itself. getUserApi rebuilds from the server and overwrites local
+  // storage; an unsynced scan is not in that response and used to vanish.
+  seed();
+  signedIn();
+
+  stubFetch("network-failure");
+  await addScanApi("111", "Can A", "aluminium");
+  assert.equal(getUnsyncedScans().length, 1);
+
+  // The server answers the profile read but still rejects the scan write, so
+  // the scan legitimately is not in its list.
+  (globalThis as Record<string, unknown>).fetch = async (url: string) => {
+    if (String(url).includes("/api/scans")) throw new Error("still offline");
+    if (String(url).includes("/api/profiles/")) {
+      return new Response(JSON.stringify({
+        id: "user-1", name: "Test Member", householdId: HOUSEHOLD_ID, role: "sorter",
+        pendingCents: 0, clearedCents: 0, totalContainers: 0, totalCo2SavedKg: 0,
+        badges: [], createdAt: new Date(0).toISOString(),
+      }), { status: 200 });
+    }
+    return new Response(JSON.stringify([]), { status: 200 });
+  };
+
+  const user = await getUserApi();
+  assert.ok(user, "the profile read should still succeed");
+  assert.equal(user!.scans.length, 1, "the unsynced scan must survive the overwrite");
+  assert.equal(user!.scans[0].pendingSync, true);
+});
