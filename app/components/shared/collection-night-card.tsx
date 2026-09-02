@@ -9,6 +9,29 @@ function pickupCopy(confirmed: boolean | undefined, unlocked: boolean | undefine
   return "A volume run starts once your suburb has enough scanned containers for one driver trip. Scan today — 5¢ each.";
 }
 
+/**
+ * What the date on this card actually is.
+ *
+ * `nextPickup` is NextRunnerLocalDate(councilCollectionDay) — the night before
+ * the member's own COUNCIL recycling day. It is not a scheduled GoodSort run,
+ * and the server says so: it returns confirmed:false for any household that is
+ * not yet serviceable, with a reason explaining that a run unlocks on suburb
+ * volume.
+ *
+ * The card used to label it "We'll collect" regardless, above the date in large
+ * extra-bold type, with the qualifier in small grey underneath. So every
+ * waitlisted member — which on production is every member — read a collection
+ * promise on a date nobody had committed to. The copy below it was accurate;
+ * the two lines a person actually reads first were not.
+ *
+ * Only claim a collection when the server has confirmed one. Otherwise name the
+ * date for what it is, which is still worth showing: it is when their
+ * containers need to be sorted.
+ */
+function pickupLabel(confirmed: boolean | undefined): string {
+  return confirmed ? "Bag out" : "Your recycling night";
+}
+
 export function CollectionNightCard({
   nextPickup,
   confirmed,
@@ -32,7 +55,7 @@ export function CollectionNightCard({
           <Truck className="w-6 h-6 shrink-0 mt-0.5" />
           <div className="flex-1">
             <p className="text-[11px] uppercase tracking-wider text-white/70 mb-1">
-              {confirmed ? "Bag out" : "Next pickup"}
+              {pickupLabel(confirmed)}
             </p>
             <p className="text-xl font-display font-extrabold">{date}</p>
             <p className="text-[12px] text-white/80 mt-1">{pickupCopy(confirmed, unlocked)}</p>
@@ -47,7 +70,7 @@ export function CollectionNightCard({
       <Truck className={`w-5 h-5 shrink-0 mt-0.5 ${confirmed ? "text-green-700" : "text-violet-700"}`} />
       <div>
         <p className={`text-[11px] uppercase tracking-wider ${confirmed ? "text-green-700/70" : "text-violet-700/70"}`}>
-          {confirmed ? "Bag out" : "We'll collect"}
+          {pickupLabel(confirmed)}
         </p>
         <p className="text-[15px] font-display font-extrabold text-slate-900">{date}</p>
         <p className="text-[12px] text-slate-500 mt-0.5">{pickupCopy(confirmed, unlocked)}</p>

@@ -120,3 +120,46 @@ test("a failed verification says what actually went wrong", () => {
     "the blanket 'Invalid code' throws away the only information that tells the member what to do next",
   );
 });
+
+/**
+ * The card must not promise a collection nobody has scheduled.
+ *
+ * `nextPickup` is NextRunnerLocalDate(councilCollectionDay) — the night before
+ * the member's own COUNCIL recycling day. It is not a GoodSort run, and the
+ * server is explicit about that: it returns `confirmed: false` for any
+ * household that is not yet serviceable, with a reason saying a run unlocks on
+ * suburb volume.
+ *
+ * The card labelled it "We'll collect" regardless, above the date in large
+ * extra-bold type, with the qualifier small and grey below. The copy was
+ * accurate; the two lines a person reads first were not. And it rendered for
+ * every waitlisted member, which on production is every member.
+ */
+
+test("an unconfirmed pickup is not labelled as a collection", () => {
+  const card = code(join("app", "components", "shared", "collection-night-card.tsx"));
+
+  // The label must be derived from `confirmed`, not hardcoded per tone.
+  assert.match(card, /function pickupLabel\(/, "the two tones must share one label rule");
+
+  const label = card.slice(card.indexOf("function pickupLabel("), card.indexOf("}", card.indexOf("function pickupLabel(")) + 1);
+  assert.match(label, /confirmed \?/, "the label has to depend on whether a run is confirmed");
+  assert.doesNotMatch(
+    label,
+    /We'll collect|Next pickup/,
+    "an unconfirmed date must not be labelled as a collection — it is the member's council recycling night.",
+  );
+});
+
+test("the confirmed case still gives the instruction", () => {
+  // The opposite mistake: hedging the one case where a collection IS scheduled
+  // and the member genuinely needs to put containers out.
+  const card = code(join("app", "components", "shared", "collection-night-card.tsx"));
+  assert.match(card, /"Bag out"/, "a confirmed pickup must still say to bag out");
+});
+
+test("the qualifying copy still explains what unlocks a run", () => {
+  const card = code(join("app", "components", "shared", "collection-night-card.tsx"));
+  assert.match(card, /volume run starts once your suburb/i);
+  assert.match(card, /Suburb volume is enough for a driver trip/i);
+});
