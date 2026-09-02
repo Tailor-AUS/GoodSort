@@ -515,7 +515,9 @@ function ScanPageContent() {
       <div className="flex-shrink-0 bg-black" style={{ paddingBottom: "max(20px, env(safe-area-inset-bottom, 20px))" }}>
         <div className="flex items-center justify-center gap-6 py-4">
           {/* File input — always available, primary when camera not ready */}
-          <label className={`rounded-full flex items-center justify-center cursor-pointer transition-all ${
+          <label
+            aria-label={cameraReady ? "Choose a photo from your gallery" : "Take or choose a photo of your container"}
+            className={`rounded-full flex items-center justify-center cursor-pointer transition-all ${
             !cameraReady ? "w-[72px] h-[72px] bg-green-500 shadow-lg" : "w-12 h-12 bg-white/10"
           }`} style={{ touchAction: "manipulation" }}>
             <ImagePlus className={`${!cameraReady ? "w-8 h-8 text-white" : "w-5 h-5 text-white/60"}`} />
@@ -526,6 +528,7 @@ function ScanPageContent() {
           {cameraReady && (
             <button
               onClick={capture}
+              aria-label="Capture photo"
               className="rounded-full bg-white active:scale-90 transition-transform"
               style={{ width: "72px", height: "72px", border: "4px solid rgba(255,255,255,0.4)", touchAction: "manipulation" }}
             />
@@ -533,6 +536,7 @@ function ScanPageContent() {
 
           {/* Home button */}
           <button onClick={() => window.location.href = "/sort"}
+            aria-label="Close scanner"
             className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center"
             style={{ touchAction: "manipulation" }}>
             <X className="w-5 h-5 text-white/60" />

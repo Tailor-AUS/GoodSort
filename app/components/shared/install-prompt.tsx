@@ -105,7 +105,7 @@ export function InstallPrompt() {
                 <p className="text-[15px] font-display font-bold text-slate-900">Add to Home Screen</p>
                 <p className="text-[13px] text-slate-500 mt-0.5">Get the full app experience — instant access, no browser bar</p>
               </div>
-              <button onClick={dismiss} className="flex-shrink-0 p-1 -mr-1 -mt-1 text-slate-300 hover:text-slate-500">
+              <button onClick={dismiss} aria-label="Dismiss install prompt" className="flex-shrink-0 p-1 -mr-1 -mt-1 text-slate-300 hover:text-slate-500">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -135,7 +135,7 @@ export function InstallPrompt() {
               <p className="text-[15px] font-display font-bold text-slate-900">
                 {platform === "ios" ? "Add to Home Screen" : "Install the app"}
               </p>
-              <button onClick={dismiss} className="p-1 text-slate-300 hover:text-slate-500">
+              <button onClick={dismiss} aria-label="Dismiss install prompt" className="p-1 text-slate-300 hover:text-slate-500">
                 <X className="w-5 h-5" />
               </button>
             </div>
