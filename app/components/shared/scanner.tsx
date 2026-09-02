@@ -485,6 +485,20 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     if (!bag) {
       return (
         <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
+          {/*
+            An escape hatch, because this screen had none. It covers everything
+            while a lookup runs, and the lookup was unbounded — so a stalled
+            request left a member at a bin staring at a black screen with no
+            close, no back and no cancel. The lookup is capped now
+            (LOOKUP_TIMEOUT_MS), and this is the belt to that pair of braces.
+          */}
+          <button
+            onClick={handleClose}
+            aria-label="Close scanner"
+            className="absolute top-3 right-3 z-10 p-2.5 text-white/70 hover:text-white min-w-[44px] min-h-[44px] flex items-center justify-center"
+          >
+            <X className="w-5 h-5" />
+          </button>
           <div className="text-center px-8">
             <div className="w-24 h-24 bg-slate-700 rounded-3xl flex items-center justify-center mx-auto mb-6 animate-pulse">
               <ScanBarcode className="w-10 h-10 text-slate-400" />

@@ -37,6 +37,9 @@ function ScanPageContent() {
   const [otp, setOtp] = useState("");
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
+  // Seconds until "Resend code" is available again. Declared here with the
+  // other hooks, above every early return — see lib/hook-order.test.ts.
+  const [resendIn, setResendIn] = useState(0);
 
   // Camera
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -86,6 +89,13 @@ function ScanPageContent() {
   }, [binCode]);
 
   // ── Auth ──
+  // Tick the resend cooldown down to zero.
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((n) => n - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
+
   async function sendOtp() {
     if (!email.includes("@")) return;
     setAuthLoading(true); setAuthError("");
@@ -102,6 +112,7 @@ function ScanPageContent() {
         return;
       }
       setStep("verify");
+      setResendIn(30);
     } catch { setAuthError("Something went wrong"); }
     setAuthLoading(false);
   }
@@ -115,7 +126,16 @@ function ScanPageContent() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), code: otp, referrerId }),
       });
-      if (!res.ok) { setAuthError("Invalid code"); setAuthLoading(false); return; }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({} as { error?: string }));
+        setAuthError(
+          typeof data.error === "string" && data.error
+            ? data.error
+            : "That code did not work. Check it, or resend a new one.",
+        );
+        setAuthLoading(false);
+        return;
+      }
       const data = await res.json();
       track("otp_verified");
       localStorage.setItem("goodsort_token", data.token);
@@ -398,6 +418,29 @@ function ScanPageContent() {
       <GreenButton onClick={verifyOtp} disabled={authLoading || otp.length < 6}>
         {authLoading ? "Verifying..." : "Verify"}
       </GreenButton>
+
+      {/*
+        Without these the screen is a dead end. A mistyped address, a code that
+        lapsed past its fifteen minutes, or one sitting in spam left the member
+        with a six-digit box, no resend and no way back — on the primary funnel,
+        since both landing-page CTAs route here.
+      */}
+      <div className="flex items-center justify-center gap-4 mt-4 text-[13px]">
+        <button
+          onClick={() => { setOtp(""); setAuthError(""); sendOtp(); }}
+          disabled={authLoading || resendIn > 0}
+          className="text-green-700 font-semibold disabled:text-slate-300 min-h-[44px] px-2"
+        >
+          {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
+        </button>
+        <span className="text-slate-200">·</span>
+        <button
+          onClick={() => { setOtp(""); setAuthError(""); setResendIn(0); setStep("auth"); }}
+          className="text-slate-500 font-semibold min-h-[44px] px-2"
+        >
+          Use a different email
+        </button>
+      </div>
     </Center>
   );
 
