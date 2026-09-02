@@ -267,6 +267,13 @@ function CashoutSection({ clearedCents, waiting }: { clearedCents: number; waiti
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
   const [payoutsOpen, setPayoutsOpen] = useState<boolean | null>(null);
+  // Declared with the others, above every early return. It used to sit below
+  // `if (success) return`, so the render after a successful cash-out ran one
+  // fewer hook than the render before it and React threw "Rendered fewer hooks
+  // than expected" — blanking the panel into an error boundary at the exact
+  // moment the server had already deducted the balance and written the payout
+  // row. The money moved and the member saw a crash instead of a receipt.
+  const [showHint, setShowHint] = useState(false);
 
   useEffect(() => {
     fetch(apiUrl("/api/cashout/status"))
@@ -329,7 +336,6 @@ function CashoutSection({ clearedCents, waiting }: { clearedCents: number; waiti
 
   const remaining = Math.max(0, minCashout - clearedCents);
   const moreContainers = Math.ceil(remaining / 5); // 5c per eligible container
-  const [showHint, setShowHint] = useState(false);
   if (!showForm) {
     return (
       <div className="mt-6">
