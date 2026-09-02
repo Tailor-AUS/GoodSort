@@ -91,7 +91,17 @@ export function InstallPrompt() {
   if (!show || !platform) return null;
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-[60] pointer-events-none" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+    // Below the modal layer, deliberately. At z-[60] this sat ABOVE the
+    // scanner's z-50 and covered its bottom controls — on /sort, three seconds
+    // after arriving, which is roughly when a member taps "Scan a container".
+    // The white shutter button and the "Enter barcode manually" field are both
+    // in that band, so tapping the shutter fired "Install App" or "Later"
+    // instead of taking the photo. The only escape was noticing the small X on
+    // the install card first.
+    //
+    // An install nag is the least important thing on the screen. It belongs
+    // under anything the member deliberately opened.
+    <div className="fixed inset-x-0 bottom-0 z-40 pointer-events-none" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
       <div className="pointer-events-auto mx-4 mb-4 glass-strong rounded-2xl shadow-[0_-4px_40px_rgba(0,0,0,0.1)] border border-white/40 overflow-hidden animate-slide-up">
 
         {/* Main prompt */}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
+import { fitWithin, scanErrorMessage, QUALITY_LADDER, TARGET_BASE64_CHARS } from "@/lib/image-budget";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Camera, RotateCcw, Check, Mail, ShieldCheck, ImagePlus, X, Home } from "lucide-react";
 import { track } from "@/lib/analytics";
@@ -26,6 +27,10 @@ function ScanPageContent() {
   const [step, setStep] = useState<Step>("loading");
   const [bin, setBin] = useState<BinInfo | null>(null);
   const [apiError, setApiError] = useState(false);
+  // The status behind apiError, so the member is told what actually happened.
+  // A 413 described as a connection problem sends them to retry a request that
+  // fails identically every time.
+  const [apiStatus, setApiStatus] = useState<number | null>(null);
 
   // Auth
   const [email, setEmail] = useState("");
@@ -204,6 +209,22 @@ function ScanPageContent() {
   }
 
   // ── Capture from file input (fallback) ──
+  /**
+   * Gallery photos have to be shrunk before they are sent.
+   *
+   * This used to post the raw file. The client accepted up to 10 MB while the
+   * API refuses a base64 body over 2,000,000 characters (~1.5 MB of image), and
+   * a photo off any recent phone is 2-5 MB — so every real gallery photo came
+   * back 413 and the member was told to check their connection.
+   *
+   * That is the path the app itself recommends: with the camera denied, the
+   * status line reads "tap the green button to use your photo gallery" and the
+   * gallery button becomes the big green primary. So the recommended recovery
+   * from a denied camera could not work at all.
+   *
+   * Re-encoding through a canvas is what the camera path already does, which is
+   * why that one was fine.
+   */
   function handleFileCapture(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -212,12 +233,51 @@ function ScanPageContent() {
 
     const reader = new FileReader();
     reader.onload = async () => {
-      const dataUrl = reader.result as string;
+      const original = reader.result as string;
+      const dataUrl = await shrinkForUpload(original);
       setCapturedImage(dataUrl);
       const base64 = dataUrl.split(",")[1];
       await analyzeImage(base64);
     };
     reader.readAsDataURL(file);
+  }
+
+  /**
+   * Bound the longest edge, then step down JPEG quality until the base64 body
+   * is comfortably under what the API accepts. Returns the original if the
+   * image cannot be decoded — better to attempt the upload and surface a real
+   * error than to silently drop the member's photo.
+   */
+  async function shrinkForUpload(dataUrl: string): Promise<string> {
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const i = new Image();
+        i.onload = () => resolve(i);
+        i.onerror = () => reject(new Error("decode failed"));
+        i.src = dataUrl;
+      });
+
+      const { width, height } = fitWithin(img.naturalWidth, img.naturalHeight);
+      if (width === 0 || height === 0) return dataUrl;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return dataUrl;
+      ctx.drawImage(img, 0, 0, width, height);
+
+      for (const quality of QUALITY_LADDER) {
+        const out = canvas.toDataURL("image/jpeg", quality);
+        const body = out.split(",")[1] ?? "";
+        if (body.length <= TARGET_BASE64_CHARS) return out;
+      }
+      // Still too big at the lowest quality — send it and let the member see a
+      // real "too large" message rather than a connection one.
+      return canvas.toDataURL("image/jpeg", QUALITY_LADDER[QUALITY_LADDER.length - 1]);
+    } catch {
+      return dataUrl;
+    }
   }
 
   // ── Send to AI ──
@@ -231,13 +291,14 @@ function ScanPageContent() {
     }
     setStep("analyzing");
     setApiError(false);
+    setApiStatus(null);
     try {
       const res = await fetch(apiUrl("/api/scan/photo"), {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify({ image: base64, binCode }),
       });
-      if (!res.ok) throw new Error("API error");
+      if (!res.ok) { setApiStatus(res.status); throw new Error("API error"); }
       const data = await res.json();
       setResults(data.containers || []);
       setAiMessage(data.message || "");
@@ -423,7 +484,7 @@ function ScanPageContent() {
           <h2 className="text-[17px] font-display font-extrabold text-slate-900">
             {apiError ? "Connection error" : total > 0 ? `Sort ${total} container${total !== 1 ? "s" : ""}` : "No containers found"}
           </h2>
-          {apiError && <p className="text-red-500 text-[12px] mt-1">Could not reach the server. Check your connection and try again.</p>}
+          {apiError && <p className="text-red-500 text-[12px] mt-1">{scanErrorMessage(apiStatus)}</p>}
           {aiMessage && !apiError && <p className="text-slate-500 text-[13px] mt-1">{aiMessage}</p>}
         </div>
 
