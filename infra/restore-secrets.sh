@@ -35,6 +35,40 @@ if [ ${#missing[@]} -gt 0 ]; then
   exit 1
 fi
 
+# Refuse values carrying shell-escape artifacts.
+#
+# The azd environment file is machine-local and gitignored, so nothing in the
+# repo can check it -- but this script is what copies it into production. On
+# 2026-09-02 the local .azure/GoodSort/.env held four values ending in a literal
+# backslash-r, and a JWT_SECRET whose "!!" had become "\!\!" from a
+# shell that escaped history expansion. Verified against the running app: the
+# cleaned values matched production exactly, so the file -- not production --
+# was wrong.
+#
+# Applying them would have been quiet and bad: a trailing backslash-r on
+# GOODSORTDB_CONNECTION_STRING and TAILOR_VISION_API_URL, a corrupted vision
+# key that fails auth and falls through to the paid Azure OpenAI path, and a
+# different JWT_SECRET, which invalidates every issued token and signs out
+# every member at once.
+#
+# None of that surfaces as an error. The deploy succeeds and the app starts.
+BAD_ESCAPES=()
+for k in "${REQUIRED[@]}"; do
+  v="${!k:-}"
+  case "$v" in
+    *"\r"|*"\n"|*"\t"|*"\!"*) BAD_ESCAPES+=("$k") ;;
+  esac
+done
+if [ ${#BAD_ESCAPES[@]} -gt 0 ]; then
+  echo "ERROR: these azd env values contain literal escape sequences: ${BAD_ESCAPES[*]}" >&2
+  echo "They would be written to the container app verbatim and break at runtime" >&2
+  echo "without any error at deploy time. Fix them with:" >&2
+  echo "  azd env set <NAME> '<correct value>'" >&2
+  echo "and check .azure/<env>/.env for duplicate keys differing only by case --" >&2
+  echo "the later one wins, and a stale lowercase block has shadowed this before." >&2
+  exit 1
+fi
+
 RG="rg-GoodSort"
 APP="api"
 
