@@ -114,10 +114,22 @@ jobs:
       # Non-blocking by design: failing a deploy on a broken sender link also
       # blocks shipping the fix for a broken sender link. That is not
       # hypothetical - it is what run 33352157022 did, to a deploy whose
-      # container had already gone out successfully. Escalation is the
-      # scheduled ACS domain guard plus alert gs-otp-email-down.
+      # container had already gone out successfully.
+      #
+      # Escalation, verified against Azure on 2026-09-02 rather than assumed:
+      #   detection - scheduled-query alert gs-otp-email-down in rg-GoodSort,
+      #               severity 1, evaluated every 15 minutes, wired to action
+      #               group goodsort-email (enabled, email receiver enabled);
+      #   repair    - acs-domain-guard.yml, cron "0 */6 * * *", so up to six
+      #               hours. Deliberately not 30-minutely: its send probe hard
+      #               bounces off our own MX, and 48/day on a low-volume
+      #               sending domain is a ratio ACS can throttle us for.
+      #   now       - gh workflow run acs-domain-guard.yml
+      #
+      # AcsEscalationAccuracyTests keeps the number below in step with the
+      # cron, because this message used to promise 30 minutes.
       - name: Ensure ACS sender domain is linked
         uses: azure/cli@v2
         with:
           inlineScript: |
-            bash scripts/ensure-acs-domain-linked.sh || echo "::warning title=ACS link not repaired::Deploy continued anyway; the scheduled ACS domain guard retries within 30 minutes."
+            bash scripts/ensure-acs-domain-linked.sh || echo "::warning title=ACS link not repaired::Deploy continued anyway. Alert gs-otp-email-down detects a broken sender within 15 minutes; the scheduled guard retries within 6 hours. To repair now: gh workflow run acs-domain-guard.yml"
