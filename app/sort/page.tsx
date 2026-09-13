@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { type User, type SortBin, type Depot, type BagInfo, getUser } from "@/lib/store";
+import { type User, type SortBin, type Depot, getUser } from "@/lib/store";
 import { getUserApi, getDepotsApi, getBinsApi } from "@/lib/store-api";
 import { apiUrl, authHeaders } from "@/lib/config";
 import { isCollecting, LIVE_VOLUME_THRESHOLD, sameSuburb, streetStatsForViewer, type GrowthSuburb, householdCountsTowardUnlock } from "@/lib/brisbane";
@@ -10,7 +10,6 @@ import { getDepots } from "@/lib/store";
 import { MapView } from "@/app/components/shared/map-view";
 import { SorterSheet, type HouseholdStatus } from "./components/sorter-sheet";
 import { WaitlistHome } from "./components/waitlist-home";
-import { Scanner } from "@/app/components/shared/scanner";
 import { AccountButton } from "@/app/components/shared/account-button";
 import { AccountPanel } from "@/app/components/shared/account-panel";
 
@@ -44,7 +43,6 @@ export default function SorterApp() {
   const [bins, setBins] = useState<SortBin[]>([]);
   const [depot, setDepot] = useState<Depot | null>(null);
   const [selectedBinId, setSelectedBinId] = useState<string | null>(null);
-  const [showScanner, setShowScanner] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [toast, setToast] = useState<{ text: string; visible: boolean } | null>(null);
   const [household, setHousehold] = useState<HouseholdStatus | null>(null);
@@ -137,28 +135,6 @@ export default function SorterApp() {
     });
   }, [refreshData, router]);
 
-  const handleScanComplete = useCallback(
-    (containerName: string, cents: number, bag: BagInfo) => {
-      setShowScanner(false);
-      refreshData();
-      setToast({ text: `+${cents}¢ added to your account · ${bag.label}`, visible: true });
-      setTimeout(() => setToast((t) => (t ? { ...t, visible: false } : null)), 2500);
-      setTimeout(() => setToast(null), 3000);
-    },
-    [refreshData]
-  );
-
-  const handleBatchComplete = useCallback(
-    (totalItems: number, totalCents: number) => {
-      setShowScanner(false);
-      refreshData();
-      setToast({ text: `+$${(totalCents / 100).toFixed(2)} added to your account · ${totalItems} containers`, visible: true });
-      setTimeout(() => setToast((t) => (t ? { ...t, visible: false } : null)), 3500);
-      setTimeout(() => setToast(null), 4000);
-    },
-    [refreshData]
-  );
-
   const handleBinSelect = useCallback((id: string) => setSelectedBinId(id), []);
   const handleMapTap = useCallback(() => setSelectedBinId(null), []);
   const selectedBin = bins.find((b) => b.id === selectedBinId) || null;
@@ -184,11 +160,8 @@ export default function SorterApp() {
           household={household}
           nextPickup={nextPickup}
           pickupConfirmed={pickupConfirmed}
-          onScanPress={() => setShowScanner(true)}
+          onScanPress={() => router.push("/scan")}
         />
-        {showScanner && (
-          <Scanner onClose={() => setShowScanner(false)} onScanComplete={handleScanComplete} onBatchComplete={handleBatchComplete} />
-        )}
         <AccountPanel user={user} open={showAccount} onClose={() => { setShowAccount(false); refreshData(); }} />
       </div>
     );
@@ -235,14 +208,10 @@ export default function SorterApp() {
           }).catch(() => null);
           setHousehold({ ...household, binIsOut: next });
         }}
-        onScanPress={() => setShowScanner(true)}
+        onScanPress={() => router.push("/scan")}
         onDataUpdate={() => { refreshData(); setSelectedBinId(null); }}
         onDeselectBin={() => setSelectedBinId(null)}
       />
-
-      {showScanner && (
-        <Scanner onClose={() => setShowScanner(false)} onScanComplete={handleScanComplete} onBatchComplete={handleBatchComplete} />
-      )}
 
       <AccountPanel user={user} open={showAccount} onClose={() => { setShowAccount(false); refreshData(); }} />
     </div>
