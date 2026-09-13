@@ -39,23 +39,27 @@ public static class Atomic
     public static async Task<T> RunAsync<T>(
         GoodSortDbContext db, Func<Task<T>> work, CancellationToken ct = default)
     {
-        IDbContextTransaction? tx = null;
-        try
+        var strategy = db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
         {
-            // Throws on InMemory, which has no transactions. Nothing to roll
-            // back there either — it is a single in-process store.
-            tx = await db.Database.BeginTransactionAsync(ct);
-        }
-        catch (InvalidOperationException)
-        {
-            return await work();
-        }
+            IDbContextTransaction? tx = null;
+            try
+            {
+                // Throws on InMemory, which has no transactions. Nothing to roll
+                // back there either — it is a single in-process store.
+                tx = await db.Database.BeginTransactionAsync(ct);
+            }
+            catch (InvalidOperationException)
+            {
+                return await work();
+            }
 
-        await using (tx)
-        {
-            var result = await work();
-            await tx.CommitAsync(ct);
-            return result;
-        }
+            await using (tx)
+            {
+                var result = await work();
+                await tx.CommitAsync(ct);
+                return result;
+            }
+        });
     }
 }
