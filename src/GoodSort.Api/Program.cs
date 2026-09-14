@@ -1015,59 +1015,67 @@ app.MapPost("/api/households", async (HttpContext ctx, HouseholdCreateRequest re
     household.AccessConsentAt = household.AccessConsent ? DateTime.UtcNow : null;
     household.UsesDivider = true;
 
-    db.Households.Add(household);
-    await db.SaveChangesAsync();
-
-    // Placeholder bin for the household. RunGeneration skips waitlisted/allocated
-    // households until ops marks the area collecting.
-    if (household.Type != "unit_complex")
-    {
-        var code = $"GS-H{Math.Abs(household.Id.GetHashCode()) % 100000:D5}";
-        db.Bins.Add(new Bin
-        {
-            Code = code,
-            Name = household.Name,
-            Address = household.Address,
-            Lat = household.Lat,
-            Lng = household.Lng,
-            HouseholdId = household.Id,
-            HostedBy = null,
-        });
-    }
-
-    // First household for a referred profile credits the neighbour $1 pending.
-    // The growth loop is scan volume → suburb trip, not house-count density.
     var callerId = ctx.GetCallerId();
-    if (callerId is Guid uid)
-    {
-        var me = await db.Profiles.FindAsync(uid);
-        if (me is not null)
-        {
-            if (me.ReferrerId is Guid rid && rid != uid && me.HouseholdId is null)
-            {
-                var referrer = await db.Profiles.FindAsync(rid);
-                if (referrer is not null) referrer.PendingCents += 100;
-            }
-            var isFirstHousehold = me.HouseholdId is null;
-            me.HouseholdId ??= household.Id;
 
-            // Scan-first: containers this member scanned before they had an
-            // address are attached now, so the credit can settle and the
-            // containers they are holding count toward their suburb.
-            if (isFirstHousehold)
+    await Atomic.RunAsync(db, async () =>
+    {
+        db.Households.Add(household);
+
+        // Placeholder bin for the household. RunGeneration skips waitlisted/allocated
+        // households until ops marks the area collecting.
+        Bin? createdBin = null;
+        if (household.Type != "unit_complex")
+        {
+            var code = $"GS-H{Math.Abs(household.Id.GetHashCode()) % 100000:D5}";
+            createdBin = new Bin
             {
-                var orphans = await db.Scans
-                    .Where(sc => sc.UserId == me.Id && sc.HouseholdId == null && sc.Status == "pending")
-                    .ToListAsync();
-                // The bin is created for this household a few lines above; pass
-                // it so backfilled scans reach the counter dispatch reads.
-                var backfillBin = await db.Bins.FirstOrDefaultAsync(b => b.HouseholdId == household.Id);
-                ScanBackfill.AttachTo(household, orphans, backfillBin);
+                Code = code,
+                Name = household.Name,
+                Address = household.Address,
+                Lat = household.Lat,
+                Lng = household.Lng,
+                HouseholdId = household.Id,
+                HostedBy = null,
+            };
+            db.Bins.Add(createdBin);
+        }
+
+        // First household for a referred profile credits the neighbour $1 pending.
+        // The growth loop is scan volume → suburb trip, not house-count density.
+        if (callerId is Guid uid)
+        {
+            var me = await db.Profiles.FindAsync(uid);
+            if (me is not null)
+            {
+                if (me.ReferrerId is Guid rid && rid != uid && me.HouseholdId is null)
+                {
+                    var referrer = await db.Profiles.FindAsync(rid);
+                    if (referrer is not null) referrer.PendingCents += 100;
+                }
+                var isFirstHousehold = me.HouseholdId is null;
+                me.HouseholdId ??= household.Id;
+
+                // Scan-first: containers this member scanned before they had an
+                // address are attached now, so the credit can settle and the
+                // containers they are holding count toward their suburb.
+                if (isFirstHousehold)
+                {
+                    var orphans = await db.Scans
+                        .Where(sc => sc.UserId == me.Id && sc.HouseholdId == null && sc.Status == "pending")
+                        .ToListAsync();
+                    // The bin is created for this household a few lines above; pass
+                    // it so backfilled scans reach the counter dispatch reads.
+                    var backfillBin = createdBin
+                        ?? db.Bins.Local.FirstOrDefault(b => b.HouseholdId == household.Id)
+                        ?? await db.Bins.FirstOrDefaultAsync(b => b.HouseholdId == household.Id);
+                    ScanBackfill.AttachTo(household, orphans, backfillBin);
+                }
             }
         }
-    }
 
-    await db.SaveChangesAsync();
+        await db.SaveChangesAsync();
+        return true;
+    });
 
     var board = WaitlistDensity.Aggregate(await WaitlistDensity.LoadRowsAsync(db));
     var cluster = WaitlistDensity.DayCluster(board, household.Suburb, household.CouncilCollectionDay);

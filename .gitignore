@@ -49,3 +49,9 @@ node_modules/
 # .NET
 **/bin/
 **/obj/
+
+# Teamwork scratch
+/.agents/
+/ORIGINAL_REQUEST.md
+/TEST_INFRA.md
+/TEST_READY.md

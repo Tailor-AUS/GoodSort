@@ -5,7 +5,7 @@ import { fitWithin, scanErrorMessage, QUALITY_LADDER, TARGET_BASE64_CHARS } from
 import { useSearchParams, useRouter } from "next/navigation";
 import { Camera, RotateCcw, Check, Mail, ShieldCheck, ImagePlus, X, Home } from "lucide-react";
 import { track } from "@/lib/analytics";
-import { apiUrl, authHeaders, persistWaitlistFromUrl, readReferrerId, hasValidToken } from "@/lib/config";
+import { apiUrl, authHeaders, persistWaitlistFromUrl, readReferrerId, hasValidToken, clearAuth } from "@/lib/config";
 
 interface BinInfo {
   id: string; code: string; name: string; address: string; hostedBy: string | null;
@@ -16,6 +16,7 @@ interface IdentifiedItem {
 
 /** Holds a capture across the OTP round-trip (iOS discards backgrounded tabs). */
 const PENDING_CAPTURE_KEY = "goodsort_pending_capture";
+const PENDING_EMAIL_KEY = "goodsort_pending_email";
 
 type Step = "loading" | "auth" | "verify" | "camera" | "analyzing" | "results" | "error" | "done";
 
@@ -79,9 +80,16 @@ function ScanPageContent() {
     // iOS discards backgrounded tabs, so the photo is held in sessionStorage
     // rather than in React state.
     const pending = sessionStorage.getItem(PENDING_CAPTURE_KEY);
+    const pendingEmail = sessionStorage.getItem(PENDING_EMAIL_KEY);
     if (pending && hasValidToken()) {
       setCapturedImage(pending);
       void analyzeImage(pending);
+      return;
+    }
+    if (pending && pendingEmail && !hasValidToken()) {
+      setEmail(pendingEmail);
+      setCapturedImage(pending);
+      setStep("verify");
       return;
     }
     openCamera();
@@ -111,6 +119,7 @@ function ScanPageContent() {
         setAuthLoading(false);
         return;
       }
+      try { sessionStorage.setItem(PENDING_EMAIL_KEY, email.trim()); } catch { /* ignore */ }
       setStep("verify");
       setResendIn(30);
     } catch { setAuthError("Something went wrong"); }
@@ -141,6 +150,9 @@ function ScanPageContent() {
       localStorage.setItem("goodsort_token", data.token);
       localStorage.setItem("goodsort_profile", JSON.stringify(data.profile));
       document.cookie = `goodsort_token=${data.token}; path=/; max-age=${30*24*60*60}; SameSite=Lax; Secure`;
+      try {
+        sessionStorage.removeItem(PENDING_EMAIL_KEY);
+      } catch { /* ignore */ }
       const pending = sessionStorage.getItem(PENDING_CAPTURE_KEY);
       if (pending) {
         setAuthLoading(false);
@@ -318,12 +330,21 @@ function ScanPageContent() {
         headers: authHeaders(),
         body: JSON.stringify({ image: base64, binCode }),
       });
+      if (res.status === 401) {
+        clearAuth();
+        try { sessionStorage.setItem(PENDING_CAPTURE_KEY, base64); } catch { /* ignore */ }
+        setStep("auth");
+        return;
+      }
       if (!res.ok) { setApiStatus(res.status); throw new Error("API error"); }
       const data = await res.json();
       setResults(data.containers || []);
       setAiMessage(data.message || "");
       setScanToken(data.scanToken || null);
-      try { sessionStorage.removeItem(PENDING_CAPTURE_KEY); } catch { /* ignore */ }
+      try {
+        sessionStorage.removeItem(PENDING_CAPTURE_KEY);
+        sessionStorage.removeItem(PENDING_EMAIL_KEY);
+      } catch { /* ignore */ }
     } catch {
       setResults([]);
       setApiError(true);
@@ -362,6 +383,11 @@ function ScanPageContent() {
         body: JSON.stringify({ scanToken, userId, items: eligible, binCode, lat: loc?.lat, lng: loc?.lng }),
       });
       if (!res.ok) {
+        if (res.status === 401) {
+          clearAuth();
+          setStep("auth");
+          return;
+        }
         // Surface geofence / verification failures instead of silently "done".
         const data = await res.json().catch(() => ({}));
         setApiError(true);
@@ -370,8 +396,12 @@ function ScanPageContent() {
         return;
       }
       trackScanCredited();
-    } catch { /* best effort — offline */ }
-    setStep("done");
+      setStep("done");
+    } catch {
+      setApiError(true);
+      setAiMessage("Network connection dropped before confirmation could complete. Please tap Done to try again.");
+      setStep("results");
+    }
   }
 
   function retake() {
@@ -435,7 +465,13 @@ function ScanPageContent() {
         </button>
         <span className="text-slate-200">·</span>
         <button
-          onClick={() => { setOtp(""); setAuthError(""); setResendIn(0); setStep("auth"); }}
+          onClick={() => {
+            setOtp("");
+            setAuthError("");
+            setResendIn(0);
+            try { sessionStorage.removeItem(PENDING_EMAIL_KEY); } catch { /* ignore */ }
+            setStep("auth");
+          }}
           className="text-slate-500 font-semibold min-h-[44px] px-2"
         >
           Use a different email
