@@ -573,12 +573,12 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
         Assert.Equal(2, parts.Length);
 
         // Tamper 1: modify payload
-        var tamperedPayloadToken = (parts[0].EndsWith("A") ? parts[0][..^1] + "B" : parts[0][..^1] + "A") + "." + parts[1];
+        var tamperedPayloadToken = (parts[0].StartsWith("A") ? "B" + parts[0][1..] : "A" + parts[0][1..]) + "." + parts[1];
         var res1 = await _client.PostAsJsonAsync("/api/scan/photo/confirm", new { scanToken = tamperedPayloadToken, lat = -27.4812, lng = 153.0135 });
         Assert.Equal(HttpStatusCode.BadRequest, res1.StatusCode);
 
         // Tamper 2: modify signature
-        var tamperedSigToken = parts[0] + "." + (parts[1].EndsWith("A") ? parts[1][..^1] + "B" : parts[1][..^1] + "A");
+        var tamperedSigToken = $"{parts[0]}.tamperedsignature1234567890";
         var res2 = await _client.PostAsJsonAsync("/api/scan/photo/confirm", new { scanToken = tamperedSigToken, lat = -27.4812, lng = 153.0135 });
         Assert.Equal(HttpStatusCode.BadRequest, res2.StatusCode);
 
