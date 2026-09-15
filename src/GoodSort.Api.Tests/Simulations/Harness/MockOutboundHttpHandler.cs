@@ -9,19 +9,46 @@ namespace GoodSort.Api.Tests.Simulations.Harness;
 /// </summary>
 public class MockOutboundHttpHandler : HttpMessageHandler
 {
+    public static Func<HttpRequestMessage, HttpResponseMessage?>? CustomHandler { get; set; }
+    public static string ActiveMaterial { get; set; } = "aluminium";
+    public static string ActiveContainerType { get; set; } = "can";
+    public static string ActiveDescription { get; set; } = "Coca-Cola 375ml can";
+
+    public static void SetVisionClassification(string material, string containerType, string description)
+    {
+        ActiveMaterial = material;
+        ActiveContainerType = containerType;
+        ActiveDescription = description;
+    }
+
+    public static void Reset()
+    {
+        CustomHandler = null;
+        ActiveMaterial = "aluminium";
+        ActiveContainerType = "can";
+        ActiveDescription = "Coca-Cola 375ml can";
+    }
+
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        if (CustomHandler != null)
+        {
+            var customResponse = CustomHandler(request);
+            if (customResponse != null)
+                return Task.FromResult(customResponse);
+        }
+
         var uri = request.RequestUri?.ToString() ?? "";
 
         // Tailor Vision classify upload mock
         if (uri.Contains("/api/vision/classify/upload") || uri.Contains("api.tailor.au"))
         {
-            var json = """
+            var json = $$"""
             {
               "classification": {
-                "material": "aluminium",
-                "containerType": "can",
-                "description": "Coca-Cola 375ml can",
+                "material": "{{ActiveMaterial}}",
+                "containerType": "{{ActiveContainerType}}",
+                "description": "{{ActiveDescription}}",
                 "bin": "yellow",
                 "confidence": 0.98
               },

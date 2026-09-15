@@ -300,11 +300,12 @@ public class R2ExistingUserJourneySimulationTests : IDisposable
         });
 
         // ══════════════════════════════════════════════════════════════════════
-        // STEP 4: Multi-Batch Scan Continuation (3 items in batch 2)
+        // STEP 4: Multi-Batch Scan Continuation (Mixed Aluminium, PET Plastic, Glass)
         // ══════════════════════════════════════════════════════════════════════
         var batchItems = new List<ScanTokenItem>
         {
             new() { Name = "Solo Can", Material = "aluminium", Count = 2, Eligible = true },
+            new() { Name = "Mount Franklin 600ml Bottle", Material = "pet", Count = 2, Eligible = true },
             new() { Name = "Cascade Stubby", Material = "glass", Count = 1, Eligible = true }
         };
         var scanToken2 = MintScanToken(profileId, items: batchItems);
@@ -317,7 +318,7 @@ public class R2ExistingUserJourneySimulationTests : IDisposable
         });
         Assert.Equal(HttpStatusCode.OK, confirmRes2.StatusCode);
 
-        snapshots.Add(await CaptureSnapshotAsync("Step 4", "Second Batch Deposit Confirmed (Multi-Item)", email, profileId, householdId));
+        snapshots.Add(await CaptureSnapshotAsync("Step 4", "Second Batch Deposit Confirmed (Mixed Aluminium, PET, Glass)", email, profileId, householdId));
 
         // Cumulative Invariant Verification:
         await _host.WithDbContextAsync(async db =>
@@ -326,23 +327,24 @@ public class R2ExistingUserJourneySimulationTests : IDisposable
             var orphanCount = await db.Scans.CountAsync(s => s.UserId == profileId && s.HouseholdId == null);
             Assert.Equal(0, orphanCount);
 
-            // Total 4 container scans attached to household (1 from scan1 + 3 from scan2)
+            // Total 6 container scans attached to household (1 from scan1 + 5 from scan2)
             var totalScans = await db.Scans.CountAsync(s => s.UserId == profileId && s.HouseholdId == householdId);
-            Assert.Equal(4, totalScans);
+            Assert.Equal(6, totalScans);
 
-            // Material streams tracked accurately
+            // Material streams tracked accurately across all 3 categories
             var hh = await db.Households.FindAsync(householdId);
             Assert.NotNull(hh);
-            Assert.Equal(4, hh.PendingContainers);
-            Assert.Equal(40, hh.PendingValueCents);
+            Assert.Equal(6, hh.PendingContainers);
+            Assert.Equal(60, hh.PendingValueCents);
             Assert.Equal(3, hh.Materials.Aluminium);
+            Assert.Equal(2, hh.Materials.Pet);
             Assert.Equal(1, hh.Materials.Glass);
 
             // Profile metrics accumulated
             var prof = await db.Profiles.FindAsync(profileId);
             Assert.NotNull(prof);
-            Assert.Equal(4, prof.TotalContainers);
-            Assert.Equal(40, prof.PendingCents);
+            Assert.Equal(6, prof.TotalContainers);
+            Assert.Equal(60, prof.PendingCents);
         });
 
         // ══════════════════════════════════════════════════════════════════════
@@ -351,16 +353,181 @@ public class R2ExistingUserJourneySimulationTests : IDisposable
         var finalProfRes = await _client.GetAsync($"/api/profiles/{profileId}");
         Assert.Equal(HttpStatusCode.OK, finalProfRes.StatusCode);
         var finalProf = await finalProfRes.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(4, finalProf.GetProperty("totalContainers").GetInt32());
-        Assert.Equal(40, finalProf.GetProperty("pendingCents").GetInt32());
+        Assert.Equal(6, finalProf.GetProperty("totalContainers").GetInt32());
+        Assert.Equal(60, finalProf.GetProperty("pendingCents").GetInt32());
 
         var finalHhRes = await _client.GetAsync($"/api/households/{householdId}");
         Assert.Equal(HttpStatusCode.OK, finalHhRes.StatusCode);
         var finalHh = await finalHhRes.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(4, finalHh.GetProperty("pendingContainers").GetInt32());
-        Assert.Equal(40, finalHh.GetProperty("pendingValueCents").GetInt32());
+        Assert.Equal(6, finalHh.GetProperty("pendingContainers").GetInt32());
+        Assert.Equal(60, finalHh.GetProperty("pendingValueCents").GetInt32());
 
         snapshots.Add(await CaptureSnapshotAsync("Step 5", "Final Dashboard Refresh at /sort (Balance Verified)", email, profileId, householdId));
+    }
+
+    [Fact]
+    public async Task R2_ReturningUser_BatchScanner_MixedContainers_DirectAttribution_FullSimulation()
+    {
+        // Persona: Returning authenticated household resident Liam
+        // Scenario: Liam already has an active session and household.
+        // Returning to /scan:
+        // 1. Session is detected -> completely skips OTP.
+        // 2. Multi-container batch scan: mixed aluminium cans, PET plastic, glass bottles.
+        // 3. Deposit confirmation attaches credit instantly to profile and household without manual re-entry.
+        const string email = "liam.returning@example.test";
+        var profileId = Guid.NewGuid();
+        var householdId = Guid.NewGuid();
+
+        // Seed established user and household in DB
+        await _host.WithDbContextAsync(async db =>
+        {
+            var hh = new Household
+            {
+                Id = householdId,
+                Name = "Liam's Moorooka Residence",
+                Address = MoorookaAddress,
+                Suburb = "MOOROOKA",
+                Street = "Hamilton Rd",
+                Lat = MoorookaLat,
+                Lng = MoorookaLng,
+                Type = "residential",
+                CouncilCollectionDay = 2,
+                CouncilArea = "Brisbane City Council",
+                BinStatus = "waitlisted",
+                PendingContainers = 0,
+                PendingValueCents = 0,
+                Materials = new MaterialBreakdown()
+            };
+            var bin = new Bin
+            {
+                Code = $"GS-H{Math.Abs(householdId.GetHashCode()) % 100000:D5}",
+                Name = hh.Name,
+                Address = hh.Address,
+                Lat = hh.Lat,
+                Lng = hh.Lng,
+                HouseholdId = householdId,
+                PendingContainers = 0
+            };
+            var prof = new Profile
+            {
+                Id = profileId,
+                Email = email,
+                Name = "Liam Returning",
+                Role = "sorter",
+                HouseholdId = householdId,
+                PendingCents = 0,
+                TotalContainers = 0
+            };
+            db.Households.Add(hh);
+            db.Bins.Add(bin);
+            db.Profiles.Add(prof);
+            await db.SaveChangesAsync();
+        });
+
+        var validJwt = CreateJwt(profileId, email, "Liam Returning");
+        var client = _host.CreateCapturedClient(new NetworkCaptureHandler());
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", validJwt);
+
+        // Step 1: Client transitions to /scan with existing token -> OTP bypassed completely
+        // Test photo endpoint directly with valid token
+        var photoBase64 = CreateDistinctTestImage(2);
+        var photoRes = await client.PostAsJsonAsync("/api/scan/photo", new { image = photoBase64 });
+        Assert.Equal(HttpStatusCode.OK, photoRes.StatusCode);
+
+        // Verify MockOutboundHttpHandler can also classify other container materials
+        try
+        {
+            MockOutboundHttpHandler.SetVisionClassification("pet", "bottle", "Mount Franklin 600ml bottle");
+            var petPhotoRes = await client.PostAsJsonAsync("/api/scan/photo", new { image = CreateDistinctTestImage(3) });
+            Assert.Equal(HttpStatusCode.OK, petPhotoRes.StatusCode);
+            var petPhotoJson = await petPhotoRes.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("pet", petPhotoJson.GetProperty("containers")[0].GetProperty("material").GetString());
+
+            MockOutboundHttpHandler.SetVisionClassification("glass", "bottle", "Cascade Stubby 375ml");
+            var glassPhotoRes = await client.PostAsJsonAsync("/api/scan/photo", new { image = CreateDistinctTestImage(4) });
+            Assert.Equal(HttpStatusCode.OK, glassPhotoRes.StatusCode);
+            var glassPhotoJson = await glassPhotoRes.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("glass", glassPhotoJson.GetProperty("containers")[0].GetProperty("material").GetString());
+        }
+        finally
+        {
+            MockOutboundHttpHandler.Reset();
+        }
+
+        // Step 2: Mint a multi-container batch scan token containing mixed aluminium, PET plastic, and glass bottles
+        var batchItems = new List<ScanTokenItem>
+        {
+            new() { Name = "Solo 375ml Can", Material = "aluminium", Count = 3, Eligible = true },
+            new() { Name = "Mount Franklin 600ml Bottle", Material = "pet", Count = 2, Eligible = true },
+            new() { Name = "Cascade Stubby 375ml Bottle", Material = "glass", Count = 2, Eligible = true }
+        };
+        var batchToken = MintScanToken(profileId, items: batchItems);
+
+        // Step 3: Confirm batch deposit
+        var confirmRes = await client.PostAsJsonAsync("/api/scan/photo/confirm", new
+        {
+            scanToken = batchToken,
+            lat = MoorookaLat,
+            lng = MoorookaLng
+        });
+        Assert.Equal(HttpStatusCode.OK, confirmRes.StatusCode);
+        var confirmJson = await confirmRes.Content.ReadFromJsonAsync<JsonElement>();
+
+        // 7 total containers: 3 aluminium + 2 pet + 2 glass
+        Assert.Equal(7, confirmJson.GetProperty("totalContainers").GetInt32());
+        // First 20 containers get double credit launch bonus (10¢ each) -> 7 * 10 = 70¢
+        Assert.Equal(70, confirmJson.GetProperty("totalCents").GetInt32());
+        Assert.Equal(70, confirmJson.GetProperty("pendingCents").GetInt32());
+
+        // Step 4: Verify Instant Profile & Household Credit Attachment in Database (0 orphan scans!)
+        await _host.WithDbContextAsync(async db =>
+        {
+            // Zero orphan scans created
+            var orphanScans = await db.Scans.CountAsync(s => s.UserId == profileId && s.HouseholdId == null);
+            Assert.Equal(0, orphanScans);
+
+            // Exactly 7 scans attached directly to the household
+            var attachedScans = await db.Scans.Where(s => s.UserId == profileId && s.HouseholdId == householdId).ToListAsync();
+            Assert.Equal(7, attachedScans.Count);
+            Assert.Equal(3, attachedScans.Count(s => s.Material == "aluminium"));
+            Assert.Equal(2, attachedScans.Count(s => s.Material == "pet"));
+            Assert.Equal(2, attachedScans.Count(s => s.Material == "glass"));
+
+            // Household balances updated instantly
+            var hh = await db.Households.FindAsync(householdId);
+            Assert.NotNull(hh);
+            Assert.Equal(7, hh.PendingContainers);
+            Assert.Equal(70, hh.PendingValueCents);
+            Assert.Equal(3, hh.Materials.Aluminium);
+            Assert.Equal(2, hh.Materials.Pet);
+            Assert.Equal(2, hh.Materials.Glass);
+
+            // Household bin counter synchronized
+            var bin = await db.Bins.FirstOrDefaultAsync(b => b.HouseholdId == householdId);
+            Assert.NotNull(bin);
+            Assert.Equal(7, bin.PendingContainers);
+
+            // Profile updated instantly
+            var prof = await db.Profiles.FindAsync(profileId);
+            Assert.NotNull(prof);
+            Assert.Equal(7, prof.TotalContainers);
+            Assert.Equal(70, prof.PendingCents);
+        });
+
+        // Step 5: Returning to /sort displays updated balance immediately without manual re-entry
+        var profCheck = await client.GetAsync($"/api/profiles/{profileId}");
+        Assert.Equal(HttpStatusCode.OK, profCheck.StatusCode);
+        var profCheckJson = await profCheck.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(7, profCheckJson.GetProperty("totalContainers").GetInt32());
+        Assert.Equal(70, profCheckJson.GetProperty("pendingCents").GetInt32());
+
+        var hhCheck = await client.GetAsync($"/api/households/{householdId}");
+        Assert.Equal(HttpStatusCode.OK, hhCheck.StatusCode);
+        var hhCheckJson = await hhCheck.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(7, hhCheckJson.GetProperty("pendingContainers").GetInt32());
+        Assert.Equal(70, hhCheckJson.GetProperty("pendingValueCents").GetInt32());
+
+        client.Dispose();
     }
 
     [Fact]

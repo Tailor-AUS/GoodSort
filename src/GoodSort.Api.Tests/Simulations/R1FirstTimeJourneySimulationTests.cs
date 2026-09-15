@@ -220,8 +220,8 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
         var confirmRes = await _client.PostAsJsonAsync("/api/scan/photo/confirm", new
         {
             scanToken,
-            lat = -27.4812,
-            lng = 153.0135
+            lat = -27.5342,
+            lng = 153.0286
         });
         Assert.Equal(HttpStatusCode.OK, confirmRes.StatusCode);
 
@@ -262,9 +262,9 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
         // ══════════════════════════════════════════════════════════════════════
         var lookupRes = await _client.PostAsJsonAsync("/api/households/lookup-bin-day", new
         {
-            lat = -27.4812,
-            lng = 153.0135,
-            address = "120 Vulture Street, West End QLD 4101"
+            lat = -27.5342,
+            lng = 153.0286,
+            address = "42 Hamilton Rd, Moorooka QLD 4105"
         });
         Assert.Equal(HttpStatusCode.OK, lookupRes.StatusCode);
 
@@ -279,11 +279,11 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
         var householdRes = await _client.PostAsJsonAsync("/api/households", new
         {
             name = "First Timer's Place",
-            address = "120 Vulture Street, West End QLD 4101",
-            suburb = "West End",
-            street = "Vulture Street",
-            lat = -27.4812,
-            lng = 153.0135,
+            address = "42 Hamilton Rd, Moorooka QLD 4105",
+            suburb = "Moorooka",
+            street = "Hamilton Rd",
+            lat = -27.5342,
+            lng = 153.0286,
             type = "residential",
             councilCollectionDay = 2,
             councilArea = "Brisbane City Council",
@@ -303,7 +303,7 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
         {
             // Household entity
             var household = await db.Households.SingleAsync(h => h.Id == householdId);
-            Assert.Equal("WEST END", household.Suburb);
+            Assert.Equal("MOOROOKA", household.Suburb);
             Assert.Equal("waitlisted", household.BinStatus);
             Assert.Equal(1, household.PendingContainers);
             Assert.Equal(10, household.PendingValueCents);
@@ -348,19 +348,173 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
         // ══════════════════════════════════════════════════════════════════════
         // EXPORT AUDIT ARTIFACTS
         // ══════════════════════════════════════════════════════════════════════
-        const string agentWorkingDir = @"C:\tailor_OS\GoodSort\.agents\teamwork_preview_worker_m1_1";
-        if (Directory.Exists(agentWorkingDir))
+        var targetDirs = new[]
         {
-            var networkLogsMd = ArtifactWriter.GenerateNetworkLogsMarkdown(_captureHandler.Log);
-            var dbVerificationMd = ArtifactWriter.GenerateDbVerificationMarkdown(snapshots);
+            @"C:\tailor_OS\GoodSort\.agents\teamwork_preview_worker_m1_1",
+            @"C:\tailor_OS\GoodSort\.agents\teamwork_preview_worker_m1_1_gen2"
+        };
+        foreach (var dir in targetDirs)
+        {
+            if (Directory.Exists(dir))
+            {
+                var networkLogsMd = ArtifactWriter.GenerateNetworkLogsMarkdown(_captureHandler.Log);
+                var dbVerificationMd = ArtifactWriter.GenerateDbVerificationMarkdown(snapshots);
 
-            await File.WriteAllTextAsync(Path.Combine(agentWorkingDir, "network_logs.md"), networkLogsMd);
-            await File.WriteAllTextAsync(Path.Combine(agentWorkingDir, "db_verification.md"), dbMarkdownVerification(snapshots));
+                await File.WriteAllTextAsync(Path.Combine(dir, "network_logs.md"), networkLogsMd);
+                await File.WriteAllTextAsync(Path.Combine(dir, "db_verification.md"), dbMarkdownVerification(snapshots));
+            }
         }
     }
 
     private static string dbMarkdownVerification(IReadOnlyList<StepDbSnapshot> snapshots) =>
         ArtifactWriter.GenerateDbVerificationMarkdown(snapshots);
+
+    [Fact]
+    public async Task R1_FirstTimeMobileResident_Moorooka_OrganicVisitor_FullSimulation()
+    {
+        // Persona: Maya (maya.moorooka@example.test)
+        // Scenario: Organic resident lands on Moorooka page (/brisbane/moorooka),
+        // takes container photo anonymously, completes OTP authentication,
+        // gets 10¢ double credit launch bonus, onboards Moorooka residential address,
+        // and verifies initial orphan scan is backfilled into the household bin.
+        const string email = "maya.moorooka@example.test";
+        const string moorookaAddress = "42 Hamilton Rd, Moorooka QLD 4105";
+        const double moorookaLat = -27.5342;
+        const double moorookaLng = 153.0286;
+        var testImageBase64 = TestImageHelper.CreateValidTestImageBase64(32, 32);
+
+        // Step 1: Anonymous photo capture (client stashes photo in sessionStorage: goodsort_pending_capture)
+        // Public /scan allows unauthenticated camera capture.
+        var pendingCapture = testImageBase64;
+        Assert.False(string.IsNullOrEmpty(pendingCapture));
+
+        // Step 2: Request OTP for email verification
+        var sendOtpRes = await _client.PostAsJsonAsync("/api/auth/send-otp", new { email });
+        Assert.Equal(HttpStatusCode.OK, sendOtpRes.StatusCode);
+        var devCode = (await sendOtpRes.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("devCode").GetString()!;
+
+        // Step 3: Verify OTP -> Receive 30-day JWT & provisioned profile
+        var verifyOtpRes = await _client.PostAsJsonAsync("/api/auth/verify-otp", new { email, code = devCode });
+        Assert.Equal(HttpStatusCode.OK, verifyOtpRes.StatusCode);
+        var verifyBody = await verifyOtpRes.Content.ReadFromJsonAsync<JsonElement>();
+        var token = verifyBody.GetProperty("token").GetString()!;
+        var profileId = verifyBody.GetProperty("profile").GetProperty("id").GetGuid();
+        Assert.NotEqual(Guid.Empty, profileId);
+
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        // Step 4: Rehydrate pending capture and submit to /api/scan/photo
+        var photoRes = await _client.PostAsJsonAsync("/api/scan/photo", new
+        {
+            image = $"data:image/jpeg;base64,{pendingCapture}",
+            binCode = (string?)null
+        });
+        Assert.Equal(HttpStatusCode.OK, photoRes.StatusCode);
+        var photoBody = await photoRes.Content.ReadFromJsonAsync<JsonElement>();
+        var scanToken = photoBody.GetProperty("scanToken").GetString()!;
+        Assert.False(string.IsNullOrEmpty(scanToken));
+
+        // Invariant: Preview quotes 10¢ double credit launch bonus (1st container)
+        Assert.Equal(10, photoBody.GetProperty("totalCents").GetInt32());
+        Assert.Equal(1, photoBody.GetProperty("totalItems").GetInt32());
+
+        // Zero DB scan writes occurred during preview
+        await _host.WithDbContextAsync(async db =>
+        {
+            Assert.Equal(0, await db.Scans.CountAsync(s => s.UserId == profileId));
+            var prof = await db.Profiles.FindAsync(profileId);
+            Assert.Equal(0, prof!.PendingCents);
+        });
+
+        // Step 5: Confirm deposit -> Creates orphan scan with HouseholdId = null & 10¢ credit
+        var confirmRes = await _client.PostAsJsonAsync("/api/scan/photo/confirm", new
+        {
+            scanToken,
+            lat = moorookaLat,
+            lng = moorookaLng
+        });
+        Assert.Equal(HttpStatusCode.OK, confirmRes.StatusCode);
+        var confirmBody = await confirmRes.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(10, confirmBody.GetProperty("totalCents").GetInt32());
+        Assert.True(confirmBody.GetProperty("bonusApplied").GetBoolean());
+
+        // Verify orphan scan state in DB
+        await _host.WithDbContextAsync(async db =>
+        {
+            var orphans = await db.Scans.Where(s => s.UserId == profileId && s.HouseholdId == null).ToListAsync();
+            Assert.Single(orphans);
+            Assert.Equal(10, orphans[0].RefundCents);
+            Assert.Equal("pending", orphans[0].Status);
+            Assert.Equal("aluminium", orphans[0].Material);
+
+            var prof = await db.Profiles.FindAsync(profileId);
+            Assert.Equal(10, prof!.PendingCents);
+            Assert.Equal(1, prof.TotalContainers);
+        });
+
+        // Step 6: Moorooka Street Address Onboarding & Bin Day Lookup
+        var binDayRes = await _client.PostAsJsonAsync("/api/households/lookup-bin-day", new
+        {
+            lat = moorookaLat,
+            lng = moorookaLng,
+            address = moorookaAddress
+        });
+        Assert.Equal(HttpStatusCode.OK, binDayRes.StatusCode);
+        var binDayBody = await binDayRes.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(binDayBody.GetProperty("found").GetBoolean());
+        Assert.Equal(2, binDayBody.GetProperty("dayOfWeek").GetInt32()); // Tuesday = 2
+
+        // Step 7: Create Moorooka Household & Verify Orphan Scan Backfill
+        var hhRes = await _client.PostAsJsonAsync("/api/households", new
+        {
+            name = "Maya's Moorooka Cottage",
+            address = moorookaAddress,
+            suburb = "MOOROOKA",
+            street = "Hamilton Rd",
+            lat = moorookaLat,
+            lng = moorookaLng,
+            type = "residential",
+            councilCollectionDay = 2,
+            councilArea = "Brisbane City Council",
+            accessConsent = true
+        });
+        Assert.Equal(HttpStatusCode.Created, hhRes.StatusCode);
+        var hhBody = await hhRes.Content.ReadFromJsonAsync<JsonElement>();
+        var householdId = hhBody.GetProperty("id").GetGuid();
+
+        // Step 8: Assert Critical Backfill & Bin Invariants
+        await _host.WithDbContextAsync(async db =>
+        {
+            // Household created with waitlisted status and backfilled volumes
+            var hh = await db.Households.FindAsync(householdId);
+            Assert.NotNull(hh);
+            Assert.Equal("MOOROOKA", hh.Suburb);
+            Assert.Equal("waitlisted", hh.BinStatus);
+            Assert.Equal(1, hh.PendingContainers);
+            Assert.Equal(10, hh.PendingValueCents);
+            Assert.Equal(1, hh.Materials.Aluminium);
+
+            // Placeholder bin created with GS-H prefix and mirrored counters
+            var bin = await db.Bins.FirstOrDefaultAsync(b => b.HouseholdId == householdId);
+            Assert.NotNull(bin);
+            Assert.StartsWith("GS-H", bin.Code);
+            Assert.Equal(1, bin.PendingContainers);
+
+            // Orphan scan backfill: strictly 0 orphan scans remain!
+            var remainingOrphans = await db.Scans.CountAsync(s => s.UserId == profileId && s.HouseholdId == null);
+            Assert.Equal(0, remainingOrphans);
+
+            // Scan now cleanly points to householdId
+            var attachedScan = await db.Scans.SingleAsync(s => s.UserId == profileId);
+            Assert.Equal(householdId, attachedScan.HouseholdId);
+
+            // Profile updated to point to household
+            var prof = await db.Profiles.FindAsync(profileId);
+            Assert.Equal(householdId, prof!.HouseholdId);
+            Assert.Equal(10, prof.PendingCents);
+            Assert.Equal(1, prof.TotalContainers);
+        });
+    }
 
     [Fact]
     public async Task ScanToken_CannotBeRedeemedTwice_ReturnsBadRequest()

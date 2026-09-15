@@ -667,7 +667,199 @@ public class R3EdgeCaseSimulationTests : IDisposable
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // 7. COMPREHENSIVE ARTIFACT EXPORTER FOR MILESTONES 2 & 3
+    // 7. IOS SAFARI TAB EVICTION DURING OTP RETRIEVAL SIMULATION
+    // ══════════════════════════════════════════════════════════════════════════
+    [Fact]
+    public async Task R3_IOSSafari_TabEviction_SessionStorage_Restoration_And_Deposit_Simulation()
+    {
+        // Persona: Leo on iOS Mobile Safari.
+        // Scenario:
+        // 1. Leo takes a photo at /scan anonymously.
+        // 2. Client compresses photo and persists base64 to sessionStorage: goodsort_pending_capture.
+        // 3. Leo enters email (leo.safari@example.test) -> POST /api/auth/send-otp.
+        // 4. Client saves email to sessionStorage: goodsort_pending_email.
+        // 5. Leo switches to Apple Mail to retrieve the 6-digit OTP.
+        // 6. Memory pressure on iOS Safari causes the background tab to be evicted/discarded from RAM.
+        // 7. Leo returns to Safari. The page reloads from scratch.
+        // 8. Rehydration logic restores email and photo from sessionStorage, setting step = "verify".
+        // 9. Leo verifies OTP with restored email and code.
+        // 10. Once authenticated, the restored capture is automatically analyzed and confirmed.
+        // 11. Assert database state: 0 photo loss, 0 credit loss, exactly 1 scan and 10¢ credit!
+        const string email = "leo.safari@example.test";
+        var photoBase64 = CreateDistinctTestImage(5);
+
+        // Simulated sessionStorage map
+        var simulatedSessionStorage = new Dictionary<string, string>();
+
+        // Step 1 & 2: Anonymous capture stashed into sessionStorage
+        simulatedSessionStorage["goodsort_pending_capture"] = photoBase64;
+
+        // Step 3 & 4: OTP requested and email stashed into sessionStorage
+        var sendOtpRes = await _client.PostAsJsonAsync("/api/auth/send-otp", new { email });
+        Assert.Equal(HttpStatusCode.OK, sendOtpRes.StatusCode);
+        var devCode = (await sendOtpRes.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("devCode").GetString()!;
+        simulatedSessionStorage["goodsort_pending_email"] = email;
+
+        // Step 5 & 6: TAB EVICTION OCCURS.
+        // In-memory component state is wiped. A fresh client/session is mounted on page reload.
+        var reloadedClient = _host.CreateCapturedClient(new NetworkCaptureHandler());
+
+        // Step 7 & 8: Rehydration on mount from sessionStorage
+        var restoredCapture = simulatedSessionStorage.GetValueOrDefault("goodsort_pending_capture");
+        var restoredEmail = simulatedSessionStorage.GetValueOrDefault("goodsort_pending_email");
+        Assert.NotNull(restoredCapture);
+        Assert.NotNull(restoredEmail);
+        Assert.Equal(email, restoredEmail);
+
+        // Step 9: Verify OTP using restored email
+        var verifyRes = await reloadedClient.PostAsJsonAsync("/api/auth/verify-otp", new { email = restoredEmail, code = devCode });
+        Assert.Equal(HttpStatusCode.OK, verifyRes.StatusCode);
+        var verifyJson = await verifyRes.Content.ReadFromJsonAsync<JsonElement>();
+        var token = verifyJson.GetProperty("token").GetString()!;
+        var profileId = verifyJson.GetProperty("profile").GetProperty("id").GetGuid();
+
+        // Successful auth clears pending email
+        simulatedSessionStorage.Remove("goodsort_pending_email");
+        reloadedClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        // Step 10: Restored capture is automatically processed through /api/scan/photo
+        var photoRes = await reloadedClient.PostAsJsonAsync("/api/scan/photo", new { image = restoredCapture });
+        Assert.Equal(HttpStatusCode.OK, photoRes.StatusCode);
+        var photoJson = await photoRes.Content.ReadFromJsonAsync<JsonElement>();
+        var scanToken = photoJson.GetProperty("scanToken").GetString()!;
+        Assert.Equal(10, photoJson.GetProperty("totalCents").GetInt32());
+
+        // Confirm deposit
+        var confirmRes = await reloadedClient.PostAsJsonAsync("/api/scan/photo/confirm", new
+        {
+            scanToken,
+            lat = MoorookaLat,
+            lng = MoorookaLng
+        });
+        Assert.Equal(HttpStatusCode.OK, confirmRes.StatusCode);
+
+        // Successfully confirmed -> clear pending capture
+        simulatedSessionStorage.Remove("goodsort_pending_capture");
+        Assert.Empty(simulatedSessionStorage);
+
+        // Step 11: Assert database truth
+        await _host.WithDbContextAsync(async db =>
+        {
+            var scans = await db.Scans.Where(s => s.UserId == profileId).ToListAsync();
+            Assert.Single(scans);
+            Assert.Equal(10, scans[0].RefundCents);
+            Assert.Null(scans[0].HouseholdId); // Initial orphan scan before address onboarding
+
+            var prof = await db.Profiles.FindAsync(profileId);
+            Assert.NotNull(prof);
+            Assert.Equal(10, prof.PendingCents);
+            Assert.Equal(1, prof.TotalContainers);
+        });
+
+        reloadedClient.Dispose();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // 8. 401 SESSION EXPIRATION & CLEAN RE-AUTH (BREAKING THE RETAKE LOOP)
+    // ══════════════════════════════════════════════════════════════════════════
+    [Fact]
+    public async Task R3_SessionExpiration_401_CleanReAuth_WithoutInfiniteRetakeLoop_Simulation()
+    {
+        // Persona: Maya on /scan
+        // Scenario:
+        // 1. User has an expired or invalidated JWT token in client storage.
+        // 2. User captures a container photo and submits to /api/scan/photo or /confirm.
+        // 3. API returns 401 Unauthorized.
+        // 4. Client handles 401 cleanly: invokes clearAuth() and stashes photo in sessionStorage.
+        // 5. Client routes to inline OTP auth without forcing camera reset or infinite retake loop.
+        // 6. User re-authenticates via OTP, receiving fresh 30-day JWT.
+        // 7. Preserved photo is automatically submitted with fresh token and confirmed.
+        // 8. Verify deposit completes successfully with zero credit loss.
+        const string email = "maya.reauth@example.test";
+        var expiredUserId = Guid.NewGuid();
+        var photoBase64 = CreateDistinctTestImage(6);
+
+        // Seed existing profile for Maya
+        await _host.WithDbContextAsync(async db =>
+        {
+            db.Profiles.Add(new Profile
+            {
+                Id = expiredUserId,
+                Email = email,
+                Name = "Maya Reauth",
+                Role = "sorter",
+                PendingCents = 0,
+                TotalContainers = 0
+            });
+            await db.SaveChangesAsync();
+        });
+
+        // Create expired JWT (2 hours in past)
+        var expiredJwt = CreateJwt(expiredUserId, email, "Maya Reauth", expires: DateTime.UtcNow.AddHours(-2));
+        var client = _host.CreateCapturedClient(new NetworkCaptureHandler());
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", expiredJwt);
+
+        // Step 1 & 2: Submit photo with expired token -> 401 Unauthorized
+        var failedPhotoRes = await client.PostAsJsonAsync("/api/scan/photo", new { image = photoBase64 });
+        Assert.Equal(HttpStatusCode.Unauthorized, failedPhotoRes.StatusCode);
+
+        // Step 3 & 4: Client-side 401 recovery logic:
+        // - Invokes clearAuth(): client removes stale Authorization header
+        // - Stashes captured photo: sessionStorage.setItem("goodsort_pending_capture", photoBase64)
+        client.DefaultRequestHeaders.Authorization = null;
+        var pendingCapture = photoBase64;
+
+        // Step 5: Inline OTP re-authentication triggered
+        var sendOtpRes = await client.PostAsJsonAsync("/api/auth/send-otp", new { email });
+        Assert.Equal(HttpStatusCode.OK, sendOtpRes.StatusCode);
+        var devCode = (await sendOtpRes.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("devCode").GetString()!;
+
+        var verifyOtpRes = await client.PostAsJsonAsync("/api/auth/verify-otp", new { email, code = devCode });
+        Assert.Equal(HttpStatusCode.OK, verifyOtpRes.StatusCode);
+        var verifyJson = await verifyOtpRes.Content.ReadFromJsonAsync<JsonElement>();
+        var freshToken = verifyJson.GetProperty("token").GetString()!;
+        var resolvedProfileId = verifyJson.GetProperty("profile").GetProperty("id").GetGuid();
+
+        // Resolves to existing profile
+        Assert.Equal(expiredUserId, resolvedProfileId);
+
+        // Step 6: Client updates Authorization header with fresh token
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", freshToken);
+
+        // Step 7: Preserved pending photo is automatically re-submitted
+        var successPhotoRes = await client.PostAsJsonAsync("/api/scan/photo", new { image = pendingCapture });
+        Assert.Equal(HttpStatusCode.OK, successPhotoRes.StatusCode);
+        var successPhotoJson = await successPhotoRes.Content.ReadFromJsonAsync<JsonElement>();
+        var scanToken = successPhotoJson.GetProperty("scanToken").GetString()!;
+        Assert.False(string.IsNullOrEmpty(scanToken));
+
+        // Step 8: Confirm deposit with fresh token
+        var confirmRes = await client.PostAsJsonAsync("/api/scan/photo/confirm", new
+        {
+            scanToken,
+            lat = MoorookaLat,
+            lng = MoorookaLng
+        });
+        Assert.Equal(HttpStatusCode.OK, confirmRes.StatusCode);
+
+        // Step 9: Invariant Verification in DB
+        await _host.WithDbContextAsync(async db =>
+        {
+            var scans = await db.Scans.Where(s => s.UserId == expiredUserId).ToListAsync();
+            Assert.Single(scans);
+            Assert.Equal(10, scans[0].RefundCents);
+
+            var prof = await db.Profiles.FindAsync(expiredUserId);
+            Assert.NotNull(prof);
+            Assert.Equal(10, prof.PendingCents);
+            Assert.Equal(1, prof.TotalContainers);
+        });
+
+        client.Dispose();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // 9. COMPREHENSIVE ARTIFACT EXPORTER FOR MILESTONES 2 & 3
     // ══════════════════════════════════════════════════════════════════════════
     [Fact]
     public async Task ExportAuditArtifacts_R2_R3_EndToEndCoverage()
@@ -886,13 +1078,20 @@ public class R3EdgeCaseSimulationTests : IDisposable
         snapshots.Add(await SnapAsync("Step 16", "Mal Identical Photo Hash Replay within 24h (400 Bad Request)", "mal.audit@example.test", malId));
 
         // Export markdown files
-        var outputDir = @"C:\tailor_OS\GoodSort\.agents\teamwork_preview_worker_m2_1";
-        if (Directory.Exists(outputDir))
+        var targetDirs = new[]
         {
-            var netMd = GenerateNetworkLogsMarkdown(capture.Log);
-            var dbMd = GenerateDbVerificationMarkdown(snapshots);
-            await File.WriteAllTextAsync(Path.Combine(outputDir, "network_logs_r2_r3.md"), netMd, Encoding.UTF8);
-            await File.WriteAllTextAsync(Path.Combine(outputDir, "db_verification_r2_r3.md"), dbMd, Encoding.UTF8);
+            @"C:\tailor_OS\GoodSort\.agents\teamwork_preview_worker_m2_1",
+            @"C:\tailor_OS\GoodSort\.agents\teamwork_preview_worker_m1_1_gen2"
+        };
+        foreach (var outputDir in targetDirs)
+        {
+            if (Directory.Exists(outputDir))
+            {
+                var netMd = GenerateNetworkLogsMarkdown(capture.Log);
+                var dbMd = GenerateDbVerificationMarkdown(snapshots);
+                await File.WriteAllTextAsync(Path.Combine(outputDir, "network_logs_r2_r3.md"), netMd, Encoding.UTF8);
+                await File.WriteAllTextAsync(Path.Combine(outputDir, "db_verification_r2_r3.md"), dbMd, Encoding.UTF8);
+            }
         }
     }
 
