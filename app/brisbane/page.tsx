@@ -19,7 +19,10 @@ export default function BrisbaneIndexPage() {
       <div className="mb-8"><Logo size="sm" /></div>
       <h1 className="text-3xl font-display font-extrabold text-slate-900 mb-3">Brisbane suburbs</h1>
       <p className="text-[14px] text-slate-500 mb-8">
-        Anyone in a Brisbane City Council suburb can start scanning today. A volume run unlocks when there are enough containers for one driver trip. Inner south is first because the depots are there.
+        Anyone in a Brisbane City Council suburb can start scanning today. A volume run unlocks when there are enough containers for one driver trip. Inner south is first because the depots are there.{" "}
+        <Link href="/guides/containers-for-change-brisbane" className="text-green-700 font-semibold">
+          How this fits Containers for Change.
+        </Link>
       </p>
       <DensityBoard />
       <h2 className="text-[12px] uppercase tracking-wider text-slate-400 font-semibold mb-3">Inner south first</h2>

@@ -3,6 +3,7 @@ import { BRISBANE_SUBURBS } from "@/lib/brisbane";
 import { absoluteUrl, SOCIAL_IMAGE } from "./seo";
 
 const lastModified = "2026-08-25";
+const guideModified = "2026-09-22";
 
 export const dynamic = "force-static";
 
@@ -20,6 +21,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified,
       changeFrequency: "weekly",
       priority: 0.8,
+    },
+    {
+      url: absoluteUrl("/guides/containers-for-change-brisbane"),
+      lastModified: guideModified,
+      changeFrequency: "weekly",
+      priority: 0.9,
     },
     ...BRISBANE_SUBURBS.map((s) => ({
       url: absoluteUrl(`/brisbane/${s.slug}`),

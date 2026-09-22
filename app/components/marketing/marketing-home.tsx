@@ -351,6 +351,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
         </p>
         <div className="flex justify-center gap-4 mt-2">
           <a href="/brisbane" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">Brisbane suburbs</a>
+          <a href="/guides/containers-for-change-brisbane" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">Containers for Change</a>
           <a href="/terms" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">Terms</a>
           <a href="/privacy" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">Privacy</a>
         </div>
