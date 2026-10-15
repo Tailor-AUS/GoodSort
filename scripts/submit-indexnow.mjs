@@ -9,6 +9,7 @@ const urlList = [
   `https://${host}/brisbane`,
   `https://${host}/scan`,
   `https://${host}/start`,
+  `https://${host}/sort`,
   ...BRISBANE_SUBURBS.map((s) => `https://${host}/brisbane/${s.slug}`),
 ];
 
@@ -23,6 +24,8 @@ const body = {
 
 async function submit() {
   const endpoints = [
+    "https://yandex.com/indexnow",
+    "https://search.seznam.cz/indexnow",
     "https://api.indexnow.org/indexnow",
     "https://www.bing.com/indexnow",
   ];
