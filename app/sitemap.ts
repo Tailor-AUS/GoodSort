@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 import { BRISBANE_SUBURBS } from "@/lib/brisbane";
 import { absoluteUrl, SOCIAL_IMAGE } from "./seo";
 
-const lastModified = "2026-08-25";
+const lastModified = "2026-09-15";
 
 export const dynamic = "force-static";
 

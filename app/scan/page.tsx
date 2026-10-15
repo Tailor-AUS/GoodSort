@@ -53,6 +53,9 @@ function ScanPageContent() {
   const [results, setResults] = useState<IdentifiedItem[]>([]);
   const [aiMessage, setAiMessage] = useState("");
   const [totalItems, setTotalItems] = useState(0);
+  const [quotedCents, setQuotedCents] = useState<number | null>(null);
+  const [confirmedCents, setConfirmedCents] = useState<number | null>(null);
+  const [hasHousehold, setHasHousehold] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   // Signed token committing to the vision result — /confirm reads the items
   // out of this server-side, so the client can't fabricate eligible counts.
@@ -70,6 +73,10 @@ function ScanPageContent() {
   // ── Init ──
   useEffect(() => {
     persistWaitlistFromUrl();
+    try {
+      const p = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
+      setHasHousehold(Boolean(p?.householdId));
+    } catch { /* ignore */ }
     if (binCode) {
       fetch(apiUrl(`/api/bins/code/${binCode}`))
         .then((r) => { if (!r.ok) throw new Error(); return r.json(); })
@@ -149,6 +156,7 @@ function ScanPageContent() {
       track("otp_verified");
       localStorage.setItem("goodsort_token", data.token);
       localStorage.setItem("goodsort_profile", JSON.stringify(data.profile));
+      setHasHousehold(Boolean(data.profile?.householdId));
       document.cookie = `goodsort_token=${data.token}; path=/; max-age=${30*24*60*60}; SameSite=Lax; Secure`;
       try {
         sessionStorage.removeItem(PENDING_EMAIL_KEY);
@@ -341,12 +349,14 @@ function ScanPageContent() {
       setResults(data.containers || []);
       setAiMessage(data.message || "");
       setScanToken(data.scanToken || null);
+      setQuotedCents(typeof data.totalCents === "number" ? data.totalCents : null);
       try {
         sessionStorage.removeItem(PENDING_CAPTURE_KEY);
         sessionStorage.removeItem(PENDING_EMAIL_KEY);
       } catch { /* ignore */ }
     } catch {
       setResults([]);
+      setQuotedCents(null);
       setApiError(true);
     }
     setStep("results");
@@ -395,6 +405,8 @@ function ScanPageContent() {
         setStep("results");
         return;
       }
+      const data = await res.json().catch(() => ({} as { totalCents?: number }));
+      setConfirmedCents(typeof data.totalCents === "number" ? data.totalCents : quotedCents);
       trackScanCredited();
       setStep("done");
     } catch {
@@ -406,6 +418,8 @@ function ScanPageContent() {
 
   function retake() {
     setResults([]);
+    setQuotedCents(null);
+    setConfirmedCents(null);
     setApiError(false);
     setCameraReady(false);
     setStep("camera");
@@ -481,38 +495,55 @@ function ScanPageContent() {
   );
 
   // Done
-  if (step === "done") return (
-    <Center>
-      <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
-        <Check className="w-8 h-8 text-green-600" />
-      </div>
-      {totalItems > 0 && (
-        <p className="text-3xl font-display font-extrabold text-green-600 mb-2 animate-ka-ching">+{totalItems * 5}c</p>
-      )}
-      <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">
-        {totalItems > 0 ? "Estimate logged" : "Done"}
-      </h1>
-      <p className="text-slate-500 text-[13px] mb-4">{totalItems} container{totalItems !== 1 ? "s" : ""} noted{bin ? ` at ${bin.name}` : ""}. Pending 5¢ clears after we collect and a refund point verifies.</p>
-
-      {totalItems > 0 && (
-        <div className="bg-green-50 rounded-2xl p-4 border border-green-200 mb-4 text-left">
-          <p className="text-[12px] font-bold text-green-800 mb-2">How this works:</p>
-          <div className="space-y-1.5 text-[12px] text-green-700">
-            <p>1. Scan eligible containers — 5¢ pending each</p>
-            <p>2. Sort into your bags at home</p>
-            <p>3. Suburb volume unlocks a driver trip to the refund point</p>
-            <p>4. Bag out when we collect. Bank transfer from $20 once payouts are live</p>
-          </div>
+  if (step === "done") {
+    const earnedCents = confirmedCents ?? quotedCents ?? totalItems * 5;
+    return (
+      <Center>
+        <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
+          <Check className="w-8 h-8 text-green-600" />
         </div>
-      )}
+        {totalItems > 0 && (
+          <p className="text-3xl font-display font-extrabold text-green-600 mb-2 animate-ka-ching">+{earnedCents}c</p>
+        )}
+        <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">
+          {totalItems > 0 ? "Estimate logged" : "Done"}
+        </h1>
+        <p className="text-slate-500 text-[13px] mb-4">{totalItems} container{totalItems !== 1 ? "s" : ""} noted{bin ? ` at ${bin.name}` : ""}. Pending credit clears after we collect and a refund point verifies.</p>
 
-      <GreenButton onClick={retake}>Scan another container</GreenButton>
-      <button onClick={() => { window.location.href = "/sort"; }}
-        className="w-full mt-2 py-3 text-slate-400 font-medium text-[13px] hover:text-slate-600 transition-colors">
-        Back to sort
-      </button>
-    </Center>
-  );
+        {!hasHousehold && !binCode && (
+          <a
+            href="/onboard"
+            className="block w-full bg-violet-50 border border-violet-200 rounded-2xl p-4 mb-4 text-left hover:border-violet-400 transition-colors"
+          >
+            <p className="text-[13px] font-display font-extrabold text-violet-900">
+              Add your suburb so this scan counts →
+            </p>
+            <p className="text-[12px] text-violet-800/80 mt-0.5">
+              Your credit is saved, but we need your suburb and recycling day to count your containers toward a 1,000-container driver run.
+            </p>
+          </a>
+        )}
+
+        {totalItems > 0 && (
+          <div className="bg-green-50 rounded-2xl p-4 border border-green-200 mb-4 text-left">
+            <p className="text-[12px] font-bold text-green-800 mb-2">How this works:</p>
+            <div className="space-y-1.5 text-[12px] text-green-700">
+              <p>1. Scan eligible containers — 10¢ on your first 20, then 5¢ each</p>
+              <p>2. Sort into your bags at home</p>
+              <p>3. Suburb volume unlocks a driver trip to the refund point</p>
+              <p>4. Bag out when we collect. Bank transfer from $20 once payouts are live</p>
+            </div>
+          </div>
+        )}
+
+        <GreenButton onClick={retake}>Scan another container</GreenButton>
+        <button onClick={() => { window.location.href = "/sort"; }}
+          className="w-full mt-2 py-3 text-slate-400 font-medium text-[13px] hover:text-slate-600 transition-colors">
+          Back to sort
+        </button>
+      </Center>
+    );
+  }
 
   // Analyzing — show captured image with scan effect
   if (step === "analyzing") return (
@@ -556,6 +587,8 @@ function ScanPageContent() {
   if (step === "results") {
     const eligible = results.filter((r) => r.eligible);
     const total = eligible.reduce((s, r) => s + r.count, 0);
+    const displayCents = quotedCents ?? total * 5;
+    const isBonusRate = total > 0 && displayCents > total * 5;
 
     return (
       <div className="fixed inset-0 bg-white flex flex-col z-50" style={{ paddingTop: "env(safe-area-inset-top,0)", paddingBottom: "env(safe-area-inset-bottom,0)" }}>
@@ -585,7 +618,7 @@ function ScanPageContent() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[14px] text-slate-900 font-semibold">{item.name}</p>
-                    <p className="text-[12px] text-slate-500">5c each &middot; sort into your own bags today</p>
+                    <p className="text-[12px] text-slate-500">{isBonusRate ? "10c launch bonus" : "5c each"} &middot; sort into your own bags today</p>
                   </div>
                   <span className="text-[15px] font-display font-extrabold text-slate-900">&times;{item.count}</span>
                 </div>
@@ -611,7 +644,7 @@ function ScanPageContent() {
               <button onClick={confirm}
                 className="flex-[2] bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20 flex items-center justify-center gap-2 min-h-[48px]"
                 style={{ touchAction: "manipulation" }}>
-                <Check className="w-5 h-5" /> Done &middot; +{total * 5}c
+                <Check className="w-5 h-5" /> Done &middot; +{displayCents}c
               </button>
             ) : (
               <button onClick={() => window.location.href = "/sort"}
