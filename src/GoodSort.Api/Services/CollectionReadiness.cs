@@ -64,10 +64,10 @@ public static class CollectionReadiness
             return new SuburbReadinessDto(OpsCommitted, aluminium, config.AluminiumThreshold, 0);
         if (!config.Configured || config.AluminiumThreshold is not int threshold)
             return new SuburbReadinessDto(PendingOperatorConfiguration, aluminium, null, null);
+        if (materialCompositionUnknown)
+            return new SuburbReadinessDto(PendingMaterialReconciliation, aluminium, threshold, Math.Max(0, threshold - aluminium));
         if (aluminium >= threshold)
             return new SuburbReadinessDto(VolumeReachedAwaitingOps, aluminium, threshold, 0);
-        if (materialCompositionUnknown)
-            return new SuburbReadinessDto(PendingMaterialReconciliation, aluminium, threshold, threshold - aluminium);
         return new SuburbReadinessDto(Accumulating, aluminium, threshold, threshold - aluminium);
     }
 }

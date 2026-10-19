@@ -238,7 +238,8 @@ public static class WaitlistDensity
                     best?.DayName,
                     byDay,
                     aluminium,
-                    suburbReadiness);
+                    suburbReadiness,
+                    compositionUnknown);
             })
             .OrderByDescending(s => s.Live)
             .ThenByDescending(s => s.AluminiumContainers)
@@ -310,7 +311,9 @@ public record GrowthSuburbDto(
     /// <summary>Pending eligible aluminium containers scanned in the suburb.</summary>
     int AluminiumContainers = 0,
     /// <summary>Honest collection readiness; see CollectionReadiness.</summary>
-    SuburbReadinessDto? Readiness = null);
+    SuburbReadinessDto? Readiness = null,
+    /// <summary>True when any counted household in the suburb has an unreconciled partial-pickup material balance.</summary>
+    bool MaterialCompositionUnknown = false);
 
 public record GrowthResponse(
     int LiveThreshold,

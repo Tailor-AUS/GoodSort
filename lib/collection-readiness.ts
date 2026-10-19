@@ -63,7 +63,7 @@ export function normaliseReadiness(raw: unknown, aluminiumFallback = 0): SuburbR
   }
   if (rawStatus === "pending_material_reconciliation") {
     return {
-      status: alu >= threshold ? "aluminium_volume_reached_awaiting_ops" : "pending_material_reconciliation",
+      status: "pending_material_reconciliation",
       aluminiumContainers: alu,
       aluminiumThreshold: threshold,
       aluminiumNeeded: Math.max(0, threshold - alu),

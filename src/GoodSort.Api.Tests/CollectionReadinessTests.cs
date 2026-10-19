@@ -678,6 +678,102 @@ public class CollectionReadinessTests
         Assert.Equal(HttpStatusCode.BadRequest, allocateRes.StatusCode);
     }
 
+    [Fact]
+    public async Task R2_Mixed_suburb_where_verified_households_meet_threshold_plus_unreconciled_household_blocks_public_live_admin_waitlist_and_allocate()
+    {
+        using var host = new FixtureHost(); // threshold = 3
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
+
+        var admin = new GoodSort.Api.Data.Entities.Profile
+        {
+            Id = Guid.NewGuid(),
+            Email = "admin-r2-mixed@example.test",
+            Role = "admin",
+        };
+        db.Profiles.Add(admin);
+
+        var staleHouse = new GoodSort.Api.Data.Entities.Household
+        {
+            Id = Guid.NewGuid(),
+            Name = "Unreconciled House 1",
+            Suburb = "MOOROOKA",
+            Street = "HAMILTON RD",
+            Type = "residential",
+            CouncilCollectionDay = 2,
+            BinStatus = BinStatuses.Waitlisted,
+            PendingContainers = 5,
+            Materials = new GoodSort.Api.Data.Entities.MaterialBreakdown { Aluminium = 5, Pet = 5 },
+        };
+        var cleanHouse2 = new GoodSort.Api.Data.Entities.Household
+        {
+            Id = Guid.NewGuid(),
+            Name = "Verified House 2",
+            Suburb = "MOOROOKA",
+            Street = "HAMILTON RD",
+            Type = "residential",
+            CouncilCollectionDay = 2,
+            BinStatus = BinStatuses.Waitlisted,
+            PendingContainers = 3,
+            Materials = new GoodSort.Api.Data.Entities.MaterialBreakdown { Aluminium = 3 },
+        };
+        var cleanHouse3 = new GoodSort.Api.Data.Entities.Household
+        {
+            Id = Guid.NewGuid(),
+            Name = "Verified House 3",
+            Suburb = "MOOROOKA",
+            Street = "HAMILTON RD",
+            Type = "residential",
+            CouncilCollectionDay = 2,
+            BinStatus = BinStatuses.Waitlisted,
+            PendingContainers = 2,
+            Materials = new GoodSort.Api.Data.Entities.MaterialBreakdown { Aluminium = 2 },
+        };
+
+        db.Households.AddRange(staleHouse, cleanHouse2, cleanHouse3);
+        await db.SaveChangesAsync();
+
+        // Verified aluminium from Houses 2 & 3 = 5 >= threshold (3), and 3 eligible households exist.
+        // Because House 1 has unreconciled material composition, public live, admin readyToOrder, and allocate must ALL fail closed.
+        var (_, publicSuburb) = await Board(host, "MOOROOKA");
+        Assert.Equal(5, publicSuburb.GetProperty("aluminiumContainers").GetInt32());
+        Assert.False(publicSuburb.GetProperty("live").GetBoolean());
+        Assert.True(publicSuburb.GetProperty("materialCompositionUnknown").GetBoolean());
+        Assert.Equal(
+            CollectionReadiness.PendingMaterialReconciliation,
+            publicSuburb.GetProperty("readiness").GetProperty("status").GetString());
+
+        var authSvc = scope.ServiceProvider.GetRequiredService<AuthService>();
+        var client = host.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", authSvc.GenerateJwt(admin));
+
+        var adminWaitlistRes = await client.GetAsync("/api/admin/waitlist");
+        Assert.Equal(HttpStatusCode.OK, adminWaitlistRes.StatusCode);
+        var adminWaitlistJson = await adminWaitlistRes.Content.ReadFromJsonAsync<JsonElement>();
+        var adminSuburb = adminWaitlistJson.GetProperty("suburbs").EnumerateArray()
+            .Single(s => s.GetProperty("suburb").GetString() == "MOOROOKA");
+        Assert.Equal(5, adminSuburb.GetProperty("aluminiumContainers").GetInt32());
+        Assert.False(adminSuburb.GetProperty("readyToOrder").GetBoolean());
+        Assert.True(adminSuburb.GetProperty("materialCompositionUnknown").GetBoolean());
+
+        var allocateRes = await client.PostAsync("/api/admin/areas/MOOROOKA/allocate", null);
+        Assert.Equal(HttpStatusCode.BadRequest, allocateRes.StatusCode);
+        var allocateErr = (await allocateRes.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString();
+        Assert.Contains("unreconciled", allocateErr, StringComparison.OrdinalIgnoreCase);
+
+        // Partly committed suburb case: even if one household already has BinStatus = Allocated (so Readiness.Status is ops_committed),
+        // the aggregated MaterialCompositionUnknown flag remains true and blocks allocating remaining waitlisted households.
+        cleanHouse2.BinStatus = BinStatuses.Allocated;
+        await db.SaveChangesAsync();
+
+        var (_, committedSuburb) = await Board(host, "MOOROOKA");
+        Assert.Equal(CollectionReadiness.OpsCommitted, committedSuburb.GetProperty("readiness").GetProperty("status").GetString());
+        Assert.True(committedSuburb.GetProperty("materialCompositionUnknown").GetBoolean());
+
+        var allocatePartlyCommittedRes = await client.PostAsync("/api/admin/areas/MOOROOKA/allocate", null);
+        Assert.Equal(HttpStatusCode.BadRequest, allocatePartlyCommittedRes.StatusCode);
+    }
+
     // ── R3: Exact Aukus URI parser, documented path allowlist, redirect rejection, and disabled capabilities ──
 
     [Theory]

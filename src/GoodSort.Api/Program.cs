@@ -1969,7 +1969,7 @@ app.MapPost("/api/admin/areas/{suburb}/allocate", async (string suburb, int? day
     var containers = suburbCluster?.Containers ?? 0;
     var aluminiumContainers = suburbCluster?.AluminiumContainers ?? 0;
     var households = suburbCluster?.Households ?? 0;
-    var compositionUnknown = suburbCluster?.Readiness?.Status == CollectionReadiness.PendingMaterialReconciliation;
+    var compositionUnknown = suburbCluster?.MaterialCompositionUnknown ?? false;
     if (compositionUnknown)
         return Results.BadRequest(new { error = $"Suburb {key} has unreconciled partial-pickup material balances and cannot be allocated until reconciled." });
     if (!WaitlistDensity.CanPurchase(aluminiumContainers, readinessCfg, compositionUnknown))
