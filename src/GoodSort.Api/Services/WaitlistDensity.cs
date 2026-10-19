@@ -24,9 +24,9 @@ public static class WaitlistDensity
     public static async Task<List<HouseholdClusterRow>> LoadRowsAsync(GoodSortDbContext db, CancellationToken ct = default)
     {
         var raw = await db.Households.AsNoTracking()
-            .Select(h => new { h.Suburb, h.CouncilCollectionDay, h.Type, h.PendingContainers, h.BinStatus })
+            .Select(h => new { h.Suburb, h.CouncilCollectionDay, h.Type, h.PendingContainers, h.BinStatus, Aluminium = h.Materials.Aluminium })
             .ToListAsync(ct);
-        return raw.ConvertAll(r => new HouseholdClusterRow(r.Suburb, r.CouncilCollectionDay, r.Type, r.PendingContainers, r.BinStatus));
+        return raw.ConvertAll(r => new HouseholdClusterRow(r.Suburb, r.CouncilCollectionDay, r.Type, r.PendingContainers, r.BinStatus, r.Aluminium));
     }
 
     /// <summary>
@@ -110,8 +110,12 @@ public static class WaitlistDensity
         return suburbContainers - Math.Max(0, householdContainers) < LiveThreshold;
     }
 
-    public static GrowthResponse Aggregate(IEnumerable<HouseholdClusterRow> rows, int launchBonusContainers = 0)
+    public static GrowthResponse Aggregate(
+        IEnumerable<HouseholdClusterRow> rows,
+        int launchBonusContainers = 0,
+        CollectionReadinessConfig? readinessConfig = null)
     {
+        var readiness = readinessConfig ?? CollectionReadinessConfig.Pending;
         var materialised = rows as IReadOnlyCollection<HouseholdClusterRow> ?? rows.ToList();
         var incomplete = materialised.Count(r => IsIncompleteResidential(r.Type, r.Suburb));
 
@@ -122,7 +126,10 @@ public static class WaitlistDensity
                 r.CouncilCollectionDay,
                 "residential",
                 Math.Max(0, r.PendingContainers),
-                r.BinStatus))
+                r.BinStatus,
+                // Aluminium is a subset of pending containers; clamp so a
+                // stale material tally can never exceed the credit ledger.
+                Math.Clamp(r.AluminiumContainers, 0, Math.Max(0, r.PendingContainers))))
             .ToList();
 
         var suburbs = counted
@@ -131,6 +138,7 @@ public static class WaitlistDensity
             {
                 var households = g.Count();
                 var containers = g.Sum(x => x.PendingContainers);
+                var aluminium = g.Sum(x => x.AluminiumContainers);
                 // Once ops commit bins the suburb stays live. Settling a run
                 // drains PendingContainers to 0; that must not push an active
                 // collection route back onto the waitlist board.
@@ -166,7 +174,9 @@ public static class WaitlistDensity
                     needed,
                     best?.Day,
                     best?.DayName,
-                    byDay);
+                    byDay,
+                    aluminium,
+                    CollectionReadiness.ForSuburb(readiness, aluminium, committed));
             })
             .OrderBy(s => s.Needed)
             .ThenByDescending(s => s.Containers)
@@ -179,7 +189,8 @@ public static class WaitlistDensity
             incomplete,
             counted.Count,
             counted.Sum(r => r.PendingContainers),
-            suburbs);
+            suburbs,
+            readiness);
     }
 
     public static GrowthSuburbDto? SuburbCluster(GrowthResponse board, string? suburb)
@@ -219,7 +230,8 @@ public record HouseholdClusterRow(
     int? CouncilCollectionDay,
     string Type = "residential",
     int PendingContainers = 0,
-    string? BinStatus = null);
+    string? BinStatus = null,
+    int AluminiumContainers = 0);
 
 public record GrowthDayDto(int Day, string DayName, int Households, int Containers, bool Live, int Needed);
 
@@ -232,7 +244,11 @@ public record GrowthSuburbDto(
     int Needed,
     int? BestDay,
     string? BestDayName,
-    IReadOnlyList<GrowthDayDto> ByDay);
+    IReadOnlyList<GrowthDayDto> ByDay,
+    /// <summary>Pending eligible aluminium containers scanned in the suburb.</summary>
+    int AluminiumContainers = 0,
+    /// <summary>Honest collection readiness; see CollectionReadiness.</summary>
+    SuburbReadinessDto? Readiness = null);
 
 public record GrowthResponse(
     int LiveThreshold,
@@ -242,4 +258,5 @@ public record GrowthResponse(
     int IncompleteHouseholds,
     int TotalHouseholds,
     int TotalContainers,
-    IReadOnlyList<GrowthSuburbDto> Suburbs);
+    IReadOnlyList<GrowthSuburbDto> Suburbs,
+    CollectionReadinessConfig? CollectionReadiness = null);

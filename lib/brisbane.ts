@@ -27,6 +27,8 @@ export type GrowthBoard = {
   totalHouseholds: number;
   totalContainers: number;
   suburbs: GrowthSuburb[];
+  /** Operator aluminium readiness config; absent/unconfigured = pending. */
+  collectionReadiness?: unknown;
 };
 
 export type GrowthSuburb = {
@@ -38,6 +40,10 @@ export type GrowthSuburb = {
   bestDay: number | null;
   bestDayName: string | null;
   byDay: GrowthDay[];
+  /** Pending eligible aluminium containers in the suburb. */
+  aluminiumContainers?: number;
+  /** Raw readiness; normalise with normaliseReadiness() before use. */
+  readiness?: unknown;
 };
 
 export function clusterForDay(suburb?: GrowthSuburb | null, day?: number | null): GrowthDay | undefined {
@@ -155,11 +161,26 @@ export function formatCollectionNight(iso?: string | null): string | null {
   });
 }
 
-export function inviteShareText(
-  suburb?: string | null,
-  opts?: { dayName?: string | null; households?: number; containers?: number; needed?: number; live?: boolean },
-) {
+type InviteOpts = {
+  dayName?: string | null;
+  households?: number;
+  containers?: number;
+  needed?: number;
+  live?: boolean;
+  /**
+   * Suburb aluminium tally from operator readiness. When present the text
+   * states only the count — never a threshold or a run promise, because the
+   * trigger may still be pending operator configuration.
+   */
+  aluminium?: number;
+};
+
+export function inviteShareText(suburb?: string | null, opts?: InviteOpts) {
   const place = suburb ? titleSuburb(suburb) : "our suburb";
+  if (opts?.aluminium != null) {
+    const n = Math.max(0, opts.aluminium);
+    return `Scan eligible cans and bottles with The Good Sort in ${place}. Earn 5¢ each. ${n} aluminium can${n === 1 ? "" : "s"} scanned here so far:`;
+  }
   const count = opts?.containers ?? opts?.households;
   if (opts?.live) {
     return `${place} has enough scanned containers for a The Good Sort volume run. Scan eligible cans and bottles — 5¢ sorting credit each. Bag out when they collect:`;
@@ -170,7 +191,7 @@ export function inviteShareText(
   return `Scan eligible cans and bottles with The Good Sort in ${place}. Earn 5¢ each. When the suburb hits ${LIVE_VOLUME_THRESHOLD} containers they run a driver trip to the refund point:`;
 }
 
-export function inviteMessage(url: string, suburb?: string | null, opts?: { dayName?: string | null; households?: number; containers?: number; needed?: number; live?: boolean }) {
+export function inviteMessage(url: string, suburb?: string | null, opts?: InviteOpts) {
   return `${inviteShareText(suburb, opts)} ${url}`;
 }
 

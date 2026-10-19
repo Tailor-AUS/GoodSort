@@ -6,6 +6,7 @@ import { type User, type SortBin, type Depot, getUser } from "@/lib/store";
 import { getUserApi, getDepotsApi, getBinsApi } from "@/lib/store-api";
 import { apiUrl, authHeaders } from "@/lib/config";
 import { isCollecting, LIVE_VOLUME_THRESHOLD, sameSuburb, streetStatsForViewer, type GrowthSuburb, householdCountsTowardUnlock } from "@/lib/brisbane";
+import { PENDING_READINESS_CONFIG, normaliseReadiness, normaliseReadinessConfig, type CollectionReadinessConfig, type SuburbReadiness } from "@/lib/collection-readiness";
 import { getDepots } from "@/lib/store";
 import { MapView } from "@/app/components/shared/map-view";
 import { SorterSheet, type HouseholdStatus } from "./components/sorter-sheet";
@@ -72,6 +73,8 @@ export default function SorterApp() {
         let households = hh.type === "unit_complex" ? 0 : 1;
         let containers = 0;
         let dayName: string | null = null;
+        let readiness: SuburbReadiness = normaliseReadiness(undefined);
+        let readinessConfig: CollectionReadinessConfig = PENDING_READINESS_CONFIG;
         try {
           const g = await fetch(apiUrl("/api/growth/brisbane")).then((r) => (r.ok ? r.json() : null));
           const match = g?.suburbs?.find((s: GrowthSuburb) => sameSuburb(s.suburb, hh.suburb));
@@ -81,6 +84,8 @@ export default function SorterApp() {
           households = cluster.households;
           containers = cluster.containers;
           dayName = cluster.dayName;
+          readiness = normaliseReadiness(match?.readiness, match?.aluminiumContainers ?? 0);
+          readinessConfig = normaliseReadinessConfig(g?.collectionReadiness);
         } catch { /* waitlist card can fall back */ }
         setHousehold({
           id: hh.id,
@@ -94,6 +99,8 @@ export default function SorterApp() {
           households,
           containers,
           dayName,
+          readiness,
+          readinessConfig,
         });
       } else {
         let suburbHint: string | null = null;
@@ -108,6 +115,8 @@ export default function SorterApp() {
           households: 1,
           containers: 0,
           dayName: null,
+          readiness: normaliseReadiness(undefined),
+          readinessConfig: PENDING_READINESS_CONFIG,
         });
       }
       setNextPickup(pickup?.nextPickup ?? null);

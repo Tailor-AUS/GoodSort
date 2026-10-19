@@ -1201,9 +1201,10 @@ app.MapPatch("/api/households/{id:guid}/street", async (HttpContext ctx, Guid id
 app.MapGet("/api/growth/brisbane", async (GoodSortDbContext db, IConfiguration cfg) =>
 {
     // Carries the live launch-bonus cap so public copy can never advertise a
-    // promotion that ops has already turned off.
+    // promotion that ops has already turned off, and the operator aluminium
+    // readiness config (pending until set — never a default threshold).
     return Results.Ok(WaitlistDensity.Aggregate(
-        await WaitlistDensity.LoadRowsAsync(db), LaunchBonus.CapFrom(cfg)));
+        await WaitlistDensity.LoadRowsAsync(db), LaunchBonus.CapFrom(cfg), CollectionReadiness.ConfigFrom(cfg)));
 });
 
 // First-party funnel (no PII). City-wide totals here would be a product bug —

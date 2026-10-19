@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ScanBarcode } from "lucide-react";
 import { LIVE_VOLUME_THRESHOLD, inviteMessage, residentialNeedsStreet, streetInviteUrl, titleSuburb, canonicalSuburb } from "@/lib/brisbane";
+import { PENDING_READINESS_CONFIG, normaliseReadiness, readinessCopy } from "@/lib/collection-readiness";
 import { readStoredProfileId } from "@/lib/config";
 import { Logo } from "@/app/components/shared/logo";
 import { WaitlistCard } from "@/app/components/shared/waitlist-card";
@@ -33,14 +34,18 @@ export function WaitlistHome({
   const have = household?.households ?? (building ? 0 : 1);
   const containers = household?.containers ?? 0;
   const needed = household?.needed ?? Math.max(0, LIVE_VOLUME_THRESHOLD - containers);
-  const live = !!household?.areaLive;
   const dayName = household?.dayName;
-  const pct = Math.min(100, Math.round((containers / LIVE_VOLUME_THRESHOLD) * 100));
   const place = suburb ? titleSuburb(suburb) : "your suburb";
+  const readiness = household?.readiness ?? normaliseReadiness(undefined);
+  const readinessConfig = household?.readinessConfig ?? PENDING_READINESS_CONFIG;
+  const allocated = household?.binStatus === "allocated";
+  const committed = readiness.status === "ops_committed" || allocated;
+  const copy = readinessCopy(readiness, readinessConfig, place);
+  const knownSuburb = canonicalSuburb(suburb) !== null;
   const [profileId, setProfileId] = useState<string | undefined>(undefined);
   useEffect(() => { setProfileId(readStoredProfileId()); }, []);
   const inviteUrl = streetInviteUrl({ suburb, day: household?.councilCollectionDay, dayName, profileId });
-  const message = inviteMessage(inviteUrl, suburb, { dayName, containers, households: have, needed, live });
+  const message = inviteMessage(inviteUrl, suburb, { dayName, containers, households: have, needed, aluminium: readiness.aluminiumContainers });
 
   return (
     <div className="min-h-dvh bg-white px-6 py-10 flex flex-col items-center" style={{ paddingTop: "max(5.5rem, calc(env(safe-area-inset-top) + 4.5rem))" }}>
@@ -55,40 +60,45 @@ export function WaitlistHome({
         <p className="text-[14px] text-slate-500 mb-5">
           {building
             ? "Scan eligible containers and sort into four streams. Common-area pickups are phase 2 — invite a house on the street to build suburb volume."
-            : "Scan eligible cans and bottles for 5¢ each. Sort into four streams. When suburb volume is enough for one driver trip, bag out — we take them to a refund point."}
+            : "Scan eligible cans and bottles for 5¢ each. Sort into four streams. A driver trip to a recycler happens only when suburb aluminium volume warrants it and ops confirm."}
         </p>
 
         <CollectionNightCard
           nextPickup={nextPickup}
           confirmed={pickupConfirmed}
-          unlocked={live || household?.binStatus === "allocated"}
+          unlocked={committed}
           dayName={dayName}
         />
 
-        <div className="mb-4">
-          <div className="h-3 bg-violet-100 rounded-full overflow-hidden">
-            <div className="h-full bg-violet-600 rounded-full" style={{ width: `${pct}%` }} />
-          </div>
-          <p className="text-[13px] font-semibold text-slate-800 mt-2">
-            {building
-              ? live
-                ? "Street volume has hit a driver trip. You do not count toward suburb volume."
-                : `${containers} containers scanned near ${place}. You do not count toward suburb volume.`
-              : live
-                ? `${containers} containers — enough for a driver trip`
-                : `${containers}/${LIVE_VOLUME_THRESHOLD} containers${needed > 0 ? ` · ${needed} more to unlock a run` : ""}`}
+        {building ? (
+          <p className="text-[13px] font-semibold text-slate-800 mb-4">
+            {`${containers} containers scanned near ${place}. You do not count toward suburb volume.`}
           </p>
-        </div>
+        ) : knownSuburb && !allocated ? (
+          <div className="mb-4" data-testid="suburb-readiness">
+            <p className="text-[11px] uppercase tracking-wider text-violet-700/70 mb-1">Suburb aluminium</p>
+            {copy.progressPct !== null && (
+              <div className="h-3 bg-violet-100 rounded-full overflow-hidden mb-2" aria-hidden="true">
+                <div className="h-full bg-violet-600 rounded-full" style={{ width: `${copy.progressPct}%` }} />
+              </div>
+            )}
+            <p className="text-[15px] font-display font-extrabold text-slate-900" data-testid="suburb-readiness-title">{copy.title}</p>
+            <p className="text-[13px] text-slate-700 mt-1" data-testid="suburb-readiness-body">{copy.body}</p>
+            {copy.fixtureNote && (
+              <p className="text-[11px] text-amber-700 mt-1" data-testid="suburb-readiness-fixture">{copy.fixtureNote}</p>
+            )}
+          </div>
+        ) : null}
 
         {/* No suburb means streetInvitePath resolves to "/" — the bare
             city-wide link 2a8ea09 removed. Prompt for the suburb instead. */}
-        {!live && !pickupConfirmed && (building || canonicalSuburb(suburb) !== null) && (
+        {!committed && !pickupConfirmed && (building || knownSuburb) && (
           <div className="mb-5">
             <p className="text-[15px] font-display font-extrabold text-slate-900 mb-1">
               {building ? "Invite a house to scan" : "Invite neighbours to scan"}
             </p>
             <p className="text-[12px] text-slate-500 mb-3">
-              A volume run starts at about {LIVE_VOLUME_THRESHOLD} containers — enough for one driver trip. Scan is the unlock.
+              Every can scanned in {place} adds to suburb aluminium volume.
             </p>
             <InviteActions url={inviteUrl} message={message} />
           </div>
@@ -117,21 +127,26 @@ export function WaitlistHome({
 
         {residentialNeedsStreet(household) && (
           <a href="/onboard" className="block mb-4 text-center text-[13px] font-semibold text-violet-800 bg-violet-50 border border-violet-200 rounded-xl py-3">
-            Add your suburb so we can count your scans toward a volume run
+            Add your suburb so we can count your scans toward suburb volume
           </a>
         )}
-        <WaitlistCard
-          suburb={suburb}
-          households={have}
-          containers={containers}
-          needed={needed}
-          live={live}
-          binStatus={household?.binStatus ?? "waitlisted"}
-          dayName={dayName}
-          day={household?.councilCollectionDay}
-          building={building}
-          hideInvite={!live && !pickupConfirmed}
-        />
+        {/* Readiness above replaces the card's legacy 1,000-container copy for a
+            known, uncommitted suburb; the card still covers no-suburb, building
+            and this household's own allocated state. */}
+        {(building || !knownSuburb || allocated) && (
+          <WaitlistCard
+            suburb={suburb}
+            households={have}
+            containers={containers}
+            needed={needed}
+            live={allocated}
+            binStatus={household?.binStatus ?? "waitlisted"}
+            dayName={dayName}
+            day={household?.councilCollectionDay}
+            building={building}
+            hideInvite={!committed && !pickupConfirmed}
+          />
+        )}
         <p className="text-[12px] text-slate-400 text-center mt-4">
           Credits clear after we collect and a refund point or depot verifies the containers.
         </p>

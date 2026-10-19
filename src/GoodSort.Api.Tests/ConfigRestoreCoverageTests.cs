@@ -51,6 +51,8 @@ public class ConfigRestoreCoverageTests
         // Deliberately off, and documented as such.
         ["RECOVERY_EMAIL_ENABLED"] = "Default off on purpose - the code being ready is not a decision to email real members. Requires the literal string true.",
         ["SOVRGN_API_KEY"] = "Revoked consumer (#8). A leftover value is logged and ignored, and the postdeploy hook actively removes it.",
+        ["COLLECTION_ALUMINIUM_THRESHOLD_CONTAINERS"] = "No default on purpose. Absent means readiness shows pending_operator_configuration - nothing unlocks, nothing is promised. Fail-closed.",
+        ["COLLECTION_READINESS_FIXTURE_LABEL"] = "Local-test label only. Absent means a configured threshold is reported as operator_config.",
 
         // Tunables whose code defaults are the intended production values.
         ["LAUNCH_BONUS_CONTAINERS"] = "Falls back to LaunchBonus.DefaultCapContainers, which is the intended cap.",
