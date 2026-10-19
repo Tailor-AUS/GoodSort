@@ -250,6 +250,7 @@ app.UseAuthentication();
 // Caught by ScanFaucetLimitTests.One_members_burst_does_not_throttle_another.
 app.UseRateLimiter();
 app.UseAuthorization();
+SameOriginFrontendHosting.UseSameOriginFrontend(app);
 app.MapDefaultEndpoints();
 
 // Auto-migrate on startup with retry (SQL may not be ready yet)
