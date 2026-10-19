@@ -7,7 +7,7 @@ import { DensityBoard } from "@/app/components/marketing/density-board";
 export const metadata: Metadata = {
   title: "Brisbane suburbs",
   description:
-    "Scan eligible containers in your Brisbane suburb. Earn 5¢ each. About 1,000 scanned containers unlocks a driver trip to the refund point.",
+    "Scan eligible containers in your Brisbane suburb. Earn 5¢ each. Suburb aluminium volume builds toward an operator-confirmed collection run.",
   alternates: { canonical: "/brisbane" },
 };
 

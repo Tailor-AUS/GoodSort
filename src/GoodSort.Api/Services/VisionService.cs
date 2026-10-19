@@ -61,7 +61,7 @@ public class VisionService
     private static string? Truncate(string? s, int max) =>
         string.IsNullOrEmpty(s) ? null : (s.Length <= max ? s : s[..max]);
 
-    // ── Tailor Vision API (api.tailor.au/api/vision/classify) ─────────────
+    // ── Tailor Vision API (https://api.aukus.si/v1) ───────────────────────
 
     private async Task<VisionResult> IdentifyViaTailorVision(string base64Image, Guid? userId)
     {
@@ -69,6 +69,11 @@ public class VisionService
         try
         {
             var client = _httpFactory.CreateClient("TailorVision");
+            if (client.BaseAddress is null ||
+                !client.BaseAddress.AbsoluteUri.StartsWith("https://api.aukus.si/v1", StringComparison.OrdinalIgnoreCase))
+            {
+                return await IdentifyViaLlmFallback(base64Image, userId);
+            }
 
             // Strip data URI prefix if present to get raw base64
             var rawBase64 = base64Image.Contains(",")
@@ -83,7 +88,7 @@ public class VisionService
             formContent.Add(fileContent, "file", "scan.jpg");
 
             _logger.LogInformation("Calling Tailor Vision API (multipart upload)");
-            var response = await client.PostAsync("/api/vision/classify/upload", formContent);
+            var response = await client.PostAsync("vision/classify/upload", formContent);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -233,9 +238,10 @@ No containers (blurry):
         // that exists.
         var deploymentName = _config["AZURE_OPENAI_DEPLOYMENT"] ?? VisionDefaults.OpenAiDeployment;
 
-        if (string.IsNullOrEmpty(apiKey))
+        if (string.IsNullOrEmpty(apiKey) ||
+            !endpoint.StartsWith("https://api.aukus.si/v1", StringComparison.OrdinalIgnoreCase))
         {
-            _logger.LogError("No vision API configured (neither Tailor Vision nor Azure OpenAI)");
+            _logger.LogError("No allowed vision API configured (requires https://api.aukus.si/v1)");
             await LogCall("none", success: false, containerCount: 0, 0, userId,
                 errorSummary: "No vision provider configured");
             return new VisionResult { Message = "Photo scan is temporarily unavailable. Please try again later." };

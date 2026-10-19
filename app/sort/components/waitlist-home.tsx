@@ -45,7 +45,15 @@ export function WaitlistHome({
   const [profileId, setProfileId] = useState<string | undefined>(undefined);
   useEffect(() => { setProfileId(readStoredProfileId()); }, []);
   const inviteUrl = streetInviteUrl({ suburb, day: household?.councilCollectionDay, dayName, profileId });
-  const message = inviteMessage(inviteUrl, suburb, { dayName, containers, households: have, needed, aluminium: readiness.aluminiumContainers });
+  const message = inviteMessage(inviteUrl, suburb, {
+    dayName,
+    containers,
+    households: have,
+    needed,
+    committed,
+    aluminium: readiness.aluminiumContainers,
+    aluminiumThreshold: readiness.aluminiumThreshold,
+  });
 
   return (
     <div className="min-h-dvh bg-white px-6 py-10 flex flex-col items-center" style={{ paddingTop: "max(5.5rem, calc(env(safe-area-inset-top) + 4.5rem))" }}>
@@ -145,6 +153,8 @@ export function WaitlistHome({
             day={household?.councilCollectionDay}
             building={building}
             hideInvite={!committed && !pickupConfirmed}
+            readiness={readiness}
+            readinessConfig={readinessConfig}
           />
         )}
         <p className="text-[12px] text-slate-400 text-center mt-4">

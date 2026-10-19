@@ -86,20 +86,91 @@ public class CollectionReadinessTests
     }
 
     [Fact]
-    public void Aggregate_sums_suburb_aluminium_and_clamps_to_pending_ledger()
+    public void Aggregate_sums_suburb_aluminium_and_never_guesses_stale_breakdown_as_aluminium()
     {
         var board = WaitlistDensity.Aggregate(new[]
         {
             new HouseholdClusterRow("MOOROOKA", 3, "residential", PendingContainers: 10, AluminiumContainers: 6),
-            new HouseholdClusterRow("MOOROOKA", 3, "residential", PendingContainers: 4, AluminiumContainers: 9), // stale tally > ledger
+            new HouseholdClusterRow("MOOROOKA", 3, "residential", PendingContainers: 4, AluminiumContainers: 9), // stale tally > ledger: never infer 4 aluminium
             new HouseholdClusterRow("MOOROOKA", 3, "unit_complex", PendingContainers: 50, AluminiumContainers: 50), // units never count
         });
         var s = Assert.Single(board.Suburbs);
         Assert.Equal(14, s.Containers);
-        Assert.Equal(10, s.AluminiumContainers); // 6 + min(9, 4)
+        Assert.Equal(6, s.AluminiumContainers); // only the verified 6 aluminium count
         Assert.NotNull(s.Readiness);
         Assert.Equal(CollectionReadiness.PendingOperatorConfiguration, s.Readiness!.Status);
         Assert.False(board.CollectionReadiness!.Configured);
+    }
+
+    [Fact]
+    public void Partial_pickup_of_mixed_materials_without_breakdown_never_guesses_aluminium()
+    {
+        var hh = new GoodSort.Api.Data.Entities.Household
+        {
+            Suburb = "MOOROOKA",
+            PendingContainers = 10,
+            PendingValueCents = 50,
+            Materials = new GoodSort.Api.Data.Entities.MaterialBreakdown { Aluminium = 5, Pet = 5 },
+        };
+        var bin = new GoodSort.Api.Data.Entities.Bin
+        {
+            HouseholdId = hh.Id,
+            PendingContainers = 10,
+            PendingValueCents = 50,
+            Materials = new GoodSort.Api.Data.Entities.MaterialBreakdown { Aluminium = 5, Pet = 5 },
+        };
+        var scans = Enumerable.Range(0, 5)
+            .Select(_ => new GoodSort.Api.Data.Entities.Scan { HouseholdId = hh.Id, Material = "aluminium", Status = "pending" })
+            .Concat(Enumerable.Range(0, 5)
+                .Select(_ => new GoodSort.Api.Data.Entities.Scan { HouseholdId = hh.Id, Material = "pet", Status = "pending" }))
+            .ToList();
+        var owner = new GoodSort.Api.Data.Entities.Profile { Id = Guid.NewGuid(), HouseholdId = hh.Id, PendingCents = 50 };
+        foreach (var sc in scans) sc.UserId = owner.Id;
+
+        // Pick up 6 of 10 containers without a per-material breakdown.
+        HouseholdCredit.ApplyPickup([owner], scans, pickupCount: 6);
+        HouseholdCredit.ReconcileHouseholdPickup(hh, bin, scans, pickupCount: 6);
+
+        Assert.Equal(4, hh.PendingContainers);
+        Assert.Equal(0, hh.Materials.Aluminium);
+        Assert.Equal(4, hh.Materials.Other);
+        Assert.Equal(4, scans.Count(s => s.Status == "pending_unreconciled"));
+
+        var config = CollectionReadiness.ConfigFrom(Cfg(("COLLECTION_ALUMINIUM_THRESHOLD_CONTAINERS", "4")));
+        var board = WaitlistDensity.Aggregate(new[]
+        {
+            new HouseholdClusterRow("MOOROOKA", 3, "residential", hh.PendingContainers, AluminiumContainers: hh.Materials.Aluminium, MaterialCompositionUnknown: true),
+        }, readinessConfig: config);
+        var suburb = Assert.Single(board.Suburbs);
+        Assert.Equal(4, suburb.Containers);
+        Assert.Equal(0, suburb.AluminiumContainers);
+        Assert.False(suburb.Live);
+        Assert.Equal(CollectionReadiness.PendingMaterialReconciliation, suburb.Readiness!.Status);
+        Assert.Equal(4, suburb.Readiness.AluminiumNeeded);
+    }
+
+    [Fact]
+    public void Partial_pickup_of_pure_aluminium_household_preserves_verified_aluminium_remainder()
+    {
+        var hh = new GoodSort.Api.Data.Entities.Household
+        {
+            Suburb = "MOOROOKA",
+            PendingContainers = 10,
+            PendingValueCents = 50,
+            Materials = new GoodSort.Api.Data.Entities.MaterialBreakdown { Aluminium = 10 },
+        };
+        var scans = Enumerable.Range(0, 10)
+            .Select(_ => new GoodSort.Api.Data.Entities.Scan { HouseholdId = hh.Id, Material = "aluminium", Status = "pending" })
+            .ToList();
+        var owner = new GoodSort.Api.Data.Entities.Profile { Id = Guid.NewGuid(), HouseholdId = hh.Id, PendingCents = 50 };
+        foreach (var sc in scans) sc.UserId = owner.Id;
+
+        HouseholdCredit.ApplyPickup([owner], scans, pickupCount: 6);
+        HouseholdCredit.ReconcileHouseholdPickup(hh, null, scans, pickupCount: 6);
+
+        Assert.Equal(4, hh.PendingContainers);
+        Assert.Equal(4, hh.Materials.Aluminium);
+        Assert.Equal(0, hh.Materials.Other);
     }
 
     // ── HTTP: the endpoint the household journey reads ───────────────────
@@ -240,7 +311,7 @@ public class CollectionReadinessTests
         (_, s) = await Board(host, "MOOROOKA");
         Assert.Equal(3, s.GetProperty("aluminiumContainers").GetInt32());
         Assert.Equal("aluminium_volume_reached_awaiting_ops", s.GetProperty("readiness").GetProperty("status").GetString());
-        // The legacy all-material flag is untouched by this slice: 4 containers is nowhere near it.
-        Assert.False(s.GetProperty("live").GetBoolean());
+        Assert.True(s.GetProperty("live").GetBoolean());
+        Assert.False(s.GetProperty("committed").GetBoolean());
     }
 }

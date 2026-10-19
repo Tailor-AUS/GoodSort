@@ -1,8 +1,52 @@
 import { parseDayParam, residentialNeedsStreet } from "./brisbane.ts";
 
+/** Sole permitted external runtime API base when not using same-origin or local loopback. */
+export const ALLOWED_EXTERNAL_API_BASE = "https://api.aukus.si/v1";
+
+/**
+ * Enforces the runtime API origin boundary: permits same-origin (""), local
+ * loopback (http://localhost[:port] or http://127.0.0.1[:port]), or exact
+ * https://api.aukus.si/v1. Any arbitrary third-party or legacy origin is
+ * rejected so the client never attempts forbidden external egress.
+ */
+export function sanitiseApiBase(raw: string | null | undefined): string {
+  const trimmed = (raw ?? "").trim().replace(/\/+$/, "");
+  if (!trimmed) {
+    return "";
+  }
+  const lower = trimmed.toLowerCase();
+  if (lower === ALLOWED_EXTERNAL_API_BASE || lower.startsWith(`${ALLOWED_EXTERNAL_API_BASE}/`)) {
+    return trimmed;
+  }
+  try {
+    const u = new URL(trimmed);
+    if ((u.protocol === "http:" || u.protocol === "https:") && (u.hostname === "localhost" || u.hostname === "127.0.0.1")) {
+      return `${u.protocol}//${u.host}${u.pathname.replace(/\/+$/, "")}`;
+    }
+  } catch {
+    // Reject malformed or non-URL strings.
+  }
+  return "";
+}
+
 export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (process.env.NODE_ENV !== "production" ? "http://localhost:5113" : "");
+  sanitiseApiBase(process.env.NEXT_PUBLIC_API_URL) ||
+  (process.env.NODE_ENV === "production" ? "" : "http://localhost:5113");
+
+/** Self-contained inline MapLibre style so map views render locally with zero external tile/font requests. */
+export const LOCAL_MAP_STYLE = {
+  version: 8 as const,
+  name: "GoodSort Local Canvas",
+  sources: {},
+  layers: [
+    {
+      id: "local-background",
+      type: "background" as const,
+      paint: { "background-color": "#f1f5f9" },
+    },
+  ],
+};
+
 export const REFERRER_STORAGE_KEY = "goodsort_referrer";
 export const DAY_HINT_KEY = "goodsort_day_hint";
 export const PLACE_HINT_KEY = "goodsort_place_hint";
@@ -65,12 +109,14 @@ export function readStoredProfileId(): string | undefined {
 }
 
 function resolveApiBase(): string {
-  if (API_URL) return API_URL;
-  if (typeof window !== "undefined") {
+  const configured = sanitiseApiBase(process.env.NEXT_PUBLIC_API_URL);
+  if (configured) return configured;
+  if (typeof window !== "undefined" && window.location?.hostname) {
     const host = window.location.hostname;
     if (host === "localhost" || host === "127.0.0.1") return "http://localhost:5113";
+    return "";
   }
-  return "";
+  return API_URL;
 }
 
 export function apiUrl(path: string): string {

@@ -41,7 +41,7 @@ public class MockOutboundHttpHandler : HttpMessageHandler
         var uri = request.RequestUri?.ToString() ?? "";
 
         // Tailor Vision classify upload mock
-        if (uri.Contains("/api/vision/classify/upload") || uri.Contains("api.tailor.au"))
+        if (uri.Contains("vision/classify/upload") || uri.Contains("api.tailor.au"))
         {
             var json = $$"""
             {
@@ -73,7 +73,7 @@ public class MockOutboundHttpHandler : HttpMessageHandler
         }
 
         // Brisbane City Council bin day lookup mock
-        if (uri.Contains("data.brisbane.qld.gov.au"))
+        if (uri.Contains("waste-collection-days-collection-days") || uri.Contains("data.brisbane.qld.gov.au"))
         {
             var json = """
             {
@@ -106,11 +106,9 @@ public class MockHttpClientFactory : IHttpClientFactory
 
     public HttpClient CreateClient(string name)
     {
-        var client = new HttpClient(_handler, disposeHandler: false);
-        if (string.Equals(name, "TailorVision", StringComparison.OrdinalIgnoreCase))
+        return new HttpClient(_handler, disposeHandler: false)
         {
-            client.BaseAddress = new Uri("https://api.tailor.au");
-        }
-        return client;
+            BaseAddress = new Uri("https://api.aukus.si/v1/")
+        };
     }
 }

@@ -6,7 +6,8 @@ import { ShieldCheck, ChevronRight, Recycle, Banknote, Truck, ArrowDown, Check, 
 import { launchBonusHeadline } from "@/lib/credit";
 import { apiUrl, clearAuth, hasValidToken, persistWaitlistFromUrl, readDayHint, readReferrerId, waitlistContinuePath, writeDayHint } from "@/lib/config";
 import { track } from "@/lib/analytics";
-import { BCC_BIN_DAY_DATASET, LIVE_VOLUME_THRESHOLD, dayClusterStats, daySlug, findSuburb, inviteMessage, sameSuburb, streetInviteUrl, type GrowthSuburb } from "@/lib/brisbane";
+import { BCC_BIN_DAY_DATASET, dayClusterStats, daySlug, findSuburb, inviteMessage, sameSuburb, streetInviteUrl, titleSuburb, type GrowthSuburb } from "@/lib/brisbane";
+import { PENDING_READINESS_CONFIG, normaliseReadiness, normaliseReadinessConfig, readinessCopy } from "@/lib/collection-readiness";
 import { Logo } from "@/app/components/shared/logo";
 import { SortAnimation } from "@/app/components/shared/sort-animation";
 import { InviteActions } from "@/app/components/shared/invite-actions";
@@ -15,7 +16,7 @@ import { DensityBoard } from "@/app/components/marketing/density-board";
 
 const APP_HOME_PATH = "/sort";
 
-type GrowthResponse = { liveThreshold: number; launchBonusContainers?: number; totalHouseholds: number; totalContainers?: number; suburbs: GrowthSuburb[] };
+type GrowthResponse = { liveThreshold: number; launchBonusContainers?: number; totalHouseholds: number; totalContainers?: number; suburbs: GrowthSuburb[]; collectionReadiness?: unknown };
 
 export function MarketingHome({ suburbName }: { suburbName?: string }) {
   const router = useRouter();
@@ -79,14 +80,16 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
     : null;
   const cluster = dayClusterStats(local, dayHint) ?? dayClusterStats(local);
   const scanned = place ? (local?.containers ?? cluster?.containers ?? 0) : null;
-  const needed = local?.needed ?? cluster?.needed ?? LIVE_VOLUME_THRESHOLD;
-  const dayLive = !!(local?.live ?? cluster?.live);
+  const localReadiness = normaliseReadiness(local?.readiness, local?.aluminiumContainers ?? 0);
+  const localConfig = growth ? normaliseReadinessConfig(growth.collectionReadiness) : PENDING_READINESS_CONFIG;
+  const localCopy = readinessCopy(localReadiness, localConfig, place ? titleSuburb(place) : "your suburb");
   const shareUrl = streetInviteUrl({ suburb: place, day: dayHint, dayName: cluster?.dayName });
   const shareMessage = inviteMessage(shareUrl, place, {
     dayName: cluster?.dayName,
     containers: place ? (scanned ?? 0) : undefined,
-    needed: place ? needed : undefined,
-    live: dayLive,
+    committed: localReadiness.status === "ops_committed",
+    aluminium: localReadiness.aluminiumContainers,
+    aluminiumThreshold: localReadiness.aluminiumThreshold,
   });
 
   async function sendOtp() {
@@ -247,11 +250,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
             <div className="mt-10 max-w-md bg-white/85 border border-violet-200 rounded-2xl px-4 py-3">
               <p className="text-[12px] text-slate-500 uppercase tracking-wider mb-1">{place}</p>
               <p className="text-[15px] font-semibold text-slate-900">
-                {dayLive
-                  ? `Enough containers for a driver trip — bag out when we collect.`
-                  : scanned === 0
-                    ? `Be the first scan here.`
-                    : `${scanned?.toLocaleString()}/${LIVE_VOLUME_THRESHOLD.toLocaleString()} containers. ${needed.toLocaleString()} more and we drive.`}
+                {localCopy.body}
               </p>
               <div className="mt-3">
                 <InviteActions url={shareUrl} message={shareMessage} compact />
@@ -312,7 +311,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
               tag="Your bags, your sort" tagColor="bg-blue-100 text-blue-700" />
             <StepRow icon={<Truck className="w-5 h-5" />} color="from-amber-400 to-amber-600" num={3}
               title="Suburb volume run"
-              body={`At about ${LIVE_VOLUME_THRESHOLD} containers in your suburb, we drive. Bag out; we do the depot run.`}
+              body="When suburb aluminium volume warrants a trip and ops confirm, we schedule a run. Bag out; we do the depot run."
               tag="One driver trip" tagColor="bg-amber-100 text-amber-700" />
             <StepRow icon={<Banknote className="w-5 h-5" />} color="from-emerald-400 to-emerald-600" num={4}
               title="Get paid after the depot"
@@ -336,7 +335,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
             Start scanning in your suburb
           </h2>
           <p className="text-slate-400 text-[14px] mb-8">
-            About {LIVE_VOLUME_THRESHOLD} containers in your suburb and we drive.
+            Every aluminium can scanned in your suburb builds toward a collection run once ops confirm.
           </p>
           <GreenButton onClick={() => { track("waitlist_cta", { suburb: place }); router.push("/scan"); }}>
             Scan a container <ChevronRight className="w-5 h-5 inline ml-1" />

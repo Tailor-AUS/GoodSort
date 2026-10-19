@@ -23,8 +23,10 @@ public class OpsAlertTests
     [Fact]
     public void Purchase_needs_suburb_volume_threshold()
     {
-        Assert.False(WaitlistDensity.CanPurchase(999));
-        Assert.True(WaitlistDensity.CanPurchase(1000));
-        Assert.True(WaitlistDensity.CanPurchase(1400));
+        var configured = new CollectionReadinessConfig(true, 1000, "operator_config", null);
+        Assert.False(WaitlistDensity.CanPurchase(5000)); // Pending config never unlocks purchase
+        Assert.False(WaitlistDensity.CanPurchase(999, configured));
+        Assert.True(WaitlistDensity.CanPurchase(1000, configured));
+        Assert.True(WaitlistDensity.CanPurchase(1400, configured));
     }
 }

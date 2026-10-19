@@ -41,7 +41,6 @@ const NOT_CONNECTED_TO: Record<string, string> = {
   "https://thegoodsort.org": "Our own public origin — canonical URLs and invite links.",
   "https://tailor.au": "Attribution link in the footer.",
   "https://wa.me": "WhatsApp share link, opened as navigation.",
-  "https://fonts.googleapis.com": "Stylesheet, governed by style-src (which does list it), not connect-src.",
 };
 
 function sourceFiles(dir: string): string[] {
@@ -83,7 +82,8 @@ function connectSrc(): string[] {
 
 test("the CSP parses, so nothing below can pass by finding nothing", () => {
   const allowed = connectSrc();
-  assert.ok(allowed.length >= 3, `connect-src parsed as ${allowed.length} hosts — the extraction is broken, not the CSP.`);
+  assert.ok(allowed.length >= 2, `connect-src parsed as ${allowed.length} hosts — the extraction is broken, not the CSP.`);
+  assert.ok(allowed.includes("https://api.aukus.si"), "https://api.aukus.si should be in connect-src");
   assert.ok(allowed.some((h) => h.includes("azurecontainerapps.io")), "the API's own origin should be in connect-src");
 });
 
@@ -92,7 +92,16 @@ test("the scan finds the hosts that are actually there", () => {
   // while testing nothing. That is how the first version of this file broke.
   const hosts = externalHosts();
   assert.ok(hosts.size >= 5, `only found ${hosts.size} external hosts in client source — the scan is broken, not the code.`);
-  assert.ok([...hosts.keys()].includes("https://photon.komoot.io"), "the geocoder host should have been found");
+  assert.ok([...hosts.keys()].includes("https://api.aukus.si"), "the sole external API boundary host should have been found");
+  for (const forbidden of [
+    "https://fonts.googleapis.com",
+    "https://fonts.gstatic.com",
+    "https://tiles.openfreemap.org",
+    "https://photon.komoot.io",
+    "https://api.tailor.au",
+  ]) {
+    assert.ok(![...hosts.keys()].includes(forbidden), `forbidden external runtime host remains in client source: ${forbidden}`);
+  }
 });
 
 test("every external host is either allowed by the CSP or declared unconnected", () => {
@@ -164,10 +173,10 @@ const REQUIRED_TOKENS: [string, string, string][] = [
     "Inline data-URI images, including generated QR codes on the bin label."],
   ["media-src", "blob:",
     "The <video> element the camera stream is attached to."],
-  ["font-src", "https://fonts.gstatic.com",
-    "Where Google Fonts serves the actual font files. The stylesheet host is not enough — a different directive governs each."],
-  ["style-src", "https://fonts.googleapis.com",
-    "The Google Fonts stylesheet itself."],
+  ["font-src", "'self'",
+    "Local/system fonts only — no external Google Fonts egress."],
+  ["style-src", "'self'",
+    "Same-origin stylesheets only — no external Google Fonts stylesheet egress."],
   ["script-src", "'unsafe-eval'",
     "WebAssembly instantiation, which the barcode decoder needs. Verified working against the live policy."],
   ["frame-ancestors", "'none'",

@@ -14,7 +14,7 @@ public class BinDayService
 {
     private readonly IHttpClientFactory _http;
     private readonly ILogger<BinDayService> _log;
-    private const string Base = "https://data.brisbane.qld.gov.au/api/explore/v2.1/catalog/datasets/waste-collection-days-collection-days/records";
+    private const string DatasetPath = "explore/v2.1/catalog/datasets/waste-collection-days-collection-days/records";
 
     public BinDayService(IHttpClientFactory http, ILogger<BinDayService> log)
     {
@@ -34,6 +34,11 @@ public class BinDayService
         try
         {
             var client = _http.CreateClient();
+            if (client.BaseAddress is null ||
+                !client.BaseAddress.AbsoluteUri.StartsWith("https://api.aukus.si/v1", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
             client.Timeout = TimeSpan.FromSeconds(6);
 
             // Try exact house number + street + suburb first
@@ -61,7 +66,7 @@ public class BinDayService
     private async Task<int?> QueryDay(HttpClient client, string where)
     {
         // Group by collection_day and pick the mode (most common day in the match set)
-        var url = $"{Base}?select=collection_day,count(*)%20as%20c&group_by=collection_day&where={WebUtility.UrlEncode(where)}&limit=10";
+        var url = $"{DatasetPath}?select=collection_day,count(*)%20as%20c&group_by=collection_day&where={WebUtility.UrlEncode(where)}&limit=10";
         var res = await client.GetAsync(url);
         if (!res.IsSuccessStatusCode) return null;
         var json = await res.Content.ReadAsStringAsync();

@@ -10,6 +10,7 @@
 
 export type ReadinessStatus =
   | "pending_operator_configuration"
+  | "pending_material_reconciliation"
   | "accumulating"
   | "aluminium_volume_reached_awaiting_ops"
   | "ops_committed";
@@ -37,27 +38,52 @@ export const PENDING_READINESS_CONFIG: CollectionReadinessConfig = {
 
 const KNOWN: ReadinessStatus[] = [
   "pending_operator_configuration",
+  "pending_material_reconciliation",
   "accumulating",
   "aluminium_volume_reached_awaiting_ops",
   "ops_committed",
 ];
 
 /**
- * Normalise whatever the API sent. Anything missing or unrecognised falls back
- * to pending — an older API, or a malformed payload, must never read as a
- * configured or reached threshold.
+ * Normalise whatever the API sent. Anything missing, unrecognised, or
+ * internally inconsistent falls back to a coherent state — an older API or
+ * malformed payload must never read as a configured or reached threshold.
  */
 export function normaliseReadiness(raw: unknown, aluminiumFallback = 0): SuburbReadiness {
   const r = (raw ?? {}) as Partial<SuburbReadiness>;
-  const status = KNOWN.includes(r.status as ReadinessStatus) ? (r.status as ReadinessStatus) : "pending_operator_configuration";
-  const alu = Number.isFinite(r.aluminiumContainers) ? Math.max(0, Number(r.aluminiumContainers)) : Math.max(0, aluminiumFallback);
-  const threshold = status === "pending_operator_configuration" ? null : positiveOrNull(r.aluminiumThreshold);
-  const needed = status === "pending_operator_configuration" ? null : nonNegativeOrNull(r.aluminiumNeeded);
-  // A non-pending status without a threshold (other than ops commitment) is incoherent: treat as pending.
-  if ((status === "accumulating" || status === "aluminium_volume_reached_awaiting_ops") && threshold === null) {
+  const rawStatus = KNOWN.includes(r.status as ReadinessStatus) ? (r.status as ReadinessStatus) : "pending_operator_configuration";
+  const alu = Number.isFinite(r.aluminiumContainers) ? Math.max(0, Math.floor(Number(r.aluminiumContainers))) : Math.max(0, Math.floor(aluminiumFallback));
+  const threshold = rawStatus === "pending_operator_configuration" ? null : positiveOrNull(r.aluminiumThreshold);
+
+  if (rawStatus === "ops_committed") {
+    return { status: "ops_committed", aluminiumContainers: alu, aluminiumThreshold: threshold, aluminiumNeeded: 0 };
+  }
+  if (threshold === null) {
     return { status: "pending_operator_configuration", aluminiumContainers: alu, aluminiumThreshold: null, aluminiumNeeded: null };
   }
-  return { status, aluminiumContainers: alu, aluminiumThreshold: threshold, aluminiumNeeded: needed };
+  if (rawStatus === "pending_material_reconciliation") {
+    return {
+      status: alu >= threshold ? "aluminium_volume_reached_awaiting_ops" : "pending_material_reconciliation",
+      aluminiumContainers: alu,
+      aluminiumThreshold: threshold,
+      aluminiumNeeded: Math.max(0, threshold - alu),
+    };
+  }
+  // Enforce consistency between aluminium count and threshold on accumulating/reached states.
+  if (alu >= threshold) {
+    return {
+      status: "aluminium_volume_reached_awaiting_ops",
+      aluminiumContainers: alu,
+      aluminiumThreshold: threshold,
+      aluminiumNeeded: 0,
+    };
+  }
+  return {
+    status: "accumulating",
+    aluminiumContainers: alu,
+    aluminiumThreshold: threshold,
+    aluminiumNeeded: threshold - alu,
+  };
 }
 
 export function normaliseReadinessConfig(raw: unknown): CollectionReadinessConfig {
@@ -75,17 +101,15 @@ export function normaliseReadinessConfig(raw: unknown): CollectionReadinessConfi
 
 function positiveOrNull(v: unknown): number | null {
   const n = Number(v);
-  return v != null && Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
-}
-function nonNegativeOrNull(v: unknown): number | null {
-  const n = Number(v);
-  return v != null && Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
+  if (v == null || !Number.isFinite(n)) return null;
+  const floored = Math.floor(n);
+  return floored >= 1 ? floored : null;
 }
 
 export type ReadinessCopy = {
   title: string;
   body: string;
-  /** 0–100 only when an operator threshold exists; null means draw no bar. */
+  /** 0–100 only when an operator threshold exists and material composition is reconciled; null means draw no bar. */
   progressPct: number | null;
   /** Shown verbatim when the threshold is a local test fixture. */
   fixtureNote: string | null;
@@ -116,6 +140,16 @@ export function readinessCopy(
         progressPct: 100,
         fixtureNote,
       };
+    case "pending_material_reconciliation": {
+      const t = readiness.aluminiumThreshold ?? 0;
+      const needed = readiness.aluminiumNeeded ?? Math.max(0, t - alu);
+      return {
+        title: `${place} — pending material reconciliation`,
+        body: `${cans(alu)} verified against ${t.toLocaleString("en-AU")} (${needed.toLocaleString("en-AU")} more verified needed). Remaining containers from a partial pickup without a material breakdown await reconciliation and are not counted as aluminium. No collection is scheduled yet.`,
+        progressPct: null,
+        fixtureNote,
+      };
+    }
     case "accumulating": {
       const t = readiness.aluminiumThreshold ?? 0;
       const needed = readiness.aluminiumNeeded ?? Math.max(0, t - alu);

@@ -1,11 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-
-// Photon (komoot) is OSM-based and free with no API key. We bias results
-// toward Brisbane and filter to AU only.
-const PHOTON_URL = "https://photon.komoot.io/api/";
-const BRISBANE = { lat: -27.4698, lon: 153.0251 };
+import { BRISBANE_SUBURBS } from "@/lib/brisbane-suburbs";
 
 interface PhotonProps {
   name?: string;
@@ -51,22 +47,48 @@ function formatAddress(p: PhotonProps): string {
   return [street || p.name, tail].filter(Boolean).join(", ");
 }
 
+/**
+ * Local Brisbane address/suburb matcher using the bundled 190-suburb BCC table.
+ * Avoids any third-party geocoding egress while preserving house-number + street
+ * + suburb selection.
+ */
 async function searchPhoton(query: string, limit = 6): Promise<PhotonFeature[]> {
-  if (query.trim().length < 3) return [];
-  const url = `${PHOTON_URL}?q=${encodeURIComponent(query)}&limit=${limit}&lang=en&lat=${BRISBANE.lat}&lon=${BRISBANE.lon}`;
-  const res = await fetch(url);
-  if (!res.ok) return [];
-  const data = await res.json() as { features?: PhotonFeature[] };
-  const au = (data.features ?? []).filter((f) => f.properties.countrycode === "AU");
-  // Street-only Photon hits miss BCC house-level days. Numbered houses first.
-  return au.sort((a, b) => {
-    const ah = a.properties.housenumber ? 0 : 1;
-    const bh = b.properties.housenumber ? 0 : 1;
-    return ah - bh;
-  });
+  const raw = query.trim();
+  if (raw.length < 3) return [];
+  const lower = raw.toLowerCase();
+  const commaParts = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  const head = commaParts[0] ?? raw;
+  const streetMatch = head.match(/^(?:(\d+[a-zA-Z]?)\s+)?(.+)$/);
+  const hasComma = commaParts.length >= 2;
+  const housenumber = streetMatch?.[1];
+  const streetCandidate = hasComma ? streetMatch?.[2] : (housenumber ? streetMatch?.[2] : undefined);
+  const suburbToken = (hasComma ? commaParts.slice(1).join(" ") : (streetCandidate ?? raw))
+    .replace(/\b(qld|queensland|australia|\d{4})\b/gi, "")
+    .trim()
+    .toLowerCase();
+
+  const matches = BRISBANE_SUBURBS.filter((s) => {
+    const n = s.name.toLowerCase();
+    return (suburbToken && (n.includes(suburbToken) || suburbToken.includes(n))) || lower.includes(n) || n.startsWith(lower);
+  }).slice(0, limit);
+
+  const chosen = matches.length > 0 ? matches : (housenumber && streetCandidate ? BRISBANE_SUBURBS.slice(0, Math.min(limit, 3)) : []);
+  return chosen.map((s) => ({
+    type: "Feature" as const,
+    geometry: { type: "Point" as const, coordinates: [153.0281, -27.5269] },
+    properties: {
+      name: s.name,
+      housenumber,
+      street: streetCandidate,
+      district: s.name,
+      city: "Brisbane",
+      state: "QLD",
+      countrycode: "AU",
+    },
+  }));
 }
 
-/** One-shot geocode: returns the first matching AU place, or null. */
+/** One-shot geocode: returns the first matching local AU place, or null. */
 export async function geocodeAddress(query: string): Promise<AddressSelection | null> {
   const features = await searchPhoton(query, 1);
   const f = features[0];

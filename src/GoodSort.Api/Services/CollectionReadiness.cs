@@ -23,6 +23,7 @@ public static class CollectionReadiness
     public const string FixtureLabelKey = "COLLECTION_READINESS_FIXTURE_LABEL";
 
     public const string PendingOperatorConfiguration = "pending_operator_configuration";
+    public const string PendingMaterialReconciliation = "pending_material_reconciliation";
     public const string Accumulating = "accumulating";
     public const string VolumeReachedAwaitingOps = "aluminium_volume_reached_awaiting_ops";
     public const string OpsCommitted = "ops_committed";
@@ -47,17 +48,27 @@ public static class CollectionReadiness
     /// Readiness for one suburb. Ops commitment (bins allocated / delivered /
     /// collecting) is the only state that implies a collection; reaching the
     /// configured aluminium volume only means ops may now consider a run.
+    /// When a household has an unreconciled partial pickup of mixed materials,
+    /// its remaining containers are never guessed as aluminium; if verified
+    /// aluminium has not already reached the threshold, the suburb reports
+    /// PendingMaterialReconciliation until reconciled.
     /// </summary>
-    public static SuburbReadinessDto ForSuburb(CollectionReadinessConfig config, int aluminiumContainers, bool committed)
+    public static SuburbReadinessDto ForSuburb(
+        CollectionReadinessConfig config,
+        int aluminiumContainers,
+        bool committed,
+        bool materialCompositionUnknown = false)
     {
         var aluminium = Math.Max(0, aluminiumContainers);
         if (committed)
             return new SuburbReadinessDto(OpsCommitted, aluminium, config.AluminiumThreshold, 0);
         if (!config.Configured || config.AluminiumThreshold is not int threshold)
             return new SuburbReadinessDto(PendingOperatorConfiguration, aluminium, null, null);
-        return aluminium >= threshold
-            ? new SuburbReadinessDto(VolumeReachedAwaitingOps, aluminium, threshold, 0)
-            : new SuburbReadinessDto(Accumulating, aluminium, threshold, threshold - aluminium);
+        if (aluminium >= threshold)
+            return new SuburbReadinessDto(VolumeReachedAwaitingOps, aluminium, threshold, 0);
+        if (materialCompositionUnknown)
+            return new SuburbReadinessDto(PendingMaterialReconciliation, aluminium, threshold, threshold - aluminium);
+        return new SuburbReadinessDto(Accumulating, aluminium, threshold, threshold - aluminium);
     }
 }
 

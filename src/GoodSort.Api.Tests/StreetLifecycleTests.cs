@@ -7,6 +7,9 @@ namespace GoodSort.Api.Tests;
 
 public class StreetLifecycleTests
 {
+    private static readonly CollectionReadinessConfig Configured1000 =
+        new(Configured: true, AluminiumThreshold: 1000, Source: "operator_config", FixtureLabel: null);
+
     [Fact]
     public async Task Suburb_volume_unlocks_then_collecting_joins_run()
     {
@@ -15,11 +18,14 @@ public class StreetLifecycleTests
             db.Households.Add(House("MOOROOKA", 5, containers: 100));
         await db.SaveChangesAsync();
 
-        var board = WaitlistDensity.Aggregate(await WaitlistDensity.LoadRowsAsync(db));
+        var pendingBoard = WaitlistDensity.Aggregate(await WaitlistDensity.LoadRowsAsync(db));
+        Assert.False(Assert.Single(pendingBoard.Suburbs).Live);
+
+        var board = WaitlistDensity.Aggregate(await WaitlistDensity.LoadRowsAsync(db), readinessConfig: Configured1000);
         Assert.True(Assert.Single(board.Suburbs).Live);
         Assert.False(WaitlistDensity.CanAllocateSuburb("BRISBANE"));
         Assert.True(WaitlistDensity.CanAllocateSuburb("MOOROOKA"));
-        Assert.True(WaitlistDensity.CanPurchase(1000));
+        Assert.True(WaitlistDensity.CanPurchase(1000, Configured1000));
 
         foreach (var h in db.Households)
             h.BinStatus = BinStatuses.Collecting;
@@ -45,7 +51,7 @@ public class StreetLifecycleTests
             db.Households.Add(House(i < 5 ? "MOOROOKA" : "ANNERLEY", i < 5 ? 5 : 1, containers: 100));
         await db.SaveChangesAsync();
 
-        var board = WaitlistDensity.Aggregate(await WaitlistDensity.LoadRowsAsync(db));
+        var board = WaitlistDensity.Aggregate(await WaitlistDensity.LoadRowsAsync(db), readinessConfig: Configured1000);
         Assert.All(board.Suburbs, s => Assert.False(s.Live));
 
         var groups = RunCluster.GroupByStreet(db.Households, h => h.Suburb, h => h.CouncilCollectionDay);
@@ -69,6 +75,7 @@ public class StreetLifecycleTests
         Type = "residential",
         CouncilCollectionDay = day,
         PendingContainers = containers,
+        Materials = new MaterialBreakdown { Aluminium = containers },
         Lat = -27.527,
         Lng = 153.026,
         BinStatus = BinStatuses.Waitlisted,

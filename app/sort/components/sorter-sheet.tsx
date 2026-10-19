@@ -116,6 +116,8 @@ export function SorterSheet({
                   binStatus={household.binStatus}
                   dayName={household.dayName}
                   day={household.councilCollectionDay}
+                  readiness={household.readiness}
+                  readinessConfig={household.readinessConfig}
                 />
               )}
 
