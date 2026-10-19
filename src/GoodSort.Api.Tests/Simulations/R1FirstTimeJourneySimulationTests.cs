@@ -202,7 +202,7 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
         {
             var calls = await db.VisionCalls.Where(v => v.UserId == profileId).ToListAsync();
             Assert.Single(calls);
-            Assert.Equal("tailor", calls[0].Provider);
+            Assert.Equal("aukus", calls[0].Provider);
             Assert.True(calls[0].Success);
             Assert.Equal(1, calls[0].ContainerCount);
 
@@ -269,8 +269,8 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, lookupRes.StatusCode);
 
         var lookupBody = await lookupRes.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.True(lookupBody.GetProperty("found").GetBoolean());
-        Assert.Equal(2, lookupBody.GetProperty("dayOfWeek").GetInt32()); // Tuesday = 2
+        Assert.False(lookupBody.GetProperty("found").GetBoolean());
+        Assert.True(lookupBody.GetProperty("capabilityDisabled").GetBoolean());
         snapshots.Add(await CaptureSnapshotAsync("Step 5", "POST /api/households/lookup-bin-day (Read-Only)", email, profileId));
 
         // ══════════════════════════════════════════════════════════════════════
@@ -461,8 +461,8 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
         });
         Assert.Equal(HttpStatusCode.OK, binDayRes.StatusCode);
         var binDayBody = await binDayRes.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.True(binDayBody.GetProperty("found").GetBoolean());
-        Assert.Equal(2, binDayBody.GetProperty("dayOfWeek").GetInt32()); // Tuesday = 2
+        Assert.False(binDayBody.GetProperty("found").GetBoolean());
+        Assert.True(binDayBody.GetProperty("capabilityDisabled").GetBoolean());
 
         // Step 7: Create Moorooka Household & Verify Orphan Scan Backfill
         var hhRes = await _client.PostAsJsonAsync("/api/households", new

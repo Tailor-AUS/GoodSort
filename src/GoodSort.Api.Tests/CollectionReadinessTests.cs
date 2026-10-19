@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using GoodSort.Api.Data;
+using GoodSort.Api.Data.Entities;
 using GoodSort.Api.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -314,4 +315,440 @@ public class CollectionReadinessTests
         Assert.True(s.GetProperty("live").GetBoolean());
         Assert.False(s.GetProperty("committed").GetBoolean());
     }
+
+    // ── R1: Two successive partial pickups with multiple payees + launch bonus ──
+
+    [Fact]
+    public void R1_Two_successive_partial_pickups_with_multiple_payees_and_bonus_conserve_credit_and_never_repeat_bonus()
+    {
+        var hh = new GoodSort.Api.Data.Entities.Household
+        {
+            Suburb = "MOOROOKA",
+            PendingContainers = 10,
+            PendingValueCents = 100,
+            Materials = new GoodSort.Api.Data.Entities.MaterialBreakdown { Aluminium = 6, Pet = 4 },
+        };
+        var bin = new GoodSort.Api.Data.Entities.Bin
+        {
+            HouseholdId = hh.Id,
+            PendingContainers = 10,
+            PendingValueCents = 100,
+            Materials = new GoodSort.Api.Data.Entities.MaterialBreakdown { Aluminium = 6, Pet = 4 },
+        };
+        var owner = new GoodSort.Api.Data.Entities.Profile
+        {
+            Id = Guid.NewGuid(),
+            HouseholdId = hh.Id,
+            PendingCents = 60, // 6 bonus scans @ 10c each
+            ClearedCents = 0,
+        };
+        var memberB = new GoodSort.Api.Data.Entities.Profile
+        {
+            Id = Guid.NewGuid(),
+            HouseholdId = hh.Id,
+            PendingCents = 40, // 4 bonus scans @ 10c each
+            ClearedCents = 0,
+        };
+        var payees = new List<GoodSort.Api.Data.Entities.Profile> { owner, memberB };
+
+        var baseTime = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
+        var allScans = new List<GoodSort.Api.Data.Entities.Scan>();
+        for (int i = 0; i < 6; i++)
+        {
+            allScans.Add(new GoodSort.Api.Data.Entities.Scan
+            {
+                HouseholdId = hh.Id,
+                UserId = owner.Id,
+                Material = "aluminium",
+                RefundCents = LaunchBonus.CentsPerContainer, // 10c (5c estimate + 5c bonus)
+                Status = "pending",
+                CreatedAt = baseTime.AddMinutes(i),
+            });
+        }
+        for (int i = 0; i < 4; i++)
+        {
+            allScans.Add(new GoodSort.Api.Data.Entities.Scan
+            {
+                HouseholdId = hh.Id,
+                UserId = memberB.Id,
+                Material = "pet",
+                RefundCents = LaunchBonus.CentsPerContainer, // 10c (5c estimate + 5c bonus)
+                Status = "pending",
+                CreatedAt = baseTime.AddMinutes(10 + i),
+            });
+        }
+
+        // Pickup 1: collect 5 of 10 containers.
+        HouseholdCredit.SettleHouseholdPickup(hh, bin, payees, allScans, pickupCount: 5);
+
+        Assert.Equal(5, hh.PendingContainers);
+        Assert.Equal(5, bin.PendingContainers);
+        Assert.Equal(5, allScans.Count(s => s.Status == "settled"));
+        Assert.Equal(5, allScans.Count(s => s.Status == "pending_unreconciled"));
+
+        // Owner had 6 scans (60c pending): 5 settled -> 10c pending remains; 5 * 5c bonus + 5 * 5c runner pickup = 50c cleared.
+        Assert.Equal(10, owner.PendingCents);
+        Assert.Equal(50, owner.ClearedCents);
+        // Member B had 4 scans (40c pending): 0 settled -> 40c pending remains, 0c cleared.
+        Assert.Equal(40, memberB.PendingCents);
+        Assert.Equal(0, memberB.ClearedCents);
+        // Total PendingCents (50) + Total ClearedCents (50) == 100c conserved.
+        Assert.Equal(100, owner.PendingCents + memberB.PendingCents + owner.ClearedCents + memberB.ClearedCents);
+
+        // Pickup 2: collect remaining 5 containers (only unsettled scans are passed, matching DB query).
+        var unsettledAfterFirst = allScans
+            .Where(s => s.Status == "pending" || s.Status == "pending_unreconciled")
+            .ToList();
+        Assert.Equal(5, unsettledAfterFirst.Count);
+
+        HouseholdCredit.SettleHouseholdPickup(hh, bin, payees, unsettledAfterFirst, pickupCount: 5);
+
+        Assert.Equal(0, hh.PendingContainers);
+        Assert.Equal(0, bin.PendingContainers);
+        Assert.Equal(10, allScans.Count(s => s.Status == "settled"));
+        Assert.Equal(0, owner.PendingCents);
+        Assert.Equal(0, memberB.PendingCents);
+        // Owner: 50 + 5c (1 remaining bonus) + 25c (5 * 5c runner pickup) = 80c
+        Assert.Equal(80, owner.ClearedCents);
+        // Member B: 4 * 5c bonus = 20c
+        Assert.Equal(20, memberB.ClearedCents);
+        // Total cleared across household = 100c (50c runner container credit + 50c launch bonus, never paid twice).
+        Assert.Equal(100, owner.ClearedCents + memberB.ClearedCents);
+    }
+
+    [Fact]
+    public async Task R1_Legacy_route_settle_endpoint_conserves_pending_and_bonus_across_two_partial_pickups()
+    {
+        using var host = new FixtureHost();
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
+
+        var driverProfile = new GoodSort.Api.Data.Entities.Profile
+        {
+            Id = Guid.NewGuid(),
+            Email = "driver-r1@example.test",
+            Name = "Driver",
+            Role = "admin",
+        };
+        var hh = new GoodSort.Api.Data.Entities.Household
+        {
+            Id = Guid.NewGuid(),
+            Name = "R1 House",
+            Suburb = "MOOROOKA",
+            Street = "TEST ST",
+            Type = "residential",
+            BinStatus = BinStatuses.Collecting,
+            PendingContainers = 10,
+            PendingValueCents = 100,
+            Materials = new GoodSort.Api.Data.Entities.MaterialBreakdown { Aluminium = 6, Pet = 4 },
+        };
+        var bin = new GoodSort.Api.Data.Entities.Bin
+        {
+            Id = Guid.NewGuid(),
+            Code = "GS-R1BIN",
+            HouseholdId = hh.Id,
+            PendingContainers = 10,
+            PendingValueCents = 100,
+            Materials = new GoodSort.Api.Data.Entities.MaterialBreakdown { Aluminium = 6, Pet = 4 },
+        };
+        var owner = new GoodSort.Api.Data.Entities.Profile
+        {
+            Id = Guid.NewGuid(),
+            Email = "owner-r1@example.test",
+            HouseholdId = hh.Id,
+            PendingCents = 60,
+            ClearedCents = 0,
+        };
+        var memberB = new GoodSort.Api.Data.Entities.Profile
+        {
+            Id = Guid.NewGuid(),
+            Email = "memberb-r1@example.test",
+            HouseholdId = hh.Id,
+            PendingCents = 40,
+            ClearedCents = 0,
+        };
+        var depot = new GoodSort.Api.Data.Entities.Depot
+        {
+            Id = Guid.NewGuid(),
+            Name = "Moorooka Depot",
+            Address = "1 Depot Rd",
+            Lat = -27.53,
+            Lng = 153.02,
+        };
+        var route1 = new GoodSort.Api.Data.Entities.CollectionRoute
+        {
+            Id = Guid.NewGuid(),
+            DriverId = driverProfile.Id,
+            DepotId = depot.Id,
+            Status = "at_depot",
+            Stops =
+            [
+                new GoodSort.Api.Data.Entities.RouteStop
+                {
+                    Id = Guid.NewGuid(),
+                    HouseholdId = hh.Id,
+                    Status = "picked_up",
+                    ContainerCount = 10,
+                    ActualContainerCount = 5,
+                },
+            ],
+        };
+        var route2 = new GoodSort.Api.Data.Entities.CollectionRoute
+        {
+            Id = Guid.NewGuid(),
+            DriverId = driverProfile.Id,
+            DepotId = depot.Id,
+            Status = "at_depot",
+            Stops =
+            [
+                new GoodSort.Api.Data.Entities.RouteStop
+                {
+                    Id = Guid.NewGuid(),
+                    HouseholdId = hh.Id,
+                    Status = "picked_up",
+                    ContainerCount = 5,
+                    ActualContainerCount = 5,
+                },
+            ],
+        };
+
+        var baseTime = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
+        for (int i = 0; i < 6; i++)
+        {
+            db.Scans.Add(new GoodSort.Api.Data.Entities.Scan
+            {
+                HouseholdId = hh.Id,
+                UserId = owner.Id,
+                Material = "aluminium",
+                RefundCents = 10,
+                Status = "pending",
+                CreatedAt = baseTime.AddMinutes(i),
+            });
+        }
+        for (int i = 0; i < 4; i++)
+        {
+            db.Scans.Add(new GoodSort.Api.Data.Entities.Scan
+            {
+                HouseholdId = hh.Id,
+                UserId = memberB.Id,
+                Material = "pet",
+                RefundCents = 10,
+                Status = "pending",
+                CreatedAt = baseTime.AddMinutes(10 + i),
+            });
+        }
+
+        db.Profiles.AddRange(driverProfile, owner, memberB);
+        db.Households.Add(hh);
+        db.Bins.Add(bin);
+        db.Depots.Add(depot);
+        db.Routes.AddRange(route1, route2);
+        await db.SaveChangesAsync();
+
+        var authSvc = scope.ServiceProvider.GetRequiredService<AuthService>();
+        var token = authSvc.GenerateJwt(driverProfile);
+        var client = host.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        // Settle Route 1 (partial pickup of 5 containers)
+        var res1 = await client.PostAsync($"/api/routes/{route1.Id}/settle", null);
+        Assert.Equal(HttpStatusCode.OK, res1.StatusCode);
+
+        using (var checkScope1 = host.Services.CreateScope())
+        {
+            var checkDb1 = checkScope1.ServiceProvider.GetRequiredService<GoodSortDbContext>();
+            var hh1 = await checkDb1.Households.SingleAsync(h => h.Id == hh.Id);
+            var bin1 = await checkDb1.Bins.SingleAsync(b => b.Id == bin.Id);
+            var owner1 = await checkDb1.Profiles.SingleAsync(p => p.Id == owner.Id);
+            var memberB1 = await checkDb1.Profiles.SingleAsync(p => p.Id == memberB.Id);
+            Assert.Equal(5, hh1.PendingContainers);
+            Assert.Equal(5, bin1.PendingContainers);
+            Assert.Equal(0, bin1.Materials.Aluminium);
+            Assert.Equal(5, bin1.Materials.Other);
+            Assert.Equal(10, owner1.PendingCents);
+            Assert.Equal(50, owner1.ClearedCents);
+            Assert.Equal(40, memberB1.PendingCents);
+            Assert.Equal(0, memberB1.ClearedCents);
+        }
+
+        // Settle Route 2 (remaining 5 containers)
+        var res2 = await client.PostAsync($"/api/routes/{route2.Id}/settle", null);
+        Assert.Equal(HttpStatusCode.OK, res2.StatusCode);
+
+        using (var checkScope2 = host.Services.CreateScope())
+        {
+            var checkDb2 = checkScope2.ServiceProvider.GetRequiredService<GoodSortDbContext>();
+            var hh2 = await checkDb2.Households.SingleAsync(h => h.Id == hh.Id);
+            var bin2 = await checkDb2.Bins.SingleAsync(b => b.Id == bin.Id);
+            var owner2 = await checkDb2.Profiles.SingleAsync(p => p.Id == owner.Id);
+            var memberB2 = await checkDb2.Profiles.SingleAsync(p => p.Id == memberB.Id);
+            Assert.Equal(0, hh2.PendingContainers);
+            Assert.Equal(0, bin2.PendingContainers);
+            Assert.Equal(0, owner2.PendingCents);
+            Assert.Equal(0, memberB2.PendingCents);
+            Assert.Equal(80, owner2.ClearedCents);
+            Assert.Equal(20, memberB2.ClearedCents);
+        }
+    }
+
+    // ── R2: Stale mixed-material row fails closed across public, admin waitlist, and admin allocate ──
+
+    [Fact]
+    public async Task R2_Stale_mixed_material_row_agrees_and_fails_closed_across_public_admin_waitlist_and_allocate()
+    {
+        using var host = new FixtureHost(); // threshold = 3
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
+
+        var admin = new GoodSort.Api.Data.Entities.Profile
+        {
+            Id = Guid.NewGuid(),
+            Email = "admin-r2@example.test",
+            Role = "admin",
+        };
+        db.Profiles.Add(admin);
+
+        // Household 1: previously stale row (PendingContainers = 5, Aluminium = 5, Pet = 5 -> total 10 > pending 5)
+        db.Households.AddRange(
+            new GoodSort.Api.Data.Entities.Household
+            {
+                Id = Guid.NewGuid(),
+                Name = "Stale House",
+                Suburb = "MOOROOKA",
+                Street = "HAMILTON RD",
+                Type = "residential",
+                CouncilCollectionDay = 2,
+                BinStatus = BinStatuses.Waitlisted,
+                PendingContainers = 5,
+                Materials = new GoodSort.Api.Data.Entities.MaterialBreakdown { Aluminium = 5, Pet = 5 },
+            },
+            new GoodSort.Api.Data.Entities.Household
+            {
+                Id = Guid.NewGuid(),
+                Name = "Clean House 2",
+                Suburb = "MOOROOKA",
+                Street = "HAMILTON RD",
+                Type = "residential",
+                CouncilCollectionDay = 2,
+                BinStatus = BinStatuses.Waitlisted,
+                PendingContainers = 1,
+                Materials = new GoodSort.Api.Data.Entities.MaterialBreakdown { Aluminium = 1 },
+            },
+            new GoodSort.Api.Data.Entities.Household
+            {
+                Id = Guid.NewGuid(),
+                Name = "Clean House 3",
+                Suburb = "MOOROOKA",
+                Street = "HAMILTON RD",
+                Type = "residential",
+                CouncilCollectionDay = 2,
+                BinStatus = BinStatuses.Waitlisted,
+                PendingContainers = 1,
+                Materials = new GoodSort.Api.Data.Entities.MaterialBreakdown { Aluminium = 1 },
+            });
+        await db.SaveChangesAsync();
+
+        // 1. Public readiness: stale household contributes 0 verified aluminium; status is pending_material_reconciliation; live is false.
+        var (_, publicSuburb) = await Board(host, "MOOROOKA");
+        Assert.Equal(2, publicSuburb.GetProperty("aluminiumContainers").GetInt32());
+        Assert.False(publicSuburb.GetProperty("live").GetBoolean());
+        Assert.Equal(
+            CollectionReadiness.PendingMaterialReconciliation,
+            publicSuburb.GetProperty("readiness").GetProperty("status").GetString());
+
+        // 2. Admin waitlist: agrees on 2 verified aluminium, readyToOrder == false, status == pending_material_reconciliation.
+        var authSvc = scope.ServiceProvider.GetRequiredService<AuthService>();
+        var client = host.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", authSvc.GenerateJwt(admin));
+
+        var adminWaitlistRes = await client.GetAsync("/api/admin/waitlist");
+        Assert.Equal(HttpStatusCode.OK, adminWaitlistRes.StatusCode);
+        var adminWaitlistJson = await adminWaitlistRes.Content.ReadFromJsonAsync<JsonElement>();
+        var adminSuburb = adminWaitlistJson.GetProperty("suburbs").EnumerateArray()
+            .Single(s => s.GetProperty("suburb").GetString() == "MOOROOKA");
+        Assert.Equal(2, adminSuburb.GetProperty("aluminiumContainers").GetInt32());
+        Assert.False(adminSuburb.GetProperty("readyToOrder").GetBoolean());
+        Assert.True(adminSuburb.GetProperty("materialCompositionUnknown").GetBoolean());
+        Assert.Equal(
+            CollectionReadiness.PendingMaterialReconciliation,
+            adminSuburb.GetProperty("readiness").GetProperty("status").GetString());
+
+        // 3. Admin allocate: fails closed (400 BadRequest), even if clean houses alone reached threshold!
+        var allocateRes = await client.PostAsync("/api/admin/areas/MOOROOKA/allocate", null);
+        Assert.Equal(HttpStatusCode.BadRequest, allocateRes.StatusCode);
+    }
+
+    // ── R3: Exact Aukus URI parser, documented path allowlist, redirect rejection, and disabled capabilities ──
+
+    [Theory]
+    [InlineData("https://api.aukus.si/v1", true)]
+    [InlineData("https://api.aukus.si/v1/", true)]
+    [InlineData("https://api.aukus.si/v1extra", false)]
+    [InlineData("https://api.aukus.si/v1/vision/classify/upload", false)]
+    [InlineData("https://api.aukus.si:8443/v1", false)]
+    [InlineData("http://api.aukus.si/v1", false)]
+    [InlineData("https://api.aukus.si/v1?foo=bar", false)]
+    [InlineData("https://api.aukus.si/v1#frag", false)]
+    [InlineData("https://user:pass@api.aukus.si/v1", false)]
+    [InlineData("https://api.tailor.au/v1", false)]
+    public void R3_AukusBoundary_TryParseBaseUri_validates_exact_canonical_base(string raw, bool expected)
+    {
+        Assert.Equal(expected, AukusBoundary.TryParseBaseUri(raw, out var uri));
+        if (expected)
+            Assert.Equal("https://api.aukus.si/v1/", uri!.AbsoluteUri);
+    }
+
+    [Theory]
+    [InlineData("https://api.aukus.si/v1/chat/completions", true)]
+    [InlineData("https://api.aukus.si/v1/responses", true)]
+    [InlineData("https://api.aukus.si/v1/embeddings", true)]
+    [InlineData("https://api.aukus.si/v1/models", true)]
+    [InlineData("https://api.aukus.si/v1extra/chat/completions", false)]
+    [InlineData("https://api.aukus.si/v1/vision/classify/upload", false)]
+    [InlineData("https://api.aukus.si/v1/api/v2/product/9300675024235.json", false)]
+    [InlineData("https://api.aukus.si/v1/explore/v2.1/catalog/datasets/waste-collection-days-collection-days/records", false)]
+    [InlineData("https://api.aukus.si/v1/trip/v1/driving/153.02,-27.53", false)]
+    [InlineData("https://api.aukus.si/v1/openai/deployments/gpt-5-mini/chat/completions", false)]
+    [InlineData("https://api.aukus.si:8443/v1/chat/completions", false)]
+    [InlineData("http://api.aukus.si/v1/chat/completions", false)]
+    public void R3_AukusBoundary_IsAllowedRequestUri_enforces_documented_paths_only(string raw, bool expected)
+    {
+        Assert.Equal(expected, AukusBoundary.IsAllowedRequestUri(new Uri(raw)));
+    }
+
+    [Fact]
+    public async Task R3_AukusEnforcingHandler_blocks_undocumented_paths_before_network_and_rejects_redirects()
+    {
+        var innerCalls = 0;
+        var inner = new StubInnerHandler(req =>
+        {
+            innerCalls++;
+            var redirect = new HttpResponseMessage(HttpStatusCode.MovedPermanently);
+            redirect.Headers.Location = new Uri("https://evil.example.com/v1/chat/completions");
+            return redirect;
+        });
+
+        using var client = new HttpClient(new AukusEnforcingHandler(inner))
+        {
+            BaseAddress = new Uri(AukusBoundary.CanonicalBaseWithSlash),
+        };
+
+        // 1. Undocumented path is blocked BEFORE calling inner handler
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            client.GetAsync("api/v2/product/9300675024235.json"));
+        Assert.Equal(0, innerCalls);
+
+        // 2. 3xx redirect from a documented path is rejected and never followed
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            client.PostAsync("chat/completions", new StringContent("{}")));
+        Assert.Equal(1, innerCalls);
+        Assert.Contains("redirect", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed class StubInnerHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(responder(request));
+    }
 }
+

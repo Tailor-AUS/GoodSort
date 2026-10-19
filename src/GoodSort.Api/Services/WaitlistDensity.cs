@@ -17,18 +17,44 @@ public static class WaitlistDensity
 
     public static readonly string[] DayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+    public static async Task<HashSet<Guid>> LoadUnreconciledHouseholdIdsAsync(GoodSortDbContext db, CancellationToken ct = default)
+    {
+        var ids = await db.Scans.AsNoTracking()
+            .Where(s => s.HouseholdId != null && s.Status == "pending_unreconciled")
+            .Select(s => s.HouseholdId!.Value)
+            .Distinct()
+            .ToListAsync(ct);
+        return ids.ToHashSet();
+    }
+
+    /// <summary>
+    /// Shared verified-aluminium and unknown-composition detector used by both
+    /// public readiness and admin waitlist/allocation gates. Never infers or
+    /// clamps aluminium when material breakdown exceeds pending containers or
+    /// when a household has unreconciled partial-pickup scans.
+    /// </summary>
+    public static (int VerifiedAluminium, bool MaterialCompositionUnknown) VerifiedHouseholdAluminium(
+        int pendingContainers,
+        int aluminium,
+        int pet,
+        int glass,
+        int other,
+        bool hasUnreconciledScan)
+    {
+        var pending = Math.Max(0, pendingContainers);
+        var matTotal = Math.Max(0, aluminium) + Math.Max(0, pet) + Math.Max(0, glass) + Math.Max(0, other);
+        var unknown = pending > 0 && (hasUnreconciledScan || aluminium < 0 || aluminium > pending || matTotal > pending);
+        var alu = unknown || pending == 0 ? 0 : Math.Max(0, aluminium);
+        return (alu, unknown);
+    }
+
     /// <summary>
     /// EF-safe load: project to anonymous types first. A record constructor
     /// inside <c>Select</c> can 500 on SQL Server.
     /// </summary>
     public static async Task<List<HouseholdClusterRow>> LoadRowsAsync(GoodSortDbContext db, CancellationToken ct = default)
     {
-        var unreconciledHouseholds = await db.Scans.AsNoTracking()
-            .Where(s => s.HouseholdId != null && s.Status == "pending_unreconciled")
-            .Select(s => s.HouseholdId!.Value)
-            .Distinct()
-            .ToListAsync(ct);
-        var unreconciledSet = unreconciledHouseholds.ToHashSet();
+        var unreconciledSet = await LoadUnreconciledHouseholdIdsAsync(db, ct);
 
         var raw = await db.Households.AsNoTracking()
             .Select(h => new
@@ -48,13 +74,8 @@ public static class WaitlistDensity
 
         return raw.ConvertAll(r =>
         {
-            var pending = Math.Max(0, r.PendingContainers);
-            var matTotal = Math.Max(0, r.Aluminium) + Math.Max(0, r.Pet) + Math.Max(0, r.Glass) + Math.Max(0, r.Other);
-            // If a household has pending_unreconciled scans OR its material breakdown
-            // exceeds the remaining pending ledger (e.g. a partial pickup decremented
-            // PendingContainers without reconciling Materials), do not infer aluminium.
-            var unknown = pending > 0 && (unreconciledSet.Contains(r.Id) || r.Aluminium > pending || matTotal > pending);
-            var alu = unknown ? 0 : Math.Max(0, r.Aluminium);
+            var (alu, unknown) = VerifiedHouseholdAluminium(
+                r.PendingContainers, r.Aluminium, r.Pet, r.Glass, r.Other, unreconciledSet.Contains(r.Id));
             return new HouseholdClusterRow(r.Suburb, r.CouncilCollectionDay, r.Type, r.PendingContainers, r.BinStatus, alu, unknown);
         });
     }
@@ -94,8 +115,13 @@ public static class WaitlistDensity
     public static int EffectiveThreshold(CollectionReadinessConfig? readiness = null) =>
         readiness is { Configured: true, AluminiumThreshold: int threshold and > 0 } ? threshold : 0;
 
-    public static bool CanPurchase(int aluminiumInSuburb, CollectionReadinessConfig? readiness = null) =>
-        readiness is { Configured: true, AluminiumThreshold: int threshold and > 0 } && aluminiumInSuburb >= threshold;
+    public static bool CanPurchase(
+        int aluminiumInSuburb,
+        CollectionReadinessConfig? readiness = null,
+        bool materialCompositionUnknown = false) =>
+        !materialCompositionUnknown
+        && readiness is { Configured: true, AluminiumThreshold: int threshold and > 0 }
+        && aluminiumInSuburb >= threshold;
 
     /// <summary>
     /// A driver trip needs doors, not just a number. One household reporting the
@@ -103,8 +129,13 @@ public static class WaitlistDensity
     /// </summary>
     public const int MinHouseholdsForRun = 3;
 
-    public static bool CanDispatch(int aluminiumInSuburb, int householdsInSuburb, CollectionReadinessConfig? readiness = null) =>
-        CanPurchase(aluminiumInSuburb, readiness) && householdsInSuburb >= MinHouseholdsForRun;
+    public static bool CanDispatch(
+        int aluminiumInSuburb,
+        int householdsInSuburb,
+        CollectionReadinessConfig? readiness = null,
+        bool materialCompositionUnknown = false) =>
+        CanPurchase(aluminiumInSuburb, readiness, materialCompositionUnknown)
+        && householdsInSuburb >= MinHouseholdsForRun;
 
     /// <summary>
     /// Ops have committed bins to this household: allocated, delivered or
@@ -170,7 +201,7 @@ public static class WaitlistDensity
                 var compositionUnknown = g.Any(x => x.MaterialCompositionUnknown);
                 var committed = g.Any(x => IsCommitted(x.BinStatus));
                 var suburbReadiness = CollectionReadiness.ForSuburb(readiness, aluminium, committed, compositionUnknown);
-                var live = committed || (readiness is { Configured: true, AluminiumThreshold: int t and > 0 } && aluminium >= t);
+                var live = committed || (!compositionUnknown && readiness is { Configured: true, AluminiumThreshold: int t and > 0 } && aluminium >= t);
                 var needed = live
                     ? 0
                     : readiness is { Configured: true, AluminiumThreshold: int threshold and > 0 }

@@ -1,27 +1,81 @@
 import { parseDayParam, residentialNeedsStreet } from "./brisbane.ts";
 
-/** Sole permitted external runtime API base when not using same-origin or local loopback. */
+/** Sole permitted external AI gateway base. Never used for GoodSort's own /api/* application routes. */
 export const ALLOWED_EXTERNAL_API_BASE = "https://api.aukus.si/v1";
 
+export type DocumentedAukusPath =
+  | "/chat/completions"
+  | "/responses"
+  | "/embeddings"
+  | "/models";
+
+const DOCUMENTED_AUKUS_PATHS = new Set<string>([
+  "/chat/completions",
+  "/responses",
+  "/embeddings",
+  "/models",
+]);
+
 /**
- * Enforces the runtime API origin boundary: permits same-origin (""), local
- * loopback (http://localhost[:port] or http://127.0.0.1[:port]), or exact
- * https://api.aukus.si/v1. Any arbitrary third-party or legacy origin is
- * rejected so the client never attempts forbidden external egress.
+ * Validates the exact https://api.aukus.si/v1 base URI (parsed scheme, host,
+ * default port 443, exact /v1 pathname, no userinfo/query/fragment) and
+ * resolves only a documented Aukus AI endpoint path. Rejects /v1extra,
+ * arbitrary descendants, and undocumented GoodSort application paths.
+ */
+export function resolveAukusEndpoint(
+  rawBase: string | null | undefined,
+  documentedPath: DocumentedAukusPath,
+): string | null {
+  const trimmed = (rawBase ?? "").trim();
+  if (!trimmed || !DOCUMENTED_AUKUS_PATHS.has(documentedPath)) {
+    return null;
+  }
+  try {
+    const u = new URL(trimmed);
+    if (
+      u.protocol !== "https:" ||
+      u.hostname.toLowerCase() !== "api.aukus.si" ||
+      u.port !== "" ||
+      u.username !== "" ||
+      u.password !== "" ||
+      u.search !== "" ||
+      u.hash !== ""
+    ) {
+      return null;
+    }
+    const cleanPath = u.pathname.replace(/\/+$/, "");
+    if (cleanPath !== "/v1") {
+      return null;
+    }
+    return `${ALLOWED_EXTERNAL_API_BASE}${documentedPath}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Enforces the GoodSort application API origin boundary: permits same-origin
+ * ("") or local loopback (http://localhost[:port] or http://127.0.0.1[:port])
+ * only. Never routes GoodSort /api/* endpoints to https://api.aukus.si/v1 or
+ * any external origin.
  */
 export function sanitiseApiBase(raw: string | null | undefined): string {
   const trimmed = (raw ?? "").trim().replace(/\/+$/, "");
   if (!trimmed) {
     return "";
   }
-  const lower = trimmed.toLowerCase();
-  if (lower === ALLOWED_EXTERNAL_API_BASE || lower.startsWith(`${ALLOWED_EXTERNAL_API_BASE}/`)) {
-    return trimmed;
-  }
   try {
     const u = new URL(trimmed);
-    if ((u.protocol === "http:" || u.protocol === "https:") && (u.hostname === "localhost" || u.hostname === "127.0.0.1")) {
-      return `${u.protocol}//${u.host}${u.pathname.replace(/\/+$/, "")}`;
+    if (
+      (u.protocol === "http:" || u.protocol === "https:") &&
+      (u.hostname === "localhost" || u.hostname === "127.0.0.1") &&
+      u.username === "" &&
+      u.password === "" &&
+      u.search === "" &&
+      u.hash === "" &&
+      (u.pathname === "" || u.pathname === "/")
+    ) {
+      return `${u.protocol}//${u.host}`;
     }
   } catch {
     // Reject malformed or non-URL strings.

@@ -80,11 +80,16 @@ function connectSrc(): string[] {
   return [...(directive ?? "").matchAll(/https:\/\/[^\s;]+/g)].map((m) => m[0]);
 }
 
+function connectSrcHosts(): string[] {
+  return connectSrc().map((u) => {
+    const parsed = new URL(u);
+    return `${parsed.protocol}//${parsed.host}`;
+  });
+}
+
 test("the CSP parses, so nothing below can pass by finding nothing", () => {
   const allowed = connectSrc();
-  assert.ok(allowed.length >= 2, `connect-src parsed as ${allowed.length} hosts — the extraction is broken, not the CSP.`);
-  assert.ok(allowed.includes("https://api.aukus.si"), "https://api.aukus.si should be in connect-src");
-  assert.ok(allowed.some((h) => h.includes("azurecontainerapps.io")), "the API's own origin should be in connect-src");
+  assert.deepEqual(allowed, ["https://api.aukus.si/v1"], "connect-src must permit only 'self' and exact https://api.aukus.si/v1.");
 });
 
 test("the scan finds the hosts that are actually there", () => {
@@ -99,13 +104,14 @@ test("the scan finds the hosts that are actually there", () => {
     "https://tiles.openfreemap.org",
     "https://photon.komoot.io",
     "https://api.tailor.au",
+    "https://api.livelyfield-64227152.eastasia.azurecontainerapps.io",
   ]) {
     assert.ok(![...hosts.keys()].includes(forbidden), `forbidden external runtime host remains in client source: ${forbidden}`);
   }
 });
 
 test("every external host is either allowed by the CSP or declared unconnected", () => {
-  const allowed = new Set(connectSrc());
+  const allowed = new Set(connectSrcHosts());
   const undeclared: string[] = [];
 
   for (const [host, files] of externalHosts()) {
@@ -206,13 +212,8 @@ test("the policy has not been loosened where it was deliberately tight", () => {
   assert.deepEqual(directive("default-src"), ["'self'"], "default-src should stay 'self' alone.");
   assert.deepEqual(directive("frame-ancestors"), ["'none'"], "frame-ancestors must stay 'none'.");
 
-  for (const name of ["script-src", "connect-src", "worker-src", "media-src", "font-src"]) {
+  for (const name of ["script-src", "connect-src", "worker-src", "media-src", "font-src", "img-src"]) {
     assert.ok(!directive(name).includes("*"), `${name} contains a bare wildcard.`);
     assert.ok(!directive(name).includes("https:"), `${name} allows any https origin, which is barely a policy.`);
   }
-
-  // img-src is the deliberate exception: it carries https: because container
-  // photos and map tiles come from hosts we do not enumerate. Stated here so it
-  // reads as a decision rather than an oversight.
-  assert.ok(directive("img-src").includes("https:"), "img-src is intentionally broad — if that changed, this note should too.");
 });

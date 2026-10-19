@@ -8,7 +8,7 @@ import {
   readinessCopy,
 } from "./collection-readiness.ts";
 import { inviteMessage } from "./brisbane.ts";
-import { sanitiseApiBase } from "./config.ts";
+import { resolveAukusEndpoint, sanitiseApiBase } from "./config.ts";
 
 const FORBIDDEN = [/\b1,?000\b/, /yellow/i, /night before/i, /\b12 (houses|households)\b/i, /we'll collect/i, /we drive/i];
 
@@ -131,15 +131,33 @@ test("inviteMessage never promises a 1000-container run across pending, building
   assert.match(inviteMessage(url, "MOOROOKA", { committed: true }), /Ops have committed/);
 });
 
-test("sanitiseApiBase allows only same-origin, localhost loopback, or https://api.aukus.si/v1", () => {
+test("sanitiseApiBase keeps GoodSort application API same-origin or local loopback only", () => {
   assert.equal(sanitiseApiBase(undefined), "");
   assert.equal(sanitiseApiBase(""), "");
   assert.equal(sanitiseApiBase("http://localhost:5113/"), "http://localhost:5113");
   assert.equal(sanitiseApiBase("http://127.0.0.1:5113"), "http://127.0.0.1:5113");
-  assert.equal(sanitiseApiBase("https://api.aukus.si/v1"), "https://api.aukus.si/v1");
-  assert.equal(sanitiseApiBase("https://api.aukus.si/v1/goodsort/"), "https://api.aukus.si/v1/goodsort");
+  assert.equal(sanitiseApiBase("https://api.aukus.si/v1"), "");
+  assert.equal(sanitiseApiBase("https://api.aukus.si/v1/goodsort/"), "");
   assert.equal(sanitiseApiBase("https://api.tailor.au"), "");
   assert.equal(sanitiseApiBase("https://api.livelyfield-64227152.eastasia.azurecontainerapps.io"), "");
   assert.equal(sanitiseApiBase("https://evil.example.com/v1"), "");
+});
+
+test("resolveAukusEndpoint enforces exact https://api.aukus.si/v1 base and documented path allowlist", () => {
+  assert.equal(
+    resolveAukusEndpoint("https://api.aukus.si/v1", "/chat/completions"),
+    "https://api.aukus.si/v1/chat/completions",
+  );
+  assert.equal(
+    resolveAukusEndpoint("https://api.aukus.si/v1/", "/models"),
+    "https://api.aukus.si/v1/models",
+  );
+  // Rejects prefix lookalikes (/v1extra), descendants, non-default ports, http, query, fragment
+  assert.equal(resolveAukusEndpoint("https://api.aukus.si/v1extra", "/chat/completions"), null);
+  assert.equal(resolveAukusEndpoint("https://api.aukus.si/v1/goodsort", "/chat/completions"), null);
+  assert.equal(resolveAukusEndpoint("https://api.aukus.si:8443/v1", "/chat/completions"), null);
+  assert.equal(resolveAukusEndpoint("http://api.aukus.si/v1", "/chat/completions"), null);
+  assert.equal(resolveAukusEndpoint("https://api.aukus.si/v1?x=1", "/chat/completions"), null);
+  assert.equal(resolveAukusEndpoint("https://api.aukus.si/v1#frag", "/chat/completions"), null);
 });
 

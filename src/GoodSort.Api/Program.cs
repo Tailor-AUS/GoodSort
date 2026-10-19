@@ -46,26 +46,21 @@ builder.Services.AddHttpClient();
 // container is killed. See BarcodeCache for why misses are cached as well.
 builder.Services.AddMemoryCache(o => o.SizeLimit = BarcodeCache.MaxEntries);
 
-builder.Services.AddHttpClient("OpenFoodFacts", client =>
+builder.Services.AddTransient<AukusEnforcingHandler>();
+builder.Services.AddHttpClient("AukusAi", client =>
 {
-    client.DefaultRequestHeaders.UserAgent.ParseAdd("TheGoodSort/1.0 (noreply@thegoodsort.org)");
-    client.Timeout = TimeSpan.FromSeconds(5);
-});
-
-builder.Services.AddHttpClient("TailorVision", client =>
-{
-    var url = builder.Configuration["TAILOR_VISION_API_URL"];
-    var key = builder.Configuration["TAILOR_VISION_API_KEY"] ?? "";
-    if (!string.IsNullOrWhiteSpace(url) &&
-        url.StartsWith("https://api.aukus.si/v1", StringComparison.OrdinalIgnoreCase))
+    var url = builder.Configuration["AUKUS_API_URL"];
+    if (AukusBoundary.TryParseBaseUri(url, out var baseUri) && baseUri is not null)
     {
-        var baseUrl = url.EndsWith('/') ? url : $"{url}/";
-        client.BaseAddress = new Uri(baseUrl);
+        client.BaseAddress = baseUri;
     }
-    if (!string.IsNullOrEmpty(key))
-        client.DefaultRequestHeaders.Add("X-Api-Key", key);
     client.Timeout = TimeSpan.FromSeconds(8);
-});
+})
+.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+{
+    AllowAutoRedirect = false,
+})
+.AddHttpMessageHandler<AukusEnforcingHandler>();
 
 // JSON serialization — handle circular references (Run ↔ RunnerProfile)
 builder.Services.ConfigureHttpJsonOptions(options =>
@@ -864,90 +859,31 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
 }).RequireAuthorization();
 
 // ── Barcode Lookup ──
-app.MapGet("/api/barcode/{barcode}", async (string barcode, IHttpClientFactory httpFactory, IMemoryCache cache, ILoggerFactory logFactory) =>
+app.MapGet("/api/barcode/{barcode}", (string barcode, IMemoryCache cache) =>
 {
     if (barcode.Length is < 8 or > 14 || !barcode.All(char.IsDigit))
         return Results.BadRequest(new { error = "Invalid barcode format" });
 
-    // Answered from memory when we have asked before. The same barcode repeats
-    // constantly — a household bagging a 24-pack scans one barcode 24 times.
+    // Answered from memory when we have asked before.
     if (cache.TryGetValue(BarcodeCache.Key(barcode), out object? hit) && hit is not null)
         return Results.Ok(hit);
 
-    void Remember(object payload, bool found) =>
-        cache.Set(BarcodeCache.Key(barcode), payload, new MemoryCacheEntryOptions
-        {
-            Size = 1,
-            AbsoluteExpirationRelativeToNow = BarcodeCache.LifetimeFor(found),
-        });
-
-    try
+    // External Open Food Facts catalogue lookup is not provided by the
+    // https://api.aukus.si/v1 runtime boundary and is explicitly disabled
+    // without making any network attempt.
+    var disabledMiss = new
     {
-        var client = httpFactory.CreateClient("OpenFoodFacts");
-        if (client.BaseAddress is null ||
-            !client.BaseAddress.AbsoluteUri.StartsWith("https://api.aukus.si/v1", StringComparison.OrdinalIgnoreCase))
-        {
-            var localMiss = new { found = false, barcode };
-            Remember(localMiss, found: false);
-            return Results.Ok(localMiss);
-        }
-        var res = await client.GetAsync($"api/v2/product/{barcode}.json");
-        if (!res.IsSuccessStatusCode)
-        {
-            var miss = new { found = false, barcode };
-            Remember(miss, found: false);
-            return Results.Ok(miss);
-        }
-
-        using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
-        if (!doc.RootElement.TryGetProperty("product", out var product))
-        {
-            var miss = new { found = false, barcode };
-            Remember(miss, found: false);
-            return Results.Ok(miss);
-        }
-
-        string? Str(string name) =>
-            product.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String
-                ? v.GetString()
-                : null;
-
-        var packagingTags = product.TryGetProperty("packaging_materials_tags", out var tags)
-                            && tags.ValueKind == JsonValueKind.Array
-            ? tags.EnumerateArray()
-                .Where(t => t.ValueKind == JsonValueKind.String)
-                .Select(t => t.GetString()!)
-                .Take(12)
-                .ToArray()
-            : [];
-
-        var payload = new
-        {
-            found = true,
-            barcode,
-            productName = Str("product_name") ?? Str("product_name_en"),
-            brands = Str("brands"),
-            quantity = Str("quantity"),
-            packaging = Str("packaging"),
-            categories = Str("categories"),
-            packagingMaterialsTags = packagingTags,
-        };
-        Remember(payload, found: true);
-        return Results.Ok(payload);
-    }
-    catch (Exception ex)
+        found = false,
+        barcode,
+        capabilityDisabled = true,
+        reason = "External Open Food Facts barcode lookup is disabled under the runtime boundary.",
+    };
+    cache.Set(BarcodeCache.Key(barcode), disabledMiss, new MemoryCacheEntryOptions
     {
-        // Including the 5s timeout. A miss is a normal answer here — the local
-        // table is the primary source and OFF has no record for most Australian
-        // beverage barcodes — but a silent catch is how the CSP failure hid, so
-        // this one says something.
-        // Deliberately NOT cached. A timeout or a 503 is OFF having a bad
-        // minute, not a statement about this product — caching it would turn a
-        // brief outage into six hours of wrong answers for every barcode
-        // scanned during it.
-        logFactory.CreateLogger("BarcodeLookup").LogWarning(ex, "Open Food Facts lookup failed for {Barcode}", barcode);
-        return Results.Ok(new { found = false, barcode });
-    }
+        Size = 1,
+        AbsoluteExpirationRelativeToNow = BarcodeCache.LifetimeFor(found: false),
+    });
+    return Results.Ok(disabledMiss);
 }).RequireRateLimiting("barcode-lookup");
 
 // ── Households ──
@@ -1286,7 +1222,13 @@ app.MapGet("/api/growth/invite/{id:guid}", async (Guid id, GoodSortDbContext db)
 app.MapPost("/api/households/lookup-bin-day", async (BinDayLookupRequest req, BinDayService svc) =>
 {
     var result = await svc.Lookup(req.Lat, req.Lng, req.Address);
-    if (result is null) return Results.Ok(new { found = false });
+    if (result is null)
+        return Results.Ok(new
+        {
+            found = false,
+            capabilityDisabled = true,
+            reason = "External council GIS bin-day lookup is disabled under the runtime boundary; choose collection day manually.",
+        });
     return Results.Ok(new { found = true, dayOfWeek = result.DayOfWeek, councilArea = result.CouncilArea, source = result.Source });
 });
 
@@ -1635,13 +1577,8 @@ app.MapPost("/api/routes/{id:guid}/settle", async (HttpContext ctx, Guid id, Goo
 
     foreach (var stop in pickedUp)
     {
-        var hh = await db.Households.FindAsync(stop.HouseholdId);
-        if (hh is null) continue;
         var count = stop.ActualContainerCount ?? stop.ContainerCount;
-        var pendingScans = await db.Scans
-            .Where(s => s.HouseholdId == hh.Id && (s.Status == "pending" || s.Status == "pending_unreconciled"))
-            .ToListAsync();
-        HouseholdCredit.ReconcileHouseholdPickup(hh, null, pendingScans, count);
+        await HouseholdCredit.SettleHouseholdStopAsync(db, stop.HouseholdId, stopBin: null, count);
     }
 
     if (route.DriverId.HasValue)
@@ -1668,8 +1605,8 @@ app.MapPost("/api/routes/{id:guid}/settle", async (HttpContext ctx, Guid id, Goo
 app.MapGet("/api/depots", async (GoodSortDbContext db) =>
     Results.Ok(await db.Depots.ToListAsync()));
 
-// ── Route Optimization (OSRM trip service — open source, no API key) ──
-app.MapPost("/api/routes/{id:guid}/optimize", async (HttpContext ctx, Guid id, GoodSortDbContext db, IConfiguration config, IHttpClientFactory httpFactory) =>
+// ── Route Optimization (disabled under runtime boundary — no external OSRM egress) ──
+app.MapPost("/api/routes/{id:guid}/optimize", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
     var route = await db.Routes.Include(r => r.Stops).Include(r => r.Depot).FirstOrDefaultAsync(r => r.Id == id);
     if (route is null) return Results.NotFound();
@@ -1678,49 +1615,12 @@ app.MapPost("/api/routes/{id:guid}/optimize", async (HttpContext ctx, Guid id, G
     var stops = route.Stops.OrderBy(s => s.Sequence).ToList();
     if (stops.Count < 2) return Results.Ok(new { optimized = false, reason = "Too few stops" });
 
-    // Coordinates are lng,lat (OSRM convention).
-    var coords = new List<string> { $"{stops[0].Lng:F6},{stops[0].Lat:F6}" };
-    coords.AddRange(stops.Skip(1).Select(s => $"{s.Lng:F6},{s.Lat:F6}"));
-    coords.Add($"{route.Depot.Lng:F6},{route.Depot.Lat:F6}");
-
-    var osrmBase = config["OSRM_URL"];
-    if (string.IsNullOrWhiteSpace(osrmBase) || !osrmBase.StartsWith("https://api.aukus.si/v1", StringComparison.OrdinalIgnoreCase))
-        return Results.Ok(new { optimized = false, reason = "Route optimizer unavailable outside https://api.aukus.si/v1 boundary." });
-    var url = $"{osrmBase}/trip/v1/driving/{string.Join(';', coords)}?source=first&destination=last&roundtrip=false&overview=false";
-
-    var client = httpFactory.CreateClient();
-    System.Text.Json.JsonElement json;
-    try
+    return Results.Ok(new
     {
-        var res = await client.GetAsync(url);
-        if (!res.IsSuccessStatusCode) return Results.Ok(new { optimized = false, reason = "OSRM call failed" });
-        json = await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
-    }
-    catch (Exception ex)
-    {
-        return Results.Ok(new { optimized = false, reason = $"OSRM error: {ex.Message}" });
-    }
-
-    if (json.GetProperty("code").GetString() != "Ok") return Results.Ok(new { optimized = false, reason = json.GetProperty("code").GetString() });
-
-    var trips = json.GetProperty("trips");
-    if (trips.GetArrayLength() == 0) return Results.Ok(new { optimized = false, reason = "No trip returned" });
-    var trip = trips[0];
-    route.EstimatedDurationMin = (int)Math.Round(trip.GetProperty("duration").GetDouble() / 60);
-    route.EstimatedDistanceKm = Math.Round(trip.GetProperty("distance").GetDouble() / 1000.0, 1);
-
-    // waypoint_index gives each input coordinate's position in the optimized
-    // trip. Input order was [stops[0], stops[1..n-1], depot]; we reorder only
-    // the household stops (depot's optimized position is fixed by source/destination).
-    var waypoints = json.GetProperty("waypoints");
-    for (int i = 0; i < stops.Count && i < waypoints.GetArrayLength(); i++)
-    {
-        var optimizedIdx = waypoints[i].GetProperty("waypoint_index").GetInt32();
-        stops[i].Sequence = optimizedIdx;
-    }
-
-    await db.SaveChangesAsync();
-    return Results.Ok(new { optimized = true, durationMin = route.EstimatedDurationMin, distanceKm = route.EstimatedDistanceKm });
+        optimized = false,
+        capabilityDisabled = true,
+        reason = "External OSRM route optimization is disabled under the runtime boundary.",
+    });
 }).RequireAuthorization();
 
 // ── Cash-out ──
@@ -1962,7 +1862,8 @@ app.MapGet("/api/admin/waitlist", async (GoodSortDbContext db, IConfiguration cf
     var readinessCfg = CollectionReadiness.ConfigFrom(cfg);
     var liveThreshold = WaitlistDensity.EffectiveThreshold(readinessCfg);
     var dayNames = WaitlistDensity.DayNames;
-    var rows = await db.Households.AsNoTracking()
+    var unreconciledSet = await WaitlistDensity.LoadUnreconciledHouseholdIdsAsync(db);
+    var rawRows = await db.Households.AsNoTracking()
         // Not == "residential": legacy rows carry an empty Type from the
         // migration default, and excluding them here while WaitlistDensity
         // counts them would make ops blind to households driving a run.
@@ -1971,19 +1872,39 @@ app.MapGet("/api/admin/waitlist", async (GoodSortDbContext db, IConfiguration cf
         {
             h.Id, h.Name, h.Address, h.Suburb, h.Street,
             h.CouncilCollectionDay, h.BinStatus, h.WaitlistedAt, h.CreatedAt, h.PendingContainers,
-            AluminiumContainers = h.Materials.Aluminium,
+            Aluminium = h.Materials.Aluminium,
+            Pet = h.Materials.Pet,
+            Glass = h.Materials.Glass,
+            Other = h.Materials.Other,
         })
         .ToListAsync();
+
+    var rows = rawRows.ConvertAll(r =>
+    {
+        var (verifiedAlu, unknown) = WaitlistDensity.VerifiedHouseholdAluminium(
+            r.PendingContainers, r.Aluminium, r.Pet, r.Glass, r.Other, unreconciledSet.Contains(r.Id));
+        return new
+        {
+            r.Id, r.Name, r.Address, r.Suburb, r.Street,
+            r.CouncilCollectionDay, r.BinStatus, r.WaitlistedAt, r.CreatedAt,
+            PendingContainers = Math.Max(0, r.PendingContainers),
+            VerifiedAluminium = verifiedAlu,
+            MaterialCompositionUnknown = unknown,
+        };
+    });
 
     var suburbs = rows
         .GroupBy(r => WaitlistDensity.AdminGroupKey(r.Suburb))
         .Select(g =>
         {
             var clusterable = WaitlistDensity.CanAllocateSuburb(g.Key);
-            var containers = g.Sum(x => Math.Max(0, x.PendingContainers));
-            var aluminiumContainers = g.Sum(x => Math.Clamp(x.AluminiumContainers, 0, Math.Max(0, x.PendingContainers)));
+            var containers = g.Sum(x => x.PendingContainers);
+            var aluminiumContainers = g.Sum(x => x.VerifiedAluminium);
+            var compositionUnknown = g.Any(x => x.MaterialCompositionUnknown);
+            var committed = g.Any(x => WaitlistDensity.IsCommitted(x.BinStatus));
+            var readiness = CollectionReadiness.ForSuburb(readinessCfg, aluminiumContainers, committed, compositionUnknown);
             var suburbReady = clusterable
-                && WaitlistDensity.CanDispatch(aluminiumContainers, g.Count(), readinessCfg)
+                && WaitlistDensity.CanDispatch(aluminiumContainers, g.Count(), readinessCfg, compositionUnknown)
                 && g.Any(x => x.BinStatus == BinStatuses.Waitlisted);
             var days = g.Where(x => x.CouncilCollectionDay != null)
                 .GroupBy(x => x.CouncilCollectionDay!.Value)
@@ -1992,8 +1913,8 @@ app.MapGet("/api/admin/waitlist", async (GoodSortDbContext db, IConfiguration cf
                     day = d.Key,
                     dayName = d.Key is >= 0 and <= 6 ? dayNames[d.Key] : "recycling day",
                     households = d.Count(),
-                    containers = d.Sum(x => Math.Max(0, x.PendingContainers)),
-                    aluminiumContainers = d.Sum(x => Math.Clamp(x.AluminiumContainers, 0, Math.Max(0, x.PendingContainers))),
+                    containers = d.Sum(x => x.PendingContainers),
+                    aluminiumContainers = d.Sum(x => x.VerifiedAluminium),
                     waitlisted = d.Count(x => x.BinStatus == BinStatuses.Waitlisted),
                     allocated = d.Count(x => x.BinStatus == BinStatuses.Allocated),
                     delivered = d.Count(x => x.BinStatus == BinStatuses.Delivered),
@@ -2010,6 +1931,8 @@ app.MapGet("/api/admin/waitlist", async (GoodSortDbContext db, IConfiguration cf
                 households = g.Count(),
                 containers,
                 aluminiumContainers,
+                materialCompositionUnknown = compositionUnknown,
+                readiness,
                 waitlisted = g.Count(x => x.BinStatus == BinStatuses.Waitlisted),
                 allocated = g.Count(x => x.BinStatus == BinStatuses.Allocated),
                 delivered = g.Count(x => x.BinStatus == BinStatuses.Delivered),
@@ -2019,7 +1942,8 @@ app.MapGet("/api/admin/waitlist", async (GoodSortDbContext db, IConfiguration cf
                 houses = g.OrderBy(x => x.WaitlistedAt ?? x.CreatedAt).Select(x => new
                 {
                     x.Id, x.Name, x.Address, x.Street, x.CouncilCollectionDay, x.BinStatus, x.WaitlistedAt, x.PendingContainers,
-                    aluminiumContainers = Math.Clamp(x.AluminiumContainers, 0, Math.Max(0, x.PendingContainers)),
+                    aluminiumContainers = x.VerifiedAluminium,
+                    materialCompositionUnknown = x.MaterialCompositionUnknown,
                 }),
             };
         })
@@ -2039,16 +1963,18 @@ app.MapPost("/api/admin/areas/{suburb}/allocate", async (string suburb, int? day
     if (!readinessCfg.Configured || readinessCfg.AluminiumThreshold is not int threshold || threshold <= 0)
         return Results.BadRequest(new { error = "Suburb aluminium collection threshold is not configured yet." });
     var key = BinDayService.CanonicalSuburb(suburb)!;
-    var inSuburb = await db.Households
-        .Where(h => h.Type != "unit_complex" && h.Suburb != null && h.Suburb.ToUpper() == key)
-        .Select(h => new { h.PendingContainers, Aluminium = h.Materials.Aluminium })
-        .ToListAsync();
-    var containers = inSuburb.Sum(h => Math.Max(0, h.PendingContainers));
-    var aluminiumContainers = inSuburb.Sum(h => Math.Clamp(h.Aluminium, 0, Math.Max(0, h.PendingContainers)));
-    var households = inSuburb.Count;
-    if (!WaitlistDensity.CanPurchase(aluminiumContainers, readinessCfg))
+    var validatedRows = await WaitlistDensity.LoadRowsAsync(db);
+    var board = WaitlistDensity.Aggregate(validatedRows, readinessConfig: readinessCfg);
+    var suburbCluster = WaitlistDensity.SuburbCluster(board, key);
+    var containers = suburbCluster?.Containers ?? 0;
+    var aluminiumContainers = suburbCluster?.AluminiumContainers ?? 0;
+    var households = suburbCluster?.Households ?? 0;
+    var compositionUnknown = suburbCluster?.Readiness?.Status == CollectionReadiness.PendingMaterialReconciliation;
+    if (compositionUnknown)
+        return Results.BadRequest(new { error = $"Suburb {key} has unreconciled partial-pickup material balances and cannot be allocated until reconciled." });
+    if (!WaitlistDensity.CanPurchase(aluminiumContainers, readinessCfg, compositionUnknown))
         return Results.BadRequest(new { error = $"Need {threshold} verified aluminium containers in the suburb. This suburb has {aluminiumContainers} aluminium containers ({containers} total)." });
-    if (!WaitlistDensity.CanDispatch(aluminiumContainers, households, readinessCfg))
+    if (!WaitlistDensity.CanDispatch(aluminiumContainers, households, readinessCfg, compositionUnknown))
         return Results.BadRequest(new { error = $"Need at least {WaitlistDensity.MinHouseholdsForRun} households in the suburb to send a driver. This suburb has {households}." });
     var q = db.Households.Where(h => h.Type != "unit_complex" && h.Suburb != null && h.Suburb.ToUpper() == key && h.BinStatus == BinStatuses.Waitlisted);
     if (day is int d) q = q.Where(h => h.CouncilCollectionDay == d);
@@ -2501,22 +2427,9 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
         // Household credit is the runner count (5¢), not Vision scans.
         if (bin.HouseholdId.HasValue)
         {
-            var hh = await db.Households.Include(h => h.Members).FirstOrDefaultAsync(h => h.Id == bin.HouseholdId);
-            if (hh is null) continue;
-
-            var pendingScans = await db.Scans
-                .Where(s => s.HouseholdId == hh.Id && (s.Status == "pending" || s.Status == "pending_unreconciled"))
-                .ToListAsync();
-            var payees = hh.Members.ToList();
-            foreach (var scan in pendingScans)
-            {
-                if (payees.Any(m => m.Id == scan.UserId)) continue;
-                var extra = await db.Profiles.FindAsync(scan.UserId);
-                if (extra is not null) payees.Add(extra);
-            }
-            HouseholdCredit.ApplyPickup(payees, pendingScans, count);
-            HouseholdCredit.ReconcileHouseholdPickup(hh, bin, pendingScans, count);
-            creditedHouseholds.Add(hh);
+            var hh = await HouseholdCredit.SettleHouseholdStopAsync(db, bin.HouseholdId.Value, bin, count);
+            if (hh is not null)
+                creditedHouseholds.Add(hh);
         }
         else
         {

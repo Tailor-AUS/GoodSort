@@ -65,7 +65,9 @@ public class ConfigRestoreCoverageTests
         ["DEPOSIT_REPLAY_HAMMING_MAX"] = "Anti-replay threshold; the code default is the intended value.",
         ["MINIMUM_RUN_PAYOUT_CENTS"] = "Run pricing floor; the code default is intended, and PricingBounds constrains the range.",
         ["RUNNER_STOP_MAX_CONTAINERS"] = "Defaults to 200, the intended per-stop ceiling.",
-        ["OSRM_URL"] = "Defaults to the public OSRM demo endpoint, which is what the pilot uses.",
+        ["AUKUS_API_KEY"] = "Fail-closed: when unset, VisionService returns no_provider without attempting any outbound HTTP call.",
+        ["AUKUS_API_URL"] = "Defaults to the canonical https://api.aukus.si/v1 boundary; any non-canonical value is rejected fail-closed by AukusBoundary.",
+        ["AUKUS_MODEL"] = "Defaults to gpt-4o-mini for /v1/chat/completions when AUKUS_API_KEY is configured.",
     };
 
     [Fact]
