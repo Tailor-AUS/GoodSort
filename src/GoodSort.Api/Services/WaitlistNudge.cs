@@ -8,8 +8,11 @@ namespace GoodSort.Api.Services;
 /// </summary>
 public static class WaitlistNudge
 {
-    public static bool ShouldNudgeOthers(int containersInSuburb, bool live) =>
-        containersInSuburb >= 2 && !live && containersInSuburb < WaitlistDensity.LiveThreshold;
+    public static bool ShouldNudgeOthers(int aluminiumInSuburb, bool live, CollectionReadinessConfig? readiness = null) =>
+        !live
+        && readiness is { Configured: true, AluminiumThreshold: int threshold and > 0 }
+        && aluminiumInSuburb >= 2
+        && aluminiumInSuburb < threshold;
 
     /// <summary>
     /// At most one neighbour nudge per member per day. The nudge fires on every

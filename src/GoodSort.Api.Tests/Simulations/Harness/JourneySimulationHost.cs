@@ -27,7 +27,8 @@ public class JourneySimulationHost : WebApplicationFactory<Program>
         builder.UseEnvironment(Environments.Development);
         builder.UseSetting("ConnectionStrings:goodsortdb", string.Empty);
         builder.UseSetting("JWT_SECRET", "test-only-signing-key-not-a-real-secret-0123456789");
-        builder.UseSetting("TAILOR_VISION_API_KEY", "test-tailor-vision-key");
+        builder.UseSetting("AUKUS_API_URL", "https://api.aukus.si/v1");
+        builder.UseSetting("AUKUS_API_KEY", "test-only-aukus-key-not-a-real-secret");
 
         builder.ConfigureServices(services =>
         {

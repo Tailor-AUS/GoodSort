@@ -5,6 +5,12 @@ on:
     branches: [main]
     paths:
       - 'src/**'
+      - 'app/**'
+      - 'lib/**'
+      - 'public/**'
+      - 'next.config.ts'
+      - 'package.json'
+      - 'package-lock.json'
       # The image is built from the repo-root Dockerfile, so a change to it must
       # trigger a deploy. Without this, a base-image bump or a runtime CVE patch
       # merges green and never ships.

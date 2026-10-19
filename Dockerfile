@@ -1,3 +1,14 @@
+FROM node:20-alpine AS web-build
+WORKDIR /web
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY app ./app
+COPY lib ./lib
+COPY public ./public
+COPY next.config.ts tsconfig.json postcss.config.mjs next-env.d.ts ./
+ENV NEXT_PUBLIC_API_URL=""
+RUN npm run build
+
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 COPY src/GoodSort.Api/GoodSort.Api.csproj GoodSort.Api/
@@ -10,6 +21,7 @@ RUN dotnet publish GoodSort.Api/GoodSort.Api.csproj -c Release -o /app
 FROM mcr.microsoft.com/dotnet/aspnet:9.0
 WORKDIR /app
 COPY --from=build /app .
+COPY --from=web-build /web/out ./wwwroot
 
 # Which commit is actually serving. The image is already tagged with the sha,
 # but a tag is only visible to whoever can read the registry - the running app
@@ -24,3 +36,4 @@ ENV BUILD_TIME=$BUILD_TIME
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "GoodSort.Api.dll"]
+

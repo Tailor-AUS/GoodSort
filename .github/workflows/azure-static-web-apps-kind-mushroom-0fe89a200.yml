@@ -28,7 +28,7 @@ jobs:
           npm ci
           npm run build
         env:
-          NEXT_PUBLIC_API_URL: https://api.livelyfield-64227152.eastasia.azurecontainerapps.io
+          NEXT_PUBLIC_API_URL: ""
 
       - name: Deploy to Azure SWA
         uses: Azure/static-web-apps-deploy@v1

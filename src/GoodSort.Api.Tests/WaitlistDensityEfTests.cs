@@ -7,6 +7,9 @@ namespace GoodSort.Api.Tests;
 
 public class WaitlistDensityEfTests
 {
+    private static readonly CollectionReadinessConfig Configured1000 =
+        new(Configured: true, AluminiumThreshold: 1000, Source: "operator_config", FixtureLabel: null);
+
     [Fact]
     public async Task LoadRows_then_aggregate_unlocks_at_suburb_volume()
     {
@@ -17,7 +20,10 @@ public class WaitlistDensityEfTests
         db.Households.Add(House("MOOROOKA", 5, containers: 500, type: "unit_complex"));
         await db.SaveChangesAsync();
 
-        var board = WaitlistDensity.Aggregate(await WaitlistDensity.LoadRowsAsync(db));
+        var pendingBoard = WaitlistDensity.Aggregate(await WaitlistDensity.LoadRowsAsync(db));
+        Assert.False(Assert.Single(pendingBoard.Suburbs).Live);
+
+        var board = WaitlistDensity.Aggregate(await WaitlistDensity.LoadRowsAsync(db), readinessConfig: Configured1000);
         var suburb = Assert.Single(board.Suburbs);
         Assert.Equal("MOOROOKA", suburb.Suburb);
         Assert.True(suburb.Live);
@@ -33,7 +39,7 @@ public class WaitlistDensityEfTests
         for (var i = 0; i < 5; i++) db.Households.Add(House("ANNERLEY", 1, containers: 100));
         await db.SaveChangesAsync();
 
-        var board = WaitlistDensity.Aggregate(await WaitlistDensity.LoadRowsAsync(db));
+        var board = WaitlistDensity.Aggregate(await WaitlistDensity.LoadRowsAsync(db), readinessConfig: Configured1000);
         Assert.Equal(1000, board.TotalContainers);
         Assert.All(board.Suburbs, s => Assert.False(s.Live));
     }
@@ -62,11 +68,11 @@ public class WaitlistDensityEfTests
         db.Households.Add(House("MOOROOKA", 5, containers: 0, status: BinStatuses.Allocated));
         await db.SaveChangesAsync();
 
-        var board = WaitlistDensity.Aggregate(await WaitlistDensity.LoadRowsAsync(db));
+        var board = WaitlistDensity.Aggregate(await WaitlistDensity.LoadRowsAsync(db), readinessConfig: Configured1000);
         var suburb = Assert.Single(board.Suburbs);
         Assert.True(suburb.Committed);
         // Even back over the threshold, ops must not be told to buy bins again.
-        Assert.False(WaitlistDensity.ShouldAnnounceUnlock(suburb.Committed, 1200, 300));
+        Assert.False(WaitlistDensity.ShouldAnnounceUnlock(suburb.Committed, 1200, 300, Configured1000));
     }
 
     [Fact]
@@ -76,7 +82,7 @@ public class WaitlistDensityEfTests
         db.Households.Add(House("MOOROOKA", 5, containers: 300));
         await db.SaveChangesAsync();
 
-        var board = WaitlistDensity.Aggregate(await WaitlistDensity.LoadRowsAsync(db));
+        var board = WaitlistDensity.Aggregate(await WaitlistDensity.LoadRowsAsync(db), readinessConfig: Configured1000);
         var suburb = Assert.Single(board.Suburbs);
         Assert.False(suburb.Live);
         Assert.False(suburb.Committed);
@@ -99,6 +105,7 @@ public class WaitlistDensityEfTests
         Type = type,
         CouncilCollectionDay = day,
         PendingContainers = containers,
+        Materials = new MaterialBreakdown { Aluminium = containers },
         Lat = -27.527,
         Lng = 153.026,
         BinStatus = status,

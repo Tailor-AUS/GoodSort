@@ -1,85 +1,41 @@
-using System.Net;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace GoodSort.Api.Services;
 
 /// <summary>
-/// Looks up the day of the week (0=Sun..6=Sat) for council recycling at an
-/// address using Brisbane City Council open data (OpenDataSoft). City-wide
-/// labels must never unlock a run. Addresses outside BCC return null and the
-/// UI asks the user to pick manually.
+/// Parses Brisbane addresses and normalises suburb names. External Brisbane City
+/// Council OpenDataSoft GIS calls (<c>explore/v2.1/catalog/...</c>) are explicitly
+/// disabled under the runtime boundary without making any network attempt, and
+/// callers fall back to manual collection-day selection.
 /// </summary>
 public class BinDayService
 {
-    private readonly IHttpClientFactory _http;
     private readonly ILogger<BinDayService> _log;
-    private const string Base = "https://data.brisbane.qld.gov.au/api/explore/v2.1/catalog/datasets/waste-collection-days-collection-days/records";
 
-    public BinDayService(IHttpClientFactory http, ILogger<BinDayService> log)
+    public BinDayService(IHttpClientFactory _, ILogger<BinDayService> log)
     {
-        _http = http; _log = log;
+        _log = log;
     }
 
-    public async Task<BinDayResult?> Lookup(double lat, double lng, string? address = null)
+    public Task<BinDayResult?> Lookup(double lat, double lng, string? address = null)
     {
         // Rough BCC bounding box; outside of this we don't have data
         if (lat < -27.75 || lat > -27.20 || lng < 152.70 || lng > 153.30)
-            return null;
-        if (string.IsNullOrWhiteSpace(address)) return null;
+            return Task.FromResult<BinDayResult?>(null);
+        if (string.IsNullOrWhiteSpace(address))
+            return Task.FromResult<BinDayResult?>(null);
 
         var parsed = ParseAddress(address);
-        if (parsed is null) return null;
+        if (parsed is null)
+            return Task.FromResult<BinDayResult?>(null);
 
-        try
-        {
-            var client = _http.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(6);
-
-            // Try exact house number + street + suburb first
-            var where = $"suburb=\"{Escape(parsed.Suburb)}\" AND street_name=\"{Escape(parsed.Street)}\" AND house_number=\"{Escape(parsed.HouseNumber)}\"";
-            var day = await QueryDay(client, where);
-            if (day is not null) return new BinDayResult(day.Value, "BCC", "bcc-opendata-address");
-
-            // Fall back to street-level — most streets have a single collection day
-            where = $"suburb=\"{Escape(parsed.Suburb)}\" AND street_name=\"{Escape(parsed.Street)}\"";
-            day = await QueryDay(client, where);
-            if (day is not null) return new BinDayResult(day.Value, "BCC", "bcc-opendata-street");
-
-            // Final fall-back: whole suburb (some suburbs are split; majority rules)
-            where = $"suburb=\"{Escape(parsed.Suburb)}\"";
-            day = await QueryDay(client, where);
-            if (day is not null) return new BinDayResult(day.Value, "BCC", "bcc-opendata-suburb");
-        }
-        catch (Exception ex)
-        {
-            _log.LogInformation(ex, "BCC bin-day lookup failed for '{Address}'", address);
-        }
-        return null;
+        // External BCC OpenDataSoft GIS capability is not provided by
+        // https://api.aukus.si/v1 and is disabled before any network call.
+        _log.LogInformation(
+            "External BCC bin-day lookup is disabled under the runtime boundary for suburb '{Suburb}'; manual selection required.",
+            parsed.Suburb);
+        return Task.FromResult<BinDayResult?>(null);
     }
-
-    private async Task<int?> QueryDay(HttpClient client, string where)
-    {
-        // Group by collection_day and pick the mode (most common day in the match set)
-        var url = $"{Base}?select=collection_day,count(*)%20as%20c&group_by=collection_day&where={WebUtility.UrlEncode(where)}&limit=10";
-        var res = await client.GetAsync(url);
-        if (!res.IsSuccessStatusCode) return null;
-        var json = await res.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(json);
-        if (!doc.RootElement.TryGetProperty("results", out var results)) return null;
-
-        string? top = null; long max = 0;
-        foreach (var r in results.EnumerateArray())
-        {
-            if (!r.TryGetProperty("collection_day", out var d) || d.ValueKind != JsonValueKind.String) continue;
-            if (!r.TryGetProperty("c", out var cEl)) continue;
-            var c = cEl.ValueKind == JsonValueKind.Number ? cEl.GetInt64() : 0;
-            if (c > max) { max = c; top = d.GetString(); }
-        }
-        return top is null ? null : ParseDay(top);
-    }
-
-    private static string Escape(string s) => s.Replace("\"", "\\\"");
 
     /// <summary>Parse "12 Beaudesert Rd, Moorooka QLD 4105, Australia" → (12, "BEAUDESERT RD", "MOOROOKA").</summary>
     public static ParsedAddress? ParseAddress(string address)
@@ -122,7 +78,6 @@ public class BinDayService
     private static string NormaliseStreet(string s)
     {
         s = s.Trim().ToUpperInvariant();
-        // BCC data uses abbreviated street types (RD, ST, AVE, CRCT etc). Map common full words.
         var abbreviations = new Dictionary<string, string>
         {
             ["ROAD"] = "RD", ["STREET"] = "ST", ["AVENUE"] = "AVE", ["DRIVE"] = "DR",
@@ -135,12 +90,6 @@ public class BinDayService
             words[^1] = abbr;
         return string.Join(' ', words);
     }
-
-    private static int? ParseDay(string s) => s.Trim().ToUpperInvariant() switch
-    {
-        "SUNDAY" => 0, "MONDAY" => 1, "TUESDAY" => 2, "WEDNESDAY" => 3,
-        "THURSDAY" => 4, "FRIDAY" => 5, "SATURDAY" => 6, _ => null,
-    };
 }
 
 public record BinDayResult(int DayOfWeek, string CouncilArea, string Source);

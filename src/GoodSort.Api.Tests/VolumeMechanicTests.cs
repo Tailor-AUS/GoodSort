@@ -49,6 +49,7 @@ public class VolumeMechanicTests : IClassFixture<VolumeMechanicTests.Host>
             // limits themselves.
             builder.UseSetting("SCAN_RATE_PER_MINUTE", "100000");
             builder.UseSetting("SCAN_DAILY_CAP", "100000");
+            builder.UseSetting("COLLECTION_ALUMINIUM_THRESHOLD_CONTAINERS", "1000");
 
             builder.ConfigureServices(services =>
             {

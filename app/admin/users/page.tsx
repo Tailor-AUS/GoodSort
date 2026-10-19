@@ -5,7 +5,7 @@ import maplibregl, { Map as MLMap, Marker as MLMarker, LngLatBounds } from "mapl
 import "maplibre-gl/dist/maplibre-gl.css";
 import Link from "next/link";
 import { ArrowLeft, MapPin, Users } from "lucide-react";
-import { apiUrl } from "@/lib/config";
+import { apiUrl, LOCAL_MAP_STYLE } from "@/lib/config";
 
 interface Household {
   id: string;
@@ -40,7 +40,6 @@ interface Bin {
   pendingValueCents: number;
 }
 
-const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 const BRISBANE: [number, number] = [153.021, -27.482]; // [lng, lat]
 
 function escapeHtml(s: string): string {
@@ -88,7 +87,7 @@ export default function AdminUsersPage() {
     if (!mapRef.current) {
       mapRef.current = new maplibregl.Map({
         container: mapDiv.current,
-        style: MAP_STYLE_URL,
+        style: LOCAL_MAP_STYLE,
         center: BRISBANE,
         zoom: 11,
         attributionControl: { compact: true },

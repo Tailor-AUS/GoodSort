@@ -17,29 +17,74 @@ public static class WaitlistDensity
 
     public static readonly string[] DayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+    public static async Task<HashSet<Guid>> LoadUnreconciledHouseholdIdsAsync(GoodSortDbContext db, CancellationToken ct = default)
+    {
+        var ids = await db.Scans.AsNoTracking()
+            .Where(s => s.HouseholdId != null && s.Status == "pending_unreconciled")
+            .Select(s => s.HouseholdId!.Value)
+            .Distinct()
+            .ToListAsync(ct);
+        return ids.ToHashSet();
+    }
+
+    /// <summary>
+    /// Shared verified-aluminium and unknown-composition detector used by both
+    /// public readiness and admin waitlist/allocation gates. Never infers or
+    /// clamps aluminium when material breakdown exceeds pending containers or
+    /// when a household has unreconciled partial-pickup scans.
+    /// </summary>
+    public static (int VerifiedAluminium, bool MaterialCompositionUnknown) VerifiedHouseholdAluminium(
+        int pendingContainers,
+        int aluminium,
+        int pet,
+        int glass,
+        int other,
+        bool hasUnreconciledScan)
+    {
+        var pending = Math.Max(0, pendingContainers);
+        var matTotal = Math.Max(0, aluminium) + Math.Max(0, pet) + Math.Max(0, glass) + Math.Max(0, other);
+        var unknown = pending > 0 && (hasUnreconciledScan || aluminium < 0 || aluminium > pending || matTotal > pending);
+        var alu = unknown || pending == 0 ? 0 : Math.Max(0, aluminium);
+        return (alu, unknown);
+    }
+
     /// <summary>
     /// EF-safe load: project to anonymous types first. A record constructor
     /// inside <c>Select</c> can 500 on SQL Server.
     /// </summary>
     public static async Task<List<HouseholdClusterRow>> LoadRowsAsync(GoodSortDbContext db, CancellationToken ct = default)
     {
+        var unreconciledSet = await LoadUnreconciledHouseholdIdsAsync(db, ct);
+
         var raw = await db.Households.AsNoTracking()
-            .Select(h => new { h.Suburb, h.CouncilCollectionDay, h.Type, h.PendingContainers, h.BinStatus })
+            .Select(h => new
+            {
+                h.Id,
+                h.Suburb,
+                h.CouncilCollectionDay,
+                h.Type,
+                h.PendingContainers,
+                h.BinStatus,
+                Aluminium = h.Materials.Aluminium,
+                Pet = h.Materials.Pet,
+                Glass = h.Materials.Glass,
+                Other = h.Materials.Other,
+            })
             .ToListAsync(ct);
-        return raw.ConvertAll(r => new HouseholdClusterRow(r.Suburb, r.CouncilCollectionDay, r.Type, r.PendingContainers, r.BinStatus));
+
+        return raw.ConvertAll(r =>
+        {
+            var (alu, unknown) = VerifiedHouseholdAluminium(
+                r.PendingContainers, r.Aluminium, r.Pet, r.Glass, r.Other, unreconciledSet.Contains(r.Id));
+            return new HouseholdClusterRow(r.Suburb, r.CouncilCollectionDay, r.Type, r.PendingContainers, r.BinStatus, alu, unknown);
+        });
     }
 
     /// <summary>
     /// A household is a unit complex only if it says so; everything else is a
     /// house. Matching on == "residential" instead looked equivalent and was
     /// not: the migration that introduced Type used defaultValue "", so every
-    /// household predating it has an empty Type. Those rows were rejected by
-    /// BOTH this and IsIncompleteResidential — counted nowhere and flagged
-    /// nowhere, which is how the one household in production stayed invisible
-    /// even after we added a count specifically to surface it.
-    ///
-    /// This also matches residentialNeedsStreet in lib/brisbane.ts, which has
-    /// always treated not-a-unit as residential.
+    /// household predating it has an empty Type.
     /// </summary>
     public static bool IsResidential(string? type) =>
         !string.Equals(type, "unit_complex", StringComparison.OrdinalIgnoreCase);
@@ -51,22 +96,9 @@ public static class WaitlistDensity
         return key is not null;
     }
 
-    /// <summary>
-    /// A member who joined but cannot be counted or collected from: residential,
-    /// yet with no canonical suburb. Distinct from a unit complex, which is a
-    /// deliberate category rather than an unfinished one.
-    ///
-    /// Aggregate used to drop these silently, so the board could not tell
-    /// "nobody joined" from "people joined and we cannot see them" — a real
-    /// production state on 2026-08-31, when the only household was one of these.
-    /// </summary>
     public static bool IsIncompleteResidential(string? type, string? suburb) =>
         IsResidential(type) && BinDayService.CanonicalSuburb(suburb) is null;
 
-    /// <summary>
-    /// Admin board grouping. City-wide labels collapse to UNKNOWN and must
-    /// never show a Buy bins action.
-    /// </summary>
     public static string AdminGroupKey(string? suburb) =>
         BinDayService.CanonicalSuburb(suburb) ?? "UNKNOWN";
 
@@ -76,18 +108,34 @@ public static class WaitlistDensity
         return key is not null && key != "UNKNOWN";
     }
 
-    /// <summary>Ops may allocate when suburb container volume hits the trip threshold.</summary>
-    public static bool CanPurchase(int containersInSuburb) => containersInSuburb >= LiveThreshold;
+    /// <summary>
+    /// Ops may allocate only when operator aluminium readiness is configured
+    /// and suburb aluminium volume reaches that configured threshold.
+    /// </summary>
+    public static int EffectiveThreshold(CollectionReadinessConfig? readiness = null) =>
+        readiness is { Configured: true, AluminiumThreshold: int threshold and > 0 } ? threshold : 0;
+
+    public static bool CanPurchase(
+        int aluminiumInSuburb,
+        CollectionReadinessConfig? readiness = null,
+        bool materialCompositionUnknown = false) =>
+        !materialCompositionUnknown
+        && readiness is { Configured: true, AluminiumThreshold: int threshold and > 0 }
+        && aluminiumInSuburb >= threshold;
 
     /// <summary>
     /// A driver trip needs doors, not just a number. One household reporting the
-    /// whole threshold is a data fault or an attack, not a collectable suburb —
-    /// a runner sent to a single address earns per container and eats the trip.
+    /// whole threshold is a data fault or an attack, not a collectable suburb.
     /// </summary>
     public const int MinHouseholdsForRun = 3;
 
-    public static bool CanDispatch(int containersInSuburb, int householdsInSuburb) =>
-        CanPurchase(containersInSuburb) && householdsInSuburb >= MinHouseholdsForRun;
+    public static bool CanDispatch(
+        int aluminiumInSuburb,
+        int householdsInSuburb,
+        CollectionReadinessConfig? readiness = null,
+        bool materialCompositionUnknown = false) =>
+        CanPurchase(aluminiumInSuburb, readiness, materialCompositionUnknown)
+        && householdsInSuburb >= MinHouseholdsForRun;
 
     /// <summary>
     /// Ops have committed bins to this household: allocated, delivered or
@@ -98,31 +146,49 @@ public static class WaitlistDensity
         binStatus == BinStatuses.Allocated || BinStatuses.IsServiceable(binStatus);
 
     /// <summary>
-    /// Announce a suburb unlock to residents and ops. Fires once: only while
-    /// no household there has bins committed, and only for the household whose
-    /// containers crossed the threshold. Compares SUBURB volume — a suburb
-    /// splitting 600/400 across two recycling days still unlocks.
+    /// Announce a suburb unlock to residents and ops. Fires once: only when
+    /// operator aluminium readiness is configured, no household there has bins
+    /// committed, and this household's aluminium delta crossed the threshold.
     /// </summary>
-    public static bool ShouldAnnounceUnlock(bool suburbCommitted, int suburbContainers, int householdContainers)
+    public static bool ShouldAnnounceUnlock(
+        bool suburbCommitted,
+        int suburbAluminium,
+        int householdAluminiumDelta,
+        CollectionReadinessConfig? readiness = null)
     {
         if (suburbCommitted) return false;
-        if (suburbContainers < LiveThreshold) return false;
-        return suburbContainers - Math.Max(0, householdContainers) < LiveThreshold;
+        if (readiness is not { Configured: true, AluminiumThreshold: int threshold and > 0 }) return false;
+        if (suburbAluminium < threshold) return false;
+        return suburbAluminium - Math.Max(0, householdAluminiumDelta) < threshold;
     }
 
-    public static GrowthResponse Aggregate(IEnumerable<HouseholdClusterRow> rows, int launchBonusContainers = 0)
+    public static GrowthResponse Aggregate(
+        IEnumerable<HouseholdClusterRow> rows,
+        int launchBonusContainers = 0,
+        CollectionReadinessConfig? readinessConfig = null)
     {
+        var readiness = readinessConfig ?? CollectionReadinessConfig.Pending;
         var materialised = rows as IReadOnlyCollection<HouseholdClusterRow> ?? rows.ToList();
         var incomplete = materialised.Count(r => IsIncompleteResidential(r.Type, r.Suburb));
 
         var counted = materialised
             .Where(r => CountsTowardCluster(r.Type, r.Suburb))
-            .Select(r => new HouseholdClusterRow(
-                BinDayService.CanonicalSuburb(r.Suburb)!,
-                r.CouncilCollectionDay,
-                "residential",
-                Math.Max(0, r.PendingContainers),
-                r.BinStatus))
+            .Select(r =>
+            {
+                var pending = Math.Max(0, r.PendingContainers);
+                // If AluminiumContainers exceeds PendingContainers or is flagged
+                // as unknown composition, never infer aluminium by clamping.
+                var unknown = r.MaterialCompositionUnknown || (pending > 0 && (r.AluminiumContainers > pending || r.AluminiumContainers < 0));
+                var alu = unknown || pending == 0 ? 0 : r.AluminiumContainers;
+                return new HouseholdClusterRow(
+                    BinDayService.CanonicalSuburb(r.Suburb)!,
+                    r.CouncilCollectionDay,
+                    "residential",
+                    pending,
+                    r.BinStatus,
+                    alu,
+                    unknown);
+            })
             .ToList();
 
         var suburbs = counted
@@ -131,12 +197,16 @@ public static class WaitlistDensity
             {
                 var households = g.Count();
                 var containers = g.Sum(x => x.PendingContainers);
-                // Once ops commit bins the suburb stays live. Settling a run
-                // drains PendingContainers to 0; that must not push an active
-                // collection route back onto the waitlist board.
+                var aluminium = g.Sum(x => x.AluminiumContainers);
+                var compositionUnknown = g.Any(x => x.MaterialCompositionUnknown);
                 var committed = g.Any(x => IsCommitted(x.BinStatus));
-                var live = committed || containers >= LiveThreshold;
-                var needed = live ? 0 : Math.Max(0, LiveThreshold - containers);
+                var suburbReadiness = CollectionReadiness.ForSuburb(readiness, aluminium, committed, compositionUnknown);
+                var live = committed || (!compositionUnknown && readiness is { Configured: true, AluminiumThreshold: int t and > 0 } && aluminium >= t);
+                var needed = live
+                    ? 0
+                    : readiness is { Configured: true, AluminiumThreshold: int threshold and > 0 }
+                        ? Math.Max(0, threshold - aluminium)
+                        : 0;
 
                 var byDay = g.Where(x => x.CouncilCollectionDay != null)
                     .GroupBy(x => x.CouncilCollectionDay!.Value)
@@ -166,20 +236,29 @@ public static class WaitlistDensity
                     needed,
                     best?.Day,
                     best?.DayName,
-                    byDay);
+                    byDay,
+                    aluminium,
+                    suburbReadiness,
+                    compositionUnknown);
             })
-            .OrderBy(s => s.Needed)
+            .OrderByDescending(s => s.Live)
+            .ThenByDescending(s => s.AluminiumContainers)
             .ThenByDescending(s => s.Containers)
             .ThenBy(s => s.Suburb)
             .ToList();
 
+        var effectiveThreshold = readiness is { Configured: true, AluminiumThreshold: int configuredThreshold and > 0 }
+            ? configuredThreshold
+            : 0;
+
         return new GrowthResponse(
-            LiveThreshold,
+            effectiveThreshold,
             launchBonusContainers,
             incomplete,
             counted.Count,
             counted.Sum(r => r.PendingContainers),
-            suburbs);
+            suburbs,
+            readiness);
     }
 
     public static GrowthSuburbDto? SuburbCluster(GrowthResponse board, string? suburb)
@@ -189,10 +268,6 @@ public static class WaitlistDensity
         return board.Suburbs.FirstOrDefault(s => s.Suburb == key);
     }
 
-    /// <summary>
-    /// Progress for join/email. Unlock is suburb volume, not same-day house count.
-    /// Day is retained only as an optional label.
-    /// </summary>
     public static GrowthDayDto? DayCluster(GrowthResponse board, string? suburb, int? day)
     {
         var match = SuburbCluster(board, suburb);
@@ -202,8 +277,6 @@ public static class WaitlistDensity
             var onDay = match.ByDay.FirstOrDefault(x => x.Day == d);
             if (onDay is not null) return onDay;
         }
-        // Suburb-level progress exposed as a synthetic day row for callers that
-        // still read Households/Needed/Live off GrowthDayDto.
         return new GrowthDayDto(
             day ?? match.BestDay ?? -1,
             match.BestDayName ?? "suburb",
@@ -219,7 +292,9 @@ public record HouseholdClusterRow(
     int? CouncilCollectionDay,
     string Type = "residential",
     int PendingContainers = 0,
-    string? BinStatus = null);
+    string? BinStatus = null,
+    int AluminiumContainers = 0,
+    bool MaterialCompositionUnknown = false);
 
 public record GrowthDayDto(int Day, string DayName, int Households, int Containers, bool Live, int Needed);
 
@@ -232,14 +307,19 @@ public record GrowthSuburbDto(
     int Needed,
     int? BestDay,
     string? BestDayName,
-    IReadOnlyList<GrowthDayDto> ByDay);
+    IReadOnlyList<GrowthDayDto> ByDay,
+    /// <summary>Pending eligible aluminium containers scanned in the suburb.</summary>
+    int AluminiumContainers = 0,
+    /// <summary>Honest collection readiness; see CollectionReadiness.</summary>
+    SuburbReadinessDto? Readiness = null,
+    /// <summary>True when any counted household in the suburb has an unreconciled partial-pickup material balance.</summary>
+    bool MaterialCompositionUnknown = false);
 
 public record GrowthResponse(
     int LiveThreshold,
     int LaunchBonusContainers,
-    /// <summary>Joined but uncountable — residential with no canonical suburb. A
-    /// count only: who they are stays behind AdminPolicy.</summary>
     int IncompleteHouseholds,
     int TotalHouseholds,
     int TotalContainers,
-    IReadOnlyList<GrowthSuburbDto> Suburbs);
+    IReadOnlyList<GrowthSuburbDto> Suburbs,
+    CollectionReadinessConfig? CollectionReadiness = null);

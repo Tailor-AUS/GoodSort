@@ -7,6 +7,7 @@ import { PoweredByTailor } from "@/app/components/shared/powered-by-tailor";
 import { WaitlistCard } from "@/app/components/shared/waitlist-card";
 import { CollectionNightCard } from "@/app/components/shared/collection-night-card";
 import { isCollecting, LIVE_VOLUME_THRESHOLD } from "@/lib/brisbane";
+import type { CollectionReadinessConfig, SuburbReadiness } from "@/lib/collection-readiness";
 import Link from "next/link";
 
 export type HouseholdStatus = {
@@ -21,6 +22,9 @@ export type HouseholdStatus = {
   households?: number;
   containers?: number;
   dayName?: string | null;
+  /** Suburb aluminium readiness (normalised; pending unless operator-configured). */
+  readiness?: SuburbReadiness;
+  readinessConfig?: CollectionReadinessConfig;
 };
 
 interface SorterSheetProps {
@@ -112,6 +116,8 @@ export function SorterSheet({
                   binStatus={household.binStatus}
                   dayName={household.dayName}
                   day={household.councilCollectionDay}
+                  readiness={household.readiness}
+                  readinessConfig={household.readinessConfig}
                 />
               )}
 

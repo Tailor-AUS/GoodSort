@@ -9,6 +9,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { AlertTriangle } from "lucide-react";
 import type { SortBin, Route, Depot } from "@/lib/store";
 import type { RunStopDetail } from "@/lib/marketplace";
+import { LOCAL_MAP_STYLE } from "@/lib/config";
 
 export interface RunCentroid {
   id: string;
@@ -24,10 +25,6 @@ export type AppMode = "sort" | "collect";
 interface LatLng { lat: number; lng: number; }
 
 const BRISBANE_CENTER: LatLng = { lat: -27.482, lng: 153.021 };
-
-// OpenFreeMap "Liberty" style — OSM-based vector tiles, free, no API key.
-// Run by the OpenFreeMap project (founded by the MapTiler founder).
-const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 
 // ── Map error registry (shared across MapView instances) ──
 
@@ -65,7 +62,7 @@ function MapProvider({ children, onMapTap }: { children: ReactNode; onMapTap?: (
     if (!divRef.current || mapRef.current) return;
     const m = new maplibregl.Map({
       container: divRef.current,
-      style: MAP_STYLE_URL,
+      style: LOCAL_MAP_STYLE,
       center: [BRISBANE_CENTER.lng, BRISBANE_CENTER.lat],
       zoom: 13,
       attributionControl: { compact: true },

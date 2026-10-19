@@ -6,6 +6,13 @@ import { ArrowLeft, Home, Package, Users, Weight, Recycle } from "lucide-react";
 import { apiUrl, authHeaders } from "@/lib/config";
 import { formatCents } from "@/lib/store";
 import { DAY_NAMES, isCollecting, LIVE_VOLUME_THRESHOLD, sameSuburb, streetStatsForViewer, type GrowthSuburb, householdCountsTowardUnlock } from "@/lib/brisbane";
+import {
+  PENDING_READINESS_CONFIG,
+  normaliseReadiness,
+  normaliseReadinessConfig,
+  type CollectionReadinessConfig,
+  type SuburbReadiness,
+} from "@/lib/collection-readiness";
 import { WaitlistCard } from "@/app/components/shared/waitlist-card";
 import { CollectionNightCard } from "@/app/components/shared/collection-night-card";
 
@@ -34,7 +41,15 @@ export default function HouseholdPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [nextPickup, setNextPickup] = useState<string | null>(null);
   const [pickupConfirmed, setPickupConfirmed] = useState(false);
-  const [growth, setGrowth] = useState<{ households: number; containers: number; needed: number; live: boolean; dayName?: string | null } | null>(null);
+  const [growth, setGrowth] = useState<{
+    households: number;
+    containers: number;
+    needed: number;
+    live: boolean;
+    dayName?: string | null;
+    readiness: SuburbReadiness;
+    readinessConfig: CollectionReadinessConfig;
+  } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -59,7 +74,12 @@ export default function HouseholdPage() {
           .then(r => r.ok ? r.json() : null)
           .then(house => {
             const match = g.suburbs.find((s: GrowthSuburb) => sameSuburb(s.suburb, house?.suburb));
-            setGrowth(streetStatsForViewer(match, house?.councilCollectionDay, householdCountsTowardUnlock(house)));
+            const cluster = streetStatsForViewer(match, house?.councilCollectionDay, householdCountsTowardUnlock(house));
+            setGrowth({
+              ...cluster,
+              readiness: normaliseReadiness(match?.readiness, match?.aluminiumContainers ?? 0),
+              readinessConfig: normaliseReadinessConfig(g?.collectionReadiness),
+            });
           });
       })
       .catch(() => {});
@@ -91,6 +111,8 @@ export default function HouseholdPage() {
                 dayName={growth?.dayName}
                 day={hh.councilCollectionDay}
                 building={hh.type === "unit_complex"}
+                readiness={growth?.readiness}
+                readinessConfig={growth?.readinessConfig}
               />
             )}
 
@@ -101,7 +123,7 @@ export default function HouseholdPage() {
             <CollectionNightCard
               nextPickup={nextPickup}
               confirmed={pickupConfirmed || isCollecting(hh.binStatus)}
-              unlocked={!!growth?.live || hh.binStatus === "allocated"}
+              unlocked={growth?.readiness.status === "ops_committed" || hh.binStatus === "allocated"}
               dayName={hh.councilCollectionDay != null ? DAY_NAMES[hh.councilCollectionDay] : growth?.dayName}
               tone="green"
             />

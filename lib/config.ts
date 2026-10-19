@@ -1,8 +1,106 @@
 import { parseDayParam, residentialNeedsStreet } from "./brisbane.ts";
 
+/** Sole permitted external AI gateway base. Never used for GoodSort's own /api/* application routes. */
+export const ALLOWED_EXTERNAL_API_BASE = "https://api.aukus.si/v1";
+
+export type DocumentedAukusPath =
+  | "/chat/completions"
+  | "/responses"
+  | "/embeddings"
+  | "/models";
+
+const DOCUMENTED_AUKUS_PATHS = new Set<string>([
+  "/chat/completions",
+  "/responses",
+  "/embeddings",
+  "/models",
+]);
+
+/**
+ * Validates the exact https://api.aukus.si/v1 base URI (parsed scheme, host,
+ * default port 443, exact /v1 pathname, no userinfo/query/fragment) and
+ * resolves only a documented Aukus AI endpoint path. Rejects /v1extra,
+ * arbitrary descendants, and undocumented GoodSort application paths.
+ */
+export function resolveAukusEndpoint(
+  rawBase: string | null | undefined,
+  documentedPath: DocumentedAukusPath,
+): string | null {
+  const trimmed = (rawBase ?? "").trim();
+  if (!trimmed || !DOCUMENTED_AUKUS_PATHS.has(documentedPath)) {
+    return null;
+  }
+  try {
+    const u = new URL(trimmed);
+    if (
+      u.protocol !== "https:" ||
+      u.hostname.toLowerCase() !== "api.aukus.si" ||
+      u.port !== "" ||
+      u.username !== "" ||
+      u.password !== "" ||
+      u.search !== "" ||
+      u.hash !== ""
+    ) {
+      return null;
+    }
+    const cleanPath = u.pathname.replace(/\/+$/, "");
+    if (cleanPath !== "/v1") {
+      return null;
+    }
+    return `${ALLOWED_EXTERNAL_API_BASE}${documentedPath}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Enforces the GoodSort application API origin boundary: permits same-origin
+ * ("") or local loopback (http://localhost[:port] or http://127.0.0.1[:port])
+ * only. Never routes GoodSort /api/* endpoints to https://api.aukus.si/v1 or
+ * any external origin.
+ */
+export function sanitiseApiBase(raw: string | null | undefined): string {
+  const trimmed = (raw ?? "").trim().replace(/\/+$/, "");
+  if (!trimmed) {
+    return "";
+  }
+  try {
+    const u = new URL(trimmed);
+    if (
+      (u.protocol === "http:" || u.protocol === "https:") &&
+      (u.hostname === "localhost" || u.hostname === "127.0.0.1") &&
+      u.username === "" &&
+      u.password === "" &&
+      u.search === "" &&
+      u.hash === "" &&
+      (u.pathname === "" || u.pathname === "/")
+    ) {
+      return `${u.protocol}//${u.host}`;
+    }
+  } catch {
+    // Reject malformed or non-URL strings.
+  }
+  return "";
+}
+
 export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (process.env.NODE_ENV !== "production" ? "http://localhost:5113" : "");
+  sanitiseApiBase(process.env.NEXT_PUBLIC_API_URL) ||
+  (process.env.NODE_ENV === "production" ? "" : "http://localhost:5113");
+
+/** Self-contained inline MapLibre style so map views render locally with zero external tile/font requests. */
+export const LOCAL_MAP_STYLE = {
+  version: 8 as const,
+  name: "GoodSort Local Canvas",
+  sources: {},
+  layers: [
+    {
+      id: "local-background",
+      type: "background" as const,
+      paint: { "background-color": "#f1f5f9" },
+    },
+  ],
+};
+
 export const REFERRER_STORAGE_KEY = "goodsort_referrer";
 export const DAY_HINT_KEY = "goodsort_day_hint";
 export const PLACE_HINT_KEY = "goodsort_place_hint";
@@ -65,12 +163,14 @@ export function readStoredProfileId(): string | undefined {
 }
 
 function resolveApiBase(): string {
-  if (API_URL) return API_URL;
-  if (typeof window !== "undefined") {
+  const configured = sanitiseApiBase(process.env.NEXT_PUBLIC_API_URL);
+  if (configured) return configured;
+  if (typeof window !== "undefined" && window.location?.hostname) {
     const host = window.location.hostname;
     if (host === "localhost" || host === "127.0.0.1") return "http://localhost:5113";
+    return "";
   }
-  return "";
+  return API_URL;
 }
 
 export function apiUrl(path: string): string {

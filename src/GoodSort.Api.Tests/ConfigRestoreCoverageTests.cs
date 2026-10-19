@@ -51,6 +51,8 @@ public class ConfigRestoreCoverageTests
         // Deliberately off, and documented as such.
         ["RECOVERY_EMAIL_ENABLED"] = "Default off on purpose - the code being ready is not a decision to email real members. Requires the literal string true.",
         ["SOVRGN_API_KEY"] = "Revoked consumer (#8). A leftover value is logged and ignored, and the postdeploy hook actively removes it.",
+        ["COLLECTION_ALUMINIUM_THRESHOLD_CONTAINERS"] = "No default on purpose. Absent means readiness shows pending_operator_configuration - nothing unlocks, nothing is promised. Fail-closed.",
+        ["COLLECTION_READINESS_FIXTURE_LABEL"] = "Local-test label only. Absent means a configured threshold is reported as operator_config.",
 
         // Tunables whose code defaults are the intended production values.
         ["LAUNCH_BONUS_CONTAINERS"] = "Falls back to LaunchBonus.DefaultCapContainers, which is the intended cap.",
@@ -63,7 +65,9 @@ public class ConfigRestoreCoverageTests
         ["DEPOSIT_REPLAY_HAMMING_MAX"] = "Anti-replay threshold; the code default is the intended value.",
         ["MINIMUM_RUN_PAYOUT_CENTS"] = "Run pricing floor; the code default is intended, and PricingBounds constrains the range.",
         ["RUNNER_STOP_MAX_CONTAINERS"] = "Defaults to 200, the intended per-stop ceiling.",
-        ["OSRM_URL"] = "Defaults to the public OSRM demo endpoint, which is what the pilot uses.",
+        ["AUKUS_API_KEY"] = "Fail-closed: when unset, VisionService returns no_provider without attempting any outbound HTTP call.",
+        ["AUKUS_API_URL"] = "Defaults to the canonical https://api.aukus.si/v1 boundary; any non-canonical value is rejected fail-closed by AukusBoundary.",
+        ["AUKUS_MODEL"] = "Defaults to gpt-4o-mini for /v1/chat/completions when AUKUS_API_KEY is configured.",
     };
 
     [Fact]

@@ -18,25 +18,38 @@ public class NotificationService
     public NotificationService(GoodSortDbContext db, IConfiguration config, ILogger<NotificationService> log)
     { _db = db; _config = config; _log = log; }
 
-    public async Task SendWaitlistJoined(string email, string? name, Household hh, int containers, int needed, Guid? profileId = null)
+    public async Task SendWaitlistJoined(string email, string? name, Household hh, int aluminiumContainers, int? needed, Guid? profileId = null)
     {
         var place = TitleSuburb(hh.Suburb);
         var invite = InviteLink.StreetUrl(hh.Suburb, hh.CouncilCollectionDay, profileId);
         var hello = string.IsNullOrWhiteSpace(name) ? "there" : name;
-        var status = needed <= 0
-            ? $"<b>{place}</b> has enough scanned volume for a driver trip. We'll tell you when to bag out."
-            : $"<b>{containers}</b> container{(containers == 1 ? "" : "s")} scanned in {place}. <b>{needed}</b> more and we run a driver trip to the refund point.";
-        var subject = needed <= 0
-            ? $"{place} volume run is ready — bag out when we say"
-            : $"Scan today in {place} — 5¢ each";
+        var readiness = CollectionReadiness.ConfigFrom(_config);
+        string status;
+        string subject;
+        if (!readiness.Configured || readiness.AluminiumThreshold is not int threshold)
+        {
+            status = $"<b>{aluminiumContainers}</b> aluminium can{(aluminiumContainers == 1 ? "" : "s")} scanned in {place}. Collection readiness is pending operator configuration — no collection is scheduled yet.";
+            subject = $"Scan today in {place} — 5¢ each";
+        }
+        else if (needed is <= 0 || aluminiumContainers >= threshold)
+        {
+            status = $"<b>{place}</b> has reached the configured {threshold} aluminium-can volume — awaiting ops confirmation before a run is scheduled.";
+            subject = $"{place} aluminium volume reached — awaiting ops";
+        }
+        else
+        {
+            var rem = needed ?? Math.Max(0, threshold - aluminiumContainers);
+            status = $"<b>{aluminiumContainers}/{threshold}</b> aluminium cans scanned in {place}. <b>{rem}</b> more before ops consider a driver trip.";
+            subject = $"Scan today in {place} — 5¢ each";
+        }
         var body = $@"
           <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
             <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Scan. Earn 5¢.</h1>
             <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {hello},</p>
             <p style='font-size:14px;line-height:1.55'>You're on the list at <b>{hh.Address}</b>. Scan eligible cans and bottles — sort into four streams at home.</p>
             <p style='font-size:14px;line-height:1.55'>{status}</p>
-            <p style='font-size:14px;line-height:1.55'>Invite neighbours to scan. Volume unlocks the run — not city-wide totals.</p>
-            <p style='font-size:14px;margin:20px 0 8px'><a href='{WhatsAppInvite(place, invite, containers, needed)}' style='display:inline-block;background:#25D366;color:#fff;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:12px'>WhatsApp the street</a></p>
+            <p style='font-size:14px;line-height:1.55'>Invite neighbours to scan. Suburb aluminium volume builds toward an operator-confirmed run — not city-wide totals.</p>
+            <p style='font-size:14px;margin:20px 0 8px'><a href='{WhatsAppInvite(place, invite, aluminiumContainers, readiness.AluminiumThreshold)}' style='display:inline-block;background:#25D366;color:#fff;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:12px'>WhatsApp the street</a></p>
             <p style='font-size:13px;margin:0 0 20px'><a href='{invite}' style='color:#16a34a;font-weight:600'>Or copy your street link →</a></p>
             <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · Brisbane</p>
           </div>";
@@ -64,6 +77,9 @@ public class NotificationService
 
     public async Task SendAreaUnlocked(string suburb, int day, Guid? excludeProfileId = null)
     {
+        var readiness = CollectionReadiness.ConfigFrom(_config);
+        if (!readiness.Configured || readiness.AluminiumThreshold is not int threshold) return;
+
         var place = TitleSuburb(suburb);
         var members = await _db.Profiles
             .Include(p => p.Household)
@@ -74,27 +90,28 @@ public class NotificationService
                         && !string.IsNullOrWhiteSpace(p.Email))
             .ToListAsync();
 
-        // The person whose scan crossed the threshold sees it in-app; mailing
-        // them "your area unlocked" reads as a mistake.
         foreach (var member in WaitlistNudge.Recipients(members, excludeProfileId))
         {
             var hello = string.IsNullOrWhiteSpace(member.Name) ? "there" : member.Name;
             var body = $@"
               <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
-                <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>{place} has enough volume</h1>
+                <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>{place} reached aluminium volume</h1>
                 <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {hello},</p>
-                <p style='font-size:14px;line-height:1.55'>{place} has about {WaitlistDensity.LiveThreshold} scanned containers — enough for one driver trip. We'll email you when to bag out sorted containers on the kerb.</p>
+                <p style='font-size:14px;line-height:1.55'>{place} has reached the configured {threshold} scanned aluminium cans. Ops can now review and schedule a collection run — we'll email you when a run is confirmed.</p>
                 <p style='font-size:14px;line-height:1.55'>Invite neighbours to keep scanning so the first trip is full.</p>
-                <p style='font-size:14px;margin:20px 0 8px'><a href='{WhatsAppInvite(place, InviteLink.StreetUrl(suburb, day, member.Id))}' style='display:inline-block;background:#25D366;color:#fff;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:12px'>WhatsApp the street</a></p>
+                <p style='font-size:14px;margin:20px 0 8px'><a href='{WhatsAppInvite(place, InviteLink.StreetUrl(suburb, day, member.Id), threshold, threshold)}' style='display:inline-block;background:#25D366;color:#fff;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:12px'>WhatsApp the street</a></p>
                 <p style='font-size:13px;margin:0 0 20px'><a href='{InviteLink.StreetUrl(suburb, day, member.Id)}' style='color:#16a34a;font-weight:600'>Or copy your street link →</a></p>
                 <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {place}</p>
               </div>";
-            await Send(member.Email!, $"{place} volume run unlocked", body);
+            await Send(member.Email!, $"{place} aluminium volume reached", body);
         }
     }
 
     public async Task SendOpsStreetReady(string suburb, int day)
     {
+        var readiness = CollectionReadiness.ConfigFrom(_config);
+        if (!readiness.Configured || readiness.AluminiumThreshold is not int threshold) return;
+
         var to = OpsAlert.Inbox(_config["OPS_ALERT_EMAIL"], _config["ADMIN_SEED_EMAIL"]);
         if (to is null)
         {
@@ -104,17 +121,18 @@ public class NotificationService
         var place = TitleSuburb(suburb);
         var body = $@"
           <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
-            <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>{place} hit volume threshold</h1>
-            <p style='font-size:14px;line-height:1.55'>About {WaitlistDensity.LiveThreshold} scanned containers in {place} — enough for one driver trip. Suburb volume only; city-wide totals never unlock.</p>
+            <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>{place} hit aluminium threshold</h1>
+            <p style='font-size:14px;line-height:1.55'>{threshold} scanned aluminium cans in {place}. Suburb volume only; city-wide totals never unlock.</p>
             <p style='font-size:14px;margin:20px 0'><a href='https://thegoodsort.org/admin/waitlist' style='display:inline-block;background:#6d28d9;color:#fff;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:12px'>Open the waitlist</a></p>
             <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · ops</p>
           </div>";
-        await Send(to, $"{place}: schedule volume run", body);
+        await Send(to, $"{place}: review aluminium volume run", body);
     }
 
-    public async Task SendWaitlistProgress(string suburb, int day, int containers, int needed, Guid? excludeProfileId)
+    public async Task SendWaitlistProgress(string suburb, int day, int aluminiumContainers, int needed, Guid? excludeProfileId)
     {
-        if (!WaitlistNudge.ShouldNudgeOthers(containers, live: false)) return;
+        var readiness = CollectionReadiness.ConfigFrom(_config);
+        if (!WaitlistNudge.ShouldNudgeOthers(aluminiumContainers, live: false, readiness)) return;
 
         var place = TitleSuburb(suburb);
         var members = await _db.Profiles
@@ -135,20 +153,18 @@ public class NotificationService
             var invite = InviteLink.StreetUrl(suburb, day, member.Id);
             var body = $@"
               <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
-                <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>{place} volume moved</h1>
+                <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>{place} aluminium volume moved</h1>
                 <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {hello},</p>
-                <p style='font-size:14px;line-height:1.55'><b>{containers}</b> container{(containers == 1 ? "" : "s")} scanned in {place}. <b>{needed}</b> more and we run a driver trip to the refund point.</p>
+                <p style='font-size:14px;line-height:1.55'><b>{aluminiumContainers}</b> aluminium can{(aluminiumContainers == 1 ? "" : "s")} scanned in {place}. <b>{needed}</b> more before ops consider a collection run.</p>
                 <p style='font-size:14px;line-height:1.55'>A neighbour just joined. WhatsApp the street again — that is how volume builds.</p>
-                <p style='font-size:14px;margin:20px 0 8px'><a href='{WhatsAppProgress(place, containers, needed, invite)}' style='display:inline-block;background:#25D366;color:#fff;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:12px'>WhatsApp the street</a></p>
+                <p style='font-size:14px;margin:20px 0 8px'><a href='{WhatsAppProgress(place, aluminiumContainers, needed, invite)}' style='display:inline-block;background:#25D366;color:#fff;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:12px'>WhatsApp the street</a></p>
                 <p style='font-size:13px;margin:0 0 20px'><a href='{invite}' style='color:#16a34a;font-weight:600'>Or copy your street link →</a></p>
                 <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {place}</p>
               </div>";
-            await Send(member.Email!, $"{place}: {needed} more containers for a run", body);
+            await Send(member.Email!, $"{place}: {needed} more aluminium cans for ops review", body);
             member.LastNudgedAt = nudgeAt;
         }
 
-        // Stamp once, after the batch. Without this the cooldown never engages
-        // and the fan-out stays quadratic in suburb size.
         if (nudged.Count > 0) await _db.SaveChangesAsync();
     }
 
@@ -309,17 +325,25 @@ public class NotificationService
             .Select(w => char.ToUpperInvariant(w[0]) + w[1..]));
     }
 
-    private static string WhatsAppInvite(string place, string inviteUrl, int containers = 0, int needed = WaitlistDensity.LiveThreshold)
+    private static string WhatsAppInvite(string place, string inviteUrl, int aluminium = 0, int? threshold = null)
     {
-        var text = needed <= 0
-            ? $"The Good Sort in {place} has enough scanned volume for a driver trip. Scan for 5¢: {inviteUrl}"
-            : $"Scan with The Good Sort in {place}. {containers}/{WaitlistDensity.LiveThreshold} containers — {needed} more for a driver trip: {inviteUrl}";
+        string text;
+        if (threshold is int t and > 0)
+        {
+            text = aluminium >= t
+                ? $"The Good Sort in {place} has reached {aluminium}/{t} aluminium cans — awaiting ops confirmation for a run. Scan for 5¢: {inviteUrl}"
+                : $"Scan with The Good Sort in {place}. {aluminium}/{t} aluminium cans ({Math.Max(0, t - aluminium)} more before ops consider a run): {inviteUrl}";
+        }
+        else
+        {
+            text = $"Scan eligible cans and bottles with The Good Sort in {place} for 5¢ sorting credit each: {inviteUrl}";
+        }
         return $"https://wa.me/?text={Uri.EscapeDataString(text)}";
     }
 
-    private static string WhatsAppProgress(string place, int containers, int needed, string inviteUrl)
+    private static string WhatsAppProgress(string place, int aluminium, int needed, string inviteUrl)
     {
-        var text = $"{containers} container{(containers == 1 ? "" : "s")} scanned in {place}. {needed} more and we run a driver trip: {inviteUrl}";
+        var text = $"{aluminium} aluminium can{(aluminium == 1 ? "" : "s")} scanned in {place}. {needed} more before ops consider a run: {inviteUrl}";
         return $"https://wa.me/?text={Uri.EscapeDataString(text)}";
     }
 }

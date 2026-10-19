@@ -27,6 +27,8 @@ export type GrowthBoard = {
   totalHouseholds: number;
   totalContainers: number;
   suburbs: GrowthSuburb[];
+  /** Operator aluminium readiness config; absent/unconfigured = pending. */
+  collectionReadiness?: unknown;
 };
 
 export type GrowthSuburb = {
@@ -38,6 +40,10 @@ export type GrowthSuburb = {
   bestDay: number | null;
   bestDayName: string | null;
   byDay: GrowthDay[];
+  /** Pending eligible aluminium containers in the suburb. */
+  aluminiumContainers?: number;
+  /** Raw readiness; normalise with normaliseReadiness() before use. */
+  readiness?: unknown;
 };
 
 export function clusterForDay(suburb?: GrowthSuburb | null, day?: number | null): GrowthDay | undefined {
@@ -155,22 +161,44 @@ export function formatCollectionNight(iso?: string | null): string | null {
   });
 }
 
-export function inviteShareText(
-  suburb?: string | null,
-  opts?: { dayName?: string | null; households?: number; containers?: number; needed?: number; live?: boolean },
-) {
+type InviteOpts = {
+  dayName?: string | null;
+  households?: number;
+  containers?: number;
+  needed?: number;
+  live?: boolean;
+  committed?: boolean;
+  /**
+   * Verified suburb aluminium tally from operator readiness.
+   */
+  aluminium?: number;
+  /**
+   * Operator-configured aluminium threshold when set; null/undefined when pending.
+   */
+  aluminiumThreshold?: number | null;
+};
+
+export function inviteShareText(suburb?: string | null, opts?: InviteOpts) {
   const place = suburb ? titleSuburb(suburb) : "our suburb";
-  const count = opts?.containers ?? opts?.households;
-  if (opts?.live) {
-    return `${place} has enough scanned containers for a The Good Sort volume run. Scan eligible cans and bottles — 5¢ sorting credit each. Bag out when they collect:`;
+  if (opts?.committed) {
+    return `Ops have committed a The Good Sort collection in ${place}. Scan eligible cans and bottles — 5¢ sorting credit each:`;
   }
-  if (count != null && count > 0 && opts?.needed != null) {
-    return `${place} is ${count}/${LIVE_VOLUME_THRESHOLD} containers toward a The Good Sort driver trip. Scan today for 5¢. ${opts.needed} more and they run to the refund point:`;
+  if (opts?.aluminiumThreshold != null && opts.aluminiumThreshold > 0) {
+    const alu = Math.max(0, Math.floor(opts.aluminium ?? 0));
+    const t = Math.floor(opts.aluminiumThreshold);
+    if (alu >= t) {
+      return `${place} has reached ${alu}/${t} aluminium cans with The Good Sort — awaiting ops confirmation for a collection run. Scan eligible cans and bottles for 5¢ sorting credit each:`;
+    }
+    return `${place} has ${alu}/${t} aluminium cans scanned with The Good Sort (${Math.max(0, t - alu)} more before ops consider a run). Scan eligible cans and bottles for 5¢ sorting credit each:`;
   }
-  return `Scan eligible cans and bottles with The Good Sort in ${place}. Earn 5¢ each. When the suburb hits ${LIVE_VOLUME_THRESHOLD} containers they run a driver trip to the refund point:`;
+  if (opts?.aluminium != null) {
+    const n = Math.max(0, Math.floor(opts.aluminium));
+    return `Scan eligible cans and bottles with The Good Sort in ${place}. Earn 5¢ sorting credit each. ${n} aluminium can${n === 1 ? "" : "s"} scanned here so far:`;
+  }
+  return `Scan eligible cans and bottles with The Good Sort in ${place}. Earn 5¢ sorting credit each — every aluminium can builds suburb volume:`;
 }
 
-export function inviteMessage(url: string, suburb?: string | null, opts?: { dayName?: string | null; households?: number; containers?: number; needed?: number; live?: boolean }) {
+export function inviteMessage(url: string, suburb?: string | null, opts?: InviteOpts) {
   return `${inviteShareText(suburb, opts)} ${url}`;
 }
 
