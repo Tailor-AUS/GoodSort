@@ -169,6 +169,16 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     setAnalyzing(false);
   }
 
+  function trackScanCredited() {
+    track("scan_credited");
+    try {
+      if (!localStorage.getItem("goodsort_first_scan")) {
+        localStorage.setItem("goodsort_first_scan", new Date().toISOString());
+        track("first_scan_credited");
+      }
+    } catch { /* private mode */ }
+  }
+
   // ── Confirm batch ──
   async function confirmBatch() {
     if (!results || results.length === 0) return;
@@ -195,7 +205,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
         }),
       });
       if (res.ok) {
-        track("scan_credited");
+        trackScanCredited();
         const data = await res.json();
         totalItems = data.totalContainers || eligible.reduce((s, e) => s + e.count, 0);
         totalCents = typeof data.totalCents === "number" ? data.totalCents : totalItems * CENTS_PER_CONTAINER;
@@ -278,6 +288,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     // just put it back.
     setScanRefused(refused);
     setLastCredit(credited);
+    if (!refused) trackScanCredited();
 
     // Create a BagInfo-compatible object from the stream for the callback
     const streamAsBag: BagInfo = {
