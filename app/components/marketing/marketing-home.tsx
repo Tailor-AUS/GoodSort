@@ -315,9 +315,9 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
               body={`At about ${LIVE_VOLUME_THRESHOLD} containers in your suburb, we drive. Bag out; we do the depot run.`}
               tag="One driver trip" tagColor="bg-amber-100 text-amber-700" />
             <StepRow icon={<Banknote className="w-5 h-5" />} color="from-emerald-400 to-emerald-600" num={4}
-              title="Get paid — plus 1¢/can from sorters you invite"
-              body="Credits clear after the depot verifies. Invite neighbours with your link to earn $1 when they join plus 1¢ commission on every container they sort."
-              tag="5¢ credit + 1¢ network commission" tagColor="bg-emerald-100 text-emerald-700" />
+              title="Get paid — plus 1¢/can from your Container Mafia"
+              body="Credits clear after the depot verifies. Invite neighbours with your link to build your street Container Mafia: earn $1 when they join plus 1¢ commission on every container they sort."
+              tag="5¢ credit + 1¢ Container Mafia commission" tagColor="bg-emerald-100 text-emerald-700" />
           </div>
         </div>
       </section>

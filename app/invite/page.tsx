@@ -86,12 +86,18 @@ export default function InvitePage() {
         </div>
         {network && (
           <div className="mb-4 rounded-xl bg-emerald-50 border border-emerald-200 px-3.5 py-2.5 text-center text-[12px] font-semibold text-emerald-900">
-            Your sorter network: {network.sortersCount} sorter{network.sortersCount === 1 ? "" : "s"} · {network.referredContainers} container{network.referredContainers === 1 ? "" : "s"} · +{formatCredit(network.totalNetworkCents)}
+            Your Container Mafia: {network.sortersCount} sorter{network.sortersCount === 1 ? "" : "s"} · {network.referredContainers} container{network.referredContainers === 1 ? "" : "s"} · +{formatCredit(network.totalNetworkCents)}
           </div>
         )}
-        <p className="text-[12px] text-slate-400 text-center mb-8">
-          Earn $1 when a neighbour joins plus 1¢ commission on every container they sort. Send this to three neighbours to build suburb volume.
+        <p className="text-[12px] text-slate-400 text-center mb-3">
+          Build your Container Mafia: earn $1 when a neighbour joins plus a 1¢ cut on every container they sort. Send this to three neighbours to build suburb volume.
         </p>
+        <a
+          href="/flyer"
+          className="block text-center text-[12px] font-semibold text-emerald-700 hover:text-emerald-900 mb-6"
+        >
+          Print your Yellow-Bin Decal &amp; Street Flyer →
+        </a>
         <button onClick={() => router.push("/sort")}
           className="w-full text-green-700 font-semibold text-[14px] py-3 flex items-center justify-center gap-1">
           Continue to scan <ChevronRight className="w-4 h-4" />
