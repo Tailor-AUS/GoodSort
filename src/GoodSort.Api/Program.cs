@@ -2711,6 +2711,78 @@ app.MapGet("/api/admin/marketplace/runs", async (string? status, GoodSortDbConte
     return Results.Ok(await q.OrderByDescending(r => r.CreatedAt).Take(100).ToListAsync());
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
+// ── Admin: Reset pre-launch database to clean startup baseline ──
+app.MapPost("/api/admin/reset-baseline", async (HttpContext ctx, AdminResetBaselineRequest req, GoodSortDbContext db, IConfiguration cfg, ILogger<Program> log) =>
+{
+    if (!string.Equals(req.Confirm, "RESET_BASELINE", StringComparison.Ordinal))
+        return Results.BadRequest(new { error = "Confirmation token RESET_BASELINE is required." });
+
+    var callerId = ctx.GetCallerId();
+    var seedEmail = (cfg["ADMIN_SEED_EMAIL"] ?? "admin@thegoodsort.org").Trim().ToLowerInvariant();
+
+    return await Atomic.RunAsync(db, async () =>
+    {
+        db.RunStops.RemoveRange(await db.RunStops.ToListAsync());
+        db.RunnerRatings.RemoveRange(await db.RunnerRatings.ToListAsync());
+        db.Runs.RemoveRange(await db.Runs.ToListAsync());
+        db.RunnerProfiles.RemoveRange(await db.RunnerProfiles.ToListAsync());
+
+        db.RouteStops.RemoveRange(await db.RouteStops.ToListAsync());
+        db.Collections.RemoveRange(await db.Collections.ToListAsync());
+        db.Routes.RemoveRange(await db.Routes.ToListAsync());
+
+        db.CashoutRequests.RemoveRange(await db.CashoutRequests.ToListAsync());
+        db.Scans.RemoveRange(await db.Scans.ToListAsync());
+        db.UsedScanTokens.RemoveRange(await db.UsedScanTokens.ToListAsync());
+        db.VisionCalls.RemoveRange(await db.VisionCalls.ToListAsync());
+        db.GrowthEvents.RemoveRange(await db.GrowthEvents.ToListAsync());
+        db.OtpCodes.RemoveRange(await db.OtpCodes.ToListAsync());
+        db.Bins.RemoveRange(await db.Bins.ToListAsync());
+
+        var allProfiles = await db.Profiles.ToListAsync();
+        foreach (var p in allProfiles)
+        {
+            p.HouseholdId = null;
+            p.ReferrerId = null;
+        }
+        await db.SaveChangesAsync();
+
+        var keptProfiles = new List<Profile>();
+        foreach (var p in allProfiles)
+        {
+            var isSeedOrCaller = (callerId.HasValue && p.Id == callerId.Value)
+                || string.Equals(p.Email, seedEmail, StringComparison.OrdinalIgnoreCase);
+            if (isSeedOrCaller)
+            {
+                p.PendingCents = 0;
+                p.ClearedCents = 0;
+                p.TotalContainers = 0;
+                p.TotalCo2SavedKg = 0;
+                p.Badges = [];
+                p.LastNudgedAt = null;
+                p.Role = "sorter";
+                p.IsAdmin = true;
+                keptProfiles.Add(p);
+            }
+            else
+            {
+                db.Profiles.Remove(p);
+            }
+        }
+        await db.SaveChangesAsync();
+
+        db.Households.RemoveRange(await db.Households.ToListAsync());
+        await db.SaveChangesAsync();
+
+        log.LogWarning("Database reset to startup baseline by {CallerId}; retained {RetainedCount} admin profile(s)", callerId, keptProfiles.Count);
+        return Results.Ok(new
+        {
+            reset = true,
+            retainedUsers = keptProfiles.Select(p => new { p.Id, p.Email, p.IsAdmin }),
+        });
+    });
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
+
 app.Run();
 
 // Caller owns a marketplace run when their JWT profile id matches the run's
@@ -2783,6 +2855,7 @@ record MarketplaceClaimRequest(Guid ProfileId);
 record RunStopPickupRequest(int ActualContainers, string? PhotoUrl);
 record PricingSimulateRequest(int Containers, double DistanceKm, int StopCount);
 record AdminBootstrapRequest(string Email);
+record AdminResetBaselineRequest(string Confirm);
 
 /// <summary>
 /// Exposed so the test project can boot the real application with

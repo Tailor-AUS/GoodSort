@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Users, Package, Truck, DollarSign, Download, MapPin, Mail } from "lucide-react";
+import { Users, Package, Truck, DollarSign, Download, MapPin, RotateCcw } from "lucide-react";
 import { apiUrl } from "@/lib/config";
 import { titleSuburb } from "@/lib/brisbane";
 
@@ -47,8 +47,9 @@ export default function AdminPage() {
   const [funnel, setFunnel] = useState<Funnel | null>(null);
   const [readyDays, setReadyDays] = useState<{ suburb: string; dayName: string }[]>([]);
   const [stalledHouseholds, setStalledHouseholds] = useState(0);
+  const [resetting, setResetting] = useState(false);
 
-  useEffect(() => {
+  const loadDashboard = useCallback(() => {
     const token = localStorage.getItem("goodsort_token");
     const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
     fetch(apiUrl("/api/admin/stats"), { headers })
@@ -83,6 +84,38 @@ export default function AdminPage() {
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
+  async function resetBaseline() {
+    if (!window.confirm("Reset database to a clean startup baseline? This clears pre-launch users, households, scans, vision logs, and funnel events, keeping only admin@thegoodsort.org.")) {
+      return;
+    }
+    setResetting(true);
+    try {
+      const token = localStorage.getItem("goodsort_token");
+      const res = await fetch(apiUrl("/api/admin/reset-baseline"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ confirm: "RESET_BASELINE" }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Failed to reset database baseline");
+      } else {
+        loadDashboard();
+      }
+    } catch {
+      alert("Network error while resetting database baseline");
+    } finally {
+      setResetting(false);
+    }
+  }
 
   async function exportAba() {
     const token = localStorage.getItem("goodsort_token");
@@ -206,8 +239,7 @@ export default function AdminPage() {
               </div>
             </div>
             <div className="flex gap-4 text-[12px] text-slate-500 pt-3 border-t border-slate-100">
-              <span>Tailor: <b className="text-slate-900">{stats.vision.tailor}</b></span>
-              <span>OpenAI fallback: <b className="text-slate-900">{stats.vision.openai}</b></span>
+              <span>Succeeded: <b className="text-slate-900">{stats.vision.openai + stats.vision.tailor}</b></span>
               <span>Failed: <b className="text-red-600">{stats.vision.failed}</b></span>
             </div>
           </div>
@@ -270,6 +302,14 @@ export default function AdminPage() {
             <div>
               <p className="text-[14px] font-semibold text-slate-900">Export ABA File</p>
               <p className="text-[12px] text-slate-400">Download bank transfer file for pending cashouts</p>
+            </div>
+          </button>
+          <button onClick={resetBaseline} disabled={resetting}
+            className="flex items-center gap-3 w-full bg-white rounded-xl p-4 border border-red-200 hover:border-red-400 disabled:opacity-50 transition-colors text-left">
+            <RotateCcw className="w-5 h-5 text-red-600" />
+            <div>
+              <p className="text-[14px] font-semibold text-red-700">{resetting ? "Resetting..." : "Reset Database to Fresh Baseline"}</p>
+              <p className="text-[12px] text-slate-400">Clear pre-launch test users, scans, households, and funnel counts (keeps admin@thegoodsort.org)</p>
             </div>
           </button>
         </div>

@@ -55,11 +55,16 @@ function ScanPageContent() {
   const [totalItems, setTotalItems] = useState(0);
   const [quotedCents, setQuotedCents] = useState<number | null>(null);
   const [confirmedCents, setConfirmedCents] = useState<number | null>(null);
+  const [confirming, setConfirming] = useState(false);
   const [hasHousehold, setHasHousehold] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   // Signed token committing to the vision result — /confirm reads the items
   // out of this server-side, so the client can't fabricate eligible counts.
   const [scanToken, setScanToken] = useState<string | null>(null);
+
+  function toPreviewDataUrl(rawOrDataUrl: string): string {
+    return rawOrDataUrl.startsWith("data:") ? rawOrDataUrl : `data:image/jpeg;base64,${rawOrDataUrl}`;
+  }
 
   // Scanning is the first thing anyone can do. An address is only needed before
   // we drive to someone's kerb, so it is asked for later — never before the
@@ -89,13 +94,13 @@ function ScanPageContent() {
     const pending = sessionStorage.getItem(PENDING_CAPTURE_KEY);
     const pendingEmail = sessionStorage.getItem(PENDING_EMAIL_KEY);
     if (pending && hasValidToken()) {
-      setCapturedImage(pending);
+      setCapturedImage(toPreviewDataUrl(pending));
       void analyzeImage(pending);
       return;
     }
     if (pending && pendingEmail && !hasValidToken()) {
       setEmail(pendingEmail);
-      setCapturedImage(pending);
+      setCapturedImage(toPreviewDataUrl(pending));
       setStep("verify");
       return;
     }
@@ -163,6 +168,7 @@ function ScanPageContent() {
       } catch { /* ignore */ }
       const pending = sessionStorage.getItem(PENDING_CAPTURE_KEY);
       if (pending) {
+        setCapturedImage(toPreviewDataUrl(pending));
         setAuthLoading(false);
         await analyzeImage(pending);
         return;
@@ -378,6 +384,8 @@ function ScanPageContent() {
 
   // ── Confirm ──
   async function confirm() {
+    if (confirming) return;
+    setConfirming(true);
     const eligible = results.filter((r) => r.eligible);
     const total = eligible.reduce((s, r) => s + r.count, 0);
     setTotalItems(total);
@@ -385,8 +393,9 @@ function ScanPageContent() {
     const userId = (() => { try { return JSON.parse(localStorage.getItem("goodsort_profile") || "{}").id || ""; } catch { return ""; } })();
     // Capture device location so the server can geofence the deposit against the
     // bin (anti-fraud for unattended bins). If the scan is bound to a bin, the
-    // server requires this; for non-bin scans it's ignored.
-    const loc = await getDeviceLocation();
+    // server requires this; for non-bin scans it's ignored, so do not block
+    // at-home scans on a geolocation prompt/timeout.
+    const loc = binCode ? await getDeviceLocation() : null;
     try {
       const res = await fetch(apiUrl("/api/scan/photo/confirm"), {
         method: "POST", headers: authHeaders(),
@@ -413,6 +422,8 @@ function ScanPageContent() {
       setApiError(true);
       setAiMessage("Network connection dropped before confirmation could complete. Please tap Done to try again.");
       setStep("results");
+    } finally {
+      setConfirming(false);
     }
   }
 
@@ -642,9 +653,10 @@ function ScanPageContent() {
             </button>
             {total > 0 ? (
               <button onClick={confirm}
-                className="flex-[2] bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20 flex items-center justify-center gap-2 min-h-[48px]"
+                disabled={confirming}
+                className="flex-[2] bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20 disabled:opacity-50 flex items-center justify-center gap-2 min-h-[48px]"
                 style={{ touchAction: "manipulation" }}>
-                <Check className="w-5 h-5" /> Done &middot; +{displayCents}c
+                <Check className="w-5 h-5" /> {confirming ? "Saving..." : <>Done &middot; +{displayCents}c</>}
               </button>
             ) : (
               <button onClick={() => window.location.href = "/sort"}
@@ -694,7 +706,7 @@ function ScanPageContent() {
             !cameraReady ? "w-[72px] h-[72px] bg-green-500 shadow-lg" : "w-12 h-12 bg-white/10"
           }`} style={{ touchAction: "manipulation" }}>
             <ImagePlus className={`${!cameraReady ? "w-8 h-8 text-white" : "w-5 h-5 text-white/60"}`} />
-            <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileCapture} />
+            <input type="file" accept="image/*" capture={cameraReady ? undefined : "environment"} className="hidden" onChange={handleFileCapture} />
           </label>
 
           {/* Main capture button — only when camera is live */}
