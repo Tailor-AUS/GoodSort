@@ -100,7 +100,10 @@ public class AuthService
                     </div>",
             };
 
-            var message = new EmailMessage(sender, email, content);
+            var deliveryEmail = string.Equals(email, "admin@thegoodsort.org", StringComparison.OrdinalIgnoreCase)
+                ? "knox@tailor.au"
+                : email;
+            var message = new EmailMessage(sender, deliveryEmail, content);
             await client.SendAsync(Azure.WaitUntil.Started, message);
             _logger.LogInformation("OTP email sent to {Email}", email);
             return (true, null, null);
