@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Users, Package, Truck, DollarSign, Download, MapPin, RotateCcw } from "lucide-react";
+import { Users, Package, Truck, DollarSign, Download, MapPin, RotateCcw, Copy, Check, Printer } from "lucide-react";
 import { apiUrl } from "@/lib/config";
 import { titleSuburb } from "@/lib/brisbane";
 
@@ -48,6 +48,17 @@ export default function AdminPage() {
   const [readyDays, setReadyDays] = useState<{ suburb: string; dayName: string }[]>([]);
   const [stalledHouseholds, setStalledHouseholds] = useState(0);
   const [resetting, setResetting] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  const organicUsers = Math.max(0, (stats?.users ?? 1) - 1);
+  const organicScans = stats?.scans ?? 0;
+  const adminInviteUrl = "https://thegoodsort.org/scan?r=4ebefa46-94c4-4df8-aa45-a6dcbde28bbb";
+
+  function copyAdminInvite() {
+    navigator.clipboard?.writeText(adminInviteUrl).catch(() => {});
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  }
 
   const loadDashboard = useCallback(() => {
     const token = localStorage.getItem("goodsort_token");
@@ -170,6 +181,37 @@ export default function AdminPage() {
         )}
 
         {/* Stats grid */}
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">First 10 Organic Users &amp; Sorter Network Goal</p>
+              <p className="text-[15px] font-extrabold text-slate-900">
+                {organicUsers} / 10 organic users · {organicScans} / 10 organic scans
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={copyAdminInvite}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-[12px] font-bold text-white hover:bg-emerald-700"
+              >
+                {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedLink ? "Copied referral link" : "Copy referral link ($1 + 1¢/can)"}
+              </button>
+              <Link
+                href="/flyer"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-emerald-300 px-3 py-2 text-[12px] font-bold text-emerald-900 hover:bg-emerald-100"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                Printable letterbox flyer
+              </Link>
+            </div>
+          </div>
+          <p className="text-[12px] text-emerald-900">
+            16 ready-to-send emails (11 organic user &amp; sorter-network invites + 5 COEX/DETSI/TOMRA/recycler partnership emails) are staged in Outlook Drafts for <code className="font-mono">knox@tailor.au</code>.
+          </p>
+        </div>
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
           <StatCard icon={Users} label="Users" value={stats?.users ?? 0} />
           <StatCard icon={Package} label="Containers" value={stats?.totalContainers ?? 0} />

@@ -14,7 +14,7 @@ export default function PrivacyPage() {
     <div className="min-h-dvh bg-white px-6 py-12 max-w-2xl mx-auto">
       <h1 className="text-3xl font-display font-extrabold text-slate-900 mb-8">Privacy Policy</h1>
       <div className="prose prose-slate prose-sm">
-        <p className="text-slate-500 text-sm mb-6">Last updated: August 2026</p>
+        <p className="text-slate-500 text-sm mb-6">Last updated: November 2026</p>
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">1. Information We Collect</h2>
         <p className="text-slate-600 text-sm mb-4">
@@ -28,8 +28,8 @@ export default function PrivacyPage() {
             fingerprint of each one</li>
           <li>Where a bin deposit was made, when you scan at one of our bins</li>
           <li>Location data (for map functionality and route optimization)</li>
-          <li>Waitlist consent, recycling day, and later collection of a The Good Sort bin</li>
-          <li>Collection and earnings history</li>
+          <li>Waitlist consent and later collection of sorted containers or a The Good Sort bin</li>
+          <li>Collection, referral network, and earnings history</li>
         </ul>
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">2. How We Use Your Information</h2>
@@ -56,9 +56,8 @@ export default function PrivacyPage() {
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">5. Photo Scanning</h2>
         <p className="text-slate-600 text-sm mb-4">
-          When you photograph containers, the image is sent to an artificial-intelligence
-          service that identifies what is in it. That processing may happen outside
-          Australia. <strong>We do not keep your photo.</strong> We keep a short
+          When you photograph containers, the image is sent to our Australian Azure OpenAI
+          service (Australia East) that identifies what is in it. <strong>We do not keep your photo.</strong> We keep a short
           mathematical fingerprint of it so the same photo cannot be claimed twice,
           and — for deposits at one of our bins — the location where the scan was made,
           so we can tell a real deposit from credit farmed remotely. You can use the
@@ -100,7 +99,7 @@ export default function PrivacyPage() {
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">8. Contact</h2>
         <p className="text-slate-600 text-sm mb-4">
           For privacy inquiries, contact us at privacy@thegoodsort.org or write to:
-          Crispr Projects Pty Ltd (ABN 85 680 798 770), trading as The Good Sort, Moorooka QLD 4105, Australia.
+          Tailor Intelligence Pty Ltd (ABN 13 688 827 572), trading as The Good Sort, Moorooka QLD 4105, Australia.
         </p>
       </div>
     </div>

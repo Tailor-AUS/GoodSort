@@ -14,13 +14,13 @@ export default function TermsPage() {
     <div className="min-h-dvh bg-white px-6 py-12 max-w-2xl mx-auto">
       <h1 className="text-3xl font-display font-extrabold text-slate-900 mb-8">Terms of Service</h1>
       <div className="prose prose-slate prose-sm">
-        <p className="text-slate-500 text-sm mb-6">Last updated: August 2026</p>
+        <p className="text-slate-500 text-sm mb-6">Last updated: November 2026</p>
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">1. Service Description</h2>
         <p className="text-slate-600 text-sm mb-4">
-          Crispr Projects Pty Ltd (ABN 85 680 798 770), trading as The Good Sort (&quot;The Good Sort&quot;, &quot;we&quot;, &quot;us&quot;)
+          Tailor Intelligence Pty Ltd (ABN 13 688 827 572), trading as The Good Sort (&quot;The Good Sort&quot;, &quot;we&quot;, &quot;us&quot;)
           operates a scan-first container sorting and kerbside collection service in Queensland.
-          You scan eligible cans and bottles for a 5¢ sorting credit, sort into four streams at home,
+          You scan eligible cans and bottles for a 5¢ sorting credit (10¢ on your first 20 containers), sort into four streams at home,
           and invite neighbours to scan. When your suburb reaches enough scanned container volume for
           one driver trip (about 1,000 containers), we unlock a volume run. We contact you when to
           bag out sorted containers on the kerb. You authorise The Good Sort and its appointed runners
@@ -39,12 +39,16 @@ export default function TermsPage() {
           separate, private arrangement between you and The Good Sort.
         </p>
 
-        <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">3. Sorting Credit Rates</h2>
+        <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">3. Sorting Credit Rates &amp; Sorter Network Commission</h2>
         <p className="text-slate-600 text-sm mb-4">
-          Sorters earn Sorting Credits at the rate displayed in the app (currently 5 cents per eligible
-          container scanned and later collected and verified). Scanning records a pending credit; it does not
+          Sorters earn Sorting Credits at the rate displayed in the app (currently 10 cents per eligible
+          container on your first 20 scans as a launch bonus, and 5 cents per eligible container thereafter,
+          subject to physical collection and depot verification). When you invite a neighbour using your
+          referral link, you also earn a $1.00 signup bonus once their household registers and scans a
+          container, plus a 1-cent Sorter Network Commission on every eligible container collected from
+          households you referred when their pickup run settles. Scanning records a pending credit; it does not
           itself create a scheme refund. Runner Credits are earned at rates displayed in the Runner app.
-          We reserve the right to adjust credit rates at any time. Rate changes will be reflected in the
+          We reserve the right to adjust credit and commission rates at any time. Rate changes will be reflected in the
           app and apply to future collections only.
         </p>
 
@@ -127,7 +131,7 @@ export default function TermsPage() {
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">13. Contact</h2>
         <p className="text-slate-600 text-sm mb-4">
           For questions about these terms, contact us at legal@thegoodsort.org or write to:
-          Crispr Projects Pty Ltd (ABN 85 680 798 770), trading as The Good Sort, Moorooka QLD 4105, Australia.
+          Tailor Intelligence Pty Ltd (ABN 13 688 827 572), trading as The Good Sort, Moorooka QLD 4105, Australia.
         </p>
       </div>
     </div>
