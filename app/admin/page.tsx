@@ -184,7 +184,7 @@ export default function AdminPage() {
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-6">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">First 10 Organic Users &amp; Sorter Network Goal</p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">First 10 Organic Users &amp; Container Mafia Goal</p>
               <p className="text-[15px] font-extrabold text-slate-900">
                 {organicUsers} / 10 organic users · {organicScans} / 10 organic scans
               </p>
@@ -196,19 +196,19 @@ export default function AdminPage() {
                 className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-[12px] font-bold text-white hover:bg-emerald-700"
               >
                 {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                {copiedLink ? "Copied referral link" : "Copy referral link ($1 + 1¢/can)"}
+                {copiedLink ? "Copied referral link" : "Copy Container Mafia link ($1 + 1¢/can)"}
               </button>
               <Link
                 href="/flyer"
                 className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-emerald-300 px-3 py-2 text-[12px] font-bold text-emerald-900 hover:bg-emerald-100"
               >
                 <Printer className="w-3.5 h-3.5" />
-                Printable letterbox flyer
+                Printable Yellow-Bin Decal &amp; Flyer
               </Link>
             </div>
           </div>
           <p className="text-[12px] text-emerald-900">
-            16 ready-to-send emails (11 organic user &amp; sorter-network invites + 5 COEX/DETSI/TOMRA/recycler partnership emails) are staged in Outlook Drafts for <code className="font-mono">knox@tailor.au</code>.
+            17 ready-to-send emails (11 organic user &amp; Container Mafia invites + 6 Containers for Change CRP, DETSI $100k grant, TOMRA, recycler &amp; yellow-bin sticker emails) are staged in Outlook Drafts for <code className="font-mono">knox@tailor.au</code>.
           </p>
         </div>
 
