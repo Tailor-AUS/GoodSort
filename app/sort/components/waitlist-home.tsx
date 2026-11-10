@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { ScanBarcode } from "lucide-react";
 import { LIVE_VOLUME_THRESHOLD, inviteMessage, residentialNeedsStreet, streetInviteUrl, titleSuburb, canonicalSuburb } from "@/lib/brisbane";
-import { readStoredProfileId } from "@/lib/config";
+import { formatCredit } from "@/lib/credit";
+import { apiUrl, authHeaders, readStoredProfileId } from "@/lib/config";
 import { Logo } from "@/app/components/shared/logo";
 import { WaitlistCard } from "@/app/components/shared/waitlist-card";
 import { CollectionNightCard } from "@/app/components/shared/collection-night-card";
@@ -38,7 +39,17 @@ export function WaitlistHome({
   const pct = Math.min(100, Math.round((containers / LIVE_VOLUME_THRESHOLD) * 100));
   const place = suburb ? titleSuburb(suburb) : "your suburb";
   const [profileId, setProfileId] = useState<string | undefined>(undefined);
-  useEffect(() => { setProfileId(readStoredProfileId()); }, []);
+  const [network, setNetwork] = useState<{ sortersCount: number; referredContainers: number; totalNetworkCents: number } | null>(null);
+  useEffect(() => {
+    const pid = readStoredProfileId();
+    setProfileId(pid);
+    if (pid) {
+      fetch(apiUrl(`/api/profiles/${pid}/network`), { headers: authHeaders() })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (d) setNetwork(d); })
+        .catch(() => {});
+    }
+  }, []);
   const inviteUrl = streetInviteUrl({ suburb, day: household?.councilCollectionDay, dayName, profileId });
   const message = inviteMessage(inviteUrl, suburb, { dayName, containers, households: have, needed, live });
 
@@ -85,11 +96,16 @@ export function WaitlistHome({
         {!live && !pickupConfirmed && (building || canonicalSuburb(suburb) !== null) && (
           <div className="mb-5">
             <p className="text-[15px] font-display font-extrabold text-slate-900 mb-1">
-              {building ? "Invite a house to scan" : "Invite neighbours to scan"}
+              {building ? "Invite a house to scan · earn 1¢/can" : "Build your sorter network · earn 1¢/can"}
             </p>
             <p className="text-[12px] text-slate-500 mb-3">
-              A volume run starts at about {LIVE_VOLUME_THRESHOLD} containers — enough for one driver trip. Scan is the unlock.
+              Earn $1 when a neighbour joins your suburb plus 1¢ commission on every container they sort. Their scans also unlock your suburb&apos;s {LIVE_VOLUME_THRESHOLD}-container run faster.
             </p>
+            {network && network.sortersCount > 0 && (
+              <div className="mb-3 rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2 text-[12px] font-semibold text-emerald-900">
+                Your sorter network: {network.sortersCount} sorter{network.sortersCount === 1 ? "" : "s"} · {network.referredContainers} container{network.referredContainers === 1 ? "" : "s"} · +{formatCredit(network.totalNetworkCents)}
+              </div>
+            )}
             <InviteActions url={inviteUrl} message={message} />
           </div>
         )}

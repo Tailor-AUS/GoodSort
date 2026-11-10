@@ -9,10 +9,14 @@ namespace GoodSort.Api.Services;
 public static class HouseholdCredit
 {
     public const int CentsPerContainer = 5;
+    public const int ReferralCommissionCentsPerContainer = 1;
     public const int DefaultUnscannedEstimate = 20;
 
     public static int ClearedCentsForPickup(int containerCount) =>
         containerCount > 0 ? containerCount * CentsPerContainer : 0;
+
+    public static int ReferralCommissionForPickup(int containerCount) =>
+        containerCount > 0 ? containerCount * ReferralCommissionCentsPerContainer : 0;
 
     public static int EstimatedContainers(int pendingContainers) =>
         pendingContainers > 0 ? pendingContainers : DefaultUnscannedEstimate;

@@ -46,4 +46,13 @@ public class HouseholdCreditTests
         Assert.Equal(20, HouseholdCredit.EstimatedContainers(0));
         Assert.Equal(37, HouseholdCredit.EstimatedContainers(37));
     }
+
+    [Fact]
+    public void Referral_commission_credits_one_cent_per_collected_container()
+    {
+        Assert.Equal(0, HouseholdCredit.ReferralCommissionForPickup(0));
+        Assert.Equal(0, HouseholdCredit.ReferralCommissionForPickup(-5));
+        Assert.Equal(40, HouseholdCredit.ReferralCommissionForPickup(40));
+        Assert.Equal(100, HouseholdCredit.ReferralCommissionForPickup(100));
+    }
 }

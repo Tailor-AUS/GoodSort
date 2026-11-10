@@ -91,7 +91,8 @@ export default function OnboardPage() {
     const la = override?.lat ?? lat;
     const ln = override?.lng ?? lng;
     const suburb = canonicalSuburb(override?.suburb) ?? canonicalSuburb(pickedSuburb) ?? canonicalSuburb(suburbHint);
-    if (!addr || la == null || ln == null || collectionDay == null) { setError("Pick your address and collection day."); return; }
+    const effectiveDay = collectionDay ?? 0;
+    if (!addr || la == null || ln == null) { setError("Pick your address."); return; }
     if (!accessConsent) { setError("Tick the box so we can tell you when to bag out."); return; }
     if (!hasValidToken()) { clearAuth(); setError("Your session expired — please sign in again."); router.push("/login"); return; }
     setLoading(true); setError("");
@@ -104,14 +105,14 @@ export default function OnboardPage() {
         body: JSON.stringify(existingId ? {
           address: addr, lat: la, lng: ln,
           suburb,
-          councilCollectionDay: collectionDay,
+          councilCollectionDay: effectiveDay,
           councilArea,
           accessConsent: true,
         } : {
           name: `${name}'s Place`,
           address: addr, lat: la, lng: ln,
           type: "residential",
-          councilCollectionDay: collectionDay,
+          councilCollectionDay: effectiveDay,
           councilArea,
           suburb,
           usesDivider: true,
@@ -129,11 +130,11 @@ export default function OnboardPage() {
       const hh = await hhRes.json();
 
       // A 2xx is not the same as "done". If the household came back still
-      // missing a suburb or day, pushing to /sort just bounces the member
+      // missing a suburb, pushing to /sort just bounces the member
       // straight back here — and firing household_joined would record the
       // failure as a success. Stop, and say what is missing.
       if (residentialNeedsStreet(hh)) {
-        setError("We saved what we could, but still need your suburb and recycling day before you count toward a run.");
+        setError("We saved what we could, but still need a Brisbane suburb address before you count toward a run.");
         setLoading(false);
         return;
       }
@@ -211,10 +212,6 @@ export default function OnboardPage() {
       await handleUnitWaitlist(la, ln);
       return;
     }
-    if (collectionDay == null) {
-      setError("Pick your recycling day — we use it for routing when suburb volume unlocks a run.");
-      return;
-    }
     await handleResidentialSubmit({ address: resolved, lat: la, lng: ln, suburb });
   }
 
@@ -227,7 +224,7 @@ export default function OnboardPage() {
         : resuming
           // Landing here with a household already means something is missing.
           // Saying so beats a blank form that looks like starting over.
-          ? "You are already signed up — we just need your suburb and recycling day before your scans count toward a run."
+          ? "You are already signed up — we just need your suburb before your scans count toward a run."
           : suburbHint
             ? `Start scanning in ${suburbHint}. Address, done — then scan for 5¢.`
             : "Address, then scan. Earn 5¢ each. Suburb volume unlocks a driver trip."}
@@ -263,24 +260,13 @@ export default function OnboardPage() {
             placeholder={suburbHint ? `Start typing your ${suburbHint} address…` : "Start typing your address…"}
           />
           {lat != null && lng != null && (
-            <p className="text-[11px] text-slate-500 mt-1.5">Kept from the recycling-day check. Change it if this is the wrong house.</p>
+            <p className="text-[11px] text-slate-500 mt-1.5">Address confirmed. Change it if this is the wrong house.</p>
           )}
         </div>
       </div>
 
       {type === "residential" && (
         <>
-          <p className="text-[13px] font-semibold text-slate-700 mb-1.5">
-            Recycling day {dayAuto ? "— from Brisbane City Council open data" : ""}
-          </p>
-          <div className="grid grid-cols-4 gap-2 mb-4">
-            {DAY_NAMES.map((d, i) => (
-              <button key={d} onClick={() => { setCollectionDay(i); setDayAuto(false); }} type="button"
-                className={`py-2.5 rounded-lg text-[12px] font-semibold border transition-colors ${collectionDay === i ? "bg-green-600 text-white border-green-600" : "bg-white text-slate-700 border-slate-200 hover:border-green-400"}`}>
-                {d.slice(0, 3)}
-              </button>
-            ))}
-          </div>
           <div className="p-3 bg-violet-50 border border-violet-200 rounded-xl mb-3">
             <p className="text-[13px] font-semibold text-slate-900">Scan first. Earn 5¢. Volume unlocks a run.</p>
             <p className="text-[11px] text-slate-500 mt-0.5">Scan eligible cans and bottles. Sort into four streams. When your suburb has enough containers for one driver trip, bag out — we take them to a refund point.</p>
@@ -312,7 +298,7 @@ export default function OnboardPage() {
       {error && <p className="text-red-500 text-[13px] mb-3">{error}</p>}
       <Continue
         onClick={continueFromPlace}
-        disabled={loading || !address.trim() || !accessConsent || (type === "unit_complex" ? !buildingName.trim() : !name.trim() || collectionDay == null)}
+        disabled={loading || !address.trim() || !accessConsent || (type === "unit_complex" ? !buildingName.trim() : !name.trim())}
         label={loading ? "Saving..." : "Start scanning"}
       />
       <button
