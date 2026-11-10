@@ -269,6 +269,31 @@ for (var i = 0; i < 10; i++)
         {
             await db.Database.MigrateAsync();
             app.Logger.LogInformation("Database migration completed successfully");
+
+            var seedAdminEmail = builder.Configuration["ADMIN_SEED_EMAIL"]?.Trim().ToLowerInvariant();
+            if (!string.IsNullOrWhiteSpace(seedAdminEmail))
+            {
+                var seedProfile = await db.Profiles.FirstOrDefaultAsync(
+                    p => p.Email == seedAdminEmail || p.Phone == seedAdminEmail);
+                if (seedProfile is null)
+                {
+                    db.Profiles.Add(new Profile
+                    {
+                        Name = seedAdminEmail.Split('@')[0],
+                        Email = seedAdminEmail,
+                        Phone = seedAdminEmail,
+                        IsAdmin = true,
+                    });
+                    await db.SaveChangesAsync();
+                    app.Logger.LogInformation("Seeded standalone admin profile for {Email}", seedAdminEmail);
+                }
+                else if (!seedProfile.IsAdmin)
+                {
+                    seedProfile.IsAdmin = true;
+                    await db.SaveChangesAsync();
+                    app.Logger.LogInformation("Promoted standalone admin profile for {Email}", seedAdminEmail);
+                }
+            }
         }
 
         // One-shot cleanup of demo seed bins (GS-0001..GS-0005) if they have no
@@ -1848,19 +1873,19 @@ app.MapGet("/api/admin/vision/health", async (GoodSortDbContext db, IConfigurati
         .ToListAsync();
 
     var lastTailorOk = await db.VisionCalls
-        .Where(v => v.Provider == "tailor" && v.Success)
+        .Where(v => (v.Provider == "tailor" || v.Provider == "openai") && v.Success)
         .OrderByDescending(v => v.CreatedAt)
         .Select(v => (DateTime?)v.CreatedAt)
         .FirstOrDefaultAsync();
 
     var lastTailorFail = await db.VisionCalls
-        .Where(v => v.Provider == "tailor" && !v.Success)
+        .Where(v => (v.Provider == "tailor" || v.Provider == "openai") && !v.Success)
         .OrderByDescending(v => v.CreatedAt)
         .Select(v => new { v.CreatedAt, v.ErrorSummary })
         .FirstOrDefaultAsync();
 
     var tailorOkDurations = hourCalls
-        .Where(v => v.Provider == "tailor" && v.Success)
+        .Where(v => (v.Provider == "tailor" || v.Provider == "openai") && v.Success)
         .Select(v => v.DurationMs)
         .ToList();
     var avgDurationMs = tailorOkDurations.Count > 0
@@ -1881,7 +1906,8 @@ app.MapGet("/api/admin/vision/health", async (GoodSortDbContext db, IConfigurati
         ? Math.Round(100.0 * (openaiOk24h + sovrgnOk24h) / totalAttempts24h, 1)
         : 0;
 
-    var keyConfigured = !string.IsNullOrEmpty(cfg["TAILOR_VISION_API_KEY"]);
+    var keyConfigured = !string.IsNullOrEmpty(cfg["TAILOR_VISION_API_KEY"])
+        || (!string.IsNullOrEmpty(cfg["AZURE_OPENAI_ENDPOINT"]) && !string.IsNullOrEmpty(cfg["AZURE_OPENAI_KEY"]));
 
     // Coarse health verdict: green if we've had a tailor success in the last hour,
     // amber if the key is configured but no recent success, red if no key.

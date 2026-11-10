@@ -10,6 +10,7 @@ on:
       # merges green and never ships.
       - 'Dockerfile'
       - '.github/workflows/deploy-api.yml'
+      - 'scripts/ensure-openai-provisioned.sh'
 
 jobs:
   deploy:
@@ -107,6 +108,12 @@ jobs:
               -n ${{ secrets.AZURE_CONTAINER_APP_NAME }} \
               -g ${{ secrets.AZURE_RESOURCE_GROUP }} \
               --image acrnyjfw2pdfsrie.azurecr.io/api:${{ github.sha }}
+
+      - name: Ensure standalone Azure OpenAI is provisioned and wired
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            bash scripts/ensure-openai-provisioned.sh "${{ secrets.AZURE_RESOURCE_GROUP }}" "${{ secrets.AZURE_CONTAINER_APP_NAME }}" oai-goodsort-prod australiaeast
 
       # thegoodsort.org must stay linked to goodsort-comm or every OTP fails
       # with DomainNotLinked. Cheap to check on the way past.

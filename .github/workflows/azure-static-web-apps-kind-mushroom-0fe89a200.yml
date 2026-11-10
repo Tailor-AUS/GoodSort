@@ -20,7 +20,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # 22, same as CI. The IndexNow submit imports a .ts suburb list via
+          # --experimental-strip-types, which needs 22.6+.
+          node-version: "22"
           cache: npm
 
       - name: Install and Build
@@ -39,6 +41,13 @@ jobs:
           skip_app_build: true
           app_location: "out"
           output_location: ""
+
+      # Production only. A pull request uploads a preview host, and IndexNow
+      # checks the key on thegoodsort.org — pinging it from a preview would
+      # 403 until this commit is the live site, and would not index the preview.
+      - name: Submit public URLs to IndexNow
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: node --experimental-strip-types scripts/submit-indexnow.mjs
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'

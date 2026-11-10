@@ -190,7 +190,7 @@ export default function AdminPage() {
         {/* Tailor Vision usage */}
         {stats?.vision && (
           <div className="bg-white rounded-xl p-4 border border-slate-200 mb-8">
-            <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-3">Tailor Vision API calls</p>
+            <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-3">Vision API calls</p>
             <div className="grid grid-cols-3 gap-3 mb-3">
               <div>
                 <p className="text-2xl font-display font-extrabold text-slate-900">{stats.vision.last7d}</p>
