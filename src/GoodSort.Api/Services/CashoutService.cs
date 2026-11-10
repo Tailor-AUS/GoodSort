@@ -194,7 +194,7 @@ public class CashoutService
             "01" +                                          // Reel Sequence
             "WBC" +                                         // Bank (Westpac example)
             "       " +                                     // Blank (7)
-            Pad26(_config["ABA_USER_NAME"] ?? "TAILOR INTELLIGENCE") + // User Name (26)
+            Pad26(_config["ABA_USER_NAME"] ?? "THE GOOD SORT") + // User Name (26)
             (_config["ABA_USER_ID"] ?? "").Trim().PadRight(6).Substring(0, 6) + // User ID (6)
             "PAYMENTS".PadRight(12) +                       // Description (12)
             now.ToString("ddMMyy") +                        // Date
