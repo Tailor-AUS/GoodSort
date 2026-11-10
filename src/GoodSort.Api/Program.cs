@@ -1451,6 +1451,41 @@ app.MapGet("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, GoodSortD
         is { } p ? Results.Ok(p) : Results.NotFound();
 }).RequireAuthorization();
 
+app.MapGet("/api/profiles/{id:guid}/network", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
+{
+    if (!ctx.IsOwnerOrAdmin(id)) return Results.Forbid();
+    var referred = await db.Profiles.AsNoTracking()
+        .Where(p => p.ReferrerId == id && p.Id != id)
+        .Select(p => new
+        {
+            p.Id,
+            p.Name,
+            p.TotalContainers,
+            HasHousehold = p.HouseholdId != null,
+            p.CreatedAt,
+        })
+        .OrderByDescending(p => p.TotalContainers)
+        .ThenByDescending(p => p.CreatedAt)
+        .ToListAsync();
+
+    var activeHouseholds = referred.Count(r => r.HasHousehold);
+    var referredContainers = referred.Sum(r => r.TotalContainers);
+    var signupBonusCents = activeHouseholds * 100;
+    var containerCommissionCents = referredContainers * HouseholdCredit.ReferralCommissionCentsPerContainer;
+
+    return Results.Ok(new
+    {
+        sortersCount = referred.Count,
+        activeHouseholds,
+        referredContainers,
+        commissionRateCents = HouseholdCredit.ReferralCommissionCentsPerContainer,
+        signupBonusCents,
+        containerCommissionCents,
+        totalNetworkCents = signupBonusCents + containerCommissionCents,
+        sorters = referred,
+    });
+}).RequireAuthorization();
+
 app.MapPost("/api/profiles", async (HttpContext ctx, Profile profile, GoodSortDbContext db) =>
 {
     // Self-create only — profile creation should normally happen via /verify-otp.
@@ -2547,6 +2582,14 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
                 if (extra is not null) payees.Add(extra);
             }
             HouseholdCredit.ApplyPickup(payees, pendingScans, count);
+
+            var referredMember = payees.FirstOrDefault(m => m.ReferrerId.HasValue && m.ReferrerId.Value != m.Id);
+            if (referredMember?.ReferrerId is Guid referrerId && count > 0)
+            {
+                var referrer = await db.Profiles.FindAsync(referrerId);
+                if (referrer is not null)
+                    referrer.ClearedCents += HouseholdCredit.ReferralCommissionForPickup(count);
+            }
 
             hh.PendingContainers = Math.Max(0, hh.PendingContainers - count);
             hh.PendingValueCents = hh.PendingContainers * HouseholdCredit.CentsPerContainer;

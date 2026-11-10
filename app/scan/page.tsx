@@ -530,7 +530,7 @@ function ScanPageContent() {
               Add your suburb so this scan counts →
             </p>
             <p className="text-[12px] text-violet-800/80 mt-0.5">
-              Your credit is saved, but we need your suburb and recycling day to count your containers toward a 1,000-container driver run.
+              Your credit is saved, but we need your suburb to count your containers toward a 1,000-container driver run.
             </p>
           </a>
         )}

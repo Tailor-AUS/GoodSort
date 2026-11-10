@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Users, ChevronRight } from "lucide-react";
 import { apiUrl, authHeaders, readStoredProfileId } from "@/lib/config";
+import { formatCredit } from "@/lib/credit";
 import { inviteMessage, residentialNeedsStreet, sameSuburb, streetInviteUrl, streetStatsForViewer, titleSuburb, type GrowthSuburb } from "@/lib/brisbane";
 import { Logo } from "@/app/components/shared/logo";
 import { InviteActions } from "@/app/components/shared/invite-actions";
@@ -15,10 +16,18 @@ export default function InvitePage() {
   const [growth, setGrowth] = useState<GrowthSuburb | null>(null);
   const [building, setBuilding] = useState(false);
   const [profileId, setProfileId] = useState<string | undefined>(undefined);
+  const [network, setNetwork] = useState<{ sortersCount: number; referredContainers: number; totalNetworkCents: number } | null>(null);
   const inviteUrl = streetInviteUrl({ suburb, day: binDay, profileId });
 
   useEffect(() => {
-    setProfileId(readStoredProfileId());
+    const pid = readStoredProfileId();
+    setProfileId(pid);
+    if (pid) {
+      fetch(apiUrl(`/api/profiles/${pid}/network`), { headers: authHeaders() })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (d) setNetwork(d); })
+        .catch(() => {});
+    }
     const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
     if (!profile.householdId) { router.replace("/onboard"); return; }
     Promise.all([
@@ -75,8 +84,13 @@ export default function InvitePage() {
         <div className="mb-3">
           <InviteActions url={inviteUrl} message={message} />
         </div>
+        {network && (
+          <div className="mb-4 rounded-xl bg-emerald-50 border border-emerald-200 px-3.5 py-2.5 text-center text-[12px] font-semibold text-emerald-900">
+            Your sorter network: {network.sortersCount} sorter{network.sortersCount === 1 ? "" : "s"} · {network.referredContainers} container{network.referredContainers === 1 ? "" : "s"} · +{formatCredit(network.totalNetworkCents)}
+          </div>
+        )}
         <p className="text-[12px] text-slate-400 text-center mb-8">
-          Suburb volume is the unlock. Send this to three neighbours who will scan. We email you when someone joins.
+          Earn $1 when a neighbour joins plus 1¢ commission on every container they sort. Send this to three neighbours to build suburb volume.
         </p>
         <button onClick={() => router.push("/sort")}
           className="w-full text-green-700 font-semibold text-[14px] py-3 flex items-center justify-center gap-1">
