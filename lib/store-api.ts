@@ -119,17 +119,20 @@ export async function getUserApi(): Promise<User | null> {
     clearedCents: profile.clearedCents,
     totalContainers: profile.totalContainers,
     totalCO2SavedKg: profile.totalCo2SavedKg,
-    scans: scans.map((s) => ({
-      id: s.id,
-      barcode: s.barcode,
-      containerName: s.containerName,
-      material: s.material,
-      refundCents: s.refundCents || 10,
-      status: s.status as "pending" | "in_route" | "settled",
-      householdId: s.householdId,
-      routeId: s.routeId,
-      timestamp: s.timestamp || new Date().toISOString(),
-    })),
+    scans: scans.map((s) => {
+      const raw = s as ScanRecord & { createdAt?: string };
+      return {
+        id: s.id,
+        barcode: s.barcode,
+        containerName: s.containerName,
+        material: s.material,
+        refundCents: typeof s.refundCents === "number" ? s.refundCents : 10,
+        status: s.status as "pending" | "in_route" | "settled",
+        householdId: s.householdId,
+        routeId: s.routeId,
+        timestamp: raw.timestamp || raw.createdAt || new Date().toISOString(),
+      };
+    }),
     collections: [],
     badges: profile.badges || [],
     createdAt: profile.createdAt,
@@ -143,7 +146,10 @@ export async function getUserApi(): Promise<User | null> {
   );
   if (stillUnsynced.length > 0) {
     user.scans = [...stillUnsynced, ...user.scans];
-    user.pendingCents += stillUnsynced.reduce((sum, s) => sum + (s.refundCents || 10), 0);
+    user.pendingCents += stillUnsynced.reduce(
+      (sum, s) => sum + (typeof s.refundCents === "number" ? s.refundCents : 10),
+      0,
+    );
     user.totalContainers += stillUnsynced.length;
   }
 
@@ -180,6 +186,8 @@ export async function getUserApi(): Promise<User | null> {
  * fetched list already contains anything that just synced, so nothing is
  * counted twice.
  */
+export const MAX_FLUSH_BATCH = 50;
+
 export async function flushUnsyncedScans(): Promise<{ sent: number; refused: number; stillPending: number }> {
   const userId = getStoredUserId();
   const pending = getUnsyncedScans();
@@ -190,7 +198,9 @@ export async function flushUnsyncedScans(): Promise<{ sent: number; refused: num
   let sent = 0;
   let refused = 0;
 
-  for (const scan of pending) {
+  // Cap each flush pass at 50 scans so coming back online after a large offline
+  // haul never trips the server's 60/min `scans` rate limiter on its own burst.
+  for (const scan of pending.slice(0, MAX_FLUSH_BATCH)) {
     const { data, refused: wasRefused } = await apiSend<{ creditedCents?: number }>("/api/scans", {
       method: "POST",
       body: JSON.stringify({
