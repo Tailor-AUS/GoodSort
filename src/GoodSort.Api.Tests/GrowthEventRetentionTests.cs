@@ -57,4 +57,55 @@ public class GrowthEventRetentionTests
     {
         Assert.InRange(GrowthEventRetention.RetentionDays, 30, 365);
     }
+
+    [Fact]
+    public async Task Expired_or_used_otp_codes_past_window_are_pruned_and_active_ones_kept()
+    {
+        await using var db = NewDb();
+        db.OtpCodes.AddRange(
+            new OtpCode
+            {
+                Email = "stale-used@example.test",
+                CodeHash = "h1",
+                Used = true,
+                CreatedAt = DateTime.UtcNow.AddDays(-(OtpCodeRetention.RetentionDays + 5)),
+                ExpiresAt = DateTime.UtcNow.AddDays(-(OtpCodeRetention.RetentionDays + 5)).AddMinutes(15),
+            },
+            new OtpCode
+            {
+                Email = "stale-expired@example.test",
+                CodeHash = "h2",
+                Used = false,
+                CreatedAt = DateTime.UtcNow.AddDays(-(OtpCodeRetention.RetentionDays + 2)),
+                ExpiresAt = DateTime.UtcNow.AddDays(-(OtpCodeRetention.RetentionDays + 2)).AddMinutes(15),
+            },
+            new OtpCode
+            {
+                Email = "recent@example.test",
+                CodeHash = "h3",
+                Used = false,
+                CreatedAt = DateTime.UtcNow.AddMinutes(-2),
+                ExpiresAt = DateTime.UtcNow.AddMinutes(13),
+            });
+        await db.SaveChangesAsync();
+
+        var removed = await OtpCodeRetention.SweepAsync(db);
+        Assert.Equal(2, removed);
+        var remaining = Assert.Single(await db.OtpCodes.ToListAsync());
+        Assert.Equal("recent@example.test", remaining.Email);
+    }
+
+    [Fact]
+    public async Task Vision_calls_past_window_are_pruned_and_recent_ones_kept()
+    {
+        await using var db = NewDb();
+        db.VisionCalls.AddRange(
+            new VisionCall { Provider = "tailor", Success = true, CreatedAt = DateTime.UtcNow.AddDays(-(VisionCallRetention.RetentionDays + 10)) },
+            new VisionCall { Provider = "tailor", Success = true, CreatedAt = DateTime.UtcNow.AddHours(-3) });
+        await db.SaveChangesAsync();
+
+        var removed = await VisionCallRetention.SweepAsync(db);
+        Assert.Equal(1, removed);
+        Assert.Equal(1, await db.VisionCalls.CountAsync());
+    }
 }

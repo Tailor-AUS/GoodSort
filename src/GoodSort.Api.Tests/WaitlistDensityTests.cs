@@ -80,6 +80,31 @@ public class WaitlistDensityTests
     }
 
     [Fact]
+    public void Day_cluster_exposes_suburb_volume_when_split_across_recycling_days()
+    {
+        var rows = new[]
+        {
+            new HouseholdClusterRow("MOOROOKA", 3, PendingContainers: 500),
+            new HouseholdClusterRow("MOOROOKA", 4, PendingContainers: 400),
+        };
+        var board = WaitlistDensity.Aggregate(rows);
+
+        var wed = WaitlistDensity.DayCluster(board, "Moorooka", 3);
+        Assert.NotNull(wed);
+        Assert.Equal("Wednesday", wed!.DayName);
+        Assert.Equal(900, wed.Containers);
+        Assert.Equal(100, wed.Needed);
+        Assert.False(wed.Live);
+
+        // Resident on Friday (no Friday scans yet) still gets suburb-wide 900/1000.
+        var fri = WaitlistDensity.DayCluster(board, "Moorooka", 5);
+        Assert.NotNull(fri);
+        Assert.Equal("Friday", fri!.DayName);
+        Assert.Equal(900, fri.Containers);
+        Assert.Equal(100, fri.Needed);
+    }
+
+    [Fact]
     public void Admin_never_allocates_city_wide_or_unknown()
     {
         Assert.Equal("MOOROOKA", WaitlistDensity.AdminGroupKey("Moorooka"));

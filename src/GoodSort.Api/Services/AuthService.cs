@@ -32,6 +32,28 @@ public class AuthService
     /// </summary>
     public const int OtpValidMinutes = 15;
 
+    /// <summary>
+    /// Normalises and validates an email address for OTP delivery and lookup.
+    /// Rejects null/blank input, whitespace or CR/LF characters, display-name
+    /// injection ("Bob &lt;bob@example.com&gt;"), addresses over 254 chars, and
+    /// hostnames without a dot.
+    /// </summary>
+    public static string? NormalizeValidEmail(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var trimmed = raw.Trim();
+        if (trimmed.Length > 254) return null;
+        foreach (var ch in trimmed)
+        {
+            if (char.IsWhiteSpace(ch) || char.IsControl(ch)) return null;
+        }
+        if (!System.Net.Mail.MailAddress.TryCreate(trimmed, out var parsed)) return null;
+        if (!string.Equals(parsed.Address, trimmed, StringComparison.OrdinalIgnoreCase)) return null;
+        if (string.IsNullOrEmpty(parsed.User) || string.IsNullOrEmpty(parsed.Host)) return null;
+        if (!parsed.Host.Contains('.') || parsed.Host.StartsWith('.') || parsed.Host.EndsWith('.')) return null;
+        return trimmed.ToLowerInvariant();
+    }
+
     public async Task<(bool Success, string? Error, string? DevCode)> SendOtp(string email)
     {
         // Rate limit: max 5 OTPs per email per hour

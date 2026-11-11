@@ -92,9 +92,39 @@ public static class PricingBounds
                      ("Night discount", c.NightDiscount),
                  })
         {
-            if (value < MinMultiplier || value > MaxMultiplier)
+            if (!double.IsFinite(value) || value < MinMultiplier || value > MaxMultiplier)
                 return $"{name} of {value} is outside the sane range " +
                        $"{MinMultiplier}–{MaxMultiplier}. Time-of-day factors scale every payout.";
+        }
+
+        var weights = new[]
+        {
+            ("Distance efficiency weight", c.DistanceEfficiencyWeight),
+            ("Bin density weight", c.BinDensityWeight),
+            ("Supply/demand weight", c.SupplyDemandWeight),
+            ("Time-of-day weight", c.TimeOfDayWeight),
+            ("Material mix weight", c.MaterialMixWeight),
+            ("Scrap price weight", c.ScrapPriceWeight),
+        };
+        double weightSum = 0;
+        foreach (var (name, w) in weights)
+        {
+            if (!double.IsFinite(w) || w < 0.0 || w > MaxMultiplier)
+                return $"{name} of {w} must be a finite number between 0 and {MaxMultiplier}.";
+            weightSum += w;
+        }
+        if (!double.IsFinite(weightSum) || weightSum <= 0.0 || weightSum > MaxMultiplier)
+            return $"Factor weights sum to {weightSum:F2}, which must be greater than 0 and at most {MaxMultiplier}.";
+
+        foreach (var (name, spot) in new[]
+                 {
+                     ("Aluminium spot price", c.AluminiumSpotCents),
+                     ("PET spot price", c.PetSpotCents),
+                     ("Glass spot price", c.GlassSpotCents),
+                 })
+        {
+            if (spot < 0 || spot > 10_000)
+                return $"{name} ({spot}c/kg) must be between 0c and 10,000c/kg.";
         }
 
         return null;

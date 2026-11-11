@@ -5,7 +5,7 @@ import type { MaterialBreakdown } from "./store.ts";
 
 // ── Runner Profile ──
 
-export type VehicleType = "car" | "bike" | "walk";
+export type VehicleType = "car" | "ute" | "bike" | "walk";
 export type RunnerLevel = "bronze" | "silver" | "gold" | "platinum";
 
 export interface RunnerProfile {

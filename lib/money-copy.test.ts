@@ -12,11 +12,14 @@ import {
 import {
   LIVE_VOLUME_THRESHOLD,
   canonicalSuburb,
+  dayClusterStats,
   householdCountsTowardUnlock,
   inviteMessage,
+  rankByUnlockProximity,
   residentialNeedsStreet,
   streetInvitePath,
   streetStatsForViewer,
+  type GrowthSuburb,
 } from "./brisbane.ts";
 
 /**
@@ -124,6 +127,61 @@ test("a viewer is never shown their suburb as unlocked when there is no cluster"
     assert.equal(streetStatsForViewer(null, null, counts).live, false);
     assert.equal(streetStatsForViewer(undefined, undefined, counts).live, false);
   }
+});
+
+test("split-day suburb volume never pairs single-day containers with suburb-wide needed", () => {
+  const splitSuburb: GrowthSuburb = {
+    suburb: "MOOROOKA",
+    households: 5,
+    containers: 900,
+    live: false,
+    needed: 100,
+    bestDay: 3,
+    bestDayName: "Wednesday",
+    byDay: [
+      { day: 3, dayName: "Wednesday", households: 3, containers: 500, live: false, needed: 100 },
+      { day: 4, dayName: "Thursday", households: 2, containers: 400, live: false, needed: 100 },
+    ],
+  };
+
+  // Wednesday viewer sees suburb-wide 900 + 100 = 1000, never 500 + 100.
+  const wed = streetStatsForViewer(splitSuburb, 3, true);
+  assert.equal(wed.containers, 900);
+  assert.equal(wed.needed, 100);
+  assert.equal(wed.containers + wed.needed, LIVE_VOLUME_THRESHOLD);
+  assert.equal(wed.dayName, "Wednesday");
+
+  // Friday viewer (0 Friday scans yet) still sees suburb-wide 900/1000, not 0/1000.
+  const fri = streetStatsForViewer(splitSuburb, 5, true);
+  assert.equal(fri.containers, 900);
+  assert.equal(fri.needed, 100);
+  assert.equal(fri.dayName, "Friday");
+
+  // Suburb unlocked via 600 + 400 split ranks ahead of a single-day 700 suburb.
+  const unlockedSplit: GrowthSuburb = {
+    ...splitSuburb,
+    containers: 1000,
+    live: true,
+    needed: 0,
+    byDay: [
+      { day: 3, dayName: "Wednesday", households: 3, containers: 600, live: true, needed: 0 },
+      { day: 1, dayName: "Monday", households: 2, containers: 400, live: true, needed: 0 },
+    ],
+  };
+  const singleDay700: GrowthSuburb = {
+    suburb: "ANNERLEY",
+    households: 4,
+    containers: 700,
+    live: false,
+    needed: 300,
+    bestDay: 2,
+    bestDayName: "Tuesday",
+    byDay: [{ day: 2, dayName: "Tuesday", households: 4, containers: 700, live: false, needed: 300 }],
+  };
+  const ranked = rankByUnlockProximity([singleDay700, unlockedSplit]);
+  assert.equal(ranked[0].suburb, "MOOROOKA");
+  assert.equal(dayClusterStats(unlockedSplit, 1)?.live, true);
+  assert.equal(dayClusterStats(unlockedSplit, 1)?.containers, 1000);
 });
 
 // ── Who counts toward a run ────────────────────────────────────────────────
