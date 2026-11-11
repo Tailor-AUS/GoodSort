@@ -1,9 +1,17 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Printer, ArrowLeft } from "lucide-react";
+import { hasValidToken } from "@/lib/config";
 
 export default function FlyerPage() {
+  const [signedIn, setSignedIn] = useState(false);
+
+  useEffect(() => {
+    setSignedIn(hasValidToken());
+  }, []);
+
   function printFlyer() {
     if (typeof window !== "undefined") {
       window.print();
@@ -14,7 +22,7 @@ export default function FlyerPage() {
     <div className="min-h-dvh bg-slate-100 py-8 px-4 print:bg-white print:p-0">
       <div className="max-w-2xl mx-auto mb-4 flex items-center justify-between print:hidden">
         <Link
-          href="/sort"
+          href={signedIn ? "/sort" : "/"}
           className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-slate-900"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -26,23 +34,23 @@ export default function FlyerPage() {
           className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700"
         >
           <Printer className="w-4 h-4" />
-          Print Yellow-Bin Decal &amp; Street Flyer
+          Print Home Sorting Guide &amp; Street Flyer
         </button>
       </div>
 
       <div className="max-w-2xl mx-auto space-y-6 print:space-y-4">
-        {/* CUT-OUT YELLOW-BIN LID DECAL */}
+        {/* CUT-OUT HOME SORTING REMINDER */}
         <div className="bg-amber-400 rounded-3xl border-4 border-dashed border-slate-950 p-6 md:p-8 text-slate-950 shadow-sm print:shadow-none">
           <div className="flex items-center justify-between gap-2 mb-2">
             <span className="inline-block rounded-full bg-slate-950 px-3 py-1 text-[11px] font-extrabold uppercase tracking-wider text-amber-300">
-              Yellow-Bin Lid Decal · Tape or Stick to Your Bin Lid
+              Home Fridge / Bag Reminder · Stick Above Your 4 Home Bags
             </span>
             <span className="text-xs font-extrabold uppercase tracking-wider text-slate-900">
               10¢ / Can at Home
             </span>
           </div>
           <h2 className="text-2xl md:text-3xl font-display font-extrabold leading-tight mb-2">
-            DON&apos;T THROW 10¢ CANS IN THE COUNCIL BIN.
+            DON&apos;T THROW 10¢ CANS IN THE RUBBISH.
           </h2>
           <p className="text-sm md:text-base font-bold text-slate-900 mb-4">
             This house gets paid to sort cans &amp; bottles at home with The Good Sort. Join our street&apos;s 1,000-container pickup run — and earn $1/house + 1¢/can when you build your own Container Mafia:

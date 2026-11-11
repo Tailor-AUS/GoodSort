@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { usePathname } from "next/navigation";
 import { X, Share, PlusSquare, MoreVertical, Download } from "lucide-react";
+import { hasValidToken } from "@/lib/config";
 import { Logo } from "./logo";
 
 type Platform = "ios" | "android" | "desktop" | null;
@@ -28,7 +29,7 @@ const DISMISS_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days
 const INSTALL_PROMPT_PATHS = ["/sort", "/runner", "/household"];
 
 function canShowInstallPrompt(pathname: string) {
-  return INSTALL_PROMPT_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+  return INSTALL_PROMPT_PATHS.includes(pathname);
 }
 
 export function InstallPrompt() {
@@ -39,7 +40,7 @@ export function InstallPrompt() {
   const pathname = usePathname();
 
   useEffect(() => {
-    if (!canShowInstallPrompt(pathname)) {
+    if (!canShowInstallPrompt(pathname) || !hasValidToken()) {
       setShow(false);
       return;
     }

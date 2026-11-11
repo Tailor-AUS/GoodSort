@@ -139,7 +139,7 @@ public class AuthService
         ex.ErrorCode is "DomainNotLinked" or "SenderNotFound" or "SenderDomainNotVerified"
             or "InvalidSenderAddress" or "Unauthorized";
 
-    public async Task<(string? Token, Profile? Profile)> VerifyOtp(string email, string code, Guid? referrerId = null)
+    public async Task<(string? Token, Profile? Profile, string? Error)> VerifyOtp(string email, string code, Guid? referrerId = null)
     {
         var otp = await _db.OtpCodes
             .Where(o => o.Email == email && !o.Used && o.ExpiresAt > DateTime.UtcNow)
@@ -147,7 +147,16 @@ public class AuthService
             .FirstOrDefaultAsync();
 
         if (otp == null)
-            return (null, null);
+        {
+            var hadPriorCode = await _db.OtpCodes.AnyAsync(o => o.Email == email);
+            return (
+                null,
+                null,
+                hadPriorCode
+                    ? "That code has expired or was already used — tap Resend code for a fresh one."
+                    : "No active code found for that email — tap Resend code."
+            );
+        }
 
         // Rate limit: max 5 attempts per OTP
         otp.Attempts++;
@@ -155,7 +164,7 @@ public class AuthService
         {
             otp.Used = true;
             await _db.SaveChangesAsync();
-            return (null, null);
+            return (null, null, "Too many incorrect attempts — tap Resend code for a fresh 6-digit code.");
         }
 
         var jwtSecret = _config["JWT_SECRET"]
@@ -163,7 +172,7 @@ public class AuthService
         if (!OtpHash.Verify(code, otp.CodeHash, jwtSecret))
         {
             await _db.SaveChangesAsync();
-            return (null, null);
+            return (null, null, "Incorrect 6-digit code — check your latest email and try again.");
         }
 
         // Mark as used
@@ -210,7 +219,7 @@ public class AuthService
         }
 
         var token = GenerateJwt(profile);
-        return (token, profile);
+        return (token, profile, null);
     }
 
     /// <summary>

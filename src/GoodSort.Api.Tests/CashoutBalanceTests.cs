@@ -177,4 +177,18 @@ public class CashoutBalanceTests
         Assert.Equal(5000, await Cleared(db, profile.Id));
         Assert.Equal(0, await PendingRows(db, profile.Id));
     }
+
+    [Fact]
+    public async Task Formatted_bsb_and_account_numbers_are_normalized_on_cashout()
+    {
+        var (db, svc, userId) = await WithBalance(3000);
+
+        var (ok, error) = await svc.RequestCashout(userId, 2500, "064-000", "1234 5678", "Alice Sorter");
+
+        Assert.True(ok, error);
+        Assert.Equal(500, await Cleared(db, userId));
+        var row = await db.Set<CashoutRequest>().SingleAsync(r => r.UserId == userId);
+        Assert.Equal("064000", row.Bsb);
+        Assert.Equal("12345678", row.AccountNumber);
+    }
 }

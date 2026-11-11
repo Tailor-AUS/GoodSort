@@ -118,9 +118,11 @@ public class CashoutService
         if (!PayoutsOpen()) return (false, "Payouts are not open yet. Credits stay on your account until bank transfers are live.");
         if (amountCents < 2000) return (false, "Minimum cash-out is $20");
 
-        // Validate BSB (6 digits) and account number (5-9 digits)
-        if (bsb.Length != 6 || !bsb.All(char.IsDigit)) return (false, "Invalid BSB");
-        if (accountNumber.Length < 5 || accountNumber.Length > 9 || !accountNumber.All(char.IsDigit))
+        // Normalize formatted BSB ("064-000") and account numbers ("1234 5678") consistently with ValidatePayoutDetails.
+        var cleanBsb = Digits(bsb);
+        var cleanAccount = Digits(accountNumber);
+        if (cleanBsb.Length != 6) return (false, "Invalid BSB");
+        if (cleanAccount.Length < 5 || cleanAccount.Length > 9)
             return (false, "Invalid account number");
         if (string.IsNullOrWhiteSpace(accountName) || accountName.Trim().Length < 2)
             return (false, "Invalid account name");
@@ -138,8 +140,8 @@ public class CashoutService
                 UserId = userId,
                 AmountCents = amountCents,
                 PayoutMethod = "aba",
-                Bsb = bsb,
-                AccountNumber = accountNumber,
+                Bsb = cleanBsb,
+                AccountNumber = cleanAccount,
                 AccountName = accountName.Trim(),
                 Status = "pending",
             });
@@ -147,8 +149,8 @@ public class CashoutService
             if (profile is not null)
             {
                 profile.PreferredPayoutMethod = "aba";
-                profile.BankBsb = bsb;
-                profile.BankAccountNumber = accountNumber;
+                profile.BankBsb = cleanBsb;
+                profile.BankAccountNumber = cleanAccount;
                 profile.BankAccountName = accountName.Trim();
                 profile.PayoutUpdatedAt = DateTime.UtcNow;
             }

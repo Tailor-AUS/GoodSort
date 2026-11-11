@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { lookupOpenFoodFacts, LOOKUP_TIMEOUT_MS } from "./containers.ts";
+import { geocodeAddress, PHOTON_TIMEOUT_MS, suburbFromPhoton } from "./photon.ts";
 
 /**
  * Screens a member cannot get out of.
@@ -190,4 +191,73 @@ test("/bags and /household link missing-address members to /onboard, never a dea
 test("AccountPanel log out clears all stored auth keys via clearAuth()", () => {
   const panel = code(join("app", "components", "shared", "account-panel.tsx"));
   assert.match(panel, /clearAuth\(\)/, "Log Out must call clearAuth() so goodsort_user cannot bleed across accounts");
+});
+
+test("AuthGuard permits /bags, /sort, and /runner/signup without bouncing signed-out visitors to /", () => {
+  const guard = code(join("app", "components", "shared", "auth-guard.tsx"));
+  for (const prefix of ["/bags", "/sort", "/runner"]) {
+    assert.ok(
+      guard.includes(`"${prefix}"`),
+      `PUBLIC_PATH_PREFIXES must include "${prefix}" so public links on /marketplace and /flyer do not silently bounce to /`,
+    );
+  }
+});
+
+test("/runner/signup supports inline email + OTP verification without losing vehicle fields", () => {
+  const signup = code(join("app", "(runner)", "runner", "signup", "page.tsx"));
+  assert.doesNotMatch(signup, /router\.push\("\/login"\)/, "/runner/signup must not discard the driver form by bouncing to /login");
+  assert.match(signup, /\/api\/auth\/send-otp/);
+  assert.match(signup, /\/api\/auth\/verify-otp/);
+  assert.match(signup, /resendIn/, "/runner/signup OTP verify needs resend cooldown");
+  assert.match(signup, /different email/i, "/runner/signup OTP verify needs a way back to edit email");
+  assert.match(signup, /data\.error/, "/runner/signup must surface server error reasons");
+});
+
+test("/verify and MarketingHome surface server OTP errors and offer email recovery", () => {
+  const verify = code(join("app", "(auth)", "verify", "page.tsx"));
+  assert.doesNotMatch(verify, /setError\("Invalid code/, "/verify must surface server data.error instead of blanket 'Invalid code'");
+  assert.match(verify, /data\.error/);
+  assert.match(verify, /resendIn/);
+
+  const home = code(join("app", "components", "marketing", "marketing-home.tsx"));
+  assert.doesNotMatch(home, /setError\("Invalid code"\)/, "MarketingHome must surface server data.error instead of blanket 'Invalid code'");
+  assert.match(home, /Use a different email/);
+  assert.match(home, /setStep\("email"\)/);
+});
+
+test("a hung Photon geocode gives up instead of freezing address setup forever", async () => {
+  const original = globalThis.fetch;
+  let aborted = false;
+
+  globalThis.fetch = ((_url: string, init?: RequestInit) =>
+    new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => {
+        aborted = true;
+        reject(new DOMException("Aborted", "AbortError"));
+      });
+    })) as typeof fetch;
+
+  const started = Date.now();
+  try {
+    const result = await geocodeAddress("88 Ekibin Rd East Annerley");
+    const elapsed = Date.now() - started;
+    assert.equal(result, null, "timed-out Photon geocode must resolve null cleanly");
+    assert.ok(aborted, "Photon request must be aborted via AbortController");
+    assert.ok(elapsed < PHOTON_TIMEOUT_MS + 2000, `waited ${elapsed}ms — expected <= ${PHOTON_TIMEOUT_MS}ms`);
+  } finally {
+    globalThis.fetch = original;
+  }
+
+  assert.equal(suburbFromPhoton({ district: "Annerley", city: "Brisbane" }), "Annerley");
+});
+
+test("no yellow-lid bin decal copy remains on domestic /flyer, /invite, or /sort", () => {
+  for (const rel of [
+    join("app", "flyer", "page.tsx"),
+    join("app", "invite", "page.tsx"),
+    join("app", "sort", "components", "waitlist-home.tsx"),
+  ]) {
+    const src = code(rel);
+    assert.doesNotMatch(src, /Yellow-Bin/i, `${rel} must not reference yellow-lid bins`);
+  }
 });

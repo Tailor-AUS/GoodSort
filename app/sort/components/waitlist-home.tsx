@@ -116,7 +116,7 @@ export function WaitlistHome({
               href="/flyer"
               className="mt-2.5 block text-center text-[12px] font-semibold text-emerald-700 hover:text-emerald-900"
             >
-              Print your Yellow-Bin Decal &amp; Street Flyer →
+              Print Home Sorting Guide &amp; Street Flyer →
             </a>
           </div>
         )}

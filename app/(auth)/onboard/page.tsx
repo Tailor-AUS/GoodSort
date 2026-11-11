@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, Recycle, Check } from "lucide-react";
-import { apiUrl, authHeaders, hasValidToken, clearAuth, readDayHint, readPlaceHint, readStoredProfileId } from "@/lib/config";
+import { apiUrl, authHeaders, hasValidToken, clearAuth, readDayHint, readPlaceHint, readStoredProfileId, writePlaceHint } from "@/lib/config";
 import { track } from "@/lib/analytics";
 import { canonicalSuburb, DAY_NAMES, inviteMessage, streetInviteUrl, residentialNeedsStreet } from "@/lib/brisbane";
 import { AddressAutocomplete, geocodeAddress } from "@/app/components/shared/address-autocomplete";
@@ -141,7 +141,13 @@ export default function OnboardPage() {
       });
       if (payoutErr) { setError(payoutErr); return; }
     }
-    if (!hasValidToken()) { clearAuth(); setError("Your session expired — please sign in again."); router.push("/login"); return; }
+    if (!hasValidToken()) {
+      writePlaceHint({ address: addr, lat: la, lng: ln, suburb, councilArea });
+      clearAuth();
+      setError("Your session expired — please sign in again.");
+      router.push("/login");
+      return;
+    }
     setLoading(true); setError("");
 
     try {
@@ -167,7 +173,13 @@ export default function OnboardPage() {
           accessConsentAt: new Date().toISOString(),
         }),
       });
-      if (hhRes.status === 401) { clearAuth(); setError("Your session expired — please sign in again."); router.push("/login"); return; }
+      if (hhRes.status === 401) {
+        writePlaceHint({ address: addr, lat: la, lng: ln, suburb, councilArea });
+        clearAuth();
+        setError("Your session expired — please sign in again.");
+        router.push("/login");
+        return;
+      }
       if (!hhRes.ok) {
         const data = await hhRes.json().catch(() => ({} as { error?: string }));
         setError(typeof data.error === "string" && data.error ? data.error : "Couldn't save your street");
