@@ -118,6 +118,37 @@ public class SqlConcurrencyTests : IClassFixture<SqlServerFixture>
     }
 
     [SkippableFact]
+    public async Task Concurrent_claims_assign_a_marketplace_run_to_one_runner_only()
+    {
+        Skip.IfNot(_sql.Available, SqlServerFixture.SkipReason);
+
+        var runId = await _sql.SeedRun("available");
+        var runnerIds = new List<Guid>();
+        for (var i = 0; i < Concurrency; i++)
+            runnerIds.Add(await _sql.SeedRunnerProfile());
+
+        using var gate = new SemaphoreSlim(0, Concurrency);
+        var tasks = runnerIds.Select(async runnerId =>
+        {
+            await using var db = _sql.NewContext();
+            await gate.WaitAsync();
+            return await StatusClaim.TryAssignRunnerToRun(db, runId, runnerId, 3, 3000, 1);
+        }).ToArray();
+
+        await Task.Delay(150);
+        gate.Release(Concurrency);
+        var results = await Task.WhenAll(tasks);
+
+        Assert.Equal(1, results.Count(won => won));
+
+        await using var check = _sql.NewContext();
+        var run = await check.Runs.AsNoTracking().FirstAsync(r => r.Id == runId);
+        Assert.Equal("claimed", run.Status);
+        Assert.NotNull(run.RunnerId);
+        Assert.Contains(run.RunnerId!.Value, runnerIds);
+    }
+
+    [SkippableFact]
     public async Task Concurrent_confirms_of_one_scan_token_are_spent_once()
     {
         Skip.IfNot(_sql.Available, SqlServerFixture.SkipReason);

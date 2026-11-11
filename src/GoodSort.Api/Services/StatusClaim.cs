@@ -81,15 +81,73 @@ public static class StatusClaim
     }
 
     /// <summary>
-    /// The InMemory provider used by tests and local dev cannot translate
-    /// ExecuteUpdate. This keeps the transition rule correct but NOT atomic —
-    /// the atomicity comes from the single UPDATE above, which is what
-    /// production runs on SQL Server.
+    /// Atomically assigns an unclaimed, non-expired marketplace run to one runner,
+    /// preventing two concurrent taps from dispatching two runners to the same kerbs.
     /// </summary>
+    public static async Task<bool> TryAssignRunnerToRun(
+        GoodSortDbContext db,
+        Guid runId,
+        Guid runnerId,
+        int perContainerCents,
+        int estimatedPayoutCents,
+        int pricingTier)
+    {
+        var claimedAt = DateTime.UtcNow;
+        try
+        {
+            var rows = await db.Runs
+                .Where(r => r.Id == runId
+                         && (r.Status == "available" || r.Status == "below_threshold")
+                         && r.ExpiresAt > claimedAt)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(r => r.Status, "claimed")
+                    .SetProperty(r => r.RunnerId, runnerId)
+                    .SetProperty(r => r.ClaimedAt, claimedAt)
+                    .SetProperty(r => r.PerContainerCents, perContainerCents)
+                    .SetProperty(r => r.EstimatedPayoutCents, estimatedPayoutCents)
+                    .SetProperty(r => r.PricingTier, pricingTier));
+            return rows > 0;
+        }
+        catch (InvalidOperationException)
+        {
+            return await FallbackClaim(db, async () =>
+            {
+                var run = await db.Runs.FirstOrDefaultAsync(r =>
+                    r.Id == runId
+                    && (r.Status == "available" || r.Status == "below_threshold")
+                    && r.ExpiresAt > claimedAt);
+                if (run is null) return false;
+                run.Status = "claimed";
+                run.RunnerId = runnerId;
+                run.ClaimedAt = claimedAt;
+                run.PerContainerCents = perContainerCents;
+                run.EstimatedPayoutCents = estimatedPayoutCents;
+                run.PricingTier = pricingTier;
+                return true;
+            });
+        }
+    }
+
+    /// <summary>
+    /// The InMemory provider used by tests and local dev cannot translate
+    /// ExecuteUpdate. Production atomicity across replicas comes from the single
+    /// SQL Server UPDATE above; FallbackGate serialises in-process InMemory callers
+    /// so local dev and integration tests observe the same single-winner contract.
+    /// </summary>
+    private static readonly SemaphoreSlim FallbackGate = new(1, 1);
+
     private static async Task<bool> FallbackClaim(GoodSortDbContext db, Func<Task<bool>> apply)
     {
-        if (!await apply()) return false;
-        await db.SaveChangesAsync();
-        return true;
+        await FallbackGate.WaitAsync();
+        try
+        {
+            if (!await apply()) return false;
+            await db.SaveChangesAsync();
+            return true;
+        }
+        finally
+        {
+            FallbackGate.Release();
+        }
     }
 }

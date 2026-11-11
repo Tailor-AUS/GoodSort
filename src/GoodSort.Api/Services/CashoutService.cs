@@ -60,7 +60,7 @@ public class CashoutService
         string? accountNumber,
         string? accountName)
     {
-        var trimmedName = (accountName ?? "").Trim();
+        var trimmedName = SanitizeSingleLine(accountName);
         if (trimmedName.Length < 2 || trimmedName.Length > 128)
             return (false, "Enter the account holder name", null);
 
@@ -124,7 +124,8 @@ public class CashoutService
         if (cleanBsb.Length != 6) return (false, "Invalid BSB");
         if (cleanAccount.Length < 5 || cleanAccount.Length > 9)
             return (false, "Invalid account number");
-        if (string.IsNullOrWhiteSpace(accountName) || accountName.Trim().Length < 2)
+        var cleanName = SanitizeSingleLine(accountName);
+        if (cleanName.Length is < 2 or > 128)
             return (false, "Invalid account name");
 
         var exists = await _db.Profiles.AsNoTracking().AnyAsync(p => p.Id == userId);
@@ -142,7 +143,7 @@ public class CashoutService
                 PayoutMethod = "aba",
                 Bsb = cleanBsb,
                 AccountNumber = cleanAccount,
-                AccountName = accountName.Trim(),
+                AccountName = cleanName,
                 Status = "pending",
             });
             var profile = await _db.Profiles.FindAsync(userId);
@@ -151,7 +152,7 @@ public class CashoutService
                 profile.PreferredPayoutMethod = "aba";
                 profile.BankBsb = cleanBsb;
                 profile.BankAccountNumber = cleanAccount;
-                profile.BankAccountName = accountName.Trim();
+                profile.BankAccountName = cleanName;
                 profile.PayoutUpdatedAt = DateTime.UtcNow;
             }
             await _db.SaveChangesAsync();
@@ -169,7 +170,8 @@ public class CashoutService
         if (!PayIdPayoutsOpen())
             return (false, "PayID payouts are not open yet. Credits stay on your account until payouts are switched on.");
         if (amountCents < 2000) return (false, "Minimum cash-out is $20");
-        if (string.IsNullOrWhiteSpace(accountName) || accountName.Trim().Length < 2)
+        var cleanName = SanitizeSingleLine(accountName);
+        if (cleanName.Length is < 2 or > 128)
             return (false, "Invalid account name");
 
         var normalizedType = (payIdType ?? "").Trim().ToLowerInvariant();
@@ -213,7 +215,7 @@ public class CashoutService
                 PayoutMethod = "payid",
                 PayIdType = normalizedType,
                 PayIdValue = cleanedValue,
-                AccountName = accountName.Trim(),
+                AccountName = cleanName,
                 Status = "pending",
             });
             var profile = await _db.Profiles.FindAsync(userId);
@@ -222,7 +224,7 @@ public class CashoutService
                 profile.PreferredPayoutMethod = "payid";
                 profile.PayIdType = normalizedType;
                 profile.PayIdValue = cleanedValue;
-                profile.BankAccountName = accountName.Trim();
+                profile.BankAccountName = cleanName;
                 profile.PayoutUpdatedAt = DateTime.UtcNow;
             }
             await _db.SaveChangesAsync();
@@ -359,7 +361,7 @@ public class CashoutService
                 " " +                                       // Indicator
                 "53" +                                      // Transaction Code (53 = Pay)
                 (amount).ToString().PadLeft(10, '0') +      // Amount in cents (10)
-                cashout.AccountName!.PadRight(32).Substring(0, 32) + // Title (32)
+                SanitizeSingleLine(cashout.AccountName).PadRight(32).Substring(0, 32) + // Title (32)
                 "GOODSORT PAYOUT   " +                      // Lodgement Ref (18)
                 FormatBsb(Digits(_config["ABA_TRACE_BSB"])) + // Trace BSB (7)
                 Digits(_config["ABA_TRACE_ACCOUNT"]).PadRight(9).Substring(0, 9) + // Trace Account (9)
@@ -516,11 +518,35 @@ public class CashoutService
     private static string FormatBsb(string digits6) =>
         digits6.Length == 6 ? digits6.Insert(3, "-") : "000-000";
 
+    public static string SanitizeSingleLine(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "";
+        var sb = new StringBuilder(raw.Length);
+        var prevSpace = false;
+        foreach (var ch in raw)
+        {
+            if (char.IsControl(ch) || char.IsWhiteSpace(ch))
+            {
+                if (!prevSpace && sb.Length > 0)
+                {
+                    sb.Append(' ');
+                    prevSpace = true;
+                }
+            }
+            else
+            {
+                sb.Append(ch);
+                prevSpace = false;
+            }
+        }
+        return sb.ToString().Trim();
+    }
+
     private static string Pad26(string name) =>
-        name.Trim().ToUpperInvariant().PadRight(26).Substring(0, 26);
+        SanitizeSingleLine(name).ToUpperInvariant().PadRight(26).Substring(0, 26);
 
     private static string Pad16(string name) =>
-        name.Trim().ToUpperInvariant().PadRight(16).Substring(0, 16);
+        SanitizeSingleLine(name).ToUpperInvariant().PadRight(16).Substring(0, 16);
 }
 
 public record ValidatedPayoutDetails(

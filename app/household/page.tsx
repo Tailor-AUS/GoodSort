@@ -36,8 +36,15 @@ export default function HouseholdPage() {
   const [pickupConfirmed, setPickupConfirmed] = useState(false);
   const [growth, setGrowth] = useState<{ households: number; containers: number; needed: number; live: boolean; dayName?: string | null } | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [signedIn, setSignedIn] = useState(false);
 
   useEffect(() => {
+    const authed = hasValidToken();
+    setSignedIn(authed);
+    if (!authed) {
+      setErr("Sign in to view or set up your household.");
+      return;
+    }
     const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
     if (!profile.householdId) { setErr("You haven't set up a household yet."); return; }
     fetch(apiUrl(`/api/households/${profile.householdId}`), { headers: authHeaders() })
@@ -83,10 +90,10 @@ export default function HouseholdPage() {
             </p>
             <div className="flex flex-col gap-2 pt-1">
               <Link
-                href={hasValidToken() ? "/onboard" : "/login"}
+                href={signedIn ? "/onboard" : "/login"}
                 className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-bold py-3 rounded-xl text-[13px] text-center shadow-md shadow-green-600/20 min-h-[44px] flex items-center justify-center"
               >
-                {hasValidToken() ? "Add home address & payout details →" : "Sign in to set up household"}
+                {signedIn ? "Add home address & payout details →" : "Sign in to set up household"}
               </Link>
               <Link
                 href="/scan"
