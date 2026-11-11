@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Pixel-art loop: scan → sort into bags → bag out → runner → refund point → 5¢ credit.
+ * Pixel-art loop: scan → sort into bags → bag out → runner → refund point → 10¢ credit.
  * Sort streams animation. Respects prefers-reduced-motion.
  */
 export function SortAnimation() {

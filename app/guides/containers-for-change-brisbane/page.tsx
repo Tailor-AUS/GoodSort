@@ -7,7 +7,7 @@ import { SITE_URL } from "@/app/seo";
 const PATH = "/guides/containers-for-change-brisbane";
 const TITLE = "Containers for Change in Brisbane";
 const DESCRIPTION =
-  "Eligible drink containers in Queensland are worth 10¢ at a refund point. Scan them at home with The Good Sort for a 5¢ sorting credit, and a driver trip starts when your suburb has enough containers.";
+  "Eligible drink containers in Queensland are worth 10¢ at a refund point. Scan them at home with The Good Sort for a 10¢ sorting credit, and a driver trip starts when your suburb has enough containers.";
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
 const faq = [
   {
     q: "Is The Good Sort the 10¢ Containers for Change refund?",
-    a: "No. The scheme pays 10¢ when an eligible container is presented at a refund point. The Good Sort pays a 5¢ sorting credit for the scan. We are not a Containers for Change refund point.",
+    a: "No. The scheme pays 10¢ when an eligible container is presented at a refund point. The Good Sort pays a 10¢ sorting credit after pickup and depot verification. We are not a Containers for Change refund point.",
   },
   {
     q: "Can I start if nobody else in my suburb has scanned yet?",
@@ -34,7 +34,7 @@ const faq = [
   },
   {
     q: "Do I have to drive to a depot?",
-    a: "Not for the scan. You photograph the container at home, sort it into your own bags, and keep the 5¢ pending. Collection from the kerb happens when your suburb's volume run is on, not before.",
+    a: "Not for the scan. You photograph the container at home, sort it into your own bags, and keep the 10¢ pending. Collection from the kerb happens when your suburb's volume run is on, not before.",
   },
 ];
 
@@ -68,7 +68,7 @@ export default function ContainersForChangeBrisbanePage() {
         The 10¢ is real. The Saturday queue is why it goes unclaimed.
       </p>
       <p className="text-[16px] text-slate-700 leading-relaxed mb-8">
-        The Good Sort is the at-home version. Scan a container, earn a 5¢ sorting
+        The Good Sort is the at-home version. Scan a container, earn a 10¢ sorting
         credit, and sort it into your own bags. When your suburb has about{" "}
         {LIVE_VOLUME_THRESHOLD.toLocaleString()} scanned containers — one driver
         trip — bag out and we take them to a refund point.
@@ -92,10 +92,10 @@ export default function ContainersForChangeBrisbanePage() {
         November 2023.
       </p>
       <p className="text-[15px] text-slate-600 leading-relaxed">
-        That 10¢ is the scheme&apos;s refund, paid at the refund point. Your 5¢
-        on The Good Sort is a private sorting credit. It is pending until a
-        volume run is collected and the containers are verified. It is not the
-        scheme refund, and this site is not a refund point.
+        That scheme refund is paid at an approved refund point when containers
+        are presented. Your 10¢ on The Good Sort is a private sorting credit —
+        pending until a volume run is collected and the containers are verified
+        at the depot. This site is not an approved refund point.
       </p>
 
       <h2 className="text-xl font-display font-extrabold text-slate-900 mt-12 mb-3">
@@ -103,8 +103,8 @@ export default function ContainersForChangeBrisbanePage() {
       </h2>
       <ol className="list-decimal pl-5 text-[15px] text-slate-600 space-y-3">
         <li>Open the scanner and photograph one eligible can or bottle.</li>
-        <li>Confirm the material. An eligible container credits 5¢, pending.</li>
-        <li>Add your email and your address so the scan counts in your suburb.</li>
+        <li>Confirm the material. An eligible container credits 10¢, pending.</li>
+        <li>Add your email, home address, and payout details so we can collect and pay you.</li>
         <li>Sort into four bags at home: aluminium, PET, glass, and other.</li>
       </ol>
       <p className="text-[15px] text-slate-600 leading-relaxed mt-4">

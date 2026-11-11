@@ -6,6 +6,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { Camera, RotateCcw, Check, Mail, ShieldCheck, ImagePlus, X, Home } from "lucide-react";
 import { track } from "@/lib/analytics";
 import { apiUrl, authHeaders, persistWaitlistFromUrl, readReferrerId, hasValidToken, clearAuth } from "@/lib/config";
+import { PostScanSetup } from "@/app/components/shared/post-scan-setup";
 
 interface BinInfo {
   id: string; code: string; name: string; address: string; hostedBy: string | null;
@@ -507,52 +508,16 @@ function ScanPageContent() {
 
   // Done
   if (step === "done") {
-    const earnedCents = confirmedCents ?? quotedCents ?? totalItems * 5;
+    const earnedCents = confirmedCents ?? quotedCents ?? totalItems * 10;
+    void hasHousehold;
     return (
-      <Center>
-        <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
-          <Check className="w-8 h-8 text-green-600" />
-        </div>
-        {totalItems > 0 && (
-          <p className="text-3xl font-display font-extrabold text-green-600 mb-2 animate-ka-ching">+{earnedCents}c</p>
-        )}
-        <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">
-          {totalItems > 0 ? "Estimate logged" : "Done"}
-        </h1>
-        <p className="text-slate-500 text-[13px] mb-4">{totalItems} container{totalItems !== 1 ? "s" : ""} noted{bin ? ` at ${bin.name}` : ""}. Pending credit clears after we collect and a refund point verifies.</p>
-
-        {!hasHousehold && !binCode && (
-          <a
-            href="/onboard"
-            className="block w-full bg-violet-50 border border-violet-200 rounded-2xl p-4 mb-4 text-left hover:border-violet-400 transition-colors"
-          >
-            <p className="text-[13px] font-display font-extrabold text-violet-900">
-              Add your suburb so this scan counts →
-            </p>
-            <p className="text-[12px] text-violet-800/80 mt-0.5">
-              Your credit is saved, but we need your suburb to count your containers toward a 1,000-container driver run.
-            </p>
-          </a>
-        )}
-
-        {totalItems > 0 && (
-          <div className="bg-green-50 rounded-2xl p-4 border border-green-200 mb-4 text-left">
-            <p className="text-[12px] font-bold text-green-800 mb-2">How this works:</p>
-            <div className="space-y-1.5 text-[12px] text-green-700">
-              <p>1. Scan eligible containers — 10¢ on your first 20, then 5¢ each</p>
-              <p>2. Sort into your bags at home</p>
-              <p>3. Suburb volume unlocks a driver trip to the refund point</p>
-              <p>4. Bag out when we collect. Bank transfer from $20 once payouts are live</p>
-            </div>
-          </div>
-        )}
-
-        <GreenButton onClick={retake}>Scan another container</GreenButton>
-        <button onClick={() => { window.location.href = "/sort"; }}
-          className="w-full mt-2 py-3 text-slate-400 font-medium text-[13px] hover:text-slate-600 transition-colors">
-          Back to sort
-        </button>
-      </Center>
+      <PostScanSetup
+        earnedCents={earnedCents}
+        totalItems={totalItems}
+        binName={bin?.name ?? null}
+        isPublicBinScan={Boolean(binCode)}
+        onScanAnother={retake}
+      />
     );
   }
 
@@ -598,8 +563,8 @@ function ScanPageContent() {
   if (step === "results") {
     const eligible = results.filter((r) => r.eligible);
     const total = eligible.reduce((s, r) => s + r.count, 0);
-    const displayCents = quotedCents ?? total * 5;
-    const isBonusRate = total > 0 && displayCents > total * 5;
+    const displayCents = quotedCents ?? total * 10;
+    const isBonusRate = total > 0 && displayCents > total * 10;
 
     return (
       <div className="fixed inset-0 bg-white flex flex-col z-50" style={{ paddingTop: "env(safe-area-inset-top,0)", paddingBottom: "env(safe-area-inset-bottom,0)" }}>
@@ -629,7 +594,7 @@ function ScanPageContent() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[14px] text-slate-900 font-semibold">{item.name}</p>
-                    <p className="text-[12px] text-slate-500">{isBonusRate ? "10c launch bonus" : "5c each"} &middot; sort into your own bags today</p>
+                    <p className="text-[12px] text-slate-500">{isBonusRate ? "Bonus sorting rate" : "10c each"} &middot; sort into your own bags today</p>
                   </div>
                   <span className="text-[15px] font-display font-extrabold text-slate-900">&times;{item.count}</span>
                 </div>
@@ -679,7 +644,7 @@ function ScanPageContent() {
       {/* Top bar */}
       <div className="flex-shrink-0 px-5 pb-2 bg-black" style={{ paddingTop: "calc(env(safe-area-inset-top, 16px) + 0.25rem)" }}>
         <p className="text-[15px] text-white font-display font-bold">
-          {bin ? bin.name : "Scan a container · 5¢"}
+          {bin ? bin.name : "Scan a container · 10¢"}
         </p>
       </div>
 

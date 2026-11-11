@@ -6,7 +6,7 @@ import { formatCollectionNight } from "@/lib/brisbane";
 function pickupCopy(confirmed: boolean | undefined, unlocked: boolean | undefined) {
   if (confirmed) return "Bag out your sorted containers. We take them to a refund point or depot.";
   if (unlocked) return "Suburb volume is enough for a driver trip. We'll confirm when to bag out. Keep scanning.";
-  return "A volume run starts once your suburb has enough scanned containers for one driver trip. Scan today — 5¢ each.";
+  return "A volume run starts once your suburb has enough scanned containers for one driver trip. Scan today — 10¢ each.";
 }
 
 /**

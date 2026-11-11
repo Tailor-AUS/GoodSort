@@ -118,11 +118,9 @@ public class ActivationPathTests : IClassFixture<ActivationPathTests.Host>
         var after = await Profile(m);
         Assert.Equal(1, after.GetProperty("totalContainers").GetInt32());
 
-        // The first container is inside the launch-bonus cap, so it pays double
-        // the sorting credit. Asserting the exact figure rather than "> 0" is
-        // the point: a silent revert to 5c is the failure that matters, and a
-        // greater-than assertion would sail straight past it.
-        Assert.Equal(HouseholdCredit.CentsPerContainer * 2, after.GetProperty("pendingCents").GetInt32());
+        // Every domestic scan credits the 10c household sorting rate.
+        Assert.Equal(10, HouseholdCredit.CentsPerContainer);
+        Assert.Equal(HouseholdCredit.CentsPerContainer, after.GetProperty("pendingCents").GetInt32());
     }
 
     [Fact]
@@ -168,12 +166,12 @@ public class ActivationPathTests : IClassFixture<ActivationPathTests.Host>
     }
 
     [Fact]
-    public async Task Credit_accrues_across_scans_and_the_bonus_stops_at_the_cap()
+    public async Task Credit_accrues_at_10c_across_scans()
     {
         var m = await SignUp("activation-cap@example.test");
 
-        var cap = LaunchBonus.DefaultCapContainers;
-        for (var i = 0; i < cap + 1; i++)
+        const int scanCount = 21;
+        for (var i = 0; i < scanCount; i++)
         {
             var res = await m.Client.PostAsJsonAsync("/api/scans", new
             {
@@ -185,12 +183,7 @@ public class ActivationPathTests : IClassFixture<ActivationPathTests.Host>
         }
 
         var after = await Profile(m);
-        Assert.Equal(cap + 1, after.GetProperty("totalContainers").GetInt32());
-
-        // cap containers at double, then the next one back at the normal rate.
-        // This is the assertion that would catch an off-by-one paying the bonus
-        // forever — the expensive direction of that mistake.
-        var expected = (cap * HouseholdCredit.CentsPerContainer * 2) + HouseholdCredit.CentsPerContainer;
-        Assert.Equal(expected, after.GetProperty("pendingCents").GetInt32());
+        Assert.Equal(scanCount, after.GetProperty("totalContainers").GetInt32());
+        Assert.Equal(scanCount * HouseholdCredit.CentsPerContainer, after.GetProperty("pendingCents").GetInt32());
     }
 }

@@ -1184,6 +1184,35 @@ app.MapPatch("/api/households/{id:guid}/street", async (HttpContext ctx, Guid id
         h.AccessConsentAt ??= DateTime.UtcNow;
     }
     h.UsesDivider = true;
+
+    // If a member repaired an incomplete household after scanning containers,
+    // attach any pending orphan scans now so suburb volume reflects them.
+    if (ctx.GetCallerId() is Guid repairCallerId && h.Type != "unit_complex")
+    {
+        var orphans = await db.Scans
+            .Where(sc => sc.UserId == repairCallerId && sc.HouseholdId == null && sc.Status == "pending")
+            .ToListAsync();
+        if (orphans.Count > 0)
+        {
+            var bin = await db.Bins.FirstOrDefaultAsync(b => b.HouseholdId == h.Id);
+            if (bin is null)
+            {
+                bin = new Bin
+                {
+                    Code = $"GS-H{Math.Abs(h.Id.GetHashCode()) % 100000:D5}",
+                    Name = h.Name,
+                    Address = h.Address,
+                    Lat = h.Lat,
+                    Lng = h.Lng,
+                    HouseholdId = h.Id,
+                    HostedBy = null,
+                };
+                db.Bins.Add(bin);
+            }
+            ScanBackfill.AttachTo(h, orphans, bin);
+        }
+    }
+
     await db.SaveChangesAsync();
 
     var clusterChanged = !string.Equals(beforeSuburb, h.Suburb, StringComparison.OrdinalIgnoreCase)
@@ -1241,7 +1270,7 @@ var waitlistEvents = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
 {
     "waitlist_cta",
     "scan_camera_opened", "scan_captured", "scan_credited", "first_scan_credited",
-    "otp_sent", "otp_verified", "household_joined",
+    "otp_sent", "otp_verified", "household_joined", "payout_details_saved",
     "invite_whatsapp", "invite_sms", "invite_share", "invite_landed", "suburb_picked",
     "bin_day_looked_up",
 };
@@ -1352,7 +1381,7 @@ app.MapGet("/api/households/{id:guid}/next-pickup", async (HttpContext ctx, Guid
         binStatus = h.BinStatus,
         reason = confirmed
             ? "Bag out your sorted containers on the kerb. We take them to a refund point or depot."
-            : "Scan eligible containers for 5¢. A volume run unlocks when your suburb hits about 1,000 scanned containers.",
+            : "Scan eligible containers for 10¢. A volume run unlocks when your suburb hits about 1,000 scanned containers.",
     });
 }).RequireAuthorization();
 
@@ -1449,6 +1478,65 @@ app.MapGet("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, GoodSortD
     if (!ctx.IsOwnerOrAdmin(id)) return Results.Forbid();
     return await db.Profiles.Include(p => p.Household).FirstOrDefaultAsync(p => p.Id == id)
         is { } p ? Results.Ok(p) : Results.NotFound();
+}).RequireAuthorization();
+
+app.MapGet("/api/profiles/me/payout", async (HttpContext ctx, GoodSortDbContext db) =>
+{
+    var callerId = ctx.GetCallerId();
+    if (callerId is null) return Results.Unauthorized();
+    var p = await db.Profiles.AsNoTracking().FirstOrDefaultAsync(x => x.Id == callerId.Value);
+    if (p is null) return Results.NotFound();
+    return Results.Ok(new
+    {
+        hasPayoutDetails = CashoutService.HasSavedPayout(p),
+        preferredPayoutMethod = p.PreferredPayoutMethod,
+        payIdType = p.PayIdType,
+        payIdValue = p.PayIdValue,
+        bankBsb = p.BankBsb,
+        bankAccountNumber = p.BankAccountNumber,
+        bankAccountName = p.BankAccountName,
+        payoutUpdatedAt = p.PayoutUpdatedAt,
+    });
+}).RequireAuthorization();
+
+app.MapPut("/api/profiles/me/payout", async (HttpContext ctx, PayoutDetailsUpdateRequest req, GoodSortDbContext db) =>
+{
+    var callerId = ctx.GetCallerId();
+    if (callerId is null) return Results.Unauthorized();
+    var p = await db.Profiles.FindAsync(callerId.Value);
+    if (p is null) return Results.NotFound();
+
+    var (valid, error, details) = CashoutService.ValidatePayoutDetails(
+        req.Method, req.PayIdType, req.PayIdValue, req.Bsb, req.AccountNumber, req.AccountName);
+    if (!valid || details is null)
+        return Results.BadRequest(new { error });
+
+    p.PreferredPayoutMethod = details.Method;
+    p.PayIdType = details.PayIdType;
+    p.PayIdValue = details.PayIdValue;
+    p.BankBsb = details.BankBsb;
+    p.BankAccountNumber = details.BankAccountNumber;
+    p.BankAccountName = details.BankAccountName;
+    p.PayoutUpdatedAt = DateTime.UtcNow;
+
+    if (!string.IsNullOrWhiteSpace(req.MemberName))
+        p.Name = req.MemberName.Trim();
+    else if (string.IsNullOrWhiteSpace(p.Name) || p.Name == "New User")
+        p.Name = details.BankAccountName;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new
+    {
+        hasPayoutDetails = true,
+        preferredPayoutMethod = p.PreferredPayoutMethod,
+        payIdType = p.PayIdType,
+        payIdValue = p.PayIdValue,
+        bankBsb = p.BankBsb,
+        bankAccountNumber = p.BankAccountNumber,
+        bankAccountName = p.BankAccountName,
+        payoutUpdatedAt = p.PayoutUpdatedAt,
+        profileName = p.Name,
+    });
 }).RequireAuthorization();
 
 app.MapGet("/api/profiles/{id:guid}/network", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
@@ -1713,7 +1801,7 @@ app.MapPost("/api/routes/{id:guid}/settle", async (HttpContext ctx, Guid id, Goo
         if (hh is null) continue;
         var count = stop.ActualContainerCount ?? stop.ContainerCount;
         hh.PendingContainers = Math.Max(0, hh.PendingContainers - count);
-        hh.PendingValueCents = hh.PendingContainers * 5;
+        hh.PendingValueCents = hh.PendingContainers * HouseholdCredit.CentsPerContainer;
         hh.EstimatedBags = (int)Math.Ceiling(hh.PendingContainers / 150.0);
         if (hh.PendingContainers == 0) hh.Materials = new MaterialBreakdown();
     }
@@ -3516,6 +3604,13 @@ app.MapPost("/api/admin/reset-baseline", async (HttpContext ctx, AdminResetBasel
                 p.TotalCo2SavedKg = 0;
                 p.Badges = [];
                 p.LastNudgedAt = null;
+                p.PreferredPayoutMethod = null;
+                p.PayIdType = null;
+                p.PayIdValue = null;
+                p.BankBsb = null;
+                p.BankAccountNumber = null;
+                p.BankAccountName = null;
+                p.PayoutUpdatedAt = null;
                 p.Role = "sorter";
                 p.IsAdmin = true;
                 keptProfiles.Add(p);
@@ -3574,6 +3669,7 @@ static double HaversineKm(double lat1, double lng1, double lat2, double lng2)
 }
 
 record ProfileUpdateRequest(string? Name, Guid? HouseholdId);
+record PayoutDetailsUpdateRequest(string Method, string? PayIdType, string? PayIdValue, string? Bsb, string? AccountNumber, string AccountName, string? MemberName = null);
 // NOTE: caller-supplied UserId fields are ignored; endpoints read the caller from the JWT.
 // Kept on the record for frontend backwards compatibility — safe to remove once frontend stops sending them.
 record CashoutRequestDto(Guid UserId, int AmountCents, string Bsb, string AccountNumber, string AccountName);

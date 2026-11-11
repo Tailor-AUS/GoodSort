@@ -353,4 +353,87 @@ public class CrpWorkflowAndMarketplaceTests : IClassFixture<CrpWorkflowAndMarket
         var csvText = await csvRes.Content.ReadAsStringAsync();
         Assert.Contains("SORTER HOUSEHOLD,email,sorter@crp.test,25.00,2500", csvText);
     }
+
+    [Fact]
+    public async Task Post_scan_setup_backfills_10c_orphan_scan_and_persists_payout_details()
+    {
+        var member = await SignUp("postscan-home@crp.test");
+
+        // 1. Before setup, member has no payout details saved
+        var initialPayout = await member.Client.GetFromJsonAsync<JsonElement>("/api/profiles/me/payout");
+        Assert.False(initialPayout.GetProperty("hasPayoutDetails").GetBoolean());
+
+        // 2. Member scans a can BEFORE entering home address — earns 10¢ pending
+        var scanRes = await member.Client.PostAsJsonAsync("/api/scans", new
+        {
+            userId = member.ProfileId,
+            barcode = "9300675099887",
+            containerName = "Suntory -196 Double Lemon 330mL",
+            material = "aluminium",
+        });
+        Assert.Equal(HttpStatusCode.OK, scanRes.StatusCode);
+        var scanJson = await scanRes.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(10, scanJson.GetProperty("creditedCents").GetInt32());
+
+        // 3. Invalid BSB is rejected cleanly
+        var badPayout = await member.Client.PutAsJsonAsync("/api/profiles/me/payout", new
+        {
+            method = "aba",
+            bsb = "123",
+            accountNumber = "12345678",
+            accountName = "Knox Hart",
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, badPayout.StatusCode);
+
+        // 4. Member saves home address in Annerley + PayID details on the post-scan screen
+        var createHh = await member.Client.PostAsJsonAsync("/api/households", new
+        {
+            name = "Knox's Place",
+            address = "18 Ekibin Rd East, Annerley QLD 4103",
+            suburb = "Annerley",
+            street = "Ekibin Rd East",
+            lat = -27.5152,
+            lng = 153.0331,
+            type = "residential",
+            councilCollectionDay = 3,
+            councilArea = "Brisbane City Council",
+            accessConsent = true,
+        });
+        Assert.Equal(HttpStatusCode.Created, createHh.StatusCode);
+        var hhJson = await createHh.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(1, hhJson.GetProperty("pendingContainers").GetInt32());
+        Assert.Equal(10, hhJson.GetProperty("pendingValueCents").GetInt32());
+        Assert.Equal("ANNERLEY", hhJson.GetProperty("suburb").GetString());
+
+        var savePayId = await member.Client.PutAsJsonAsync("/api/profiles/me/payout", new
+        {
+            method = "payid",
+            payIdType = "email",
+            payIdValue = "postscan-home@crp.test",
+            accountName = "Knox Hart",
+            memberName = "Knox Hart",
+        });
+        Assert.Equal(HttpStatusCode.OK, savePayId.StatusCode);
+
+        var fetchedPayout = await member.Client.GetFromJsonAsync<JsonElement>("/api/profiles/me/payout");
+        Assert.True(fetchedPayout.GetProperty("hasPayoutDetails").GetBoolean());
+        Assert.Equal("payid", fetchedPayout.GetProperty("preferredPayoutMethod").GetString());
+        Assert.Equal("email", fetchedPayout.GetProperty("payIdType").GetString());
+        Assert.Equal("postscan-home@crp.test", fetchedPayout.GetProperty("payIdValue").GetString());
+        Assert.Equal("Knox Hart", fetchedPayout.GetProperty("bankAccountName").GetString());
+
+        // 5. Switching to BSB + Account updates saved payout method cleanly
+        var saveAba = await member.Client.PutAsJsonAsync("/api/profiles/me/payout", new
+        {
+            method = "aba",
+            bsb = "064-000",
+            accountNumber = "1234 5678",
+            accountName = "Knox Hart",
+        });
+        Assert.Equal(HttpStatusCode.OK, saveAba.StatusCode);
+        var abaJson = await saveAba.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("aba", abaJson.GetProperty("preferredPayoutMethod").GetString());
+        Assert.Equal("064000", abaJson.GetProperty("bankBsb").GetString());
+        Assert.Equal("12345678", abaJson.GetProperty("bankAccountNumber").GetString());
+    }
 }

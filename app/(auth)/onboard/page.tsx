@@ -8,6 +8,7 @@ import { track } from "@/lib/analytics";
 import { canonicalSuburb, DAY_NAMES, inviteMessage, streetInviteUrl, residentialNeedsStreet } from "@/lib/brisbane";
 import { AddressAutocomplete, geocodeAddress } from "@/app/components/shared/address-autocomplete";
 import { InviteActions } from "@/app/components/shared/invite-actions";
+import { PayoutFields, validateClientPayout, type PayIdTypeChoice, type PayoutMethodChoice } from "@/app/components/shared/post-scan-setup";
 
 type Step = "place" | "unit_waitlist";
 
@@ -30,6 +31,14 @@ export default function OnboardPage() {
   // Set when the member already has a household and is here to finish it,
   // rather than joining from scratch.
   const [resuming, setResuming] = useState(false);
+  const [defaultEmail, setDefaultEmail] = useState("");
+  const [payoutMethod, setPayoutMethod] = useState<PayoutMethodChoice>("payid");
+  const [payIdType, setPayIdType] = useState<PayIdTypeChoice>("email");
+  const [payIdValue, setPayIdValue] = useState("");
+  const [bsb, setBsb] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [accountName, setAccountName] = useState("");
+  const [accountNameTouched, setAccountNameTouched] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -50,8 +59,34 @@ export default function OnboardPage() {
     }
     try {
       const p = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
-      if (p.name && p.name !== "New User" && p.name !== "You") setName(p.name);
-      else if (typeof p.email === "string" && p.email.includes("@")) setName(p.email.split("@")[0]);
+      const emailStr = typeof p.email === "string" ? p.email : "";
+      setDefaultEmail(emailStr);
+      let initialName = "";
+      if (p.name && p.name !== "New User" && p.name !== "You") initialName = p.name;
+      else if (emailStr.includes("@")) initialName = emailStr.split("@")[0];
+      if (initialName) {
+        setName(initialName);
+        setAccountName(initialName);
+      }
+      if (emailStr) setPayIdValue(emailStr);
+
+      if (hasValidToken()) {
+        fetch(apiUrl("/api/profiles/me/payout"), { headers: authHeaders() })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((pay) => {
+            if (!pay?.hasPayoutDetails) return;
+            if (pay.preferredPayoutMethod === "aba") setPayoutMethod("aba");
+            if (pay.payIdType) setPayIdType(pay.payIdType as PayIdTypeChoice);
+            if (pay.payIdValue) setPayIdValue(pay.payIdValue);
+            if (pay.bankBsb) setBsb(pay.bankBsb);
+            if (pay.bankAccountNumber) setAccountNumber(pay.bankAccountNumber);
+            if (pay.bankAccountName) {
+              setAccountName(pay.bankAccountName);
+              setAccountNameTouched(true);
+            }
+          })
+          .catch(() => {});
+      }
 
       // A member who already has a household is here to FINISH it, not to
       // start again. Opening a blank form gives them no sign we already hold
@@ -94,6 +129,18 @@ export default function OnboardPage() {
     const effectiveDay = collectionDay ?? 0;
     if (!addr || la == null || ln == null) { setError("Pick your address."); return; }
     if (!accessConsent) { setError("Tick the box so we can tell you when to bag out."); return; }
+    const hasEnteredPayout = payoutMethod === "payid" ? Boolean(payIdValue.trim()) : Boolean(bsb.trim() || accountNumber.trim());
+    if (hasEnteredPayout) {
+      const payoutErr = validateClientPayout({
+        method: payoutMethod,
+        payIdType,
+        payIdValue,
+        bsb,
+        accountNumber,
+        accountName: accountName.trim() || name.trim(),
+      });
+      if (payoutErr) { setError(payoutErr); return; }
+    }
     if (!hasValidToken()) { clearAuth(); setError("Your session expired — please sign in again."); router.push("/login"); return; }
     setLoading(true); setError("");
 
@@ -146,6 +193,37 @@ export default function OnboardPage() {
         });
         profile.name = name; profile.householdId = hh.id;
         localStorage.setItem("goodsort_profile", JSON.stringify(profile));
+      }
+      if (hasEnteredPayout) {
+        const holder = accountName.trim() || name.trim();
+        const payRes = await fetch(apiUrl("/api/profiles/me/payout"), {
+          method: "PUT",
+          headers: authHeaders(),
+          body: JSON.stringify({
+            method: payoutMethod,
+            payIdType: payoutMethod === "payid" ? payIdType : null,
+            payIdValue: payoutMethod === "payid" ? payIdValue.trim() : null,
+            bsb: payoutMethod === "aba" ? bsb : null,
+            accountNumber: payoutMethod === "aba" ? accountNumber : null,
+            accountName: holder,
+            memberName: name.trim() || holder,
+          }),
+        });
+        if (!payRes.ok) {
+          const payErr = await payRes.json().catch(() => ({} as { error?: string }));
+          setError(payErr.error || "Couldn't save your payout details.");
+          setLoading(false);
+          return;
+        }
+        const savedPay = await payRes.json();
+        profile.preferredPayoutMethod = savedPay.preferredPayoutMethod;
+        profile.payIdType = savedPay.payIdType;
+        profile.payIdValue = savedPay.payIdValue;
+        profile.bankBsb = savedPay.bankBsb;
+        profile.bankAccountNumber = savedPay.bankAccountNumber;
+        profile.bankAccountName = savedPay.bankAccountName;
+        localStorage.setItem("goodsort_profile", JSON.stringify(profile));
+        track("payout_details_saved", { suburb });
       }
       track("household_joined", { suburb });
       router.push("/sort");
@@ -226,14 +304,18 @@ export default function OnboardPage() {
           // Saying so beats a blank form that looks like starting over.
           ? "You are already signed up — we just need your suburb before your scans count toward a run."
           : suburbHint
-            ? `Start scanning in ${suburbHint}. Address, done — then scan for 5¢.`
-            : "Address, then scan. Earn 5¢ each. Suburb volume unlocks a driver trip."}
+            ? `Start scanning in ${suburbHint}. Address & payout, done — then scan for 10¢.`
+            : "Address & payout, then scan. Earn 10¢ each. Suburb volume unlocks a driver trip."}
     >
       <div className="space-y-3 mb-4">
         {type === "residential" && (
           <div>
             <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">Your name</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Sarah"
+            <input type="text" value={name} onChange={e => {
+              const v = e.target.value;
+              setName(v);
+              if (!accountNameTouched) setAccountName(v);
+            }} placeholder="e.g. Sarah"
               className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500" />
           </div>
         )}
@@ -267,9 +349,29 @@ export default function OnboardPage() {
 
       {type === "residential" && (
         <>
-          <div className="p-3 bg-violet-50 border border-violet-200 rounded-xl mb-3">
-            <p className="text-[13px] font-semibold text-slate-900">Scan first. Earn 5¢. Volume unlocks a run.</p>
-            <p className="text-[11px] text-slate-500 mt-0.5">Scan eligible cans and bottles. Sort into four streams. When your suburb has enough containers for one driver trip, bag out — we take them to a refund point.</p>
+          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl mb-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[13px] font-display font-extrabold text-slate-900">How should we pay you?</p>
+              <span className="text-[11px] font-medium text-slate-400">From $20 cleared</span>
+            </div>
+            <PayoutFields
+              method={payoutMethod}
+              onMethodChange={setPayoutMethod}
+              payIdType={payIdType}
+              onPayIdTypeChange={setPayIdType}
+              payIdValue={payIdValue}
+              onPayIdValueChange={setPayIdValue}
+              bsb={bsb}
+              onBsbChange={setBsb}
+              accountNumber={accountNumber}
+              onAccountNumberChange={setAccountNumber}
+              accountName={accountName}
+              onAccountNameChange={(v) => {
+                setAccountName(v);
+                setAccountNameTouched(true);
+              }}
+              defaultEmail={defaultEmail}
+            />
           </div>
           <label className="flex items-start gap-3 p-3 bg-white border border-slate-200 rounded-xl mb-4 cursor-pointer">
             <input type="checkbox" checked={accessConsent} onChange={e => setAccessConsent(e.target.checked)} className="w-4 h-4 accent-green-600 mt-0.5" />

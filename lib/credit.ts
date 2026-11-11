@@ -3,14 +3,14 @@
  * and `Services/LaunchBonus.cs`). These are display defaults only — whenever
  * the API reports what it actually credited, show that number instead.
  *
- * The launch bonus is bounded marketing spend, not a rate change, and it is
- * NOT the 10c Containers for Change scheme refund. Never describe it as the
- * scheme refund or imply The Good Sort passes that refund through.
+ * The sorting credit is paid by The Good Sort after pickup and depot
+ * verification. Never describe it as the Containers for Change scheme refund
+ * or imply The Good Sort is an approved refund point.
  */
-export const CENTS_PER_CONTAINER = 5;
+export const CENTS_PER_CONTAINER = 10;
 
-/** Containers per member that earn double credit while the promotion runs. */
-export const LAUNCH_BONUS_CONTAINERS = 20;
+/** Containers per member that earn double credit while an optional promotion runs (0 = off). */
+export const LAUNCH_BONUS_CONTAINERS = 0;
 
 export const LAUNCH_BONUS_CENTS = CENTS_PER_CONTAINER * 2;
 

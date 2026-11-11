@@ -263,7 +263,7 @@ public class R2ExistingUserJourneySimulationTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, confirmRes1.StatusCode);
         var confirmJson1 = await confirmRes1.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(10, confirmJson1.GetProperty("totalCents").GetInt32());
-        Assert.True(confirmJson1.GetProperty("bonusApplied").GetBoolean());
+        Assert.False(confirmJson1.GetProperty("bonusApplied").GetBoolean());
 
         snapshots.Add(await CaptureSnapshotAsync("Step 3", "First Deposit Confirmed (Direct Household Attribution)", email, profileId, householdId));
 

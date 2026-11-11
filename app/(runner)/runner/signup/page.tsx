@@ -55,7 +55,7 @@ export default function RunnerSignupPage() {
           <Car className="w-8 h-8 text-green-600" />
         </div>
         <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-1">Become a Runner</h1>
-        <p className="text-[13px] text-slate-500 mb-6">Collect sorted bags from the kerb on suburb volume runs. Deliver to a refund point or depot we nominate. Paid on the runner count — not the household 5¢.</p>
+        <p className="text-[13px] text-slate-500 mb-6">Collect sorted bags from the kerb on suburb volume runs. Deliver to a refund point or depot we nominate. Paid on the runner count — separate from the household 10¢ sorting credit.</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

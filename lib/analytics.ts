@@ -19,6 +19,7 @@ export const TRACKED_EVENTS = [
   "otp_sent",
   "otp_verified",
   "household_joined",
+  "payout_details_saved",
   "invite_whatsapp",
   "invite_sms",
   "invite_share",

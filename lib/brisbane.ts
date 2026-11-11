@@ -162,12 +162,12 @@ export function inviteShareText(
   const place = suburb ? titleSuburb(suburb) : "our suburb";
   const count = opts?.containers ?? opts?.households;
   if (opts?.live) {
-    return `${place} has enough scanned containers for a The Good Sort volume run. Scan eligible cans and bottles — 5¢ sorting credit each. Bag out when they collect:`;
+    return `${place} has enough scanned containers for a The Good Sort volume run. Scan eligible cans and bottles — 10¢ sorting credit each. Bag out when they collect:`;
   }
   if (count != null && count > 0 && opts?.needed != null) {
-    return `${place} is ${count}/${LIVE_VOLUME_THRESHOLD} containers toward a The Good Sort driver trip. Scan today for 5¢. ${opts.needed} more and they run to the refund point:`;
+    return `${place} is ${count}/${LIVE_VOLUME_THRESHOLD} containers toward a The Good Sort driver trip. Scan today for 10¢. ${opts.needed} more and they run to the refund point:`;
   }
-  return `Scan eligible cans and bottles with The Good Sort in ${place}. Earn 5¢ each. When the suburb hits ${LIVE_VOLUME_THRESHOLD} containers they run a driver trip to the refund point:`;
+  return `Scan eligible cans and bottles with The Good Sort in ${place}. Earn 10¢ each. When the suburb hits ${LIVE_VOLUME_THRESHOLD} containers they run a driver trip to the refund point:`;
 }
 
 export function inviteMessage(url: string, suburb?: string | null, opts?: { dayName?: string | null; households?: number; containers?: number; needed?: number; live?: boolean }) {

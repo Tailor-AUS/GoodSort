@@ -6,26 +6,26 @@ namespace GoodSort.Api.Tests;
 public class HouseholdCreditTests
 {
     [Fact]
-    public void Unscanned_pickup_credits_five_cents_each()
+    public void Unscanned_pickup_credits_ten_cents_each()
     {
         var owner = new Profile { Name = "Owner", PendingCents = 0, ClearedCents = 0 };
         var credit = HouseholdCredit.ApplyPickup([owner], [], 40);
-        Assert.Equal(200, credit);
-        Assert.Equal(200, owner.ClearedCents);
+        Assert.Equal(400, credit);
+        Assert.Equal(400, owner.ClearedCents);
         Assert.Equal(0, owner.PendingCents);
     }
 
     [Fact]
     public void Scans_do_not_double_pay_on_top_of_runner_count()
     {
-        var owner = new Profile { Name = "Owner", PendingCents = 50, ClearedCents = 0 };
+        var owner = new Profile { Name = "Owner", PendingCents = 100, ClearedCents = 0 };
         var tenScans = Enumerable.Range(0, 10)
-            .Select(_ => new Scan { UserId = owner.Id, RefundCents = 5, Status = "pending" })
+            .Select(_ => new Scan { UserId = owner.Id, RefundCents = 10, Status = "pending" })
             .ToList();
 
         var credit = HouseholdCredit.ApplyPickup([owner], tenScans, 40);
-        Assert.Equal(200, credit);
-        Assert.Equal(200, owner.ClearedCents);
+        Assert.Equal(400, credit);
+        Assert.Equal(400, owner.ClearedCents);
         Assert.Equal(0, owner.PendingCents);
         Assert.All(tenScans, s => Assert.Equal("settled", s.Status));
     }

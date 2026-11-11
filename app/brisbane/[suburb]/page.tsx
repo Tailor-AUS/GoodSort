@@ -16,7 +16,7 @@ export async function generateMetadata({
   const { suburb } = await params;
   const found = BRISBANE_SUBURBS.find((s) => s.slug === suburb);
   if (!found) return { title: "Brisbane" };
-  const description = `Scan eligible containers in ${found.name}. Earn 5¢ each. About ${LIVE_VOLUME_THRESHOLD} scanned containers unlocks a driver trip to the refund point.`;
+  const description = `Scan eligible containers in ${found.name}. Earn 10¢ each. About ${LIVE_VOLUME_THRESHOLD} scanned containers unlocks a driver trip to the refund point.`;
   return {
     title: `${found.name} — start scanning`,
     description,
