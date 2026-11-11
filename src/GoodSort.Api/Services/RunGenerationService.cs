@@ -51,6 +51,7 @@ public class RunGenerationService : BackgroundService
         using var scope = _services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
         var pricing = scope.ServiceProvider.GetRequiredService<PricingService>();
+        var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
 
         // One replica only. This service runs inside every container
         // instance and the app scales to ten, so without the lease ten
@@ -70,7 +71,7 @@ public class RunGenerationService : BackgroundService
 
         try
         {
-            var minPayoutCents = ResolveMinPayoutCents();
+            var minPayoutCents = ResolveMinPayoutCents(config);
             await ExpireOldRuns(db);
             // Absorb flagged full-bin households into nearby existing unclaimed
             // runs BEFORE GenerateRuns; otherwise GenerateRuns turns each late
@@ -133,8 +134,15 @@ public class RunGenerationService : BackgroundService
             await db.SaveChangesAsync();
     }
 
-    private static int ResolveMinPayoutCents() =>
-        int.TryParse(Environment.GetEnvironmentVariable("MINIMUM_RUN_PAYOUT_CENTS"), out var mp) ? mp : 2000;
+    public const int DefaultMinPayoutCents = 2000;
+    public const int MinAllowedRunPayoutCents = 100;
+    public const int MaxAllowedRunPayoutCents = 100_000;
+
+    public static int ResolveMinPayoutCents(IConfiguration config) =>
+        int.TryParse(config["MINIMUM_RUN_PAYOUT_CENTS"], out var mp)
+        && mp is >= MinAllowedRunPayoutCents and <= MaxAllowedRunPayoutCents
+            ? mp
+            : DefaultMinPayoutCents;
 
     private async Task GenerateRuns(GoodSortDbContext db, PricingService pricing, int minPayoutCents)
     {

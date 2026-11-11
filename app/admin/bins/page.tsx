@@ -29,9 +29,15 @@ export default function AdminBinsPage() {
 
   function reload() {
     fetch(apiUrl("/api/bins"), { headers: authHeaders() })
-      .then(r => (r.ok ? r.json() : []))
+      .then(async (r) => {
+        if (!r.ok) {
+          setErr(r.status === 401 || r.status === 403 ? "Admin sign-in required to view and manage bins." : `Failed to load bins (HTTP ${r.status}).`);
+          return [];
+        }
+        return r.json();
+      })
       .then((rows) => setBins(Array.isArray(rows) ? rows : []))
-      .catch(() => {});
+      .catch(() => setErr("Could not reach the bins API."));
   }
   useEffect(() => { reload(); }, []);
 
@@ -45,9 +51,18 @@ export default function AdminBinsPage() {
         method: "POST", headers: authHeaders(),
         body: JSON.stringify({ code: code || null, name, address, lat, lng }),
       });
-      if (!res.ok) { setErr("Failed to create bin"); setLoading(false); return; }
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setErr(
+          (body && typeof body.error === "string" && body.error) ||
+          (res.status === 401 || res.status === 403 ? "Admin sign-in required to create bins." : `Failed to create bin (HTTP ${res.status}).`)
+        );
+        return;
+      }
       setCode(""); setName(""); setAddress(""); setLat(null); setLng(null);
       reload();
+    } catch {
+      setErr("Network error while creating bin.");
     } finally { setLoading(false); }
   }
 

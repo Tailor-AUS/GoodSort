@@ -130,6 +130,7 @@ public class NotificationService
     public async Task SendWaitlistProgress(string suburb, int day, int containers, int needed, Guid? excludeProfileId)
     {
         if (!WaitlistNudge.ShouldNudgeOthers(containers, live: false)) return;
+        if (MakeClient() is null) return;
 
         var place = TitleSuburb(suburb);
         var placeHtml = Html(place);
@@ -145,6 +146,7 @@ public class NotificationService
 
         var nudgeAt = DateTime.UtcNow;
         var nudged = WaitlistNudge.NudgeRecipients(members, excludeProfileId, nudgeAt);
+        var sent = 0;
         foreach (var member in nudged)
         {
             var helloHtml = Html(string.IsNullOrWhiteSpace(member.Name) ? "there" : member.Name);
@@ -159,13 +161,16 @@ public class NotificationService
                 <p style='font-size:13px;margin:0 0 20px'><a href='{Html(invite)}' style='color:#16a34a;font-weight:600'>Or copy your street link →</a></p>
                 <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {placeHtml}</p>
               </div>";
-            await Send(member.Email!, $"{place}: {needed} more containers for a run", body);
-            member.LastNudgedAt = nudgeAt;
+            if (await Send(member.Email!, $"{place}: {needed} more containers for a run", body))
+            {
+                member.LastNudgedAt = nudgeAt;
+                sent++;
+            }
         }
 
         // Stamp once, after the batch. Without this the cooldown never engages
         // and the fan-out stays quadratic in suburb size.
-        if (nudged.Count > 0) await _db.SaveChangesAsync();
+        if (sent > 0) await _db.SaveChangesAsync();
     }
 
     public async Task SendBinsOnOrder(string suburb, int? day = null)
@@ -265,6 +270,8 @@ public class NotificationService
     {
         if (!IncompleteHouseholdRecovery.Enabled(_config["RECOVERY_EMAIL_ENABLED"]))
             return 0;
+        if (MakeClient() is null)
+            return 0;
 
         var candidates = await _db.Profiles
             .Include(p => p.Household)
@@ -275,6 +282,7 @@ public class NotificationService
         var recipients = IncompleteHouseholdRecovery.Recipients(candidates, now);
         if (recipients.Count == 0) return 0;
 
+        var sent = 0;
         foreach (var member in recipients)
         {
             var helloHtml = Html(string.IsNullOrWhiteSpace(member.Name) ? "there" : member.Name);
@@ -288,28 +296,33 @@ public class NotificationService
                 <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · this was our gap, not yours</p>
               </div>";
 
-            await Send(member.Email!, "Add your suburb so your scans count", body);
-            member.LastNudgedAt = now;
+            if (await Send(member.Email!, "Add your suburb so your scans count", body))
+            {
+                member.LastNudgedAt = now;
+                sent++;
+            }
         }
 
-        await _db.SaveChangesAsync();
-        _log.LogInformation("Recovery email sent to {Count} members with no usable suburb", recipients.Count);
-        return recipients.Count;
+        if (sent > 0) await _db.SaveChangesAsync();
+        _log.LogInformation("Recovery email sent to {Count} members with no usable suburb", sent);
+        return sent;
     }
 
-    private async Task Send(string to, string subject, string html)
+    private async Task<bool> Send(string to, string subject, string html)
     {
         var client = MakeClient();
-        if (client is null) return;
+        if (client is null) return false;
         var sender = _config["ACS_EMAIL_SENDER"] ?? "DoNotReply@thegoodsort.org";
         try
         {
             var msg = new EmailMessage(sender, to, new EmailContent(SingleLineSubject(subject)) { Html = html });
             await client.SendAsync(Azure.WaitUntil.Started, msg);
+            return true;
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Waitlist email failed for {Email} ({Subject})", to, subject);
+            return false;
         }
     }
 

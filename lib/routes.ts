@@ -61,7 +61,7 @@ export function markStopPickedUp(routeId: string, stopId: string, actualCount: n
   stop.actualContainerCount = actualCount;
 
   // Check if all stops are done
-  const allDone = route.stops.every((s) => s.status !== "pending");
+  const allDone = route.stops.length > 0 && route.stops.every((s) => s.status !== "pending");
   if (allDone) {
     route.status = "at_depot";
   }
@@ -80,7 +80,7 @@ export function skipStop(routeId: string, stopId: string): Route | null {
 
   stop.status = "skipped";
 
-  const allDone = route.stops.every((s) => s.status !== "pending");
+  const allDone = route.stops.length > 0 && route.stops.every((s) => s.status !== "pending");
   if (allDone) {
     route.status = "at_depot";
   }
@@ -126,9 +126,9 @@ export function settleRoute(routeId: string): {
   const route = routes.find((r) => r.id === routeId);
   if (!route || route.status !== "at_depot") return null;
 
-  // Calculate totals from picked-up stops
+  // Calculate totals from picked-up stops (use ?? so an explicit 0-container pickup stays 0)
   const pickedUpStops = route.stops.filter((s) => s.status === "picked_up");
-  const totalCollected = pickedUpStops.reduce((s, st) => s + (st.actualContainerCount || st.containerCount), 0);
+  const totalCollected = pickedUpStops.reduce((s, st) => s + Math.max(0, st.actualContainerCount ?? st.containerCount), 0);
 
   // Driver payout
   const driverEarned = DRIVER_BASE_PAYOUT_CENTS + totalCollected * DRIVER_PER_CONTAINER_CENTS;
@@ -136,7 +136,7 @@ export function settleRoute(routeId: string): {
 
   // Household payouts (pro-rata based on actual pickup)
   const householdPayouts: HouseholdPayout[] = pickedUpStops.map((stop) => {
-    const count = stop.actualContainerCount || stop.containerCount;
+    const count = Math.max(0, stop.actualContainerCount ?? stop.containerCount);
     return {
       householdId: stop.householdId,
       householdName: stop.householdName,

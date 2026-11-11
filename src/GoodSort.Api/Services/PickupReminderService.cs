@@ -57,13 +57,19 @@ public class PickupReminderService
         if (candidates.Count == 0) return 0;
 
         var client = MakeEmailClient();
+        if (client is null) return 0;
+
         var sender = _config["ACS_EMAIL_SENDER"] ?? "DoNotReply@thegoodsort.org";
+        var sent = 0;
 
         foreach (var hh in candidates)
         {
+            var recipients = hh.Members.Where(m => !string.IsNullOrWhiteSpace(m.Email)).ToList();
+            if (recipients.Count == 0) continue;
+
             try
             {
-                foreach (var member in hh.Members.Where(m => !string.IsNullOrWhiteSpace(m.Email)))
+                foreach (var member in recipients)
                 {
                     var helloHtml = WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(member.Name) ? "there" : member.Name);
                     var addressHtml = WebUtility.HtmlEncode(hh.Address ?? "");
@@ -87,15 +93,16 @@ public class PickupReminderService
                     await SendEmail(client, sender, member.Email!, subject, body);
                 }
                 hh.LastPickupAt = todayLocal;
+                sent++;
             }
             catch (Exception ex)
             {
                 _log.LogError(ex, "Failed to notify household {HouseholdId}", hh.Id);
             }
         }
-        await _db.SaveChangesAsync();
-        _log.LogInformation("Sent pickup reminders to {Count} households for {Date}", candidates.Count, tomorrowLocal.Date);
-        return candidates.Count;
+        if (sent > 0) await _db.SaveChangesAsync();
+        _log.LogInformation("Sent pickup reminders to {Count} households for {Date}", sent, tomorrowLocal.Date);
+        return sent;
     }
 
     private async Task<int> NotifyRunners(int tomorrowDow, DateTime tomorrowLocal, bool forceResend)
@@ -118,6 +125,8 @@ public class PickupReminderService
         if (runs.Count == 0) return 0;
 
         var client = MakeEmailClient();
+        if (client is null) return 0;
+
         var sender = _config["ACS_EMAIL_SENDER"] ?? "DoNotReply@thegoodsort.org";
         var sent = 0;
 
