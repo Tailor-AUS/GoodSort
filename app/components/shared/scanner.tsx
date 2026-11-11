@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect } from "react";
-import { X, Camera, ScanBarcode, Plus, Minus, Check, RotateCcw } from "lucide-react";
+import { X, Camera, ScanBarcode, Check, RotateCcw } from "lucide-react";
 import { lookupContainer, lookupContainerAsync } from "@/lib/containers";
 import { CENTS_PER_CONTAINER, formatCredit, launchBonusNote } from "@/lib/credit";
 import { track } from "@/lib/analytics";
@@ -246,14 +246,6 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     onClose();
   }
 
-  // ── Update item count ──
-  function updateCount(index: number, delta: number) {
-    if (!results) return;
-    const updated = [...results];
-    updated[index] = { ...updated[index], count: Math.max(0, updated[index].count + delta) };
-    setResults(updated);
-  }
-
   // ── Barcode processing ──
   async function processBarcodeResult(barcode: string) {
     if (processedRef.current) return;
@@ -408,17 +400,11 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
                           {item.eligible ? `Section ${stream.section} · ${stream.label} · ${formatCredit(centsPerItem)}` : "Not CDS eligible"}
                         </p>
                       </div>
-                      {/* Count stepper — also acts as "how many more?" */}
+                      {/* Server-signed count from vision result */}
                       {item.eligible && (
-                        <div className="flex items-center gap-1.5">
-                          <button onClick={() => updateCount(i, -1)} className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center active:bg-white/30">
-                            <Minus className="w-3 h-3 text-white" />
-                          </button>
-                          <span className="text-[16px] font-extrabold text-white w-6 text-center">{item.count}</span>
-                          <button onClick={() => updateCount(i, 1)} className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center active:bg-white/30">
-                            <Plus className="w-3 h-3 text-white" />
-                          </button>
-                        </div>
+                        <span className="text-[16px] font-extrabold text-white shrink-0">
+                          &times;{item.count}
+                        </span>
                       )}
                     </div>
                   );

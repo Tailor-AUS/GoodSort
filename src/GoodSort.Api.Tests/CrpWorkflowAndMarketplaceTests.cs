@@ -436,4 +436,60 @@ public class CrpWorkflowAndMarketplaceTests : IClassFixture<CrpWorkflowAndMarket
         Assert.Equal("064000", abaJson.GetProperty("bankBsb").GetString());
         Assert.Equal("12345678", abaJson.GetProperty("bankAccountNumber").GetString());
     }
+
+    [Fact]
+    public async Task Editing_household_street_updates_parsed_suburb_and_syncs_household_bin_coordinates()
+    {
+        var member = await SignUp("edit-address@crp.test");
+
+        // 1. Scan an eligible container first so a household Bin is created on setup
+        var scanRes = await member.Client.PostAsJsonAsync("/api/scans", new
+        {
+            userId = member.ProfileId,
+            barcode = "9300675024457",
+            containerName = "Kirks Lemonade 375mL",
+            material = "aluminium",
+        });
+        Assert.Equal(HttpStatusCode.OK, scanRes.StatusCode);
+
+        // 2. Save initial address in Moorooka
+        var createHh = await member.Client.PostAsJsonAsync("/api/households", new
+        {
+            name = "Edit Test Home",
+            address = "10 Gainsborough St, Moorooka QLD 4105",
+            suburb = "Moorooka",
+            street = "Gainsborough St",
+            lat = -27.5311,
+            lng = 153.0211,
+            type = "residential",
+            councilCollectionDay = 2,
+            councilArea = "Brisbane City Council",
+            accessConsent = true,
+        });
+        Assert.Equal(HttpStatusCode.Created, createHh.StatusCode);
+        var hhId = (await createHh.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        // 3. Edit street address to Annerley without explicit suburb field (as when geocoder omits suburb)
+        var patchRes = await member.Client.PatchAsJsonAsync($"/api/households/{hhId}/street", new
+        {
+            address = "88 Ekibin Rd East, Annerley QLD 4103",
+            lat = -27.5152,
+            lng = 153.0331,
+            councilCollectionDay = 3,
+            accessConsent = true,
+        });
+        Assert.Equal(HttpStatusCode.OK, patchRes.StatusCode);
+
+        // 4. Verify both Household and its kerbside Bin reflect the new suburb & coordinates
+        var updatedHh = await member.Client.GetFromJsonAsync<JsonElement>($"/api/households/{hhId}");
+        Assert.Equal("ANNERLEY", updatedHh.GetProperty("suburb").GetString());
+        Assert.Equal("88 Ekibin Rd East, Annerley QLD 4103", updatedHh.GetProperty("address").GetString());
+
+        using var scope = _host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
+        var bin = await db.Bins.AsNoTracking().SingleAsync(b => b.HouseholdId == hhId);
+        Assert.Equal("88 Ekibin Rd East, Annerley QLD 4103", bin.Address);
+        Assert.Equal(-27.5152, bin.Lat, 4);
+        Assert.Equal(153.0331, bin.Lng, 4);
+    }
 }

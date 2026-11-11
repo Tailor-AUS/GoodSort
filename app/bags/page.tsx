@@ -18,6 +18,7 @@ import {
   createSortedBag,
   updateBagStatus,
 } from "@/lib/marketplace-api";
+import { hasValidToken } from "@/lib/config";
 import {
   BAG_STREAMS,
   type BagStream,
@@ -32,10 +33,18 @@ export default function SortedBagsPage() {
   const [declaredCount, setDeclaredCount] = useState<number>(150);
   const [putOnKerb, setPutOnKerb] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(true);
+  const [signedIn, setSignedIn] = useState<boolean>(true);
   const [creating, setCreating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadBags = useCallback(async () => {
+    const authed = hasValidToken();
+    setSignedIn(authed);
+    if (!authed) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
     const res = await getMyBags();
     setData(res);
     setLoading(false);
@@ -141,8 +150,36 @@ export default function SortedBagsPage() {
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-6 space-y-6">
-        {/* Household prerequisite check */}
-        {!loading && data && !data.hasHousehold && (
+        {/* Sign-in / Household prerequisite checks */}
+        {!loading && !signedIn && (
+          <div className="print:hidden rounded-2xl bg-amber-50 border border-amber-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <Home size={20} className="text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-sm text-amber-900">Scan a container or sign in first</p>
+                <p className="text-xs text-amber-800 mt-0.5">
+                  Home bag tags link to your account and street address so we can collect your bags and pay you 10¢ per container.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Link
+                href="/scan"
+                className="px-4 py-2 rounded-xl bg-green-600 text-white font-bold text-xs whitespace-nowrap"
+              >
+                Scan a can
+              </Link>
+              <Link
+                href="/login"
+                className="px-4 py-2 rounded-xl bg-white border border-amber-300 text-amber-900 font-bold text-xs whitespace-nowrap"
+              >
+                Sign in
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {!loading && signedIn && data && !data.hasHousehold && (
           <div className="print:hidden rounded-2xl bg-amber-50 border border-amber-200 p-4 flex items-center justify-between gap-4">
             <div className="flex items-start gap-3">
               <Home size={20} className="text-amber-600 shrink-0 mt-0.5" />
@@ -154,7 +191,7 @@ export default function SortedBagsPage() {
               </div>
             </div>
             <Link
-              href="/household"
+              href="/onboard"
               className="px-4 py-2 rounded-xl bg-amber-600 text-white font-bold text-xs whitespace-nowrap"
             >
               Set Address
@@ -245,7 +282,7 @@ export default function SortedBagsPage() {
 
           <button
             type="button"
-            disabled={creating || (data !== null && !data.hasHousehold)}
+            disabled={creating || loading || !signedIn || !data || !data.hasHousehold}
             onClick={handleCreateBag}
             className="w-full py-3.5 rounded-2xl bg-gradient-to-b from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:opacity-50 text-white font-display font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-green-600/20 transition-all"
           >

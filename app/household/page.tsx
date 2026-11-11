@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Home, Package, Users, Weight, Recycle } from "lucide-react";
-import { apiUrl, authHeaders } from "@/lib/config";
+import { apiUrl, authHeaders, hasValidToken } from "@/lib/config";
 import { formatCents } from "@/lib/store";
 import { DAY_NAMES, isCollecting, LIVE_VOLUME_THRESHOLD, sameSuburb, streetStatsForViewer, type GrowthSuburb, householdCountsTowardUnlock } from "@/lib/brisbane";
 import { WaitlistCard } from "@/app/components/shared/waitlist-card";
@@ -75,7 +75,28 @@ export default function HouseholdPage() {
         <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-1 flex items-center gap-2">
           <Home className="w-6 h-6 text-green-600" /> Household
         </h1>
-        {err && <p className="text-[13px] text-red-600 mt-4">{err}</p>}
+        {err && (
+          <div className="mt-4 bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+            <p className="text-[13px] font-semibold text-slate-800">{err}</p>
+            <p className="text-[12px] text-slate-500 leading-relaxed">
+              Add your home pickup address and payout details so we can count your 10¢ scans toward a 1,000-container suburb run and pay you when we collect.
+            </p>
+            <div className="flex flex-col gap-2 pt-1">
+              <Link
+                href={hasValidToken() ? "/onboard" : "/login"}
+                className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-bold py-3 rounded-xl text-[13px] text-center shadow-md shadow-green-600/20 min-h-[44px] flex items-center justify-center"
+              >
+                {hasValidToken() ? "Add home address & payout details →" : "Sign in to set up household"}
+              </Link>
+              <Link
+                href="/scan"
+                className="w-full text-center text-[13px] font-semibold text-slate-500 hover:text-slate-800 py-2"
+              >
+                Scan a container first
+              </Link>
+            </div>
+          </div>
+        )}
         {hh && (
           <>
             <p className="text-[13px] text-slate-500 mb-6">{hh.name} · {hh.address}</p>

@@ -163,3 +163,31 @@ test("the qualifying copy still explains what unlocks a run", () => {
   assert.match(card, /volume run starts once your suburb/i);
   assert.match(card, /Suburb volume is enough for a driver trip/i);
 });
+
+test("/sort and /runner never trap an unauthenticated visitor on Loading...", () => {
+  const sort = code(join("app", "sort", "page.tsx"));
+  assert.doesNotMatch(sort, /if\s*\(\s*loading\s*\|\|\s*!user\s*\)/, "/sort must separate loading from !user");
+  assert.match(sort, /if\s*\(\s*!user\s*\)/, "/sort needs an explicit signed-out recovery screen");
+  assert.match(sort, /href="\/scan"/);
+  assert.match(sort, /href="\/login"/);
+
+  const runner = code(join("app", "(runner)", "runner", "page.tsx"));
+  assert.doesNotMatch(runner, /if\s*\(\s*loading\s*\|\|\s*!user\s*\)/, "/runner must separate loading from !user");
+  assert.match(runner, /if\s*\(\s*!user\s*\)/, "/runner needs an explicit signed-out recovery screen");
+  assert.match(runner, /href="\/runner\/signup"/);
+});
+
+test("/bags and /household link missing-address members to /onboard, never a dead end", () => {
+  const bags = code(join("app", "bags", "page.tsx"));
+  assert.doesNotMatch(bags, /href="\/household"/, "/bags must not send a no-household member to /household");
+  assert.match(bags, /href="\/onboard"/, "/bags should send missing-address members straight to /onboard");
+  assert.match(bags, /!signedIn/, "/bags should handle unauthenticated visitors explicitly");
+
+  const household = code(join("app", "household", "page.tsx"));
+  assert.match(household, /\/onboard/, "/household error state needs a recovery link to /onboard");
+});
+
+test("AccountPanel log out clears all stored auth keys via clearAuth()", () => {
+  const panel = code(join("app", "components", "shared", "account-panel.tsx"));
+  assert.match(panel, /clearAuth\(\)/, "Log Out must call clearAuth() so goodsort_user cannot bleed across accounts");
+});

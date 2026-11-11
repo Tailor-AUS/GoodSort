@@ -1156,7 +1156,8 @@ app.MapPatch("/api/households/{id:guid}/street", async (HttpContext ctx, Guid id
         if (parsed is not null)
         {
             h.Street = parsed.Street;
-            h.Suburb ??= BinDayService.CanonicalSuburb(parsed.Suburb);
+            var parsedSuburb = BinDayService.CanonicalSuburb(parsed.Suburb);
+            if (parsedSuburb is not null) h.Suburb = parsedSuburb;
         }
     }
     if (req.Lat is double lat) h.Lat = lat;
@@ -1185,6 +1186,15 @@ app.MapPatch("/api/households/{id:guid}/street", async (HttpContext ctx, Guid id
     }
     h.UsesDivider = true;
 
+    var householdBin = await db.Bins.FirstOrDefaultAsync(b => b.HouseholdId == h.Id);
+    if (householdBin is not null)
+    {
+        householdBin.Name = h.Name;
+        householdBin.Address = h.Address;
+        if (h.Lat != 0) householdBin.Lat = h.Lat;
+        if (h.Lng != 0) householdBin.Lng = h.Lng;
+    }
+
     // If a member repaired an incomplete household after scanning containers,
     // attach any pending orphan scans now so suburb volume reflects them.
     if (ctx.GetCallerId() is Guid repairCallerId && h.Type != "unit_complex")
@@ -1194,10 +1204,9 @@ app.MapPatch("/api/households/{id:guid}/street", async (HttpContext ctx, Guid id
             .ToListAsync();
         if (orphans.Count > 0)
         {
-            var bin = await db.Bins.FirstOrDefaultAsync(b => b.HouseholdId == h.Id);
-            if (bin is null)
+            if (householdBin is null)
             {
-                bin = new Bin
+                householdBin = new Bin
                 {
                     Code = $"GS-H{Math.Abs(h.Id.GetHashCode()) % 100000:D5}",
                     Name = h.Name,
@@ -1207,9 +1216,9 @@ app.MapPatch("/api/households/{id:guid}/street", async (HttpContext ctx, Guid id
                     HouseholdId = h.Id,
                     HostedBy = null,
                 };
-                db.Bins.Add(bin);
+                db.Bins.Add(householdBin);
             }
-            ScanBackfill.AttachTo(h, orphans, bin);
+            ScanBackfill.AttachTo(h, orphans, householdBin);
         }
     }
 
