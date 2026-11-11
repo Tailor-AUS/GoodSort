@@ -67,10 +67,30 @@ export function readStoredProfile(): Record<string, unknown> {
   }
 }
 
+function jwtSubject(token: string): string | undefined {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return undefined;
+    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    const sub = JSON.parse(json).sub;
+    return typeof sub === "string" ? asProfileId(sub) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Client-only profile id. Empty on the first render so static HTML matches. */
 export function readStoredProfileId(): string | undefined {
   const id = readStoredProfile().id;
-  return typeof id === "string" ? asProfileId(id) : undefined;
+  if (typeof id === "string") {
+    const parsed = asProfileId(id);
+    if (parsed) return parsed;
+  }
+  if (typeof window !== "undefined" && hasValidToken()) {
+    const token = localStorage.getItem("goodsort_token");
+    if (token) return jwtSubject(token);
+  }
+  return undefined;
 }
 
 function resolveApiBase(): string {

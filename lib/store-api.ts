@@ -1,7 +1,7 @@
 // API-backed store — calls .NET API on Azure Container Apps
 // Falls back to localStorage store when API is unavailable
 
-import { apiUrl } from "./config.ts";
+import { apiUrl, readStoredProfileId } from "./config.ts";
 import type { User, Household, Route, Depot, ScanRecord, CollectionRecord, SortBin } from "./store.ts";
 import {
   getUser as getLocalUser,
@@ -77,9 +77,12 @@ function getStoredUserId(): string | null {
   if (typeof window === "undefined") return null;
   try {
     const profile = localStorage.getItem("goodsort_profile");
-    if (profile) return JSON.parse(profile).id;
+    if (profile) {
+      const id = JSON.parse(profile).id;
+      if (typeof id === "string" && id.trim()) return id.trim();
+    }
   } catch { /* ignore */ }
-  return null;
+  return readStoredProfileId() ?? null;
 }
 
 // ── User ──

@@ -2110,6 +2110,13 @@ app.MapPost("/api/routes/{id:guid}/settle", async (HttpContext ctx, Guid id, Goo
         hh.PendingValueCents = hh.PendingContainers * HouseholdCredit.CentsPerContainer;
         hh.EstimatedBags = (int)Math.Ceiling(hh.PendingContainers / 150.0);
         if (hh.PendingContainers == 0) hh.Materials = new MaterialBreakdown();
+        hh.LastPickupAt = DateTime.UtcNow;
+        var hasRemainingKerbBags = await db.SortedBags.AnyAsync(b => b.HouseholdId == hh.Id && b.Status == "on_kerb");
+        if (!hasRemainingKerbBags)
+        {
+            hh.BinIsOut = false;
+            hh.BinIsOutAt = null;
+        }
     }
 
     if (route.DriverId.HasValue)
@@ -3753,6 +3760,17 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
 
     // For each picked-up stop: clear the bin counts AND move user/household credit
     // from "pending" (scanned but not yet collected) to "cleared" (cashout-eligible).
+    // Mark physical QR bags scanned on this run as verified for COEX CRP audit
+    // before computing post-pickup kerb readiness so collected bags never leave
+    // hh.BinIsOut pinned true and spawn phantom empty runs.
+    var runBags = await db.SortedBags.Where(b => b.RunId == run.Id).ToListAsync();
+    foreach (var bag in runBags)
+    {
+        bag.Status = "verified";
+        bag.VerifiedAt ??= DateTime.UtcNow;
+        bag.VerifiedContainers ??= bag.DeclaredContainers;
+    }
+
     var creditedHouseholds = new List<Household>();
     var totalHouseholdPayoutCents = 0;
     var totalMafiaCents = 0;
@@ -3773,6 +3791,8 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
         {
             var hh = await db.Households.Include(h => h.Members).FirstOrDefaultAsync(h => h.Id == bin.HouseholdId);
             if (hh is null) continue;
+
+            var isFirstHouseholdPickup = hh.LastPickupAt is null;
 
             var pendingScans = await db.Scans
                 .Where(s => s.HouseholdId == hh.Id && s.Status == "pending")
@@ -3801,22 +3821,43 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
                 }
             }
 
+            if (isFirstHouseholdPickup && count > 0)
+            {
+                var distinctReferrerIds = hh.Members
+                    .Where(m => m.ReferrerId.HasValue && m.ReferrerId.Value != m.Id)
+                    .Select(m => m.ReferrerId!.Value)
+                    .Distinct()
+                    .ToList();
+                foreach (var signupReferrerId in distinctReferrerIds)
+                {
+                    var signupReferrer = await db.Profiles.FindAsync(signupReferrerId);
+                    if (signupReferrer is null) continue;
+                    var signupBonusToClear = Math.Min(100, Math.Max(0, signupReferrer.PendingCents));
+                    if (signupBonusToClear > 0)
+                    {
+                        signupReferrer.PendingCents -= signupBonusToClear;
+                        signupReferrer.ClearedCents += signupBonusToClear;
+                    }
+                }
+            }
+
             hh.PendingContainers = Math.Max(0, hh.PendingContainers - count);
             hh.PendingValueCents = hh.PendingContainers * householdRateCents;
             hh.EstimatedBags = (int)Math.Ceiling(hh.PendingContainers / 150.0);
             hh.LastPickupAt = DateTime.UtcNow;
             if (hh.PendingContainers == 0) hh.Materials = new MaterialBreakdown();
+
+            var hasRemainingKerbBags = await db.SortedBags.AnyAsync(b =>
+                b.HouseholdId == hh.Id && b.Status == "on_kerb" && b.RunId != run.Id);
+            if (!hasRemainingKerbBags
+                && (hh.BinIsOutAt is null || stop.PickedUpAt is null || hh.BinIsOutAt <= stop.PickedUpAt))
+            {
+                hh.BinIsOut = false;
+                hh.BinIsOutAt = null;
+            }
+
             creditedHouseholds.Add(hh);
         }
-    }
-
-    // Mark physical QR bags scanned on this run as verified for COEX CRP audit
-    var runBags = await db.SortedBags.Where(b => b.RunId == run.Id).ToListAsync();
-    foreach (var bag in runBags)
-    {
-        bag.Status = "verified";
-        bag.VerifiedAt ??= DateTime.UtcNow;
-        bag.VerifiedContainers ??= bag.DeclaredContainers;
     }
 
     var discrepancyStops = run.Stops.Count(s =>

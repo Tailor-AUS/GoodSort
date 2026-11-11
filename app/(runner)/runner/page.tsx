@@ -355,7 +355,7 @@ export default function RunnerApp() {
         onDataUpdate={refreshData}
       />
 
-      <AccountPanel user={user} open={showAccount} onClose={() => { setShowAccount(false); refreshData(); }} />
+      <AccountPanel user={user} open={showAccount} onClose={() => { setShowAccount(false); refreshData(); }} onRefresh={refreshData} />
     </div>
   );
 }

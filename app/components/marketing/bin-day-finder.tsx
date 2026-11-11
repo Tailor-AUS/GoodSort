@@ -61,6 +61,7 @@ export function BinDayFinder({ suburbName, onResolved }: Props) {
       </p>
       <AddressAutocomplete
         value={address}
+        ariaLabel={suburbName ? `Your ${suburbName} street address` : "Your Brisbane street address"}
         onChange={(text) => {
           setAddress(text);
           setStatus("idle");
