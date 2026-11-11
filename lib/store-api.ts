@@ -146,6 +146,18 @@ export async function getUserApi(): Promise<User | null> {
 
   // Sync to localStorage for offline
   saveLocalUser(user);
+  if (typeof window !== "undefined") {
+    try {
+      const stored = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
+      const nextProfile = stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
+      nextProfile.id = profile.id;
+      if (profile.name) nextProfile.name = profile.name;
+      if (profile.householdId) nextProfile.householdId = profile.householdId;
+      localStorage.setItem("goodsort_profile", JSON.stringify(nextProfile));
+    } catch {
+      /* ignore storage errors */
+    }
+  }
   return user;
 }
 

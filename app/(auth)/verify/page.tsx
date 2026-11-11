@@ -82,6 +82,7 @@ export default function VerifyPage() {
         <form onSubmit={handleVerify} className="space-y-4">
           <input
             type="text"
+            aria-label="6-digit verification code"
             inputMode="numeric"
             autoComplete="one-time-code"
             maxLength={6}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Home, Package, Users, Weight, Recycle } from "lucide-react";
-import { apiUrl, authHeaders, hasValidToken } from "@/lib/config";
+import { apiUrl, authHeaders, hasValidToken, readStoredProfile } from "@/lib/config";
 import { formatCents } from "@/lib/store";
 import { DAY_NAMES, isCollecting, LIVE_VOLUME_THRESHOLD, sameSuburb, streetStatsForViewer, type GrowthSuburb, householdCountsTowardUnlock } from "@/lib/brisbane";
 import { WaitlistCard } from "@/app/components/shared/waitlist-card";
@@ -45,14 +45,30 @@ export default function HouseholdPage() {
       setErr("Sign in to view or set up your household.");
       return;
     }
-    const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
-    if (!profile.householdId) { setErr("You haven't set up a household yet."); return; }
-    Promise.all([
-      fetch(apiUrl(`/api/households/${profile.householdId}`), { headers: authHeaders() }).then(r => r.ok ? r.json() : null),
-      fetch(apiUrl(`/api/households/${profile.householdId}/next-pickup`), { headers: authHeaders() }).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch(apiUrl("/api/growth/brisbane")).then(r => r.ok ? r.json() : null).catch(() => null),
-    ])
-      .then(([house, pickup, g]) => {
+    async function loadHousehold() {
+      const profile = readStoredProfile();
+      let hhId = typeof profile.householdId === "string" && profile.householdId ? profile.householdId : "";
+      if (!hhId) {
+        const me = await fetch(apiUrl("/api/profiles/me/payout"), { headers: authHeaders() })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null);
+        if (me && typeof me.householdId === "string" && me.householdId) {
+          hhId = me.householdId;
+          profile.householdId = hhId;
+          if (typeof me.profileName === "string" && me.profileName) profile.name = me.profileName;
+          try { localStorage.setItem("goodsort_profile", JSON.stringify(profile)); } catch { /* ignore */ }
+        }
+      }
+      if (!hhId) {
+        setErr("You haven't set up a household yet.");
+        return;
+      }
+      try {
+        const [house, pickup, g] = await Promise.all([
+          fetch(apiUrl(`/api/households/${hhId}`), { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)),
+          fetch(apiUrl(`/api/households/${hhId}/next-pickup`), { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+          fetch(apiUrl("/api/growth/brisbane")).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        ]);
         if (!house) {
           setErr("Couldn't load household.");
           return;
@@ -64,9 +80,19 @@ export default function HouseholdPage() {
           const match = g.suburbs.find((s: GrowthSuburb) => sameSuburb(s.suburb, house.suburb));
           setGrowth(streetStatsForViewer(match, house.councilCollectionDay, householdCountsTowardUnlock(house)));
         }
-      })
-      .catch(() => setErr("Couldn't load household."));
-    setMembers([{ id: profile.id, email: profile.email, name: profile.name, totalContainers: profile.totalContainers ?? 0 }]);
+      } catch {
+        setErr("Couldn't load household.");
+      }
+      setMembers([
+        {
+          id: typeof profile.id === "string" ? profile.id : "me",
+          email: typeof profile.email === "string" ? profile.email : null,
+          name: typeof profile.name === "string" && profile.name ? profile.name : "You",
+          totalContainers: typeof profile.totalContainers === "number" ? profile.totalContainers : 0,
+        },
+      ]);
+    }
+    void loadHousehold();
   }, []);
 
   return (
