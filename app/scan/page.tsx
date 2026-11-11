@@ -42,6 +42,7 @@ function ScanPageContent() {
   // Seconds until "Resend code" is available again. Declared here with the
   // other hooks, above every early return — see lib/hook-order.test.ts.
   const [resendIn, setResendIn] = useState(0);
+  const [devCode, setDevCode] = useState("");
 
   // Camera
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -126,12 +127,13 @@ function ScanPageContent() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim() }),
       });
-      const data = await res.json().catch(() => ({} as { error?: string }));
+      const data = await res.json().catch(() => ({} as { error?: string; devCode?: string }));
       if (!res.ok) {
         setAuthError(typeof data.error === "string" && data.error ? data.error : "Failed to send code");
         setAuthLoading(false);
         return;
       }
+      if (typeof data.devCode === "string" && data.devCode) setDevCode(data.devCode);
       try { sessionStorage.setItem(PENDING_EMAIL_KEY, email.trim()); } catch { /* ignore */ }
       setStep("verify");
       setResendIn(30);
@@ -430,6 +432,9 @@ function ScanPageContent() {
 
   function retake() {
     setResults([]);
+    setAiMessage("");
+    setTotalItems(0);
+    setScanToken(null);
     setQuotedCents(null);
     setConfirmedCents(null);
     setApiError(false);
@@ -449,8 +454,7 @@ function ScanPageContent() {
       <IconBubble><Mail className="w-7 h-7 text-green-600" /></IconBubble>
       <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">Nice — where should we keep it?</h1>
       <p className="text-slate-400 text-[13px] mb-6">
-        Your photo is ready. Add an email so your sorting credit is saved to an account.
-        No address needed yet — we only ask for that before we collect.
+        Your photo is ready. Enter your email to save your 10¢ sorting credit — next we&apos;ll ask where to collect and pay you.
       </p>
       <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
         onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}
@@ -467,6 +471,11 @@ function ScanPageContent() {
       <IconBubble><ShieldCheck className="w-7 h-7 text-green-600" /></IconBubble>
       <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">Check your email</h1>
       <p className="text-slate-400 text-[13px] mb-6">Code sent to {email}. The code is in the subject line — check spam too. It expires in 15 minutes, and your photo is held while you fetch it.</p>
+      {devCode && (
+        <p className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-mono text-amber-800 mb-3 text-center">
+          Dev code: <strong>{devCode}</strong>
+        </p>
+      )}
       <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp}
         onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} placeholder="000000"
         className="w-full text-center text-3xl font-display font-extrabold tracking-[0.3em] border border-slate-200 rounded-xl px-4 py-4 text-slate-900 placeholder-slate-200 focus:outline-none focus:ring-2 focus:ring-green-500/30 mb-3" autoFocus />
@@ -494,6 +503,7 @@ function ScanPageContent() {
           onClick={() => {
             setOtp("");
             setAuthError("");
+            setDevCode("");
             setResendIn(0);
             try { sessionStorage.removeItem(PENDING_EMAIL_KEY); } catch { /* ignore */ }
             setStep("auth");

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type User, type SortBin, type Depot, getUser } from "@/lib/store";
 import { getUserApi, getDepotsApi, getBinsApi } from "@/lib/store-api";
@@ -142,10 +143,40 @@ export default function SorterApp() {
   // (scan + progress + invite), never in the map/sorter collection UI.
   const onWaitlist = !household || !isCollecting(household.binStatus);
 
-  if (loading || !user) {
+  if (loading) {
     return (
       <div className="h-dvh flex items-center justify-center bg-white">
         <div className="text-slate-400 text-sm">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center bg-white px-6">
+        <div className="w-full max-w-sm text-center">
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-green-700 mb-2">
+            The Good Sort · Brisbane
+          </p>
+          <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-2">
+            Scan cans at home. Earn 10¢.
+          </h1>
+          <p className="text-[13px] text-slate-500 leading-relaxed mb-6">
+            Scan your first eligible container to start banking 10¢ credits, or sign in to view your saved balance and suburb progress.
+          </p>
+          <Link
+            href="/scan"
+            className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-4 rounded-2xl text-[15px] shadow-lg shadow-green-600/20 flex items-center justify-center min-h-[48px] mb-3"
+          >
+            Scan a container
+          </Link>
+          <Link
+            href="/login"
+            className="block text-[13px] font-semibold text-slate-500 hover:text-slate-800 py-2.5 min-h-[44px]"
+          >
+            Sign in to existing account
+          </Link>
+        </div>
       </div>
     );
   }

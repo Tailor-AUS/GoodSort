@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { X, Package, Leaf, Truck, Wallet, LogOut, CheckCircle, Users, Gift, Trash2, Car } from "lucide-react";
-import { apiUrl, authHeaders, readStoredProfileId } from "@/lib/config";
+import { apiUrl, authHeaders, clearAuth, readStoredProfileId } from "@/lib/config";
 import { formatCents, type User } from "@/lib/store";
 import { inviteMessage, isCollecting, LIVE_VOLUME_THRESHOLD, sameSuburb, streetInviteUrl, streetStatsForViewer, titleSuburb, type GrowthSuburb, householdCountsTowardUnlock, canonicalSuburb } from "@/lib/brisbane";
 import { InviteActions } from "@/app/components/shared/invite-actions";
@@ -176,9 +176,7 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
 
           <button
             onClick={() => {
-              localStorage.removeItem("goodsort_token");
-              localStorage.removeItem("goodsort_profile");
-              document.cookie = "goodsort_token=; path=/; max-age=0";
+              clearAuth();
               window.location.href = "/login";
             }}
             className="mt-3 w-full text-slate-500 hover:text-slate-900 font-medium py-3 rounded-xl text-[13px] transition-colors flex items-center justify-center gap-2"
@@ -198,8 +196,8 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
                 headers: { Authorization: `Bearer ${token}` },
               });
               if (res.ok) {
+                clearAuth();
                 localStorage.clear();
-                document.cookie = "goodsort_token=; path=/; max-age=0";
                 window.location.href = "/";
               } else {
                 alert("Failed to delete account. Please try again.");

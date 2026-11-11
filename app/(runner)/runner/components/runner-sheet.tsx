@@ -106,7 +106,7 @@ export function RunnerSheet({
                 <p className="text-slate-400 text-[13px] mt-1.5 font-medium">
                   {availableRuns.length > 0
                     ? `${availableRuns.reduce((s, r) => s + r.estimatedContainers, 0).toLocaleString()} containers available`
-                    : "Waiting for bins to fill"}
+                    : "Waiting for a suburb to hit 1,000 containers"}
                 </p>
               </div>
 

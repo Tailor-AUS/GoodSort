@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import Link from "next/link";
 import {
   type User, type SortBin, type Depot,
 } from "@/lib/store";
@@ -92,8 +93,9 @@ export default function RunnerApp() {
     refreshData().then(() => setLoading(false));
   }, [refreshData]);
 
-  // Location heartbeat every 60s when online
+  // Location heartbeat every 60s when authenticated and online
   useEffect(() => {
+    if (!user) return;
     heartbeatRef.current = setInterval(() => {
       sendHeartbeat(userLat, userLng, true).catch(() => {});
     }, 60000);
@@ -105,7 +107,7 @@ export default function RunnerApp() {
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
       sendHeartbeat(userLat, userLng, false).catch(() => {}); // Go offline
     };
-  }, [userLat, userLng]);
+  }, [user, userLat, userLng]);
 
   // ── Marketplace Actions ──
 
@@ -214,10 +216,43 @@ export default function RunnerApp() {
     return { earned: settled.actualPayoutCents, containers: settled.actualContainers };
   }, [activeRun, refreshData]);
 
-  if (loading || !user) {
+  if (loading) {
     return (
       <div className="h-dvh flex items-center justify-center bg-white">
         <div className="text-slate-400 text-sm">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center bg-white px-6">
+        <div className="w-full max-w-sm text-center">
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700 mb-2">
+            Suburb Runner · Brisbane
+          </p>
+          <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-2">
+            Sign in to run suburb drops
+          </h1>
+          <p className="text-[13px] text-slate-500 leading-relaxed mb-6">
+            Register as a Brisbane Runner or sign in to claim 1,000-container suburb runs, scan kerbside QR bag tags, and get paid via PayID or BSB.
+          </p>
+          <Link
+            href="/runner/signup"
+            className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-4 rounded-2xl text-[15px] shadow-lg shadow-green-600/20 flex items-center justify-center min-h-[48px] mb-3"
+          >
+            Register as Runner
+          </Link>
+          <div className="flex items-center justify-center gap-4 text-[13px] font-semibold">
+            <Link href="/login" className="text-slate-600 hover:text-slate-900 py-2 min-h-[44px] flex items-center">
+              Sign in
+            </Link>
+            <span className="text-slate-300">·</span>
+            <Link href="/marketplace" className="text-emerald-700 hover:text-emerald-900 py-2 min-h-[44px] flex items-center">
+              Suburb map
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
