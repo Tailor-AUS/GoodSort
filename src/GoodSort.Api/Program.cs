@@ -1541,16 +1541,10 @@ app.MapPost("/api/growth/events", async (WaitlistEventRequest req, GoodSortDbCon
         return Results.BadRequest();
     var key = name.ToLowerInvariant();
 
-    // Canonicalise on WRITE, not just on the log line. CanonicalSuburb also
-    // drops city-wide labels to null, so the stored row stays coarse.
-    var suburb = BinDayService.CanonicalSuburb(req.Suburb);
-
-    // Path only, and only if it looks like a path. The client sends
-    // location.pathname rather than href precisely so that ?r={profileId}
-    // never arrives here; refuse anything carrying a query anyway.
-    var path = req.Path is { Length: > 0 } p && p.StartsWith('/') && !p.Contains('?')
-        ? (p.Length > 256 ? p[..256] : p)
-        : null;
+    // Canonicalise and scrub on WRITE and before logging so street addresses,
+    // emails, GUIDs, barcodes, query/fragment tokens, and CR/LF never enter GrowthEvents.
+    var suburb = GrowthEventSanitizer.SanitizeSuburb(req.Suburb);
+    var path = GrowthEventSanitizer.SanitizePath(req.Path);
 
     // Fire-and-forget: telemetry must never break the request it measures.
     try

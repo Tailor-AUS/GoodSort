@@ -41,6 +41,48 @@ public static class GrowthEventRetention
 }
 
 /// <summary>
+/// Scrubs anonymous funnel inputs before persistence and structured logging so
+/// emails, GUIDs, street addresses, postcodes, barcodes, query/fragment tokens,
+/// and CR/LF log-injection payloads never enter GrowthEvents or application logs.
+/// </summary>
+public static class GrowthEventSanitizer
+{
+    public static string? SanitizeSuburb(string? raw)
+    {
+        var canonical = BinDayService.CanonicalSuburb(raw);
+        if (canonical is null || canonical.Length is < 2 or > 64) return null;
+        if (Guid.TryParse(canonical, out _)) return null;
+        foreach (var ch in canonical)
+        {
+            if (ch is not ((>= 'A' and <= 'Z') or ' ' or '-' or '\''))
+                return null;
+        }
+        return canonical;
+    }
+
+    public static string? SanitizePath(string? raw)
+    {
+        if (string.IsNullOrEmpty(raw) || !raw.StartsWith('/') || raw.StartsWith("//", StringComparison.Ordinal))
+            return null;
+        if (raw.Contains('?') || raw.Contains('#') || raw.Contains('@'))
+            return null;
+        foreach (var ch in raw)
+        {
+            if (char.IsControl(ch) || char.IsWhiteSpace(ch))
+                return null;
+        }
+
+        var bounded = raw.Length > 128 ? raw[..128] : raw;
+        foreach (var segment in bounded.Split('/', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (Guid.TryParse(segment, out _)) return null;
+            if (segment.Length >= 8 && segment.All(char.IsDigit)) return null;
+        }
+        return bounded;
+    }
+}
+
+/// <summary>
 /// Spent scan tokens only need to outlive the tokens themselves, which expire
 /// ten minutes after issue. Seven days is far past any legitimate replay and
 /// keeps the table from growing for the life of the product.

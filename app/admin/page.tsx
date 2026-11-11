@@ -596,7 +596,7 @@ export default function AdminPage() {
               <p className="text-[12px] text-slate-400">Create and manage collection points</p>
             </div>
           </Link>
-          <button onClick={exportAba}
+          <button type="button" onClick={exportAba}
             className="flex items-center gap-3 w-full bg-white rounded-xl p-4 border border-slate-200 hover:border-green-300 transition-colors text-left">
             <Download className="w-5 h-5 text-green-600" />
             <div>
@@ -604,7 +604,7 @@ export default function AdminPage() {
               <p className="text-[12px] text-slate-400">Download Australian BSB/account batch file (.aba) for pending bank cashouts</p>
             </div>
           </button>
-          <button onClick={exportPayIdCsv}
+          <button type="button" onClick={exportPayIdCsv}
             className="flex items-center gap-3 w-full bg-white rounded-xl p-4 border border-slate-200 hover:border-violet-300 transition-colors text-left">
             <Download className="w-5 h-5 text-violet-600" />
             <div>
@@ -612,7 +612,7 @@ export default function AdminPage() {
               <p className="text-[12px] text-slate-400">Download instant PayID (Email / Phone / ABN) batch CSV for pending cashouts</p>
             </div>
           </button>
-          <button onClick={resetBaseline} disabled={resetting}
+          <button type="button" onClick={resetBaseline} disabled={resetting}
             className="flex items-center gap-3 w-full bg-white rounded-xl p-4 border border-red-200 hover:border-red-400 disabled:opacity-50 transition-colors text-left">
             <RotateCcw className="w-5 h-5 text-red-600" />
             <div>

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Users, ChevronRight } from "lucide-react";
-import { apiUrl, authHeaders, hasValidToken, readStoredProfile, readStoredProfileId } from "@/lib/config";
+import { apiUrl, authHeaders, clearAuth, hasValidToken, readStoredProfile, readStoredProfileId } from "@/lib/config";
 import { formatCredit } from "@/lib/credit";
 import { inviteMessage, residentialNeedsStreet, sameSuburb, streetInviteUrl, streetStatsForViewer, titleSuburb, type GrowthSuburb } from "@/lib/brisbane";
 import { Logo } from "@/app/components/shared/logo";
@@ -33,9 +33,13 @@ export default function InvitePage() {
       const profile = readStoredProfile();
       let hhId = typeof profile.householdId === "string" && profile.householdId ? profile.householdId : "";
       if (!hhId && hasValidToken()) {
-        const me = await fetch(apiUrl("/api/profiles/me/payout"), { headers: authHeaders() })
-          .then((r) => (r.ok ? r.json() : null))
-          .catch(() => null);
+        const meRes = await fetch(apiUrl("/api/profiles/me/payout"), { headers: authHeaders() }).catch(() => null);
+        if (meRes?.status === 401) {
+          clearAuth();
+          router.replace("/login");
+          return;
+        }
+        const me = meRes && meRes.ok ? await meRes.json().catch(() => null) : null;
         if (me && typeof me.householdId === "string" && me.householdId) {
           hhId = me.householdId;
           profile.householdId = hhId;
@@ -43,14 +47,20 @@ export default function InvitePage() {
         }
       }
       if (!hhId) {
-        router.replace("/onboard");
+        router.replace(hasValidToken() ? "/onboard" : "/login");
         return;
       }
       try {
-        const [hh, g] = await Promise.all([
-          fetch(apiUrl(`/api/households/${hhId}`), { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)),
+        const [hhRes, g] = await Promise.all([
+          fetch(apiUrl(`/api/households/${hhId}`), { headers: authHeaders() }),
           fetch(apiUrl("/api/growth/brisbane")).then((r) => (r.ok ? r.json() : null)),
         ]);
+        if (hhRes.status === 401) {
+          clearAuth();
+          router.replace("/login");
+          return;
+        }
+        const hh = hhRes.ok ? await hhRes.json().catch(() => null) : null;
         if (residentialNeedsStreet(hh)) {
           router.replace("/onboard");
           return;

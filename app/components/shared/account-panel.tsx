@@ -91,7 +91,7 @@ export function AccountPanel({ user, open, onClose, onRefresh }: AccountPanelPro
               <p className="text-[12px] text-slate-400 font-semibold uppercase tracking-[0.12em]">Account</p>
               <h2 className="text-xl font-display font-extrabold text-slate-900 mt-1">{displayName}</h2>
             </div>
-            <button onClick={onClose} aria-label="Close account panel" className="p-2.5 -mr-1 text-slate-400 hover:text-slate-600 transition-colors duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center">
+            <button type="button" onClick={onClose} aria-label="Close account panel" className="p-2.5 -mr-1 text-slate-400 hover:text-slate-600 transition-colors duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -208,6 +208,7 @@ export function AccountPanel({ user, open, onClose, onRefresh }: AccountPanelPro
           </Link>
 
           <button
+            type="button"
             onClick={() => {
               clearAuth();
               window.location.href = "/login";
@@ -219,6 +220,7 @@ export function AccountPanel({ user, open, onClose, onRefresh }: AccountPanelPro
           </button>
 
           <button
+            type="button"
             onClick={async () => {
               if (!confirm("Permanently delete your account, all scans and earnings? This cannot be undone.")) return;
               const token = localStorage.getItem("goodsort_token");
@@ -228,12 +230,18 @@ export function AccountPanel({ user, open, onClose, onRefresh }: AccountPanelPro
                 method: "DELETE",
                 headers: { Authorization: `Bearer ${token}` },
               });
+              if (res.status === 401) {
+                clearAuth();
+                window.location.href = "/login";
+                return;
+              }
               if (res.ok) {
                 clearAuth();
                 localStorage.clear();
                 window.location.href = "/";
               } else {
-                alert("Failed to delete account. Please try again.");
+                const data = await res.json().catch(() => ({} as { error?: string }));
+                alert(data.error || "Failed to delete account. Please try again.");
               }
             }}
             className="w-full text-red-500 hover:text-red-600 font-medium py-3 rounded-xl text-[12px] transition-colors flex items-center justify-center gap-2"
@@ -398,6 +406,12 @@ function PayoutDestinationSection({
           accountName: accountName.trim(),
         }),
       });
+      if (res.status === 401) {
+        clearAuth();
+        setError("Your session expired — please sign in again.");
+        setSaving(false);
+        return;
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({} as { error?: string }));
         setError(data.error || "Couldn't save payout details.");
@@ -554,10 +568,20 @@ function CashoutSection({
 
   async function handleCashout() {
     if (!canCashout || !accountName) return;
-    if (accountName.trim().length < 2) { setError("Please enter the account holder name"); return; }
+    const validationErr = validateClientPayout({
+      method: payoutMethod,
+      payIdType,
+      payIdValue,
+      bsb,
+      accountNumber,
+      accountName,
+    });
+    if (validationErr) {
+      setError(validationErr);
+      return;
+    }
 
     if (payoutMethod === "payid") {
-      if (!payIdValue.trim()) { setError("Please enter your PayID"); return; }
       setLoading(true);
       setError("");
       try {
@@ -571,6 +595,12 @@ function CashoutSection({
             accountName: accountName.trim(),
           }),
         });
+        if (res.status === 401) {
+          clearAuth();
+          setError("Your session expired — please sign in again.");
+          setLoading(false);
+          return;
+        }
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           setError(data.error || "PayID cashout failed");
@@ -587,11 +617,8 @@ function CashoutSection({
       return;
     }
 
-    if (!bsb || !accountNumber) return;
     const cleanBsb = bsb.replace(/\D/g, "");
     const cleanAccount = accountNumber.replace(/\D/g, "");
-    if (cleanBsb.length !== 6) { setError("BSB must be 6 digits"); return; }
-    if (cleanAccount.length < 5 || cleanAccount.length > 9) { setError("Account number must be 5-9 digits"); return; }
     setLoading(true);
     setError("");
 
@@ -609,6 +636,12 @@ function CashoutSection({
         }),
       });
 
+      if (res.status === 401) {
+        clearAuth();
+        setError("Your session expired — please sign in again.");
+        setLoading(false);
+        return;
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setError(data.error || "Cashout failed");
@@ -645,6 +678,7 @@ function CashoutSection({
     return (
       <div className="mt-3">
         <button
+          type="button"
           onClick={() => canCashout ? setShowForm(true) : setShowHint(v => !v)}
           className={`w-full py-3 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-2 transition-all ${
             canCashout
@@ -679,7 +713,7 @@ function CashoutSection({
     <div className="mt-6 bg-slate-50 border border-slate-200 rounded-xl p-4">
       <div className="flex justify-between items-center mb-3">
         <p className="text-[13px] font-semibold text-slate-900">Cash Out ${(requestAmountCents / 100).toFixed(2)}</p>
-        <button onClick={() => setShowForm(false)} className="text-slate-400 text-[11px]">Cancel</button>
+        <button type="button" onClick={() => setShowForm(false)} className="text-slate-400 text-[11px]">Cancel</button>
       </div>
 
       <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-200/70 rounded-lg mb-3">
@@ -790,6 +824,7 @@ function CashoutSection({
       {error && <p className="text-red-500 text-[11px] mt-2">{error}</p>}
 
       <button
+        type="button"
         onClick={handleCashout}
         disabled={submitDisabled}
         className="mt-3 w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3 rounded-xl text-[13px] shadow-lg shadow-green-600/20 disabled:opacity-50 min-h-[44px]"
