@@ -42,7 +42,11 @@ export default function AdminPickupsPage() {
       const res = await fetch(apiUrl("/api/admin/trigger-pickup-reminders"), {
         method: "POST", headers: { Authorization: `Bearer ${token}` },
       });
-      const j = await res.json();
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErr(j.error || `Reminder trigger failed (HTTP ${res.status})`);
+        return;
+      }
       setTriggerResult(`Sent: ${j.households} household email${j.households === 1 ? "" : "s"}, ${j.runners} runner email${j.runners === 1 ? "" : "s"}.`);
     } catch {
       setTriggerResult("Failed.");

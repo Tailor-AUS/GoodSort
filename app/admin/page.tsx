@@ -190,6 +190,13 @@ export default function AdminPage() {
     const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
     const res = await fetch(apiUrl("/api/admin/aba-export"), { headers });
     const contentType = res.headers.get("content-type") || "";
+    if (!res.ok) {
+      const data = contentType.includes("application/json")
+        ? await res.json().catch(() => ({}))
+        : {};
+      alert(data.error || data.message || `ABA export failed (HTTP ${res.status})`);
+      return;
+    }
     if (contentType.includes("application/json")) {
       const data = await res.json().catch(() => ({}));
       alert(data.message || data.error || "No pending ABA cashouts to export");
@@ -206,6 +213,7 @@ export default function AdminPage() {
     a.href = url;
     a.download = `goodsort-payouts-${new Date().toISOString().split("T")[0]}.aba`;
     a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
     loadDashboard();
   }
 
@@ -214,6 +222,13 @@ export default function AdminPage() {
     const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
     const res = await fetch(apiUrl("/api/admin/payid-export"), { headers });
     const contentType = res.headers.get("content-type") || "";
+    if (!res.ok) {
+      const data = contentType.includes("application/json")
+        ? await res.json().catch(() => ({}))
+        : {};
+      alert(data.error || data.message || `PayID CSV export failed (HTTP ${res.status})`);
+      return;
+    }
     if (contentType.includes("application/json")) {
       const data = await res.json().catch(() => ({}));
       alert(data.message || data.error || "No pending PayID cashouts to export");
@@ -230,6 +245,7 @@ export default function AdminPage() {
     a.href = url;
     a.download = `goodsort-payid-${new Date().toISOString().split("T")[0]}.csv`;
     a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
     loadDashboard();
   }
 

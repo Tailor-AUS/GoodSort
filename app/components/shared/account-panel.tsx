@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import Link from "next/link";
 import { X, Package, Leaf, Truck, Wallet, LogOut, CheckCircle, Users, Gift, Trash2, Car } from "lucide-react";
 import { apiUrl, authHeaders, clearAuth, readStoredProfileId } from "@/lib/config";
@@ -20,24 +20,24 @@ interface AccountPanelProps {
   user: User;
   open: boolean;
   onClose: () => void;
+  onRefresh?: () => void;
 }
 
-export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
+export function AccountPanel({ user, open, onClose, onRefresh }: AccountPanelProps) {
   const [binStatus, setBinStatus] = useState<string | null>(null);
   const [streetStats, setStreetStats] = useState<{ households: number; containers: number; needed: number; dayName: string | null } | null>(null);
   const [savedPayout, setSavedPayout] = useState<SavedPayoutSummary | null>(null);
+  const [cashedOutCents, setCashedOutCents] = useState(0);
+
+  useEffect(() => {
+    setCashedOutCents(0);
+  }, [open, user.clearedCents]);
 
   useEffect(() => {
     if (!open) return;
-    fetch(apiUrl("/api/profiles/me/payout"), { headers: authHeaders() })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((p) => { if (p) setSavedPayout(p); })
-      .catch(() => {});
-    try {
-      const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
-      if (!profile.householdId) return;
+    const loadHouseholdStats = (hhId: string) => {
       Promise.all([
-        fetch(apiUrl(`/api/households/${profile.householdId}`), { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)),
+        fetch(apiUrl(`/api/households/${hhId}`), { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)),
         fetch(apiUrl("/api/growth/brisbane")).then((r) => (r.ok ? r.json() : null)),
       ]).then(([hh, g]) => {
         if (hh?.binStatus) setBinStatus(hh.binStatus);
@@ -45,12 +45,37 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
         const cluster = streetStatsForViewer(match, hh?.councilCollectionDay, householdCountsTowardUnlock(hh));
         setStreetStats({ households: cluster.households, containers: cluster.containers, needed: cluster.needed, dayName: cluster.dayName });
       }).catch(() => {});
+    };
+
+    let localHouseholdId = "";
+    try {
+      const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
+      if (typeof profile.householdId === "string" && profile.householdId) {
+        localHouseholdId = profile.householdId;
+        loadHouseholdStats(localHouseholdId);
+      }
     } catch { /* ignore */ }
+
+    fetch(apiUrl("/api/profiles/me/payout"), { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p) => {
+        if (!p) return;
+        setSavedPayout(p);
+        if (!localHouseholdId && typeof p.householdId === "string" && p.householdId) {
+          try {
+            const prev = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
+            localStorage.setItem("goodsort_profile", JSON.stringify({ ...prev, householdId: p.householdId }));
+          } catch { /* ignore */ }
+          loadHouseholdStats(p.householdId);
+        }
+      })
+      .catch(() => {});
   }, [open]);
 
   if (!open) return null;
 
   const waiting = !isCollecting(binStatus);
+  const effectiveClearedCents = Math.max(0, user.clearedCents - cashedOutCents);
   // Show email when name is default "New User" or "You"
   const displayName = (user.name === "New User" || user.name === "You")
     ? (() => { try { const p = JSON.parse(localStorage.getItem("goodsort_profile") || "{}"); return p.phone || p.email || user.name; } catch { return user.name; } })()
@@ -73,7 +98,7 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
 
           <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200">
             <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-[0.15em]">{waiting ? "Credits after collection" : "Available"}</p>
-            <p className="text-3xl font-display font-extrabold text-slate-900 mt-1">{formatCents(user.clearedCents)}</p>
+            <p className="text-3xl font-display font-extrabold text-slate-900 mt-1">{formatCents(effectiveClearedCents)}</p>
             {user.pendingCents > 0 && (
               <p className="text-green-600/60 text-sm font-medium mt-0.5">+ {formatCents(user.pendingCents)} pending</p>
             )}
@@ -149,9 +174,17 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
 
           <PayoutDestinationSection savedPayout={savedPayout} onSaved={setSavedPayout} />
 
-          <CashoutSection clearedCents={user.clearedCents} waiting={waiting} savedPayout={savedPayout} />
+          <CashoutSection
+            clearedCents={effectiveClearedCents}
+            waiting={waiting}
+            savedPayout={savedPayout}
+            onCashedOut={(amount) => {
+              setCashedOutCents((prev) => prev + amount);
+              onRefresh?.();
+            }}
+          />
 
-          <InviteFriends user={user} />
+          <InviteFriends user={user} recoveredHouseholdId={savedPayout?.householdId} />
 
           <div className="mt-4 grid grid-cols-2 gap-2">
             <Link href="/bags"
@@ -189,11 +222,7 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
             onClick={async () => {
               if (!confirm("Permanently delete your account, all scans and earnings? This cannot be undone.")) return;
               const token = localStorage.getItem("goodsort_token");
-              let profileId = "";
-              try {
-                const parsed = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
-                if (parsed && typeof parsed.id === "string") profileId = parsed.id;
-              } catch { /* ignore */ }
+              const profileId = readStoredProfileId() || "";
               if (!profileId || !token) return;
               const res = await fetch(apiUrl(`/api/profiles/${profileId}`), {
                 method: "DELETE",
@@ -228,7 +257,7 @@ function StatCard({ icon: Icon, label, value }: { icon: React.ElementType; label
   );
 }
 
-function InviteFriends({ user: _user }: { user: User }) {
+function InviteFriends({ user: _user, recoveredHouseholdId }: { user: User; recoveredHouseholdId?: string | null }) {
   const [suburb, setSuburb] = useState<string | null>(null);
   const [binDay, setBinDay] = useState<number | null>(null);
   const [growth, setGrowth] = useState<GrowthSuburb | null>(null);
@@ -240,9 +269,12 @@ function InviteFriends({ user: _user }: { user: User }) {
     try {
       setProfileId(readStoredProfileId());
       const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
-      if (!profile.householdId) return;
+      const hhId = (typeof profile.householdId === "string" && profile.householdId)
+        ? profile.householdId
+        : (recoveredHouseholdId || "");
+      if (!hhId) return;
       Promise.all([
-        fetch(apiUrl(`/api/households/${profile.householdId}`), { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)),
+        fetch(apiUrl(`/api/households/${hhId}`), { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)),
         fetch(apiUrl("/api/growth/brisbane")).then((r) => (r.ok ? r.json() : null)),
       ])
         .then(([hh, g]) => {
@@ -254,7 +286,7 @@ function InviteFriends({ user: _user }: { user: User }) {
         })
         .catch(() => {});
     } catch { /* ignore */ }
-  }, []);
+  }, [recoveredHouseholdId]);
 
   const cluster = streetStatsForViewer(growth, binDay, !building);
   const needed = cluster.needed;
@@ -454,15 +486,20 @@ function PayoutDestinationSection({
   );
 }
 
+const MAX_SINGLE_CASHOUT_CENTS = 99_999_999;
+
 function CashoutSection({
   clearedCents,
   waiting,
   savedPayout,
+  onCashedOut,
 }: {
   clearedCents: number;
   waiting?: boolean;
   savedPayout?: SavedPayoutSummary | null;
+  onCashedOut?: (amountCents: number) => void;
 }) {
+  const fieldId = useId();
   const [showForm, setShowForm] = useState(false);
   const [payoutMethod, setPayoutMethod] = useState<"payid" | "aba">("payid");
   const [payIdType, setPayIdType] = useState<"email" | "phone" | "abn">("email");
@@ -511,8 +548,9 @@ function CashoutSection({
   }, [savedPayout]);
 
   const minCashout = 2000; // $20 in cents
+  const requestAmountCents = Math.min(clearedCents, MAX_SINGLE_CASHOUT_CENTS);
   const anyPayoutOpen = abaOpen === true || payIdOpen === true;
-  const canCashout = anyPayoutOpen && clearedCents >= minCashout;
+  const canCashout = anyPayoutOpen && requestAmountCents >= minCashout;
 
   async function handleCashout() {
     if (!canCashout || !accountName) return;
@@ -527,7 +565,7 @@ function CashoutSection({
           method: "POST",
           headers: authHeaders(),
           body: JSON.stringify({
-            amountCents: clearedCents,
+            amountCents: requestAmountCents,
             payIdType,
             payIdValue: payIdValue.trim(),
             accountName: accountName.trim(),
@@ -541,6 +579,7 @@ function CashoutSection({
         }
         setSuccess(true);
         setLoading(false);
+        onCashedOut?.(requestAmountCents);
       } catch {
         setError("Something went wrong");
         setLoading(false);
@@ -557,13 +596,13 @@ function CashoutSection({
     setError("");
 
     try {
-      const userId = (() => { try { return JSON.parse(localStorage.getItem("goodsort_profile") || "{}").id; } catch { return ""; } })();
+      const userId = readStoredProfileId() || "";
       const res = await fetch(apiUrl("/api/cashout"), {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify({
           userId,
-          amountCents: clearedCents,
+          amountCents: requestAmountCents,
           bsb: cleanBsb,
           accountNumber: cleanAccount,
           accountName: accountName.trim(),
@@ -579,6 +618,7 @@ function CashoutSection({
 
       setSuccess(true);
       setLoading(false);
+      onCashedOut?.(requestAmountCents);
     } catch {
       setError("Something went wrong");
       setLoading(false);
@@ -614,7 +654,7 @@ function CashoutSection({
         >
           <Wallet className="w-4 h-4" />
           {canCashout
-            ? `Cash Out $${(clearedCents / 100).toFixed(2)} (PayID / BSB)`
+            ? `Cash Out $${(requestAmountCents / 100).toFixed(2)} (PayID / BSB)`
             : `Cash Out  ·  $${(clearedCents / 100).toFixed(2)} available`}
         </button>
         {!canCashout && showHint && (
@@ -638,7 +678,7 @@ function CashoutSection({
   return (
     <div className="mt-6 bg-slate-50 border border-slate-200 rounded-xl p-4">
       <div className="flex justify-between items-center mb-3">
-        <p className="text-[13px] font-semibold text-slate-900">Cash Out ${(clearedCents / 100).toFixed(2)}</p>
+        <p className="text-[13px] font-semibold text-slate-900">Cash Out ${(requestAmountCents / 100).toFixed(2)}</p>
         <button onClick={() => setShowForm(false)} className="text-slate-400 text-[11px]">Cancel</button>
       </div>
 
@@ -673,8 +713,9 @@ function CashoutSection({
         {payoutMethod === "payid" ? (
           <>
             <div>
-              <label className="block text-[11px] font-semibold text-slate-500 mb-1">PayID Type</label>
+              <label htmlFor={`${fieldId}-payid-type`} className="block text-[11px] font-semibold text-slate-500 mb-1">PayID Type</label>
               <select
+                id={`${fieldId}-payid-type`}
                 aria-label="PayID Type"
                 value={payIdType}
                 onChange={(e) => setPayIdType(e.target.value as "email" | "phone" | "abn")}
@@ -686,8 +727,9 @@ function CashoutSection({
               </select>
             </div>
             <div>
-              <label className="block text-[11px] font-semibold text-slate-500 mb-1">PayID</label>
+              <label htmlFor={`${fieldId}-payid-value`} className="block text-[11px] font-semibold text-slate-500 mb-1">PayID</label>
               <input
+                id={`${fieldId}-payid-value`}
                 type="text"
                 value={payIdValue}
                 onChange={(e) => setPayIdValue(e.target.value)}
@@ -705,8 +747,9 @@ function CashoutSection({
         ) : (
           <>
             <div>
-              <label className="block text-[11px] font-semibold text-slate-500 mb-1">BSB</label>
+              <label htmlFor={`${fieldId}-bsb`} className="block text-[11px] font-semibold text-slate-500 mb-1">BSB</label>
               <input
+                id={`${fieldId}-bsb`}
                 type="text"
                 inputMode="numeric"
                 maxLength={7}
@@ -717,8 +760,9 @@ function CashoutSection({
               />
             </div>
             <div>
-              <label className="block text-[11px] font-semibold text-slate-500 mb-1">Account Number</label>
+              <label htmlFor={`${fieldId}-account`} className="block text-[11px] font-semibold text-slate-500 mb-1">Account Number</label>
               <input
+                id={`${fieldId}-account`}
                 type="text"
                 inputMode="numeric"
                 maxLength={9}
@@ -731,8 +775,9 @@ function CashoutSection({
           </>
         )}
         <div>
-          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Payee Account Name</label>
+          <label htmlFor={`${fieldId}-name`} className="block text-[11px] font-semibold text-slate-500 mb-1">Payee Account Name</label>
           <input
+            id={`${fieldId}-name`}
             type="text"
             value={accountName}
             onChange={(e) => setAccountName(e.target.value)}
@@ -749,7 +794,7 @@ function CashoutSection({
         disabled={submitDisabled}
         className="mt-3 w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3 rounded-xl text-[13px] shadow-lg shadow-green-600/20 disabled:opacity-50 min-h-[44px]"
       >
-        {loading ? "Processing..." : `Transfer $${(clearedCents / 100).toFixed(2)}`}
+        {loading ? "Processing..." : `Transfer $${(requestAmountCents / 100).toFixed(2)}`}
       </button>
 
       <p className="text-[10px] text-slate-400 mt-2 text-center">

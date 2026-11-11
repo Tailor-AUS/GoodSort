@@ -102,7 +102,11 @@ export default function SortedBagsPage() {
   };
 
   const handleStatusChange = async (bagId: string, status: "sealed" | "on_kerb" | "cancelled") => {
-    await updateBagStatus(bagId, status);
+    setError(null);
+    const updated = await updateBagStatus(bagId, status);
+    if (!updated) {
+      setError("Could not update bag status — a Runner may have already scanned this bag.");
+    }
     await loadBags();
   };
 
@@ -353,7 +357,11 @@ export default function SortedBagsPage() {
                       <span className="inline-flex items-center gap-1 text-xs font-bold">
                         {bag.status === "verified" ? (
                           <span className="text-emerald-700 flex items-center gap-1">
-                            <CheckCircle2 size={14} /> Picked up ({bag.verifiedContainers ?? bag.declaredContainers})
+                            <CheckCircle2 size={14} /> Verified at depot ({bag.verifiedContainers ?? bag.declaredContainers})
+                          </span>
+                        ) : bag.status === "picked_up" ? (
+                          <span className="text-blue-700 flex items-center gap-1">
+                            <Truck size={14} /> Collected — in transit ({bag.verifiedContainers ?? bag.declaredContainers})
                           </span>
                         ) : bag.status === "on_kerb" ? (
                           <span className="text-amber-700 flex items-center gap-1">
@@ -364,7 +372,7 @@ export default function SortedBagsPage() {
                         )}
                       </span>
 
-                      {bag.status !== "verified" && (
+                      {bag.status !== "verified" && bag.status !== "picked_up" && (
                         <div className="flex items-center gap-1.5">
                           {bag.status === "sealed" ? (
                             <button
