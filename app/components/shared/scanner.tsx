@@ -6,7 +6,7 @@ import { lookupContainer, lookupContainerAsync } from "@/lib/containers";
 import { CENTS_PER_CONTAINER, formatCredit, launchBonusNote } from "@/lib/credit";
 import { fitWithin, QUALITY_LADDER, TARGET_BASE64_CHARS } from "@/lib/image-budget";
 import { track } from "@/lib/analytics";
-import { apiUrl, authHeaders, readStoredProfileId } from "@/lib/config";
+import { apiUrl, authHeaders, clearAuth, readStoredProfileId } from "@/lib/config";
 import { mapToMaterialType, type BagInfo } from "@/lib/store";
 import { addScanApi } from "@/lib/store-api";
 
@@ -184,9 +184,16 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
       });
 
       if (!res.ok) {
+        if (res.status === 401) clearAuth();
         setAnalyzing(false);
         setResults([]);
-        setResultSummary("Failed to analyze photo");
+        setResultSummary(
+          res.status === 401
+            ? "Your session expired — please sign in again."
+            : res.status === 429
+              ? "Daily photo-scan limit reached — switch to barcode scan or try again tomorrow."
+              : "Failed to analyze photo"
+        );
         return;
       }
 
@@ -219,7 +226,9 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     setConfirmError("");
 
     // Use localStorage addScan for each item (works offline too)
-    const eligible = results.filter((r) => r.eligible);
+    const eligible = results
+      .filter((r) => r.eligible)
+      .map((r) => ({ ...r, count: Math.max(0, Math.min(100, r.count)) }));
     let totalItems = 0;
     let totalCents = 0;
 
@@ -240,7 +249,10 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
       if (res.ok) {
         trackScanCredited();
         const data = await res.json();
-        totalItems = data.totalContainers || eligible.reduce((s, e) => s + e.count, 0);
+        totalItems =
+          typeof data.totalContainers === "number"
+            ? data.totalContainers
+            : eligible.reduce((s, e) => s + e.count, 0);
         totalCents = typeof data.totalCents === "number" ? data.totalCents : totalItems * CENTS_PER_CONTAINER;
         setBonusRemaining(typeof data.bonusRemaining === "number" ? data.bonusRemaining : null);
       } else {
@@ -255,12 +267,17 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
         // scanner, and there was no error, no retry and no local copy — the
         // comment above says not to write one, because a success would double
         // count. So the member's work simply vanished.
+        if (res.status === 401) clearAuth();
         let reason = "";
         try {
           const body = await res.json();
           reason = typeof body?.error === "string" ? body.error : "";
         } catch { /* no JSON body */ }
-        setConfirmError(reason || "That did not save. Take the photo again.");
+        setConfirmError(
+          res.status === 401
+            ? "Your session expired — please sign in again."
+            : reason || "That did not save. Take the photo again."
+        );
         setConfirming(false);
         return;
       }
@@ -283,7 +300,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
   async function processBarcodeResult(barcode: string) {
     if (processedRef.current) return;
     const cleaned = barcode.trim().replace(/\D/g, "");
-    if (cleaned.length < 8 || cleaned.length > 13) return;
+    if (cleaned.length < 8 || cleaned.length > 14) return;
     processedRef.current = true;
     stopCamera();
 

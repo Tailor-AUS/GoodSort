@@ -117,7 +117,10 @@ export function RunActive({
       setManualBagCode("");
       setPickupCount((prev) => ({
         ...prev,
-        [currentStopId]: res.stopVerifiedTotal > 0 ? res.stopVerifiedTotal : (prev[currentStopId] ?? 0),
+        [currentStopId]:
+          typeof res.stopVerifiedTotal === "number"
+            ? res.stopVerifiedTotal
+            : (prev[currentStopId] ?? 0),
       }));
       await loadManifest(currentStopId);
     },
@@ -137,9 +140,10 @@ export function RunActive({
       .decodeFromVideoDevice(undefined, videoRef.current, (result) => {
         if (!active || !result) return;
         const text = result.getText().trim().toUpperCase();
-        if (text.startsWith("GSB-")) {
+        const bagMatch = text.match(/\b(GSB-[A-Z0-9-]+)\b/);
+        if (bagMatch) {
           setScanningCamera(false);
-          handleVerifyBagCode(text);
+          handleVerifyBagCode(bagMatch[1]);
         }
       })
       .then((ctrls) => {

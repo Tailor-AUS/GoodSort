@@ -1045,8 +1045,9 @@ app.MapGet("/api/barcode/{barcode}", async (string barcode, IHttpClientFactory h
 
     try
     {
+        const int MaxBarcodeUpstreamBytes = 256 * 1024;
         var client = httpFactory.CreateClient("OpenFoodFacts");
-        var res = await client.GetAsync($"api/v2/product/{barcode}.json");
+        using var res = await client.GetAsync($"api/v2/product/{barcode}.json", HttpCompletionOption.ResponseHeadersRead);
         if (!res.IsSuccessStatusCode)
         {
             var miss = new { found = false, barcode };
@@ -1054,7 +1055,26 @@ app.MapGet("/api/barcode/{barcode}", async (string barcode, IHttpClientFactory h
             return Results.Ok(miss);
         }
 
-        using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+        if (res.Content.Headers.ContentLength is long declaredLen && declaredLen > MaxBarcodeUpstreamBytes)
+        {
+            return Results.Ok(new { found = false, barcode });
+        }
+
+        await using var stream = await res.Content.ReadAsStreamAsync();
+        using var ms = new MemoryStream();
+        var buf = new byte[8192];
+        var totalRead = 0;
+        int read;
+        while ((read = await stream.ReadAsync(buf)) > 0)
+        {
+            totalRead += read;
+            if (totalRead > MaxBarcodeUpstreamBytes)
+                return Results.Ok(new { found = false, barcode });
+            ms.Write(buf, 0, read);
+        }
+        ms.Position = 0;
+
+        using var doc = await JsonDocument.ParseAsync(ms);
         if (!doc.RootElement.TryGetProperty("product", out var product))
         {
             var miss = new { found = false, barcode };
@@ -1062,16 +1082,22 @@ app.MapGet("/api/barcode/{barcode}", async (string barcode, IHttpClientFactory h
             return Results.Ok(miss);
         }
 
-        string? Str(string name) =>
-            product.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String
-                ? v.GetString()
-                : null;
+        string? Str(string name, int maxLen)
+        {
+            if (!product.TryGetProperty(name, out var v) || v.ValueKind != JsonValueKind.String)
+                return null;
+            var raw = v.GetString()?.Trim();
+            if (string.IsNullOrEmpty(raw)) return null;
+            return raw.Length <= maxLen ? raw : raw[..maxLen];
+        }
 
         var packagingTags = product.TryGetProperty("packaging_materials_tags", out var tags)
                             && tags.ValueKind == JsonValueKind.Array
             ? tags.EnumerateArray()
                 .Where(t => t.ValueKind == JsonValueKind.String)
-                .Select(t => t.GetString()!)
+                .Select(t => t.GetString()?.Trim())
+                .Where(t => !string.IsNullOrEmpty(t))
+                .Select(t => t!.Length <= 80 ? t : t[..80])
                 .Take(12)
                 .ToArray()
             : [];
@@ -1080,11 +1106,11 @@ app.MapGet("/api/barcode/{barcode}", async (string barcode, IHttpClientFactory h
         {
             found = true,
             barcode,
-            productName = Str("product_name") ?? Str("product_name_en"),
-            brands = Str("brands"),
-            quantity = Str("quantity"),
-            packaging = Str("packaging"),
-            categories = Str("categories"),
+            productName = Str("product_name", 200) ?? Str("product_name_en", 200),
+            brands = Str("brands", 120),
+            quantity = Str("quantity", 60),
+            packaging = Str("packaging", 300),
+            categories = Str("categories", 300),
             packagingMaterialsTags = packagingTags,
         };
         Remember(payload, found: true);
@@ -1934,11 +1960,8 @@ app.MapPost("/api/scans", async (HttpContext ctx, ScanRequest req, GoodSortDbCon
     var barcode = (req.Barcode ?? "").Trim();
     if (string.IsNullOrEmpty(barcode) || barcode.Length > 64)
         return Results.BadRequest(new { error = "Barcode must be between 1 and 64 characters." });
-    var containerName = (req.ContainerName ?? "").Trim();
-    if (containerName.Length == 0) containerName = "Beverage container";
-    if (containerName.Length > 200) containerName = containerName[..200];
-    var material = (req.Material ?? "other").Trim().ToLowerInvariant();
-    if (material.Length > 32) material = material[..32];
+    var containerName = VisionService.NormalizeContainerName(req.ContainerName);
+    var material = VisionService.MapMaterial(req.Material);
 
     return await StatusClaim.WithUserGateAsync(userId.Value, async () =>
     {
