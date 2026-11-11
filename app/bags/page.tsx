@@ -9,7 +9,6 @@ import {
   ArrowLeft,
   CheckCircle2,
   Truck,
-  Sparkles,
   Trash2,
   Plus,
   Home,
@@ -87,7 +86,7 @@ export default function SortedBagsPage() {
     const created = await createSortedBag(selectedStream, declaredCount, putOnKerb);
     setCreating(false);
     if (!created) {
-      setError("Could not create bag tag. Make sure your household street address is saved first.");
+      setError("Could not create bag tag. Save your home street address first.");
       return;
     }
     await loadBags();
@@ -106,27 +105,27 @@ export default function SortedBagsPage() {
           <div className="flex items-center gap-2.5">
             <Link
               href="/sort"
-              aria-label="Back to Sorter home"
+              aria-label="Back to home"
               className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700"
             >
               <ArrowLeft size={18} />
             </Link>
             <div>
               <h1 className="font-display font-extrabold text-base text-slate-900 leading-tight">
-                4-Stream QR Bag Tags
+                Home Bag Tags
               </h1>
               <p className="text-xs text-slate-500">
-                Link scanned cans to physical kerbside bags for COEX Secondary-Sorted Runs
+                Tag full bags so your scanned cans clear on kerb pickup
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             <Link
-              href="/marketplace"
-              className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs"
+              href="/scan"
+              className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs"
             >
-              Marketplace
+              + Scan
             </Link>
             {(data?.bags.length ?? 0) > 0 && (
               <button
@@ -134,7 +133,7 @@ export default function SortedBagsPage() {
                 onClick={() => window.print()}
                 className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1.5"
               >
-                <Printer size={14} /> Print Labels
+                <Printer size={14} /> Print Tags
               </button>
             )}
           </div>
@@ -148,9 +147,9 @@ export default function SortedBagsPage() {
             <div className="flex items-start gap-3">
               <Home size={20} className="text-amber-600 shrink-0 mt-0.5" />
               <div>
-                <p className="font-bold text-sm text-amber-900">Add your street address first</p>
+                <p className="font-bold text-sm text-amber-900">Add your home address first</p>
                 <p className="text-xs text-amber-800 mt-0.5">
-                  QR bag tags link directly to your household stop so Runners know whose account to credit on pickup.
+                  Bag tags link to your house so the driver knows whose account to credit at the kerb.
                 </p>
               </div>
             </div>
@@ -166,16 +165,11 @@ export default function SortedBagsPage() {
         {/* Create New 4-Stream Bag Tag (hidden on print) */}
         <section className="print:hidden rounded-3xl bg-white border border-slate-200 p-5 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
-            <div>
-              <span className="inline-flex items-center gap-1 text-[11px] font-extrabold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full">
-                <Sparkles size={12} /> Secondary-Sorted CRP Ready
-              </span>
-              <h2 className="font-display font-extrabold text-lg text-slate-900 mt-1">
-                Seal a Pre-Sorted Stream Bag
-              </h2>
-            </div>
+            <h2 className="font-display font-extrabold text-lg text-slate-900">
+              Tag a full bag at home
+            </h2>
             <Link href="/scan" className="text-xs font-bold text-emerald-700 hover:underline">
-              + Scan More Cans
+              + Scan a container
             </Link>
           </div>
 
@@ -205,7 +199,7 @@ export default function SortedBagsPage() {
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1">{info.rule}</p>
                   <p className="text-[11px] font-bold text-emerald-700 mt-1.5">
-                    {unbagged} unbagged {unbagged === 1 ? "scan" : "scans"} ready to attach
+                    {unbagged} scanned {unbagged === 1 ? "container" : "containers"} ready to bag
                   </p>
                 </button>
               );
@@ -237,7 +231,7 @@ export default function SortedBagsPage() {
                   className="w-4 h-4 accent-emerald-600 rounded"
                 />
                 <span className="text-xs font-semibold text-slate-700">
-                  Bag is out on kerb ready for Runner pickup
+                  Bag is out on the kerb ready for pickup
                 </span>
               </label>
             </div>
@@ -253,14 +247,14 @@ export default function SortedBagsPage() {
             type="button"
             disabled={creating || (data !== null && !data.hasHousehold)}
             onClick={handleCreateBag}
-            className="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-display font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition-colors"
+            className="w-full py-3.5 rounded-2xl bg-gradient-to-b from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:opacity-50 text-white font-display font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-green-600/20 transition-all"
           >
             <Plus size={18} />
-            {creating ? "Generating Bag Tag..." : `Seal ${BAG_STREAMS[selectedStream].shortLabel} Bag & Generate QR Tag`}
+            {creating ? "Creating tag..." : `Create ${BAG_STREAMS[selectedStream].shortLabel} Bag Tag`}
           </button>
 
           <p className="text-[11px] text-slate-500 text-center">
-            No printer? Write the short <strong>GSB-...</strong> code on masking tape with a Sharpie — Runners can verify either the QR or short code at your kerb.
+            No printer? Write the short <strong>GSB-...</strong> code on masking tape with a marker — our driver can scan the QR or enter the code at your kerb.
           </p>
         </section>
 
@@ -268,7 +262,7 @@ export default function SortedBagsPage() {
         <section className="space-y-3">
           <div className="print:hidden flex items-center justify-between">
             <h2 className="font-display font-bold text-base text-slate-900">
-              Your Household QR Bag Tags ({data?.bags.length ?? 0})
+              Your Home Bag Tags ({data?.bags.length ?? 0})
             </h2>
           </div>
 
@@ -277,9 +271,9 @@ export default function SortedBagsPage() {
           ) : (data?.bags.length ?? 0) === 0 ? (
             <div className="print:hidden rounded-2xl bg-white border border-slate-200 p-8 text-center">
               <QrCode size={36} className="text-slate-300 mx-auto mb-2" />
-              <p className="font-bold text-sm text-slate-700">No sealed QR bags yet</p>
+              <p className="font-bold text-sm text-slate-700">No tagged bags yet</p>
               <p className="text-xs text-slate-500 mt-1">
-                Select one of the 4 streams above to generate your first kerbside QR bag label.
+                Pick one of the 4 bags above when a bag at home is full.
               </p>
             </div>
           ) : (
@@ -300,14 +294,13 @@ export default function SortedBagsPage() {
                         <p className="font-mono font-black text-base text-slate-900 mt-1.5 tracking-tight">
                           {bag.code}
                         </p>
-                        <p className="text-xs text-slate-600 font-semibold mt-0.5">
-                          {bag.declaredContainers} containers ({bag.linkedScanCount} scans linked)
+                        <p className="text-xs text-slate-600 mt-0.5">
+                          <strong>{bag.declaredContainers}</strong> containers
+                          {bag.linkedScanCount > 0 && ` · ${bag.linkedScanCount} scans linked`}
                         </p>
-                        {bag.verifiedContainers != null && (
-                          <p className="text-xs text-emerald-700 font-bold mt-0.5">
-                            Runner verified: {bag.verifiedContainers} containers
-                          </p>
-                        )}
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          {streamInfo.rule}
+                        </p>
                       </div>
 
                       {qrSrc && (
@@ -319,37 +312,40 @@ export default function SortedBagsPage() {
                       )}
                     </div>
 
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-100 print:hidden">
-                      <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-600">
-                        {bag.status === "on_kerb" && (
-                          <>
-                            <Truck size={14} className="text-emerald-600" /> On Kerb for Runner
-                          </>
-                        )}
-                        {bag.status === "sealed" && "Sealed Inside"}
-                        {bag.status === "picked_up" && (
-                          <>
-                            <CheckCircle2 size={14} className="text-sky-600" /> Picked Up by Runner
-                          </>
-                        )}
-                        {bag.status === "verified" && (
-                          <>
-                            <CheckCircle2 size={14} className="text-emerald-600" /> CRP Settled
-                          </>
+                    <div className="print:hidden pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                      <span className="inline-flex items-center gap-1 text-xs font-bold">
+                        {bag.status === "verified" ? (
+                          <span className="text-emerald-700 flex items-center gap-1">
+                            <CheckCircle2 size={14} /> Picked up ({bag.verifiedContainers ?? bag.declaredContainers})
+                          </span>
+                        ) : bag.status === "on_kerb" ? (
+                          <span className="text-amber-700 flex items-center gap-1">
+                            <Truck size={14} /> Out on kerb
+                          </span>
+                        ) : (
+                          <span className="text-slate-600">Ready at home</span>
                         )}
                       </span>
 
-                      {(bag.status === "sealed" || bag.status === "on_kerb") && (
+                      {bag.status !== "verified" && (
                         <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleStatusChange(bag.id, bag.status === "on_kerb" ? "sealed" : "on_kerb")
-                            }
-                            className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs"
-                          >
-                            {bag.status === "on_kerb" ? "Bring Inside" : "Put On Kerb"}
-                          </button>
+                          {bag.status === "sealed" ? (
+                            <button
+                              type="button"
+                              onClick={() => handleStatusChange(bag.id, "on_kerb")}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-bold"
+                            >
+                              Put on Kerb
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleStatusChange(bag.id, "sealed")}
+                              className="px-2.5 py-1 rounded-lg bg-slate-200 text-slate-700 text-[11px] font-bold"
+                            >
+                              Bring Inside
+                            </button>
+                          )}
                           <button
                             type="button"
                             aria-label={`Cancel bag ${bag.code}`}
@@ -362,8 +358,8 @@ export default function SortedBagsPage() {
                       )}
                     </div>
 
-                    <div className="hidden print:block text-[10px] text-slate-600 border-t border-slate-300 pt-1.5">
-                      THE GOOD SORT · Keep uncrushed &amp; lids off · Scan at kerb
+                    <div className="hidden print:block pt-2 border-t border-dashed border-slate-300 text-[10px] text-slate-600 font-semibold">
+                      The Good Sort · Tape to bag neck before kerb pickup · thegoodsort.org
                     </div>
                   </div>
                 );
