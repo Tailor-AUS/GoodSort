@@ -166,6 +166,24 @@ builder.Services.AddRateLimiter(options =>
                 QueueLimit = 0,
             });
     });
+
+    options.AddPolicy("bin-day-lookup", ctx =>
+    {
+        var configured = builder.Configuration["BIN_DAY_IP_RATE_PER_MINUTE"];
+        if (configured == "0")
+            return System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter("disabled");
+        if (ctx.Connection.RemoteIpAddress is null && string.IsNullOrEmpty(configured))
+            return System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter("testserver");
+        var limit = int.TryParse(configured, out var bpm) && bpm > 0 ? bpm : 30;
+        return System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = limit,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            });
+    });
 });
 
 // Forwarded headers for Azure Container Apps Envoy ingress. Without this,
@@ -751,6 +769,11 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
     if (payload is null) return Results.BadRequest(new { error = "Invalid or expired scan token. Re-take the photo." });
     if (payload.Uid != userId.Value) return Results.Forbid();
 
+    if (req.Lat is double reqLat && (!double.IsFinite(reqLat) || reqLat is < -90 or > 90))
+        return Results.BadRequest(new { error = "Valid latitude between -90 and 90 is required." });
+    if (req.Lng is double reqLng && (!double.IsFinite(reqLng) || reqLng is < -180 or > 180))
+        return Results.BadRequest(new { error = "Valid longitude between -180 and 180 is required." });
+
     // ── Unattended-deposit geofence (anti-fraud) ──
     // When the token is bound to a physical bin, the member must actually be at
     // that bin to claim credit — otherwise anyone could farm 5¢ deposits from
@@ -790,6 +813,22 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
     {
     var profile = await db.Profiles.FindAsync(userId.Value);
     if (profile is null) return Results.NotFound("User not found");
+
+    // Enforce the same 24h per-member container ceiling as POST /api/scans BEFORE
+    // spending the signed scan token so a rate-capped member does not burn their token.
+    var scanCap = int.TryParse(cfg["SCAN_DAILY_CAP"], out var sc) ? sc : 2000;
+    if (scanCap > 0)
+    {
+        var plannedContainers = payload.Items.Where(i => i.Eligible).Sum(i => Math.Clamp(i.Count, 0, 100));
+        if (plannedContainers > 0)
+        {
+            var since = DateTime.UtcNow.AddHours(-24);
+            var scansToday = await db.Scans.CountAsync(x => x.UserId == profile.Id && x.CreatedAt >= since);
+            if (scansToday >= scanCap || scansToday + plannedContainers > scanCap)
+                return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+        }
+    }
+
     var household = profile.HouseholdId.HasValue
         ? await db.Households.FindAsync(profile.HouseholdId.Value)
         : null;
@@ -1540,10 +1579,16 @@ app.MapGet("/api/growth/invite/{id:guid}", async (Guid id, GoodSortDbContext db)
 // ── Bin-day lookup — auto-fills the council recycling day from an address ──
 app.MapPost("/api/households/lookup-bin-day", async (BinDayLookupRequest req, BinDayService svc) =>
 {
+    if (!double.IsFinite(req.Lat) || !double.IsFinite(req.Lng)
+        || req.Lat is < -90 or > 90 || req.Lng is < -180 or > 180)
+        return Results.BadRequest(new { error = "Valid lat and lng coordinates are required." });
+    if (req.Address is { Length: > 300 })
+        return Results.BadRequest(new { error = "Address must be 300 characters or fewer." });
+
     var result = await svc.Lookup(req.Lat, req.Lng, req.Address);
     if (result is null) return Results.Ok(new { found = false });
     return Results.Ok(new { found = true, dayOfWeek = result.DayOfWeek, councilArea = result.CouncilArea, source = result.Source });
-});
+}).RequireRateLimiting("bin-day-lookup");
 
 // ── Next collection night — households sort today; we tell them this date.
 // confirmed=false until we are actively collecting. ──
@@ -2149,9 +2194,12 @@ app.MapPost("/api/routes/{id:guid}/optimize", async (HttpContext ctx, Guid id, G
     var route = await db.Routes.Include(r => r.Stops).Include(r => r.Depot).FirstOrDefaultAsync(r => r.Id == id);
     if (route is null) return Results.NotFound();
     if (route.DriverId != ctx.GetCallerId() && !ctx.IsAdmin()) return Results.Forbid();
+    if (route.Status is not ("pending" or "claimed" or "in_progress"))
+        return Results.BadRequest(new { error = "Only pending, claimed, or in-progress routes can be optimized." });
 
     var stops = route.Stops.OrderBy(s => s.Sequence).ToList();
     if (stops.Count < 2) return Results.Ok(new { optimized = false, reason = "Too few stops" });
+    if (route.Depot is null) return Results.Ok(new { optimized = false, reason = "Route has no depot assigned" });
 
     // OSRM /trip/ solves the TSP across waypoints. We pin the first stop as
     // the source and the depot as the destination so the runner ends at the
@@ -2162,38 +2210,49 @@ app.MapPost("/api/routes/{id:guid}/optimize", async (HttpContext ctx, Guid id, G
     coords.AddRange(stops.Skip(1).Select(s => $"{s.Lng:F6},{s.Lat:F6}"));
     coords.Add($"{route.Depot.Lng:F6},{route.Depot.Lat:F6}");
 
-    var osrmBase = config["OSRM_URL"] ?? "https://router.project-osrm.org";
+    var osrmBase = (config["OSRM_URL"] ?? "https://router.project-osrm.org").TrimEnd('/');
+    if (!Uri.TryCreate(osrmBase, UriKind.Absolute, out var osrmUri) || osrmUri.Scheme != Uri.UriSchemeHttps)
+        return Results.Ok(new { optimized = false, reason = "OSRM endpoint unavailable" });
     var url = $"{osrmBase}/trip/v1/driving/{string.Join(';', coords)}?source=first&destination=last&roundtrip=false&overview=false";
 
     var client = httpFactory.CreateClient();
     System.Text.Json.JsonElement json;
     try
     {
-        var res = await client.GetAsync(url);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ctx.RequestAborted);
+        cts.CancelAfter(TimeSpan.FromSeconds(8));
+        var res = await client.GetAsync(url, cts.Token);
         if (!res.IsSuccessStatusCode) return Results.Ok(new { optimized = false, reason = "OSRM call failed" });
-        json = await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        json = await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(cancellationToken: cts.Token);
     }
-    catch (Exception ex)
+    catch (Exception)
     {
-        return Results.Ok(new { optimized = false, reason = $"OSRM error: {ex.Message}" });
+        return Results.Ok(new { optimized = false, reason = "OSRM request timed out or failed" });
     }
 
-    if (json.GetProperty("code").GetString() != "Ok") return Results.Ok(new { optimized = false, reason = json.GetProperty("code").GetString() });
+    if (!json.TryGetProperty("code", out var codeEl) || codeEl.ValueKind != System.Text.Json.JsonValueKind.String || codeEl.GetString() != "Ok")
+        return Results.Ok(new { optimized = false, reason = "OSRM did not return a valid trip" });
 
-    var trips = json.GetProperty("trips");
-    if (trips.GetArrayLength() == 0) return Results.Ok(new { optimized = false, reason = "No trip returned" });
+    if (!json.TryGetProperty("trips", out var trips) || trips.ValueKind != System.Text.Json.JsonValueKind.Array || trips.GetArrayLength() == 0)
+        return Results.Ok(new { optimized = false, reason = "No trip returned" });
     var trip = trips[0];
-    route.EstimatedDurationMin = (int)Math.Round(trip.GetProperty("duration").GetDouble() / 60);
-    route.EstimatedDistanceKm = Math.Round(trip.GetProperty("distance").GetDouble() / 1000.0, 1);
+    if (trip.TryGetProperty("duration", out var durEl) && durEl.ValueKind == System.Text.Json.JsonValueKind.Number)
+        route.EstimatedDurationMin = (int)Math.Round(durEl.GetDouble() / 60);
+    if (trip.TryGetProperty("distance", out var distEl) && distEl.ValueKind == System.Text.Json.JsonValueKind.Number)
+        route.EstimatedDistanceKm = Math.Round(distEl.GetDouble() / 1000.0, 1);
 
     // waypoint_index gives each input coordinate's position in the optimized
     // trip. Input order was [stops[0], stops[1..n-1], depot]; we reorder only
     // the household stops (depot's optimized position is fixed by source/destination).
-    var waypoints = json.GetProperty("waypoints");
-    for (int i = 0; i < stops.Count && i < waypoints.GetArrayLength(); i++)
+    if (json.TryGetProperty("waypoints", out var waypoints) && waypoints.ValueKind == System.Text.Json.JsonValueKind.Array)
     {
-        var optimizedIdx = waypoints[i].GetProperty("waypoint_index").GetInt32();
-        stops[i].Sequence = optimizedIdx;
+        for (int i = 0; i < stops.Count && i < waypoints.GetArrayLength(); i++)
+        {
+            if (waypoints[i].TryGetProperty("waypoint_index", out var wpIdx) && wpIdx.ValueKind == System.Text.Json.JsonValueKind.Number)
+            {
+                stops[i].Sequence = wpIdx.GetInt32();
+            }
+        }
     }
 
     await db.SaveChangesAsync();
@@ -2514,7 +2573,7 @@ app.MapGet("/api/admin/users", async (GoodSortDbContext db) =>
 // ── Admin: Tomorrow's pickups + runner status ──
 app.MapGet("/api/admin/pickups/tomorrow", async (GoodSortDbContext db) =>
 {
-    var brisbane = DateTime.UtcNow.AddHours(10);
+    var brisbane = BrisbaneTime.Now;
     var tomorrowDow = (int)brisbane.AddDays(1).DayOfWeek;
 
     var households = await db.Households
@@ -2634,10 +2693,12 @@ app.MapPost("/api/admin/areas/{suburb}/allocate", async (string suburb, int? day
 {
     if (!WaitlistDensity.CanAllocateSuburb(suburb))
         return Results.BadRequest(new { error = "Not a residential suburb cluster." });
+    if (day is < 0 or > 6)
+        return Results.BadRequest(new { error = "Day of week must be between 0 (Sunday) and 6 (Saturday)." });
     var key = BinDayService.CanonicalSuburb(suburb)!;
     var inSuburb = db.Households
         .Where(h => h.Type != "unit_complex" && h.Suburb != null && h.Suburb.ToUpper() == key);
-    var containers = await inSuburb.SumAsync(h => h.PendingContainers);
+    var containers = await inSuburb.SumAsync(h => h.PendingContainers > 0 ? h.PendingContainers : 0);
     var households = await inSuburb.CountAsync();
     if (!WaitlistDensity.CanPurchase(containers))
         return Results.BadRequest(new { error = $"Need {WaitlistDensity.LiveThreshold} scanned containers in the suburb. This suburb has {containers}." });
@@ -2657,10 +2718,14 @@ app.MapPost("/api/admin/areas/{suburb}/allocate", async (string suburb, int? day
     return Results.Ok(new { suburb = key, day, allocated = rows.Count, containers });
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
-app.MapPost("/api/admin/areas/{suburb}/advance", async (string suburb, int? day, string to, GoodSortDbContext db, NotificationService notif, ILogger<Program> log) =>
+app.MapPost("/api/admin/areas/{suburb}/advance", async (string suburb, int? day, string? to, GoodSortDbContext db, NotificationService notif, ILogger<Program> log) =>
 {
     if (!WaitlistDensity.CanAllocateSuburb(suburb))
         return Results.BadRequest(new { error = "Not a residential suburb cluster." });
+    if (day is < 0 or > 6)
+        return Results.BadRequest(new { error = "Day of week must be between 0 (Sunday) and 6 (Saturday)." });
+    if (string.IsNullOrWhiteSpace(to))
+        return Results.BadRequest(new { error = "Advance to delivered or collecting only." });
     var next = to.Trim().ToLowerInvariant();
     var from = next switch
     {
@@ -3183,7 +3248,9 @@ app.MapGet("/api/marketplace/overview", async (GoodSortDbContext db, IConfigurat
 
     var activeSorters = await db.Profiles.CountAsync(p => p.TotalContainers > 0 || p.HouseholdId != null);
     var registeredRunners = await db.RunnerProfiles.CountAsync();
-    var runnersOnline = await db.RunnerProfiles.CountAsync(rp => rp.IsOnline);
+    var onlineCutoff = DateTime.UtcNow - PricingService.OnlineRunnerFreshness;
+    var runnersOnline = await db.RunnerProfiles.CountAsync(
+        rp => rp.IsOnline && rp.LastLocationAt != null && rp.LastLocationAt >= onlineCutoff);
     var totalContainersSorted = await db.Profiles.SumAsync(p => p.TotalContainers);
     var totalBagsOnKerb = await db.SortedBags.CountAsync(b => b.Status == "on_kerb");
 
@@ -3234,6 +3301,18 @@ app.MapGet("/api/marketplace/overview", async (GoodSortDbContext db, IConfigurat
     });
 });
 
+var allowedRunnerVehicleTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+{
+    "car", "ute", "van", "suv", "bike", "cargo_bike", "scooter", "walk", "truck",
+};
+
+static string SanitizeSingleLine(string? value, int maxLen)
+{
+    if (string.IsNullOrWhiteSpace(value)) return "";
+    var cleaned = new string(value.Trim().Where(c => !char.IsControl(c)).ToArray());
+    return cleaned.Length <= maxLen ? cleaned : cleaned[..maxLen];
+}
+
 // ── Runner: Register as runner ──
 app.MapPost("/api/runner/register", async (HttpContext ctx, RunnerRegisterRequest req, GoodSortDbContext db) =>
 {
@@ -3241,6 +3320,10 @@ app.MapPost("/api/runner/register", async (HttpContext ctx, RunnerRegisterReques
     if (profileId is null) return Results.Unauthorized();
     var profile = await db.Profiles.FindAsync(profileId.Value);
     if (profile is null) return Results.NotFound("Profile not found");
+
+    var vehicleType = string.IsNullOrWhiteSpace(req.VehicleType) ? "car" : req.VehicleType.Trim().ToLowerInvariant();
+    if (!allowedRunnerVehicleTypes.Contains(vehicleType))
+        return Results.BadRequest(new { error = "VehicleType must be one of: car, ute, van, suv, bike, cargo_bike, scooter, walk, truck." });
 
     if (req.CapacityBags is < 1 or > 100)
         return Results.BadRequest(new { error = "Bag capacity must be between 1 and 100." });
@@ -3252,26 +3335,23 @@ app.MapPost("/api/runner/register", async (HttpContext ctx, RunnerRegisterReques
     {
         if (!string.IsNullOrWhiteSpace(req.CoexSchemeId))
         {
-            var trimmed = req.CoexSchemeId.Trim().ToUpperInvariant();
-            existing.CoexSchemeId = trimmed[..Math.Min(32, trimmed.Length)];
+            var trimmed = SanitizeSingleLine(req.CoexSchemeId, 32).ToUpperInvariant();
+            existing.CoexSchemeId = trimmed.Length == 0 ? null : trimmed;
             await db.SaveChangesAsync();
         }
         return Results.Ok(existing);
     }
 
-    var schemeId = string.IsNullOrWhiteSpace(req.CoexSchemeId)
-        ? null
-        : req.CoexSchemeId.Trim().ToUpperInvariant()[..Math.Min(32, req.CoexSchemeId.Trim().Length)];
-
+    var schemeId = SanitizeSingleLine(req.CoexSchemeId, 32).ToUpperInvariant();
     var runner = new RunnerProfile
     {
         ProfileId = profile.Id,
-        VehicleType = req.VehicleType ?? "car",
-        VehicleMake = req.VehicleMake ?? "",
-        VehicleRego = req.VehicleRego ?? "",
+        VehicleType = vehicleType,
+        VehicleMake = SanitizeSingleLine(req.VehicleMake, 80),
+        VehicleRego = SanitizeSingleLine(req.VehicleRego, 16).ToUpperInvariant(),
         CapacityBags = req.CapacityBags ?? 10,
         ServiceRadiusKm = req.ServiceRadiusKm ?? 10.0,
-        CoexSchemeId = schemeId,
+        CoexSchemeId = schemeId.Length == 0 ? null : schemeId,
     };
     profile.Role = "both";
     db.RunnerProfiles.Add(runner);
@@ -3291,19 +3371,26 @@ app.MapGet("/api/runner/profile/{profileId:guid}", async (HttpContext ctx, Guid 
 app.MapPatch("/api/runner/profile/{profileId:guid}", async (HttpContext ctx, Guid profileId, RunnerProfileUpdateRequest req, GoodSortDbContext db) =>
 {
     if (!ctx.IsOwnerOrAdmin(profileId)) return Results.Forbid();
+    string? normalizedVehicleType = null;
+    if (req.VehicleType is not null)
+    {
+        normalizedVehicleType = req.VehicleType.Trim().ToLowerInvariant();
+        if (!allowedRunnerVehicleTypes.Contains(normalizedVehicleType))
+            return Results.BadRequest(new { error = "VehicleType must be one of: car, ute, van, suv, bike, cargo_bike, scooter, walk, truck." });
+    }
     if (req.CapacityBags is < 1 or > 100)
         return Results.BadRequest(new { error = "Bag capacity must be between 1 and 100." });
     if (req.ServiceRadiusKm is <= 0 or > 200 || (req.ServiceRadiusKm is double radius && !double.IsFinite(radius)))
         return Results.BadRequest(new { error = "Service radius must be between 1 and 200 km." });
     var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == profileId);
     if (runner is null) return Results.NotFound();
-    if (req.VehicleType is not null) runner.VehicleType = req.VehicleType;
+    if (normalizedVehicleType is not null) runner.VehicleType = normalizedVehicleType;
     if (req.CapacityBags.HasValue) runner.CapacityBags = req.CapacityBags.Value;
     if (req.ServiceRadiusKm.HasValue) runner.ServiceRadiusKm = req.ServiceRadiusKm.Value;
     if (req.CoexSchemeId is not null)
     {
-        var trimmed = req.CoexSchemeId.Trim().ToUpperInvariant();
-        runner.CoexSchemeId = trimmed.Length == 0 ? null : trimmed[..Math.Min(32, trimmed.Length)];
+        var trimmed = SanitizeSingleLine(req.CoexSchemeId, 32).ToUpperInvariant();
+        runner.CoexSchemeId = trimmed.Length == 0 ? null : trimmed;
     }
     await db.SaveChangesAsync();
     return Results.Ok(runner);
@@ -3316,6 +3403,10 @@ app.MapPost("/api/runner/heartbeat", async (HttpContext ctx, RunnerHeartbeatRequ
     // anyone toggle another runner's online/location.
     var profileId = ctx.GetCallerId();
     if (profileId is null) return Results.Unauthorized();
+    if (!double.IsFinite(req.Lat) || !double.IsFinite(req.Lng)
+        || req.Lat is < -90 or > 90 || req.Lng is < -180 or > 180)
+        return Results.BadRequest(new { error = "Valid lat and lng coordinates are required." });
+
     var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == profileId.Value);
     if (runner is null) return Results.NotFound();
     runner.IsOnline = req.IsOnline;

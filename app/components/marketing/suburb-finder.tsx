@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { track } from "@/lib/analytics";
@@ -9,6 +9,7 @@ import { BRISBANE_SUBURBS, wedgeSuburbs } from "@/lib/brisbane";
 const WEDGE_CHIPS = wedgeSuburbs().slice(0, 8);
 
 export function SuburbFinder() {
+  const inputId = useId();
   const router = useRouter();
   const [q, setQ] = useState("");
   const matches = useMemo(() => {
@@ -22,11 +23,11 @@ export function SuburbFinder() {
 
   return (
     <div className="w-full max-w-md mb-8">
-      <label htmlFor="suburb-finder" className="block text-[12px] font-semibold text-slate-600 mb-2">
+      <label htmlFor={inputId} className="block text-[12px] font-semibold text-slate-600 mb-2">
         What suburb are you in?
       </label>
       <input
-        id="suburb-finder"
+        id={inputId}
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Moorooka, West End, …"

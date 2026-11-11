@@ -50,6 +50,7 @@ export function StreetCard({ suburb, slug }: { suburb: string; slug: string }) {
           Four cards per A4. Print, cut, and letterbox them in {suburb}.
         </p>
         <button
+          type="button"
           onClick={() => window.print()}
           className="mt-3 rounded-xl bg-gradient-to-b from-green-500 to-green-600 px-5 py-3 text-white font-bold text-[15px]"
         >
