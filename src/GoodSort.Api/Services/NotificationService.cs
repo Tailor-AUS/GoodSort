@@ -238,14 +238,14 @@ public class NotificationService
                 <div style='background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px;margin:16px 0'>
                   <p style='font-size:12px;color:#166534;margin:0 0 4px;text-transform:uppercase;letter-spacing:.05em'>Sorting credit on your account</p>
                   <p style='font-size:28px;font-weight:800;color:#166534;margin:0'>${member.ClearedCents / 100.0:F2}</p>
-                  <p style='font-size:12px;color:#166534;margin:8px 0 0'>From the runner count at pickup. Bank transfer from $20 once payouts are live.</p>
+                  <p style='font-size:12px;color:#166534;margin:8px 0 0'>From the runner count at pickup. Cash out via PayID or bank transfer from $20.</p>
                 </div>
                 <p style='font-size:13px;line-height:1.55'>Bring bags back inside when you&apos;re ready.</p>
                 <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {addressHtml}</p>
               </div>";
             try
             {
-                var msg = new EmailMessage(sender, member.Email!, new EmailContent("We picked up your containers — earnings updated") { Html = body });
+                var msg = new EmailMessage(sender, member.Email!, new EmailContent(SingleLineSubject("We picked up your containers — earnings updated")) { Html = body });
                 await client.SendAsync(Azure.WaitUntil.Started, msg);
             }
             catch (Exception ex) { _log.LogError(ex, "Pickup confirmation email failed for {Email}", member.Email); }

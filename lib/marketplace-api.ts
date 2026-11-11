@@ -1,7 +1,7 @@
 // The Good Sort — Marketplace API Client
 // All runner marketplace, gamification, and pricing API calls
 
-import { apiUrl } from "./config.ts";
+import { apiUrl, readStoredProfileId } from "./config.ts";
 import type {
   RunnerProfile,
   MarketplaceRun,
@@ -47,12 +47,12 @@ function getStoredUserId(): string | null {
       const raw = localStorage.getItem(key);
       if (!raw) continue;
       const id = JSON.parse(raw)?.id;
-      if (typeof id === "string" && id.length > 0) return id;
+      if (typeof id === "string" && id.trim().length > 0) return id.trim();
     } catch {
       // try next key
     }
   }
-  return null;
+  return readStoredProfileId() ?? null;
 }
 
 // ── Runner Profile ──
