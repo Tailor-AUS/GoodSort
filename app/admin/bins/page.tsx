@@ -28,7 +28,10 @@ export default function AdminBinsPage() {
   const [err, setErr] = useState<string | null>(null);
 
   function reload() {
-    fetch(apiUrl("/api/bins")).then(r => r.json()).then(setBins).catch(() => {});
+    fetch(apiUrl("/api/bins"), { headers: authHeaders() })
+      .then(r => (r.ok ? r.json() : []))
+      .then((rows) => setBins(Array.isArray(rows) ? rows : []))
+      .catch(() => {});
   }
   useEffect(() => { reload(); }, []);
 

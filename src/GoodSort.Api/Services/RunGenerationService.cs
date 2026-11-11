@@ -35,44 +35,7 @@ public class RunGenerationService : BackgroundService
         {
             try
             {
-                using var scope = _services.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
-                var pricing = scope.ServiceProvider.GetRequiredService<PricingService>();
-
-                // One replica only. This service runs inside every container
-                // instance and the app scales to ten, so without the lease ten
-                // copies generate runs over the same bins at once — several
-                // drivers paid to collect the same containers, and vans sent to
-                // kerbs another driver already emptied.
-                //
-                // TTL is twice the interval so a pass is never interrupted
-                // mid-flight, and a crashed holder blocks the next pass by at
-                // most an hour rather than forever.
-                if (!await SingletonLease.TryAcquire(db, LeaseName, TimeSpan.FromMinutes(60), ct: stoppingToken))
-                {
-                    _logger.LogDebug("Another replica holds {Lease}; skipping this pass", LeaseName);
-                }
-                else
-                {
-                    try
-                    {
-                        await ExpireOldRuns(db);
-                        await GenerateRuns(db, pricing);
-                        await AbsorbFullBinHouseholds(db);
-
-                        if ((DateTime.UtcNow - _lastRepriceAt).TotalMinutes >= 30)
-                        {
-                            await pricing.RepriceAvailableRuns();
-                            _lastRepriceAt = DateTime.UtcNow;
-                        }
-                    }
-                    finally
-                    {
-                        // Hand it back rather than making the next pass wait out
-                        // the whole TTL. Expiry remains the real safety net.
-                        await SingletonLease.Release(db, LeaseName, ct: stoppingToken);
-                    }
-                }
+                await TriggerNowAsync(stoppingToken);
             }
             catch (Exception ex)
             {
@@ -80,6 +43,51 @@ public class RunGenerationService : BackgroundService
             }
 
             await Task.Delay(TimeSpan.FromMinutes(30), stoppingToken);
+        }
+    }
+
+    public async Task<(bool AcquiredLease, int AvailableRuns)> TriggerNowAsync(CancellationToken ct = default)
+    {
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
+        var pricing = scope.ServiceProvider.GetRequiredService<PricingService>();
+
+        // One replica only. This service runs inside every container
+        // instance and the app scales to ten, so without the lease ten
+        // copies generate runs over the same bins at once — several
+        // drivers paid to collect the same containers, and vans sent to
+        // kerbs another driver already emptied.
+        //
+        // TTL is twice the interval so a pass is never interrupted
+        // mid-flight, and a crashed holder blocks the next pass by at
+        // most an hour rather than forever.
+        if (!await SingletonLease.TryAcquire(db, LeaseName, TimeSpan.FromMinutes(60), ct: ct))
+        {
+            _logger.LogDebug("Another replica holds {Lease}; skipping this pass", LeaseName);
+            var existingAvailable = await db.Runs.CountAsync(r => r.Status == "available", ct);
+            return (false, existingAvailable);
+        }
+
+        try
+        {
+            await ExpireOldRuns(db);
+            await GenerateRuns(db, pricing);
+            await AbsorbFullBinHouseholds(db);
+
+            if ((DateTime.UtcNow - _lastRepriceAt).TotalMinutes >= 30)
+            {
+                await pricing.RepriceAvailableRuns();
+                _lastRepriceAt = DateTime.UtcNow;
+            }
+
+            var availableCount = await db.Runs.CountAsync(r => r.Status == "available", ct);
+            return (true, availableCount);
+        }
+        finally
+        {
+            // Hand it back rather than making the next pass wait out
+            // the whole TTL. Expiry remains the real safety net.
+            await SingletonLease.Release(db, LeaseName, ct: ct);
         }
     }
 

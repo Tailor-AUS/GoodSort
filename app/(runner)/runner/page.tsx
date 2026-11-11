@@ -11,7 +11,7 @@ import {
   getRunnerProfile, getAvailableRuns, getActiveRun,
   claimRun, startRun, arriveAtStop, pickupStop, skipStop,
   deliverRun, completeRun, settleRun, getRunnerEarnings, getLeaderboard,
-  sendHeartbeat, registerAsRunner,
+  sendHeartbeat,
 } from "@/lib/marketplace-api";
 import { MapView } from "@/app/components/shared/map-view";
 import { RunnerSheet } from "./components/runner-sheet";
@@ -20,6 +20,7 @@ import { AccountPanel } from "@/app/components/shared/account-panel";
 
 export default function RunnerApp() {
   const [user, setUser] = useState<User | null>(null);
+  const [hasRunnerProfile, setHasRunnerProfile] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [bins, setBins] = useState<SortBin[]>([]);
   const [depot, setDepot] = useState<Depot | null>(null);
@@ -53,12 +54,16 @@ export default function RunnerApp() {
     setBins(apiBins);
     setDepot(apiDepots[0] || null);
 
-    // Ensure runner profile exists
-    let runnerProfile = await getRunnerProfile(currentUser.id).catch(() => null);
+    // Check whether the member has explicitly registered a Runner profile.
+    // Visiting /runner must NEVER silently auto-enroll a Home Sorter as a Runner
+    // or start posting location heartbeats without vehicle/terms consent.
+    const runnerProfile = await getRunnerProfile(currentUser.id).catch(() => null);
+    setHasRunnerProfile(Boolean(runnerProfile));
     if (!runnerProfile) {
-      runnerProfile = await registerAsRunner(currentUser.id).catch(() => null);
+      setRunnerId(undefined);
+      return;
     }
-    if (runnerProfile) setRunnerId(runnerProfile.id);
+    setRunnerId(runnerProfile.id);
 
     // Load marketplace data in parallel
     const [runs, active, earningsData, boardData] = await Promise.all([
@@ -93,9 +98,9 @@ export default function RunnerApp() {
     refreshData().then(() => setLoading(false));
   }, [refreshData]);
 
-  // Location heartbeat every 60s when authenticated and online
+  // Location heartbeat every 60s when authenticated as an enrolled Runner
   useEffect(() => {
-    if (!user) return;
+    if (!user || !hasRunnerProfile) return;
     heartbeatRef.current = setInterval(() => {
       sendHeartbeat(userLat, userLng, true).catch(() => {});
     }, 60000);
@@ -107,7 +112,7 @@ export default function RunnerApp() {
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
       sendHeartbeat(userLat, userLng, false).catch(() => {}); // Go offline
     };
-  }, [user, userLat, userLng]);
+  }, [user, hasRunnerProfile, userLat, userLng]);
 
   // ── Marketplace Actions ──
 
@@ -246,6 +251,39 @@ export default function RunnerApp() {
           <div className="flex items-center justify-center gap-4 text-[13px] font-semibold">
             <Link href="/login" className="text-slate-600 hover:text-slate-900 py-2 min-h-[44px] flex items-center">
               Sign in
+            </Link>
+            <span className="text-slate-300">·</span>
+            <Link href="/marketplace" className="text-emerald-700 hover:text-emerald-900 py-2 min-h-[44px] flex items-center">
+              Suburb map
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (hasRunnerProfile === false) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center bg-white px-6">
+        <div className="w-full max-w-sm text-center">
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700 mb-2">
+            Suburb Runner · Brisbane
+          </p>
+          <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-2">
+            Become a Suburb Runner
+          </h1>
+          <p className="text-[13px] text-slate-500 leading-relaxed mb-6">
+            Add your vehicle details first to claim 1,000-container suburb runs, scan kerbside QR bag tags, and earn driver bounties.
+          </p>
+          <Link
+            href="/runner/signup"
+            className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-4 rounded-2xl text-[15px] shadow-lg shadow-green-600/20 flex items-center justify-center min-h-[48px] mb-3"
+          >
+            Register your vehicle
+          </Link>
+          <div className="flex items-center justify-center gap-4 text-[13px] font-semibold">
+            <Link href="/sort" className="text-slate-600 hover:text-slate-900 py-2 min-h-[44px] flex items-center">
+              Back to home sorting
             </Link>
             <span className="text-slate-300">·</span>
             <Link href="/marketplace" className="text-emerald-700 hover:text-emerald-900 py-2 min-h-[44px] flex items-center">

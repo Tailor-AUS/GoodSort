@@ -22,6 +22,10 @@ namespace GoodSort.Api.Services;
 /// </summary>
 public static class PerceptualHash
 {
+    public const int MaxEncodedLength = 14_000_000; // ~10.5 MB decoded ceiling
+    public const int MaxDimensionPx = 8192;
+    public const long MaxTotalPixels = 25_000_000;
+
     /// <summary>
     /// Compute the 64-bit dHash of a base64-encoded image (data-URI prefix
     /// tolerated). Returns null if the bytes can't be decoded as an image, so
@@ -31,8 +35,22 @@ public static class PerceptualHash
     {
         try
         {
+            if (string.IsNullOrWhiteSpace(base64Image) || base64Image.Length > MaxEncodedLength)
+                return null;
+
             var raw = base64Image.Contains(',') ? base64Image.Split(',')[1] : base64Image;
             var bytes = Convert.FromBase64String(raw);
+            var info = Image.Identify(bytes);
+            if (info is null
+                || info.Width <= 0
+                || info.Height <= 0
+                || info.Width > MaxDimensionPx
+                || info.Height > MaxDimensionPx
+                || (long)info.Width * info.Height > MaxTotalPixels)
+            {
+                return null;
+            }
+
             using var image = Image.Load<L8>(bytes); // decode straight to 8-bit greyscale
 
             // 9 wide × 8 tall → 8 horizontal comparisons per row.

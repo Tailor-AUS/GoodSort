@@ -65,6 +65,14 @@ export default function RunnerSignupPage() {
         setLoading(false);
         return;
       }
+      localStorage.setItem(
+        "goodsort_profile",
+        JSON.stringify({
+          ...storedProfile,
+          ...(profileId ? { id: profileId } : {}),
+          role: "both",
+        }),
+      );
       router.push("/runner");
     } catch {
       setError("Something went wrong.");

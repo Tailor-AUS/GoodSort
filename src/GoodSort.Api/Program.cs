@@ -25,7 +25,8 @@ builder.Services.AddScoped<PricingService>();
 builder.Services.AddScoped<RunnerService>();
 builder.Services.AddScoped<BinDayService>();
 builder.Services.AddScoped<NotificationService>();
-builder.Services.AddHostedService<RunGenerationService>();
+builder.Services.AddSingleton<RunGenerationService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<RunGenerationService>());
 builder.Services.AddScoped<PickupReminderService>();
 builder.Services.AddHostedService<PickupReminderHost>();
 builder.Services.AddHostedService<GrowthEventRetentionHost>();
@@ -269,30 +270,30 @@ for (var i = 0; i < 10; i++)
         {
             await db.Database.MigrateAsync();
             app.Logger.LogInformation("Database migration completed successfully");
+        }
 
-            var seedAdminEmail = builder.Configuration["ADMIN_SEED_EMAIL"]?.Trim().ToLowerInvariant();
-            if (!string.IsNullOrWhiteSpace(seedAdminEmail))
+        var seedAdminEmail = builder.Configuration["ADMIN_SEED_EMAIL"]?.Trim().ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(seedAdminEmail))
+        {
+            var seedProfile = await db.Profiles.FirstOrDefaultAsync(
+                p => p.Email == seedAdminEmail || p.Phone == seedAdminEmail);
+            if (seedProfile is null)
             {
-                var seedProfile = await db.Profiles.FirstOrDefaultAsync(
-                    p => p.Email == seedAdminEmail || p.Phone == seedAdminEmail);
-                if (seedProfile is null)
+                db.Profiles.Add(new Profile
                 {
-                    db.Profiles.Add(new Profile
-                    {
-                        Name = seedAdminEmail.Split('@')[0],
-                        Email = seedAdminEmail,
-                        Phone = seedAdminEmail,
-                        IsAdmin = true,
-                    });
-                    await db.SaveChangesAsync();
-                    app.Logger.LogInformation("Seeded standalone admin profile for {Email}", seedAdminEmail);
-                }
-                else if (!seedProfile.IsAdmin)
-                {
-                    seedProfile.IsAdmin = true;
-                    await db.SaveChangesAsync();
-                    app.Logger.LogInformation("Promoted standalone admin profile for {Email}", seedAdminEmail);
-                }
+                    Name = seedAdminEmail.Split('@')[0],
+                    Email = seedAdminEmail,
+                    Phone = seedAdminEmail,
+                    IsAdmin = true,
+                });
+                await db.SaveChangesAsync();
+                app.Logger.LogInformation("Seeded standalone admin profile for {Email}", seedAdminEmail);
+            }
+            else if (!seedProfile.IsAdmin)
+            {
+                seedProfile.IsAdmin = true;
+                await db.SaveChangesAsync();
+                app.Logger.LogInformation("Promoted standalone admin profile for {Email}", seedAdminEmail);
             }
         }
 
@@ -492,17 +493,38 @@ app.MapGet("/api/bins/code/{code}", async (string code, GoodSortDbContext db) =>
     });
 });
 
-app.MapPost("/api/bins", async (Bin bin, GoodSortDbContext db) =>
+app.MapPost("/api/bins", async (AdminCreateBinRequest req, GoodSortDbContext db) =>
 {
-    if (string.IsNullOrEmpty(bin.Code))
+    if (string.IsNullOrWhiteSpace(req.Name) || string.IsNullOrWhiteSpace(req.Address))
+        return Results.BadRequest(new { error = "Bin name and address are required." });
+    if (!double.IsFinite(req.Lat) || !double.IsFinite(req.Lng) || (req.Lat == 0 && req.Lng == 0))
+        return Results.BadRequest(new { error = "Valid coordinates are required." });
+
+    var code = string.IsNullOrWhiteSpace(req.Code)
+        ? $"GS-{await db.Bins.CountAsync() + 1:D4}"
+        : req.Code.Trim().ToUpperInvariant();
+
+    // Admin-only AND server-owned ledger fields. Previously this bound the raw
+    // Bin entity under .RequireAuthorization(), allowing any signed-in caller
+    // to create a public bin with arbitrary PendingContainers and claim/settle
+    // the resulting marketplace run into cash-out-eligible ClearedCents.
+    var bin = new Bin
     {
-        var count = await db.Bins.CountAsync() + 1;
-        bin.Code = $"GS-{count:D4}";
-    }
+        Code = code,
+        Name = req.Name.Trim(),
+        Address = req.Address.Trim(),
+        Lat = req.Lat,
+        Lng = req.Lng,
+        HostedBy = string.IsNullOrWhiteSpace(req.HostedBy) ? null : req.HostedBy.Trim(),
+        HouseholdId = null,
+        PendingContainers = 0,
+        PendingValueCents = 0,
+        Status = "active",
+    };
     db.Bins.Add(bin);
     await db.SaveChangesAsync();
     return Results.Created($"/api/bins/{bin.Id}", bin);
-}).RequireAuthorization();
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
 
 app.MapGet("/api/bins/{id:guid}/qr", (Guid id, GoodSortDbContext db) =>
 {
@@ -1583,28 +1605,29 @@ app.MapGet("/api/profiles/{id:guid}/network", async (HttpContext ctx, Guid id, G
     });
 }).RequireAuthorization();
 
-app.MapPost("/api/profiles", async (HttpContext ctx, Profile profile, GoodSortDbContext db) =>
+app.MapPost("/api/profiles", async (HttpContext ctx, ProfileCreateRequest req, GoodSortDbContext db) =>
 {
-    // Self-create only — profile creation should normally happen via /verify-otp.
-    // Force IsAdmin=false; admin flag is set out-of-band only.
-    // Refuse rather than fall back to the body. `?? profile.Id` meant "if I
-    // cannot identify you, trust the id you sent" — and the next line does
-    // FindAsync on it, returning that profile. A token without a usable caller
-    // claim would have read someone else's record back.
-    //
-    // Not reachable today: every JWT this service mints carries the claim. But
-    // it was the only GetCallerId() ?? fallback in the codebase — every sibling,
-    // /api/runner/register included, returns Unauthorized instead — and
-    // "trust the client when the server is unsure" is the shape behind most of
-    // what this week turned up.
+    // Self-create only — profile creation normally happens via /verify-otp.
+    // Bind ProfileCreateRequest (Name only), NEVER the raw Profile entity:
+    // deleting a profile via DELETE /api/profiles/{id} leaves the stateless JWT
+    // valid, so binding Profile directly would let a caller re-create their own
+    // row with arbitrary ClearedCents, PendingCents, or someone else's HouseholdId.
     var callerId = ctx.GetCallerId();
     if (callerId is null) return Results.Unauthorized();
-    profile.Id = callerId.Value;
-    profile.IsAdmin = false;
-    // Idempotent: the authenticated caller almost always already has a profile
-    // (minted at verify-otp), so a naive Add would throw a primary-key conflict.
-    var existing = await db.Profiles.FindAsync(profile.Id);
+    var existing = await db.Profiles.FindAsync(callerId.Value);
     if (existing is not null) return Results.Ok(existing);
+
+    var profile = new Profile
+    {
+        Id = callerId.Value,
+        Name = (req.Name ?? "").Trim(),
+        IsAdmin = false,
+        Role = "sorter",
+        PendingCents = 0,
+        ClearedCents = 0,
+        TotalContainers = 0,
+        TotalCo2SavedKg = 0,
+    };
     db.Profiles.Add(profile);
     await db.SaveChangesAsync();
     return Results.Created($"/api/profiles/{profile.Id}", profile);
@@ -2451,8 +2474,24 @@ app.MapPatch("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, Profile
     if (!ctx.IsOwnerOrAdmin(id)) return Results.Forbid();
     var profile = await db.Profiles.FindAsync(id);
     if (profile is null) return Results.NotFound();
-    if (req.Name is not null) profile.Name = req.Name;
-    if (req.HouseholdId is not null) profile.HouseholdId = req.HouseholdId;
+    if (req.Name is not null) profile.Name = req.Name.Trim();
+    if (req.HouseholdId is Guid targetHhId && profile.HouseholdId != targetHhId)
+    {
+        // Guard cross-tenant household attachment: attaching to another member's
+        // HouseholdId would satisfy CallerCanAccessHousehold and expose their
+        // street address, coordinates, QR bags, and settlement payee list.
+        if (!ctx.IsAdmin())
+        {
+            if (profile.HouseholdId is not null)
+                return Results.Forbid();
+            if (!await db.Households.AnyAsync(h => h.Id == targetHhId))
+                return Results.NotFound("Household not found");
+            var occupiedByAnother = await db.Profiles.AnyAsync(p => p.HouseholdId == targetHhId && p.Id != profile.Id);
+            if (occupiedByAnother)
+                return Results.Forbid();
+        }
+        profile.HouseholdId = targetHhId;
+    }
     await db.SaveChangesAsync();
     return Results.Ok(profile);
 }).RequireAuthorization();
@@ -2885,6 +2924,10 @@ app.MapGet("/api/runner/profile/{profileId:guid}", async (HttpContext ctx, Guid 
 app.MapPatch("/api/runner/profile/{profileId:guid}", async (HttpContext ctx, Guid profileId, RunnerProfileUpdateRequest req, GoodSortDbContext db) =>
 {
     if (!ctx.IsOwnerOrAdmin(profileId)) return Results.Forbid();
+    if (req.CapacityBags is < 1 or > 100)
+        return Results.BadRequest(new { error = "Bag capacity must be between 1 and 100." });
+    if (req.ServiceRadiusKm is <= 0 or > 200 || (req.ServiceRadiusKm is double radius && !double.IsFinite(radius)))
+        return Results.BadRequest(new { error = "Service radius must be between 1 and 200 km." });
     var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == profileId);
     if (runner is null) return Results.NotFound();
     if (req.VehicleType is not null) runner.VehicleType = req.VehicleType;
@@ -3569,6 +3612,13 @@ app.MapGet("/api/admin/marketplace/runs", async (string? status, GoodSortDbConte
     return Results.Ok(await q.OrderByDescending(r => r.CreatedAt).Take(100).ToListAsync());
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
+// ── Admin: Trigger marketplace run generation immediately (coordinates via SingletonLease) ──
+app.MapPost("/api/admin/marketplace/runs/generate", async (RunGenerationService runGen, CancellationToken ct) =>
+{
+    var (acquiredLease, availableRuns) = await runGen.TriggerNowAsync(ct);
+    return Results.Ok(new { acquiredLease, availableRuns });
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
+
 // ── Admin: Reset pre-launch database to clean startup baseline ──
 app.MapPost("/api/admin/reset-baseline", async (HttpContext ctx, AdminResetBaselineRequest req, GoodSortDbContext db, IConfiguration cfg, ILogger<Program> log) =>
 {
@@ -3684,7 +3734,9 @@ static double HaversineKm(double lat1, double lng1, double lat2, double lng2)
     return R * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
 }
 
+record ProfileCreateRequest(string? Name);
 record ProfileUpdateRequest(string? Name, Guid? HouseholdId);
+record AdminCreateBinRequest(string? Code, string Name, string Address, double Lat, double Lng, string? HostedBy = null);
 record PayoutDetailsUpdateRequest(string Method, string? PayIdType, string? PayIdValue, string? Bsb, string? AccountNumber, string AccountName, string? MemberName = null);
 // NOTE: caller-supplied UserId fields are ignored; endpoints read the caller from the JWT.
 // Kept on the record for frontend backwards compatibility — safe to remove once frontend stops sending them.
