@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Home, Package, Users, Weight, Recycle } from "lucide-react";
 import { apiUrl, authHeaders, hasValidToken, readStoredProfile } from "@/lib/config";
+import { getUserApi } from "@/lib/store-api";
 import { formatCents } from "@/lib/store";
 import { DAY_NAMES, isCollecting, LIVE_VOLUME_THRESHOLD, sameSuburb, streetStatsForViewer, type GrowthSuburb, householdCountsTowardUnlock } from "@/lib/brisbane";
 import { WaitlistCard } from "@/app/components/shared/waitlist-card";
@@ -64,10 +65,11 @@ export default function HouseholdPage() {
         return;
       }
       try {
-        const [house, pickup, g] = await Promise.all([
+        const [house, pickup, g, liveUser] = await Promise.all([
           fetch(apiUrl(`/api/households/${hhId}`), { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)),
           fetch(apiUrl(`/api/households/${hhId}/next-pickup`), { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
           fetch(apiUrl("/api/growth/brisbane")).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+          getUserApi().catch(() => null),
         ]);
         if (!house) {
           setErr("Couldn't load household.");
@@ -80,17 +82,22 @@ export default function HouseholdPage() {
           const match = g.suburbs.find((s: GrowthSuburb) => sameSuburb(s.suburb, house.suburb));
           setGrowth(streetStatsForViewer(match, house.councilCollectionDay, householdCountsTowardUnlock(house)));
         }
+        setMembers([
+          {
+            id: liveUser?.id || (typeof profile.id === "string" ? profile.id : "me"),
+            email: typeof profile.email === "string" ? profile.email : null,
+            name: liveUser?.name || (typeof profile.name === "string" && profile.name ? profile.name : "You"),
+            totalContainers:
+              typeof liveUser?.totalContainers === "number"
+                ? liveUser.totalContainers
+                : typeof profile.totalContainers === "number"
+                  ? profile.totalContainers
+                  : 0,
+          },
+        ]);
       } catch {
         setErr("Couldn't load household.");
       }
-      setMembers([
-        {
-          id: typeof profile.id === "string" ? profile.id : "me",
-          email: typeof profile.email === "string" ? profile.email : null,
-          name: typeof profile.name === "string" && profile.name ? profile.name : "You",
-          totalContainers: typeof profile.totalContainers === "number" ? profile.totalContainers : 0,
-        },
-      ]);
     }
     void loadHousehold();
   }, []);

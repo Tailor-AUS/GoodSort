@@ -170,7 +170,7 @@ export function getStreamById(id: number): Stream | undefined {
 export const CDS_REFUND_CENTS = 10;
 
 /** What the household earns per sorted container. */
-export const SORTER_CREDIT_CENTS = 5;
+export const SORTER_CREDIT_CENTS = 10;
 
 /** What the runner earns per collected container (variable via PricingService, this is the default). */
 export const RUNNER_CREDIT_CENTS = 3;

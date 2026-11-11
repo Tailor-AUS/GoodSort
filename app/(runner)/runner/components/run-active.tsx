@@ -23,6 +23,9 @@ import {
 } from "@/lib/marketplace";
 import { getStopManifest, scanBagAtStop } from "@/lib/marketplace-api";
 
+const MAX_STOP_CONTAINERS = 2000;
+const MAX_DEPOT_CONTAINERS = 50_000;
+
 interface RunActiveProps {
   run: RunDetail;
   onStart: () => void;
@@ -157,7 +160,7 @@ export function RunActive({
 
   function openNavigation(stop: RunStopDetail) {
     const url = `https://www.google.com/maps/dir/?api=1&destination=${stop.lat},${stop.lng}&travelmode=driving`;
-    window.open(url, "_blank");
+    window.open(url, "_blank", "noopener,noreferrer");
   }
 
   // ═══════ CLAIMED — Ready to start ═══════
@@ -327,6 +330,7 @@ export function RunActive({
           <div className="flex gap-1.5">
             <input
               type="text"
+              aria-label="Manual QR bag code"
               value={manualBagCode}
               onChange={(e) => setManualBagCode(e.target.value.toUpperCase())}
               placeholder="Or type Sharpie code e.g. GSB-ALU-..."
@@ -368,12 +372,12 @@ export function RunActive({
                   type="number"
                   aria-label="Verified containers at stop"
                   min={0}
-                  max={200}
+                  max={MAX_STOP_CONTAINERS}
                   value={count}
                   onChange={(e) =>
                     setPickupCount({
                       ...pickupCount,
-                      [currentStop.id]: Math.max(0, Math.min(200, Number(e.target.value) || 0)),
+                      [currentStop.id]: Math.max(0, Math.min(MAX_STOP_CONTAINERS, Math.round(Number(e.target.value) || 0))),
                     })
                   }
                   className="w-20 text-2xl font-display font-extrabold text-slate-900 text-center bg-transparent border-b border-slate-200 focus:outline-none"
@@ -381,7 +385,7 @@ export function RunActive({
                 <button
                   type="button"
                   aria-label="Increase container count by 5"
-                  onClick={() => setPickupCount({ ...pickupCount, [currentStop.id]: count + 5 })}
+                  onClick={() => setPickupCount({ ...pickupCount, [currentStop.id]: Math.min(MAX_STOP_CONTAINERS, count + 5) })}
                   className="w-10 h-10 rounded-full bg-slate-100 text-slate-600 font-bold text-lg flex items-center justify-center"
                 >
                   +
@@ -429,6 +433,7 @@ export function RunActive({
               {(discrepancyCode !== "none" || contaminationFlag) && (
                 <input
                   type="text"
+                  aria-label="Discrepancy note"
                   value={discrepancyNote}
                   onChange={(e) => setDiscrepancyNote(e.target.value)}
                   placeholder="Short note (optional)"
@@ -480,7 +485,7 @@ export function RunActive({
               type="button"
               onClick={() => {
                 const url = `https://www.google.com/maps/dir/?api=1&destination=${run.dropPoint!.lat},${run.dropPoint!.lng}&travelmode=driving`;
-                window.open(url, "_blank");
+                window.open(url, "_blank", "noopener,noreferrer");
               }}
               className="flex-1 py-3 glass border border-blue-200 text-blue-600 font-bold rounded-xl text-[13px] flex items-center justify-center gap-2 min-h-[44px]"
             >
@@ -510,7 +515,7 @@ export function RunActive({
     const parsedVerified =
       depotVerifiedInput.trim() === ""
         ? kerbsideContainers
-        : Math.max(0, Number(depotVerifiedInput) || 0);
+        : Math.min(MAX_DEPOT_CONTAINERS, Math.max(0, Math.round(Number(depotVerifiedInput) || 0)));
     const effectiveVerified = isLockedCompleted ? run.actualContainers : parsedVerified;
     const effectiveDocketRef = isLockedCompleted ? (run.coexDocketRef ?? "") : coexDocketRef;
 
@@ -543,6 +548,7 @@ export function RunActive({
                 id="depot-verified-count"
                 type="number"
                 min={0}
+                max={MAX_DEPOT_CONTAINERS}
                 disabled={isLockedCompleted}
                 value={isLockedCompleted ? run.actualContainers : (depotVerifiedInput === "" ? kerbsideContainers : depotVerifiedInput)}
                 onChange={(e) => setDepotVerifiedInput(e.target.value)}

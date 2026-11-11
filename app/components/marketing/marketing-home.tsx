@@ -39,14 +39,11 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
     if (!hasValidToken()) {
       if (localStorage.getItem("goodsort_token")) clearAuth();
     } else {
-      try {
-        const hid = JSON.parse(localStorage.getItem("goodsort_profile") || "{}").householdId;
-        if (hid) {
-          void waitlistContinuePath().then((path) => {
-            if (path === APP_HOME_PATH) router.push(path);
-          });
-        }
-      } catch { /* stay on the invite landing */ }
+      void waitlistContinuePath()
+        .then((path) => {
+          if (path === APP_HOME_PATH) router.push(path);
+        })
+        .catch(() => { /* stay on the invite landing */ });
     }
     const rid = readReferrerId();
     if (!rid) return;
