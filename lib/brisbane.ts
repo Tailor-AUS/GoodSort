@@ -269,7 +269,15 @@ export function wedgeSuburbs(): BrisbaneSuburb[] {
 //
 // Note this list is checked AFTER findSuburb(), so adding any of these names to
 // brisbane-suburbs.ts would make the client accept what the server rejects.
-const NOT_A_CLUSTER = new Set(["brisbane", "qld", "queensland", "australia"]);
+const NOT_A_CLUSTER = new Set([
+  "brisbane",
+  "city of brisbane",
+  "brisbane city council",
+  "greater brisbane",
+  "qld",
+  "queensland",
+  "australia",
+]);
 
 export function canonicalSuburb(raw?: string | null): string | null {
   if (!raw?.trim()) return null;

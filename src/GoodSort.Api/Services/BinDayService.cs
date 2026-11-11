@@ -79,24 +79,30 @@ public class BinDayService
         return top is null ? null : ParseDay(top);
     }
 
-    private static string Escape(string s) => s.Replace("\"", "\\\"");
+    public static string Escape(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
-    /// <summary>Parse "12 Beaudesert Rd, Moorooka QLD 4105, Australia" → (12, "BEAUDESERT RD", "MOOROOKA").</summary>
+    /// <summary>Parse "12 Beaudesert Rd, Moorooka QLD 4105, Australia" (including unit/lettered/ranged numbers) → (12, "BEAUDESERT RD", "MOOROOKA").</summary>
     public static ParsedAddress? ParseAddress(string address)
     {
         // Strip trailing ", Australia" and postcode / state tails
         var parts = address.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (parts.Length < 2) return null;
 
-        // First part: "12 Beaudesert Rd" or "Unit 2/12 Beaudesert Rd"
-        var streetPart = parts[0];
-        var m = Regex.Match(streetPart, @"(?:(?<unit>[\w\-/]+)\s+)?(?<num>\d+)\s+(?<street>.+)$");
-        if (!m.Success) return null;
-        var houseNum = m.Groups["num"].Value;
-        var streetName = NormaliseStreet(m.Groups["street"].Value);
-
-        // Suburb: usually second part. If second part looks like "Moorooka QLD 4105", take just "Moorooka".
+        // First part is normally "12 Beaudesert Rd", "2/12 Beaudesert Rd", "Unit 2/12 Beaudesert Rd",
+        // "12A Beaudesert Rd", or "12-14 Beaudesert Rd". For 3-part addresses like
+        // "Unit 2, 12 Beaudesert Rd, Moorooka QLD 4105", parts[0] is the unit/building and parts[1] is the street.
+        var streetParsed = TryParseStreetSegment(parts[0]);
         var suburbPart = parts[1];
+        if (streetParsed is null && parts.Length >= 3)
+        {
+            streetParsed = TryParseStreetSegment(parts[1]);
+            suburbPart = parts[2];
+        }
+        if (streetParsed is null) return null;
+
+        var (houseNum, streetName) = streetParsed.Value;
+
+        // Suburb: usually second part (or third when parts[0] was unit/building).
         var suburb = Regex.Replace(suburbPart, @"\b(QLD|NSW|VIC|SA|WA|TAS|NT|ACT|QUEENSLAND|AUSTRALIA)\b.*$", "", RegexOptions.IgnoreCase).Trim();
         suburb = Regex.Replace(suburb, @"\s+\d{4}\s*$", "").Trim();
         suburb = suburb.ToUpperInvariant();
@@ -107,15 +113,48 @@ public class BinDayService
         return new ParsedAddress(houseNum, streetName, suburb);
     }
 
+    private static (string HouseNumber, string Street)? TryParseStreetSegment(string rawSegment)
+    {
+        var s = rawSegment.Trim();
+        if (string.IsNullOrEmpty(s)) return null;
+
+        // Strip slash-style unit prefixes: "2/12 ...", "2A/12 ...", "Unit 2/12 ...", "U2 / 12 ..."
+        s = Regex.Replace(
+            s,
+            @"^(?:(?:unit|apt|apartment|flat|shop|lot|villa|townhouse|suite|u)\s*)?[A-Za-z0-9\-]+\s*/\s*",
+            "",
+            RegexOptions.IgnoreCase);
+
+        // Strip space-style unit prefixes: "Unit 2 12 ...", "Flat 3B 12 ..."
+        s = Regex.Replace(
+            s,
+            @"^(?:unit|apt|apartment|flat|shop|lot|villa|townhouse|suite)\s+[A-Za-z0-9\-]+\s+",
+            "",
+            RegexOptions.IgnoreCase);
+
+        // Match primary house number (with optional letter suffix like 12A and optional range like 12-14) + street
+        var m = Regex.Match(s, @"^(?<num>\d+[A-Za-z]?)(?:\s*[-–]\s*\d+[A-Za-z]?)?\s+(?<street>[A-Za-z].+)$");
+        if (!m.Success) return null;
+
+        var houseNum = m.Groups["num"].Value.ToUpperInvariant();
+        var streetName = NormaliseStreet(m.Groups["street"].Value);
+        if (string.IsNullOrWhiteSpace(houseNum) || string.IsNullOrWhiteSpace(streetName))
+            return null;
+
+        return (houseNum, streetName);
+    }
+
     /// <summary>
-    /// Photon often labels city as Brisbane. That must never be a density cluster —
-    /// city-wide totals do not unlock a run.
+    /// Photon often labels city/municipality as Brisbane or City of Brisbane.
+    /// That must never be a density cluster — city-wide totals do not unlock a run.
+    /// ("Brisbane City" CBD 4000 remains a valid suburb.)
     /// </summary>
     public static string? CanonicalSuburb(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
         var s = raw.Trim().ToUpperInvariant();
-        if (s is "BRISBANE" or "QLD" or "QUEENSLAND" or "AUSTRALIA") return null;
+        if (s is "BRISBANE" or "CITY OF BRISBANE" or "BRISBANE CITY COUNCIL" or "GREATER BRISBANE" or "QLD" or "QUEENSLAND" or "AUSTRALIA")
+            return null;
         return s;
     }
 

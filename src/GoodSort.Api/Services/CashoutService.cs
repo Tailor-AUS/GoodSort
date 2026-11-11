@@ -8,6 +8,8 @@ namespace GoodSort.Api.Services;
 public class CashoutService
 {
     public const string PlaceholderTraceBsb = "062000";
+    public const int MaxSingleCashoutCents = 99_999_999; // $999,999.99 (also fits 10-digit Cemtex ABA Amount field)
+    private static readonly SemaphoreSlim FallbackGate = new(1, 1);
 
     private readonly GoodSortDbContext _db;
     private readonly IConfiguration _config;
@@ -117,6 +119,7 @@ public class CashoutService
     {
         if (!PayoutsOpen()) return (false, "Payouts are not open yet. Credits stay on your account until bank transfers are live.");
         if (amountCents < 2000) return (false, "Minimum cash-out is $20");
+        if (amountCents > MaxSingleCashoutCents) return (false, "Maximum single cash-out is $999,999.99");
 
         // Normalize formatted BSB ("064-000") and account numbers ("1234 5678") consistently with ValidatePayoutDetails.
         var cleanBsb = Digits(bsb);
@@ -170,6 +173,7 @@ public class CashoutService
         if (!PayIdPayoutsOpen())
             return (false, "PayID payouts are not open yet. Credits stay on your account until payouts are switched on.");
         if (amountCents < 2000) return (false, "Minimum cash-out is $20");
+        if (amountCents > MaxSingleCashoutCents) return (false, "Maximum single cash-out is $999,999.99");
         var cleanName = SanitizeSingleLine(accountName);
         if (cleanName.Length is < 2 or > 128)
             return (false, "Invalid account name");
@@ -251,14 +255,21 @@ public class CashoutService
         catch (InvalidOperationException)
         {
             // The InMemory provider used by tests and local dev cannot
-            // translate ExecuteUpdate. This fallback keeps the balance rule
-            // correct but NOT atomic — the atomicity guarantee comes from the
-            // single UPDATE above, which is what production runs.
-            var profile = await _db.Profiles.FindAsync(userId);
-            if (profile is null || profile.ClearedCents < amountCents) return false;
-            profile.ClearedCents -= amountCents;
-            await _db.SaveChangesAsync();
-            return true;
+            // translate ExecuteUpdate. Guard with FallbackGate so concurrent
+            // in-process calls cannot double-deduct the same balance.
+            await FallbackGate.WaitAsync();
+            try
+            {
+                var profile = await _db.Profiles.FindAsync(userId);
+                if (profile is null || profile.ClearedCents < amountCents) return false;
+                profile.ClearedCents -= amountCents;
+                await _db.SaveChangesAsync();
+                return true;
+            }
+            finally
+            {
+                FallbackGate.Release();
+            }
         }
     }
 
@@ -344,7 +355,7 @@ public class CashoutService
             "                                        "      // Blank (40)
         );
 
-        var totalAmount = 0;
+        long totalAmount = 0;
         var recordCount = 0;
 
         // Record 1: Detail Records
@@ -410,20 +421,26 @@ public class CashoutService
         }
         catch (InvalidOperationException)
         {
-            // InMemory (tests, local dev) cannot translate ExecuteUpdate. Keeps
-            // the batching correct but NOT atomic; the atomicity comes from the
-            // single UPDATE above, which is what production runs.
-            // SqlConcurrencyTests covers the real behaviour.
-            var rows = await _db.Set<CashoutRequest>()
-                .Where(c => c.Status == "pending" && (c.PayoutMethod == null || c.PayoutMethod == "" || c.PayoutMethod == "aba"))
-                .ToListAsync();
-            foreach (var row in rows)
+            // InMemory (tests, local dev) cannot translate ExecuteUpdate.
+            // Guard with FallbackGate so two concurrent in-process exports cannot claim the same pending rows.
+            await FallbackGate.WaitAsync();
+            try
             {
-                row.Status = "processing";
-                row.BatchId = batchId;
+                var rows = await _db.Set<CashoutRequest>()
+                    .Where(c => c.Status == "pending" && (c.PayoutMethod == null || c.PayoutMethod == "" || c.PayoutMethod == "aba"))
+                    .ToListAsync();
+                foreach (var row in rows)
+                {
+                    row.Status = "processing";
+                    row.BatchId = batchId;
+                }
+                if (rows.Count > 0) await _db.SaveChangesAsync();
+                return rows.Count;
             }
-            if (rows.Count > 0) await _db.SaveChangesAsync();
-            return rows.Count;
+            finally
+            {
+                FallbackGate.Release();
+            }
         }
     }
 
@@ -489,16 +506,24 @@ public class CashoutService
         }
         catch (InvalidOperationException)
         {
-            var rows = await _db.Set<CashoutRequest>()
-                .Where(c => c.Status == "pending" && c.PayoutMethod == "payid")
-                .ToListAsync();
-            foreach (var row in rows)
+            await FallbackGate.WaitAsync();
+            try
             {
-                row.Status = "processing";
-                row.BatchId = batchId;
+                var rows = await _db.Set<CashoutRequest>()
+                    .Where(c => c.Status == "pending" && c.PayoutMethod == "payid")
+                    .ToListAsync();
+                foreach (var row in rows)
+                {
+                    row.Status = "processing";
+                    row.BatchId = batchId;
+                }
+                if (rows.Count > 0) await _db.SaveChangesAsync();
+                return rows.Count;
             }
-            if (rows.Count > 0) await _db.SaveChangesAsync();
-            return rows.Count;
+            finally
+            {
+                FallbackGate.Release();
+            }
         }
     }
 

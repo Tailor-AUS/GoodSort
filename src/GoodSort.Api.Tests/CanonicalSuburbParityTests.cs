@@ -24,6 +24,9 @@ public class CanonicalSuburbParityTests
     [InlineData("Brisbane")]
     [InlineData("BRISBANE")]
     [InlineData("  brisbane  ")]
+    [InlineData("City of Brisbane")]
+    [InlineData("Brisbane City Council")]
+    [InlineData("Greater Brisbane")]
     [InlineData("QLD")]
     [InlineData("Queensland")]
     [InlineData("Australia")]
@@ -55,11 +58,20 @@ public class CanonicalSuburbParityTests
     {
         // Locking the list so widening or narrowing it is a deliberate act that
         // fails here and names the file to change alongside it.
-        string[] rejected = ["BRISBANE", "QLD", "QUEENSLAND", "AUSTRALIA"];
+        string[] rejected = [
+            "BRISBANE",
+            "CITY OF BRISBANE",
+            "BRISBANE CITY COUNCIL",
+            "GREATER BRISBANE",
+            "QLD",
+            "QUEENSLAND",
+            "AUSTRALIA",
+        ];
         Assert.All(rejected, r => Assert.Null(BinDayService.CanonicalSuburb(r)));
 
-        // A near-miss must still be accepted — the rule is exact-match, not
-        // "contains", or "Brisbane Road" style names would vanish.
+        // A near-miss or CBD locality must still be accepted — the rule is exact-match, not
+        // "contains", or "Brisbane City" (CBD 4000) / "Brisbane Road" style names would vanish.
+        Assert.Equal("BRISBANE CITY", BinDayService.CanonicalSuburb("Brisbane City"));
         Assert.Equal("BRISBANE ROAD", BinDayService.CanonicalSuburb("Brisbane Road"));
     }
 }

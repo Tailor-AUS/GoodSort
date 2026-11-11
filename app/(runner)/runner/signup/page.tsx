@@ -167,6 +167,8 @@ export default function RunnerSignupPage() {
           </div>
           <form onSubmit={sendOtp} className="space-y-3">
             <input
+              id="runner-auth-email"
+              aria-label="Driver email address"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -216,6 +218,8 @@ export default function RunnerSignupPage() {
           </div>
           <form onSubmit={verifyOtp} className="space-y-3">
             <input
+              id="runner-auth-otp"
+              aria-label="6-digit verification code"
               type="text"
               inputMode="numeric"
               autoComplete="one-time-code"
@@ -272,8 +276,8 @@ export default function RunnerSignupPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">Vehicle type</label>
-            <select value={vehicleType} onChange={e => setVehicleType(e.target.value)}
+            <label htmlFor="runner-vehicle-type" className="block text-[13px] font-semibold text-slate-700 mb-1.5">Vehicle type</label>
+            <select id="runner-vehicle-type" value={vehicleType} onChange={e => setVehicleType(e.target.value)}
               className="w-full border border-slate-200 rounded-xl px-4 py-3 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500">
               <option value="car">Car</option>
               <option value="ute">Ute / Van</option>
@@ -282,30 +286,30 @@ export default function RunnerSignupPage() {
             </select>
           </div>
           <div>
-            <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">Make / model</label>
-            <input type="text" value={vehicleMake} onChange={e => setVehicleMake(e.target.value)} placeholder="e.g. Toyota Corolla"
+            <label htmlFor="runner-vehicle-make" className="block text-[13px] font-semibold text-slate-700 mb-1.5">Make / model</label>
+            <input id="runner-vehicle-make" type="text" value={vehicleMake} onChange={e => setVehicleMake(e.target.value)} placeholder="e.g. Toyota Corolla"
               className="w-full border border-slate-200 rounded-xl px-4 py-3 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500" />
           </div>
           <div>
-            <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">Registration</label>
-            <input type="text" value={vehicleRego} onChange={e => setVehicleRego(e.target.value.toUpperCase())} placeholder="e.g. 123ABC"
+            <label htmlFor="runner-vehicle-rego" className="block text-[13px] font-semibold text-slate-700 mb-1.5">Registration</label>
+            <input id="runner-vehicle-rego" type="text" value={vehicleRego} onChange={e => setVehicleRego(e.target.value.toUpperCase())} placeholder="e.g. 123ABC"
               className="w-full border border-slate-200 rounded-xl px-4 py-3 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">Bag capacity</label>
-              <input type="number" min={1} max={50} value={capacityBags} onChange={e => setCapacityBags(+e.target.value)}
+              <label htmlFor="runner-capacity-bags" className="block text-[13px] font-semibold text-slate-700 mb-1.5">Bag capacity</label>
+              <input id="runner-capacity-bags" type="number" min={1} max={100} value={capacityBags} onChange={e => setCapacityBags(Math.min(100, Math.max(1, Math.round(Number(e.target.value) || 1))))}
                 className="w-full border border-slate-200 rounded-xl px-4 py-3 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500" />
             </div>
             <div>
-              <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">Range (km)</label>
-              <input type="number" min={1} max={50} value={serviceRadiusKm} onChange={e => setServiceRadiusKm(+e.target.value)}
+              <label htmlFor="runner-service-radius" className="block text-[13px] font-semibold text-slate-700 mb-1.5">Range (km)</label>
+              <input id="runner-service-radius" type="number" min={1} max={200} value={serviceRadiusKm} onChange={e => setServiceRadiusKm(Math.min(200, Math.max(1, Number(e.target.value) || 1)))}
                 className="w-full border border-slate-200 rounded-xl px-4 py-3 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500" />
             </div>
           </div>
           <div>
-            <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">Containers for Change Scheme ID (optional)</label>
-            <input type="text" value={coexSchemeId} onChange={e => setCoexSchemeId(e.target.value.toUpperCase())} placeholder="e.g. C101234567"
+            <label htmlFor="runner-scheme-id" className="block text-[13px] font-semibold text-slate-700 mb-1.5">Containers for Change Scheme ID (optional)</label>
+            <input id="runner-scheme-id" type="text" value={coexSchemeId} onChange={e => setCoexSchemeId(e.target.value.toUpperCase())} placeholder="e.g. C101234567"
               className="w-full border border-slate-200 rounded-xl px-4 py-3 text-base text-slate-900 placeholder-slate-300 font-mono focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500" />
           </div>
           {error && <p className="text-red-500 text-[13px]">{error}</p>}
