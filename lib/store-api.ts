@@ -139,6 +139,8 @@ export async function getUserApi(): Promise<User | null> {
   );
   if (stillUnsynced.length > 0) {
     user.scans = [...stillUnsynced, ...user.scans];
+    user.pendingCents += stillUnsynced.reduce((sum, s) => sum + (s.refundCents || 10), 0);
+    user.totalContainers += stillUnsynced.length;
   }
 
   // Sync to localStorage for offline

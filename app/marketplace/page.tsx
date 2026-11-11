@@ -24,6 +24,7 @@ import { hasValidToken } from "@/lib/config";
 export default function MarketplacePage() {
   const [overview, setOverview] = useState<MarketplaceOverview | null>(null);
   const [signedIn, setSignedIn] = useState(false);
+  const [isRunner, setIsRunner] = useState(false);
 
   const loadOverview = useCallback(async () => {
     const ov = await getMarketplaceOverview();
@@ -31,7 +32,18 @@ export default function MarketplacePage() {
   }, []);
 
   useEffect(() => {
-    setSignedIn(hasValidToken());
+    const valid = hasValidToken();
+    setSignedIn(valid);
+    if (valid) {
+      try {
+        const stored = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
+        setIsRunner(stored?.role === "driver" || stored?.role === "both");
+      } catch {
+        setIsRunner(false);
+      }
+    } else {
+      setIsRunner(false);
+    }
     loadOverview();
   }, [loadOverview]);
 
@@ -227,10 +239,10 @@ export default function MarketplacePage() {
             </div>
           </div>
           <Link
-            href={signedIn ? "/runner" : "/runner/signup"}
+            href={isRunner ? "/runner" : "/runner/signup"}
             className="px-4 py-2.5 rounded-xl bg-white border border-slate-300 hover:border-slate-400 text-slate-800 font-bold text-xs whitespace-nowrap text-center transition-colors"
           >
-            {signedIn ? "Open driver view →" : "Drive a suburb run →"}
+            {isRunner ? "Open driver view →" : "Drive a suburb run →"}
           </Link>
         </section>
       </main>

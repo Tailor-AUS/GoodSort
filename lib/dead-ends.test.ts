@@ -261,3 +261,22 @@ test("no yellow-lid bin decal copy remains on domestic /flyer, /invite, or /sort
     assert.doesNotMatch(src, /Yellow-Bin/i, `${rel} must not reference yellow-lid bins`);
   }
 });
+
+test("/runner never silently auto-enrolls a visiting Home Sorter as a Runner", () => {
+  const runner = code(join("app", "(runner)", "runner", "page.tsx"));
+  assert.doesNotMatch(
+    runner,
+    /registerAsRunner\s*\(/,
+    "/runner must not call registerAsRunner() automatically on visit",
+  );
+  assert.match(runner, /hasRunnerProfile === false/, "/runner must render an explicit opt-in screen for non-runners");
+  assert.match(runner, /href="\/runner\/signup"/, "/runner opt-in screen must link to /runner/signup");
+  assert.match(runner, /href="\/sort"/, "/runner opt-in screen must give Home Sorters a way back to /sort");
+
+  const marketplace = code(join("app", "marketplace", "page.tsx"));
+  assert.match(
+    marketplace,
+    /isRunner \? "\/runner" : "\/runner\/signup"/,
+    "/marketplace driver CTA must send non-runner signed-in members to /runner/signup",
+  );
+});

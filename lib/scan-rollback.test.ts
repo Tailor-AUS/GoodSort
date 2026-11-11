@@ -393,4 +393,30 @@ test("a profile read does not delete a scan the server has never seen", async ()
   assert.ok(user, "the profile read should still succeed");
   assert.equal(user!.scans.length, 1, "the unsynced scan must survive the overwrite");
   assert.equal(user!.scans[0].pendingSync, true);
+  assert.equal(user!.pendingCents, SORTER_PAYOUT_CENTS, "unsynced offline scan credit must not drop to 0 on profile refresh");
+  assert.equal(user!.totalContainers, 1, "unsynced offline container count must not drop to 0 on profile refresh");
+
+  // Once /api/scans comes back online, the next getUserApi flushes first and must NOT double-count.
+  let serverPending = 0;
+  let serverContainers = 0;
+  (globalThis as Record<string, unknown>).fetch = async (url: string, init?: RequestInit) => {
+    if (String(url).includes("/api/scans") && init?.method === "POST") {
+      serverPending += SORTER_PAYOUT_CENTS;
+      serverContainers += 1;
+      return new Response(JSON.stringify({ creditedCents: SORTER_PAYOUT_CENTS }), { status: 200 });
+    }
+    if (String(url).includes("/api/profiles/")) {
+      return new Response(JSON.stringify({
+        id: "user-1", name: "Test Member", householdId: HOUSEHOLD_ID, role: "sorter",
+        pendingCents: serverPending, clearedCents: 0, totalContainers: serverContainers, totalCo2SavedKg: 0,
+        badges: [], createdAt: new Date(0).toISOString(),
+      }), { status: 200 });
+    }
+    return new Response(JSON.stringify([]), { status: 200 });
+  };
+
+  const syncedUser = await getUserApi();
+  assert.equal(syncedUser!.pendingCents, SORTER_PAYOUT_CENTS, "flushed scan must be counted once, never twice");
+  assert.equal(syncedUser!.totalContainers, 1);
+  assert.equal(getUnsyncedScans().length, 0);
 });
