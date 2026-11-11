@@ -40,6 +40,7 @@ export function WaitlistHome({
   const place = suburb ? titleSuburb(suburb) : "your suburb";
   const [profileId, setProfileId] = useState<string | undefined>(undefined);
   const [network, setNetwork] = useState<{ sortersCount: number; referredContainers: number; totalNetworkCents: number } | null>(null);
+  const [hasPayoutDetails, setHasPayoutDetails] = useState<boolean | null>(null);
   useEffect(() => {
     const pid = readStoredProfileId();
     setProfileId(pid);
@@ -47,6 +48,10 @@ export function WaitlistHome({
       fetch(apiUrl(`/api/profiles/${pid}/network`), { headers: authHeaders() })
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => { if (d) setNetwork(d); })
+        .catch(() => {});
+      fetch(apiUrl("/api/profiles/me/payout"), { headers: authHeaders() })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (d && typeof d.hasPayoutDetails === "boolean") setHasPayoutDetails(d.hasPayoutDetails); })
         .catch(() => {});
     }
   }, []);
@@ -61,12 +66,12 @@ export function WaitlistHome({
           {building ? "Building list" : "Your suburb"}
         </p>
         <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-2">
-          {building ? `Scan in ${place}` : "Scan. Earn 5¢."}
+          {building ? `Scan in ${place}` : "Scan. Earn 10¢."}
         </h1>
         <p className="text-[14px] text-slate-500 mb-5">
           {building
             ? "Scan eligible containers and sort into four streams. Common-area pickups are phase 2 — invite a house on the street to build suburb volume."
-            : "Scan eligible cans and bottles for 5¢ each. Sort into four streams. When suburb volume is enough for one driver trip, bag out — we take them to a refund point."}
+            : "Scan eligible cans and bottles for 10¢ each. Sort into four streams. When suburb volume is enough for one driver trip, bag out — we take them to a refund point."}
         </p>
 
         <CollectionNightCard
@@ -152,11 +157,15 @@ export function WaitlistHome({
           </a>
         </div>
 
-        {residentialNeedsStreet(household) && (
-          <a href="/onboard" className="block mb-4 text-center text-[13px] font-semibold text-violet-800 bg-violet-50 border border-violet-200 rounded-xl py-3">
-            Add your suburb so we can count your scans toward a volume run
+        {residentialNeedsStreet(household) ? (
+          <a href="/onboard" className="block mb-4 text-center text-[13px] font-semibold text-violet-800 bg-violet-50 border border-violet-200 rounded-xl py-3 px-3">
+            Add your home address &amp; payout details so we can collect &amp; pay you →
           </a>
-        )}
+        ) : hasPayoutDetails === false ? (
+          <a href="/onboard" className="block mb-4 text-center text-[13px] font-semibold text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-xl py-3 px-3">
+            Add your PayID or bank details so we can pay you →
+          </a>
+        ) : null}
         <WaitlistCard
           suburb={suburb}
           households={have}

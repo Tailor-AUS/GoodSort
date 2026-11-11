@@ -115,9 +115,9 @@ public class Tier1_FeatureCoverageTests : IClassFixture<OpaqueBoxHost>
         var res = await client.PostAsJsonAsync("/api/scan/photo/confirm", new { scanToken = token });
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         var json = await res.Content.ReadFromJsonAsync<JsonElement>();
-        // First 2 containers inside launch bonus cap earn 10c each = 20c
+        // Standard domestic rate pays 10c each = 20c
         Assert.Equal(20, json.GetProperty("totalCents").GetInt32());
-        Assert.True(json.GetProperty("bonusApplied").GetBoolean());
+        Assert.False(json.GetProperty("bonusApplied").GetBoolean());
     }
 
     [Fact]

@@ -10,13 +10,13 @@ namespace GoodSort.Api.Tests;
 /// </summary>
 public class LaunchBonusTests
 {
-    const int Cap = LaunchBonus.DefaultCapContainers; // 20
+    const int Cap = 20;
 
     [Fact]
     public void Bonus_is_double_the_standard_rate()
     {
+        Assert.Equal(10, HouseholdCredit.CentsPerContainer);
         Assert.Equal(HouseholdCredit.CentsPerContainer * 2, LaunchBonus.CentsPerContainer);
-        Assert.Equal(10, LaunchBonus.CentsPerContainer);
     }
 
     [Fact]
@@ -40,15 +40,14 @@ public class LaunchBonusTests
         var cents = LaunchBonus.TotalCents(alreadyScanned: 0, newContainers: 1000, Cap);
         var standard = 1000 * HouseholdCredit.CentsPerContainer;
         Assert.Equal(standard + Cap * LaunchBonus.ExtraCentsPerContainer, cents);
-        Assert.Equal(100, cents - standard); // $1.00 of bonus at a 20-container cap
     }
 
     [Fact]
     public void A_batch_straddling_the_cap_splits_correctly()
     {
-        // 18 already scanned, 5 more: 2 at 10c, 3 at 5c.
+        // 18 already scanned, 5 more: 2 at bonus, 3 at standard.
         Assert.Equal(2, LaunchBonus.QualifyingContainers(18, 5, Cap));
-        Assert.Equal(2 * 10 + 3 * 5, LaunchBonus.TotalCents(18, 5, Cap));
+        Assert.Equal(2 * LaunchBonus.CentsPerContainer + 3 * HouseholdCredit.CentsPerContainer, LaunchBonus.TotalCents(18, 5, Cap));
     }
 
     [Fact]
@@ -85,7 +84,8 @@ public class LaunchBonusTests
     [Fact]
     public void Settle_clears_the_bonus_but_still_drops_the_estimate()
     {
-        var member = new Profile { Id = Guid.NewGuid(), PendingCents = 30 };
+        var initialPending = 2 * LaunchBonus.CentsPerContainer + 2 * HouseholdCredit.CentsPerContainer;
+        var member = new Profile { Id = Guid.NewGuid(), PendingCents = initialPending };
         var scans = new List<Scan>
         {
             new() { UserId = member.Id, RefundCents = LaunchBonus.CentsPerContainer, Status = "pending" },
@@ -96,8 +96,7 @@ public class LaunchBonusTests
         var runnerCredit = HouseholdCredit.ApplyPickup([member], scans, pickupCount: 3);
 
         Assert.All(scans, s => Assert.Equal("settled", s.Status));
-        // Estimate drained: 10 + 10 + 5.
-        Assert.Equal(5, member.PendingCents);
+        Assert.Equal(HouseholdCredit.CentsPerContainer, member.PendingCents);
         // Runner count is the truth for the containers, plus the two bonus grants.
         Assert.Equal(runnerCredit + 2 * LaunchBonus.ExtraCentsPerContainer, member.ClearedCents);
     }
@@ -105,7 +104,7 @@ public class LaunchBonusTests
     [Fact]
     public void Settle_without_any_bonus_is_unchanged()
     {
-        var member = new Profile { Id = Guid.NewGuid(), PendingCents = 10 };
+        var member = new Profile { Id = Guid.NewGuid(), PendingCents = 2 * HouseholdCredit.CentsPerContainer };
         var scans = new List<Scan>
         {
             new() { UserId = member.Id, RefundCents = HouseholdCredit.CentsPerContainer, Status = "pending" },

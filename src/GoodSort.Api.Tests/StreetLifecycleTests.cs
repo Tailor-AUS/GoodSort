@@ -31,8 +31,8 @@ public class StreetLifecycleTests
 
         var owner = new Profile { Name = "Owner" };
         var credit = HouseholdCredit.ApplyPickup([owner], [], 40);
-        Assert.Equal(200, credit);
-        Assert.Equal(200, owner.ClearedCents);
+        Assert.Equal(400, credit);
+        Assert.Equal(400, owner.ClearedCents);
         Assert.False(CashoutService.PayoutsAreOpen(null, "062-000", "12345678", "301500"));
         Assert.DoesNotContain("yellow", HouseholdCredit.PickupInstruction(null), StringComparison.OrdinalIgnoreCase);
     }

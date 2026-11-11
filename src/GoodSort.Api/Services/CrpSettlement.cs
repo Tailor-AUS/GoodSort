@@ -26,7 +26,7 @@ public static class CrpSettlement
     public const long CoexGrossBpPerContainer = 1768;        // 17.68¢
 
     public const int CrpHouseholdCentsPerContainer = 10;
-    public const int PreCrpHouseholdCentsPerContainer = HouseholdCredit.CentsPerContainer; // 5¢
+    public const int PreCrpHouseholdCentsPerContainer = HouseholdCredit.CentsPerContainer; // 10¢
     public const int ContainerMafiaCentsPerContainer = HouseholdCredit.ReferralCommissionCentsPerContainer; // 1¢
     public const int CrpRunnerTargetCentsPerContainer = 3;
 

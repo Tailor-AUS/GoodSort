@@ -43,6 +43,76 @@ public class CashoutService
         return true;
     }
 
+    public static bool HasSavedPayout(Profile p) =>
+        !string.IsNullOrWhiteSpace(p.BankAccountName) &&
+        ((string.Equals(p.PreferredPayoutMethod, "payid", StringComparison.OrdinalIgnoreCase)
+          && !string.IsNullOrWhiteSpace(p.PayIdType)
+          && !string.IsNullOrWhiteSpace(p.PayIdValue))
+         || (string.Equals(p.PreferredPayoutMethod, "aba", StringComparison.OrdinalIgnoreCase)
+             && !string.IsNullOrWhiteSpace(p.BankBsb)
+             && !string.IsNullOrWhiteSpace(p.BankAccountNumber)));
+
+    public static (bool Valid, string? Error, ValidatedPayoutDetails? Details) ValidatePayoutDetails(
+        string? method,
+        string? payIdType,
+        string? payIdValue,
+        string? bsb,
+        string? accountNumber,
+        string? accountName)
+    {
+        var trimmedName = (accountName ?? "").Trim();
+        if (trimmedName.Length < 2 || trimmedName.Length > 128)
+            return (false, "Enter the account holder name", null);
+
+        var normalizedMethod = (method ?? "").Trim().ToLowerInvariant();
+        if (normalizedMethod is "bank" or "bsb") normalizedMethod = "aba";
+
+        if (normalizedMethod == "payid")
+        {
+            var normalizedType = (payIdType ?? "").Trim().ToLowerInvariant();
+            var cleanedValue = (payIdValue ?? "").Trim();
+            if (normalizedType == "email")
+            {
+                if (cleanedValue.Length is < 5 or > 128 || !cleanedValue.Contains('@') || !cleanedValue.Contains('.'))
+                    return (false, "Enter a valid PayID email address", null);
+            }
+            else if (normalizedType == "phone")
+            {
+                var digits = Digits(cleanedValue);
+                if (digits.Length is < 9 or > 12)
+                    return (false, "Enter a valid Australian mobile number for PayID", null);
+                cleanedValue = digits.StartsWith("61", StringComparison.Ordinal) ? "+" + digits : digits;
+            }
+            else if (normalizedType == "abn")
+            {
+                var digits = Digits(cleanedValue);
+                if (digits.Length != 11)
+                    return (false, "PayID ABN must be 11 digits", null);
+                cleanedValue = digits;
+            }
+            else
+            {
+                return (false, "PayID type must be email, phone, or abn", null);
+            }
+
+            return (true, null, new ValidatedPayoutDetails("payid", normalizedType, cleanedValue, null, null, trimmedName));
+        }
+
+        if (normalizedMethod == "aba")
+        {
+            var cleanBsb = Digits(bsb);
+            var cleanAccount = Digits(accountNumber);
+            if (cleanBsb.Length != 6)
+                return (false, "BSB must be 6 digits", null);
+            if (cleanAccount.Length is < 5 or > 9)
+                return (false, "Account number must be 5 to 9 digits", null);
+
+            return (true, null, new ValidatedPayoutDetails("aba", null, null, cleanBsb, cleanAccount, trimmedName));
+        }
+
+        return (false, "Choose PayID or bank account (BSB)", null);
+    }
+
     public async Task<(bool Success, string? Error)> RequestCashout(Guid userId, int amountCents, string bsb, string accountNumber, string accountName)
     {
         if (!PayoutsOpen()) return (false, "Payouts are not open yet. Credits stay on your account until bank transfers are live.");
@@ -73,6 +143,15 @@ public class CashoutService
                 AccountName = accountName.Trim(),
                 Status = "pending",
             });
+            var profile = await _db.Profiles.FindAsync(userId);
+            if (profile is not null)
+            {
+                profile.PreferredPayoutMethod = "aba";
+                profile.BankBsb = bsb;
+                profile.BankAccountNumber = accountNumber;
+                profile.BankAccountName = accountName.Trim();
+                profile.PayoutUpdatedAt = DateTime.UtcNow;
+            }
             await _db.SaveChangesAsync();
             return (true, (string?)null);
         });
@@ -135,6 +214,15 @@ public class CashoutService
                 AccountName = accountName.Trim(),
                 Status = "pending",
             });
+            var profile = await _db.Profiles.FindAsync(userId);
+            if (profile is not null)
+            {
+                profile.PreferredPayoutMethod = "payid";
+                profile.PayIdType = normalizedType;
+                profile.PayIdValue = cleanedValue;
+                profile.BankAccountName = accountName.Trim();
+                profile.PayoutUpdatedAt = DateTime.UtcNow;
+            }
             await _db.SaveChangesAsync();
             return (true, (string?)null);
         });
@@ -432,6 +520,14 @@ public class CashoutService
     private static string Pad16(string name) =>
         name.Trim().ToUpperInvariant().PadRight(16).Substring(0, 16);
 }
+
+public record ValidatedPayoutDetails(
+    string Method,
+    string? PayIdType,
+    string? PayIdValue,
+    string? BankBsb,
+    string? BankAccountNumber,
+    string BankAccountName);
 
 public class CashoutRequest
 {

@@ -39,7 +39,7 @@ public class ConfigRestoreCoverageTests
         ["ADMIN_BOOTSTRAP_SECRET"] = "Unset means the bootstrap endpoint returns 404. Losing it closes a door rather than opening one, and it is meant to be cleared straight after use.",
         ["ABA_PAYOUTS_ENABLED"] = "PayoutsAreOpen also requires real remitter details, so bank files stay closed. Fail-closed.",
         ["PAYID_PAYOUTS_ENABLED"] = "Defaults to closed unless explicitly set to true (or ABA payouts are already open). Fail-closed.",
-        ["COEX_CRP_ACTIVE"] = "Defaults to false (5¢ pre-CCA rate) until COEX executes the Container Collection Agreement and COEX_CRP_ACTIVE=true is set. Fail-closed.",
+        ["COEX_CRP_ACTIVE"] = "Defaults to false (pre-CCA ledger mode, without 7.68¢ handling fee) until COEX executes the Container Collection Agreement and COEX_CRP_ACTIVE=true is set. Fail-closed.",
         ["ABA_TRACE_BSB"] = "Part of the same gate - without it payouts stay closed. Never guessed; Knox sets it.",
         ["ABA_TRACE_ACCOUNT"] = "As above.",
         ["ABA_USER_ID"] = "As above.",

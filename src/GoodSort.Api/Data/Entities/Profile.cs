@@ -26,6 +26,16 @@ public class Profile
     /// </summary>
     public DateTime? LastNudgedAt { get; set; }
 
+    // Saved payout destination (PayID or BSB + account) captured after scanning
+    // or in account settings so cleared credits can be paid out cleanly.
+    public string? PreferredPayoutMethod { get; set; } // "payid" | "aba"
+    public string? PayIdType { get; set; } // "email" | "phone" | "abn"
+    public string? PayIdValue { get; set; }
+    public string? BankBsb { get; set; }
+    public string? BankAccountNumber { get; set; }
+    public string? BankAccountName { get; set; }
+    public DateTime? PayoutUpdatedAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public ICollection<Scan> Scans { get; set; } = [];

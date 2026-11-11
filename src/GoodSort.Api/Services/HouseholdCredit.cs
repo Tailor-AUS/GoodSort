@@ -3,12 +3,12 @@ using GoodSort.Api.Data.Entities;
 namespace GoodSort.Api.Services;
 
 /// <summary>
-/// Household sorting credit. Scan earns 5¢ pending. The runner count after a
+/// Household sorting credit. Scan earns 10¢ pending. The runner count after a
 /// depot drop is the settle authority — Vision outages must not zero a street.
 /// </summary>
 public static class HouseholdCredit
 {
-    public const int CentsPerContainer = 5;
+    public const int CentsPerContainer = 10;
     public const int ReferralCommissionCentsPerContainer = 1;
     public const int DefaultUnscannedEstimate = 20;
 

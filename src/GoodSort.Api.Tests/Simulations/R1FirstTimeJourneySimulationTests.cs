@@ -436,7 +436,7 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, confirmRes.StatusCode);
         var confirmBody = await confirmRes.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(10, confirmBody.GetProperty("totalCents").GetInt32());
-        Assert.True(confirmBody.GetProperty("bonusApplied").GetBoolean());
+        Assert.False(confirmBody.GetProperty("bonusApplied").GetBoolean());
 
         // Verify orphan scan state in DB
         await _host.WithDbContextAsync(async db =>

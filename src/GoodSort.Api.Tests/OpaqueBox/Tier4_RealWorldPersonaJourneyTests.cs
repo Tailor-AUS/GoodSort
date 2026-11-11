@@ -53,9 +53,9 @@ public class Tier4_RealWorldPersonaJourneyTests : IClassFixture<OpaqueBoxHost>
         Assert.Equal(HttpStatusCode.OK, confirmRes.StatusCode);
         var confirmJson = await confirmRes.Content.ReadFromJsonAsync<JsonElement>();
 
-        // 10c launch bonus earned
+        // 10c domestic sorting credit earned
         Assert.Equal(10, confirmJson.GetProperty("totalCents").GetInt32());
-        Assert.True(confirmJson.GetProperty("bonusApplied").GetBoolean());
+        Assert.False(confirmJson.GetProperty("bonusApplied").GetBoolean());
 
         // Initial scan is an orphan (HouseholdId is null)
         var profileBeforeHh = await _host.GetProfileAsync(authClient, mayaProfileId);

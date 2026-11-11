@@ -7,6 +7,14 @@ import { apiUrl, authHeaders, readStoredProfileId } from "@/lib/config";
 import { formatCents, type User } from "@/lib/store";
 import { inviteMessage, isCollecting, LIVE_VOLUME_THRESHOLD, sameSuburb, streetInviteUrl, streetStatsForViewer, titleSuburb, type GrowthSuburb, householdCountsTowardUnlock, canonicalSuburb } from "@/lib/brisbane";
 import { InviteActions } from "@/app/components/shared/invite-actions";
+import {
+  PayoutFields,
+  formatSavedPayoutLabel,
+  validateClientPayout,
+  type PayIdTypeChoice,
+  type PayoutMethodChoice,
+  type SavedPayoutSummary,
+} from "@/app/components/shared/post-scan-setup";
 
 interface AccountPanelProps {
   user: User;
@@ -17,9 +25,14 @@ interface AccountPanelProps {
 export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
   const [binStatus, setBinStatus] = useState<string | null>(null);
   const [streetStats, setStreetStats] = useState<{ households: number; containers: number; needed: number; dayName: string | null } | null>(null);
+  const [savedPayout, setSavedPayout] = useState<SavedPayoutSummary | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    fetch(apiUrl("/api/profiles/me/payout"), { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p) => { if (p) setSavedPayout(p); })
+      .catch(() => {});
     try {
       const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
       if (!profile.householdId) return;
@@ -93,7 +106,7 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
 
         <div className="p-6">
           {waiting ? (
-            <p className="text-[13px] text-slate-500 mb-1">Scan for 5¢. Invite neighbours to scan — suburb volume unlocks a driver trip.</p>
+            <p className="text-[13px] text-slate-500 mb-1">Scan for 10¢. Invite neighbours to scan — suburb volume unlocks a driver trip.</p>
           ) : (
             <>
           <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-[0.15em] mb-3">
@@ -134,7 +147,9 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
             </>
           )}
 
-          <CashoutSection clearedCents={user.clearedCents} waiting={waiting} />
+          <PayoutDestinationSection savedPayout={savedPayout} onSaved={setSavedPayout} />
+
+          <CashoutSection clearedCents={user.clearedCents} waiting={waiting} savedPayout={savedPayout} />
 
           <InviteFriends user={user} />
 
@@ -273,7 +288,179 @@ function InviteFriends({ user: _user }: { user: User }) {
   );
 }
 
-function CashoutSection({ clearedCents, waiting }: { clearedCents: number; waiting?: boolean }) {
+function PayoutDestinationSection({
+  savedPayout,
+  onSaved,
+}: {
+  savedPayout: SavedPayoutSummary | null;
+  onSaved: (next: SavedPayoutSummary) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [method, setMethod] = useState<PayoutMethodChoice>("payid");
+  const [payIdType, setPayIdType] = useState<PayIdTypeChoice>("email");
+  const [payIdValue, setPayIdValue] = useState("");
+  const [bsb, setBsb] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [accountName, setAccountName] = useState("");
+  const [defaultEmail, setDefaultEmail] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [savedFlash, setSavedFlash] = useState(false);
+
+  useEffect(() => {
+    try {
+      const p = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
+      if (typeof p.email === "string" && p.email) {
+        setDefaultEmail(p.email);
+        setPayIdValue((prev) => prev || p.email);
+      }
+      if (typeof p.name === "string" && p.name && p.name !== "New User" && p.name !== "You") {
+        setAccountName((prev) => prev || p.name);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    if (!savedPayout) return;
+    if (savedPayout.preferredPayoutMethod === "aba" || savedPayout.preferredPayoutMethod === "payid") {
+      setMethod(savedPayout.preferredPayoutMethod);
+    }
+    if (savedPayout.payIdType === "email" || savedPayout.payIdType === "phone" || savedPayout.payIdType === "abn") {
+      setPayIdType(savedPayout.payIdType);
+    }
+    if (savedPayout.payIdValue) setPayIdValue(savedPayout.payIdValue);
+    if (savedPayout.bankBsb) setBsb(savedPayout.bankBsb);
+    if (savedPayout.bankAccountNumber) setAccountNumber(savedPayout.bankAccountNumber);
+    if (savedPayout.bankAccountName) setAccountName(savedPayout.bankAccountName);
+  }, [savedPayout]);
+
+  const summaryLabel = formatSavedPayoutLabel(savedPayout);
+
+  async function savePayout() {
+    const validationErr = validateClientPayout({
+      method,
+      payIdType,
+      payIdValue,
+      bsb,
+      accountNumber,
+      accountName,
+    });
+    if (validationErr) {
+      setError(validationErr);
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch(apiUrl("/api/profiles/me/payout"), {
+        method: "PUT",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          method,
+          payIdType: method === "payid" ? payIdType : null,
+          payIdValue: method === "payid" ? payIdValue.trim() : null,
+          bsb: method === "aba" ? bsb : null,
+          accountNumber: method === "aba" ? accountNumber : null,
+          accountName: accountName.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({} as { error?: string }));
+        setError(data.error || "Couldn't save payout details.");
+        setSaving(false);
+        return;
+      }
+      const next = (await res.json()) as SavedPayoutSummary;
+      onSaved(next);
+      setEditing(false);
+      setSaving(false);
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 2500);
+    } catch {
+      setError("Something went wrong");
+      setSaving(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Payout destination
+            </p>
+            <p className="text-[12px] font-semibold text-slate-800 truncate mt-0.5">
+              {summaryLabel ?? "Not added yet (PayID or BSB)"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setError("");
+              setEditing(true);
+            }}
+            className="text-[12px] font-bold text-green-700 hover:text-green-900 shrink-0"
+          >
+            {summaryLabel ? "Edit" : "Add"}
+          </button>
+        </div>
+        {savedFlash && (
+          <p className="text-[11px] font-semibold text-green-700 mt-1">✓ Payout details saved</p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-3.5 space-y-2.5">
+      <div className="flex items-center justify-between">
+        <p className="text-[12px] font-bold text-slate-900">How we pay you</p>
+        <button
+          type="button"
+          onClick={() => setEditing(false)}
+          className="text-[11px] font-medium text-slate-400 hover:text-slate-600"
+        >
+          Cancel
+        </button>
+      </div>
+      <PayoutFields
+        method={method}
+        onMethodChange={setMethod}
+        payIdType={payIdType}
+        onPayIdTypeChange={setPayIdType}
+        payIdValue={payIdValue}
+        onPayIdValueChange={setPayIdValue}
+        bsb={bsb}
+        onBsbChange={setBsb}
+        accountNumber={accountNumber}
+        onAccountNumberChange={setAccountNumber}
+        accountName={accountName}
+        onAccountNameChange={setAccountName}
+        defaultEmail={defaultEmail}
+      />
+      {error && <p className="text-[11px] text-red-600 font-medium">{error}</p>}
+      <button
+        type="button"
+        onClick={savePayout}
+        disabled={saving}
+        className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-bold py-2.5 rounded-xl text-[12px] disabled:opacity-50 min-h-[40px]"
+      >
+        {saving ? "Saving..." : "Save payout details"}
+      </button>
+    </div>
+  );
+}
+
+function CashoutSection({
+  clearedCents,
+  waiting,
+  savedPayout,
+}: {
+  clearedCents: number;
+  waiting?: boolean;
+  savedPayout?: SavedPayoutSummary | null;
+}) {
   const [showForm, setShowForm] = useState(false);
   const [payoutMethod, setPayoutMethod] = useState<"payid" | "aba">("payid");
   const [payIdType, setPayIdType] = useState<"email" | "phone" | "abn">("email");
@@ -306,6 +493,20 @@ function CashoutSection({ clearedCents, waiting }: { clearedCents: number; waiti
         setPayIdOpen(false);
       });
   }, []);
+
+  useEffect(() => {
+    if (!savedPayout?.hasPayoutDetails) return;
+    if (savedPayout.preferredPayoutMethod === "aba" || savedPayout.preferredPayoutMethod === "payid") {
+      setPayoutMethod(savedPayout.preferredPayoutMethod);
+    }
+    if (savedPayout.payIdType === "email" || savedPayout.payIdType === "phone" || savedPayout.payIdType === "abn") {
+      setPayIdType(savedPayout.payIdType);
+    }
+    if (savedPayout.payIdValue) setPayIdValue(savedPayout.payIdValue);
+    if (savedPayout.bankBsb) setBsb(savedPayout.bankBsb);
+    if (savedPayout.bankAccountNumber) setAccountNumber(savedPayout.bankAccountNumber);
+    if (savedPayout.bankAccountName) setAccountName(savedPayout.bankAccountName);
+  }, [savedPayout]);
 
   const minCashout = 2000; // $20 in cents
   const anyPayoutOpen = abaOpen === true || payIdOpen === true;
@@ -397,10 +598,10 @@ function CashoutSection({ clearedCents, waiting }: { clearedCents: number; waiti
   }
 
   const remaining = Math.max(0, minCashout - clearedCents);
-  const moreContainers = Math.ceil(remaining / 5);
+  const moreContainers = Math.ceil(remaining / 10);
   if (!showForm) {
     return (
-      <div className="mt-6">
+      <div className="mt-3">
         <button
           onClick={() => canCashout ? setShowForm(true) : setShowHint(v => !v)}
           className={`w-full py-3 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-2 transition-all ${

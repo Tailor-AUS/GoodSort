@@ -15,8 +15,8 @@ namespace GoodSort.Api.Services;
 /// </summary>
 public static class LaunchBonus
 {
-    /// <summary>Containers per member that earn the bonus. 0 disables.</summary>
-    public const int DefaultCapContainers = 20;
+    /// <summary>Containers per member that earn the bonus. 0 disables (standard rate is now 10¢).</summary>
+    public const int DefaultCapContainers = 0;
 
     /// <summary>Credit per bonus container — double the standard rate.</summary>
     public const int CentsPerContainer = HouseholdCredit.CentsPerContainer * 2;

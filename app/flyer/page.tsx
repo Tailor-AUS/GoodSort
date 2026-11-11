@@ -38,7 +38,7 @@ export default function FlyerPage() {
               Yellow-Bin Lid Decal · Tape or Stick to Your Bin Lid
             </span>
             <span className="text-xs font-extrabold uppercase tracking-wider text-slate-900">
-              10¢ / Can First 20
+              10¢ / Can at Home
             </span>
           </div>
           <h2 className="text-2xl md:text-3xl font-display font-extrabold leading-tight mb-2">
@@ -81,7 +81,7 @@ export default function FlyerPage() {
               <p className="text-xs font-extrabold uppercase tracking-wider text-emerald-700 mb-1">1. Scan at home</p>
               <p className="text-lg font-extrabold text-slate-900 mb-1">10¢ per can</p>
               <p className="text-xs text-slate-600">
-                Double credit (10¢ each) on your first 20 eligible containers, then 5¢ sorting credit each.
+                Earn a 10¢ sorting credit on every eligible container you scan and sort into four streams at home.
               </p>
             </div>
             <div className="rounded-2xl bg-slate-50 border border-slate-200 p-4">
@@ -118,7 +118,7 @@ export default function FlyerPage() {
           </div>
 
           <p className="text-[11px] text-slate-500 mt-6 leading-normal">
-            Sorting credits (5¢ standard, 10¢ first-20 launch bonus, plus 1¢/container Container Mafia referrer commission) are a private reward paid by The Good Sort after physical collection and depot verification. Operated by Tailor Intelligence Pty Ltd (ABN 13 688 827 572) t/a The Good Sort · thegoodsort.org
+            Sorting credits (10¢ per eligible container, plus 1¢/container Container Mafia referrer commission) are a private reward paid by The Good Sort after physical collection and depot verification. Operated by Tailor Intelligence Pty Ltd (ABN 13 688 827 572) t/a The Good Sort · thegoodsort.org
           </p>
         </div>
       </div>

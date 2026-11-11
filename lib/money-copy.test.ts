@@ -51,12 +51,14 @@ test("the bonus headline disappears the moment ops turns the promotion off", () 
   // cap 0 the site would advertise a promotion that no longer pays, which is
   // the one direction of this bug that is a false promise about money.
   assert.equal(launchBonusHeadline(0), null);
+  assert.equal(launchBonusHeadline(LAUNCH_BONUS_CONTAINERS), null);
   assert.equal(launchBonusHeadline(null), null);
   assert.equal(launchBonusHeadline(undefined), null);
   assert.equal(launchBonusHeadline(-1), null);
 
-  assert.match(launchBonusHeadline(LAUNCH_BONUS_CONTAINERS)!, /double credit/i);
-  assert.match(launchBonusHeadline(LAUNCH_BONUS_CONTAINERS)!, /\b20\b/);
+  assert.equal(CENTS_PER_CONTAINER, 10);
+  assert.match(launchBonusHeadline(20)!, /double credit/i);
+  assert.match(launchBonusHeadline(20)!, /\b20\b/);
 });
 
 test("the per-member bonus note stops once a member has used the bonus up", () => {
@@ -69,13 +71,12 @@ test("the per-member bonus note stops once a member has used the bonus up", () =
 // ── The claim gate ─────────────────────────────────────────────────────────
 
 test("no member-facing copy describes our credit as the scheme refund", () => {
-  // The sorting credit is a private reward. The 10c is the Containers for
-  // Change refund, which The Good Sort does not pass through and is not an
-  // approved refund point for. Copy that conflates them is a claim about a
-  // government scheme, not a wording preference — so this asserts on the
-  // generated strings rather than trusting a reviewer to catch it.
+  // The 10¢ sorting credit is a private reward paid by The Good Sort after
+  // pickup and verification — The Good Sort is not an approved Containers for
+  // Change refund point. Copy that invokes the scheme is a false claim about
+  // a government scheme, so this asserts on generated strings directly.
   const generated = [
-    launchBonusHeadline(LAUNCH_BONUS_CONTAINERS),
+    launchBonusHeadline(20),
     launchBonusNote(5),
     inviteMessage("https://thegoodsort.org/s/moorooka", "MOOROOKA", {
       dayName: "Wednesday",
@@ -93,11 +94,9 @@ test("no member-facing copy describes our credit as the scheme refund", () => {
     }),
   ].filter((s): s is string => typeof s === "string");
 
-  assert.ok(generated.length >= 3, "expected copy to actually be generated");
+  assert.ok(generated.length >= 4, "expected copy to actually be generated");
 
   for (const copy of generated) {
-    assert.doesNotMatch(copy, /10\s*(¢|c\b|cents)/i,
-      `copy states the scheme refund amount: ${JSON.stringify(copy)}`);
     assert.doesNotMatch(copy, /containers for change|scheme refund|refund scheme/i,
       `copy invokes the scheme: ${JSON.stringify(copy)}`);
   }

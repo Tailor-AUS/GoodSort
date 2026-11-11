@@ -282,17 +282,16 @@ public class Tier3_CrossFeaturePairwiseTests : IClassFixture<OpaqueBoxHost>
     {
         var (client, _, profileId) = await _host.SignInMemberAsync("pair-11@example.test");
 
-        // Scan 49 containers: first 20 at 10c = 200c, remaining 29 at 5c = 145c => 345c
+        // Scan 49 + 2 = 51 containers at flat 10c domestic home rate => 510c
         var tok1 = _host.MintScanToken(profileId, items: [new ScanTokenItem { Name = "Batch1", Material = "aluminium", Count = 49, Eligible = true }]);
         await client.PostAsJsonAsync("/api/scan/photo/confirm", new { scanToken = tok1 });
 
-        // Scan 2 more containers: both past cap at 5c = 10c => total 355c
         var tok2 = _host.MintScanToken(profileId, items: [new ScanTokenItem { Name = "Batch2", Material = "aluminium", Count = 2, Eligible = true }]);
         await client.PostAsJsonAsync("/api/scan/photo/confirm", new { scanToken = tok2 });
 
         var prof = await _host.GetProfileAsync(client, profileId);
         Assert.Equal(51, prof.GetProperty("totalContainers").GetInt32());
-        Assert.Equal(355, prof.GetProperty("pendingCents").GetInt32()); // 20*10 + 31*5 = 355
+        Assert.Equal(510, prof.GetProperty("pendingCents").GetInt32());
 
         // Backfill to household
         var hhRes = await client.PostAsJsonAsync("/api/households", new
@@ -309,7 +308,7 @@ public class Tier3_CrossFeaturePairwiseTests : IClassFixture<OpaqueBoxHost>
         var hh = await hhRes.Content.ReadFromJsonAsync<JsonElement>();
 
         Assert.Equal(51, hh.GetProperty("pendingContainers").GetInt32());
-        Assert.Equal(355, hh.GetProperty("pendingValueCents").GetInt32());
+        Assert.Equal(510, hh.GetProperty("pendingValueCents").GetInt32());
     }
 
     [Fact]

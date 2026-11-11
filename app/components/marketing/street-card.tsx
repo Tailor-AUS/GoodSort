@@ -70,14 +70,14 @@ export function StreetCard({ suburb, slug }: { suburb: string; slug: string }) {
                 Scan, sort,<br />skip the depot.
               </p>
               <p className="mt-2 text-[12px] leading-snug text-slate-600">
-                Scan a can, earn 5¢. We collect from your kerb — you never drive
+                Scan a can, earn 10¢. We collect from your kerb — you never drive
                 to a depot.
               </p>
               <p className="mt-2 text-[11px] font-semibold text-violet-800">
                 Starting in {suburb}
               </p>
               <p className="mt-1 text-[9px] leading-snug text-slate-400">
-                A 5¢ sorting credit, not the 10¢ scheme refund.
+                10¢ sorting credit paid after pickup and depot verification.
               </p>
             </div>
             {qr ? (

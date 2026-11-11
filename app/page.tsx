@@ -49,12 +49,12 @@ const structuredData = {
         addressCountry: "AU",
       },
       description:
-        "Scan eligible drink containers in Brisbane for a 5¢ sorting credit. When your suburb has enough containers for one driver trip, bag out — we take them to a refund point or depot. The scheme pays 10¢ when we present; you keep the 5¢ credit.",
+        "Scan eligible drink containers in Brisbane for a 10¢ sorting credit. When your suburb has enough containers for one driver trip, bag out — we take them to a refund point or depot.",
       offers: {
         "@type": "Offer",
         price: "0",
         priceCurrency: "AUD",
-        description: "Free to join. Scan for 5¢. Suburb volume run when there are enough containers for one driver trip.",
+        description: "Free to join. Scan for 10¢. Suburb volume run when there are enough containers for one driver trip.",
       },
     },
     {
@@ -66,7 +66,7 @@ const structuredData = {
           name: "How does The Good Sort work?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Scan eligible cans and bottles. Earn a 5¢ sorting credit each. Sort into four streams at home. When your suburb has enough scanned containers for one driver trip, bag out — we collect and present them at a refund point or depot.",
+            text: "Scan eligible cans and bottles. Earn a 10¢ sorting credit each. Sort into four streams at home. When your suburb has enough scanned containers for one driver trip, bag out — we collect and present them at a refund point or depot.",
           },
         },
         {
@@ -90,7 +90,7 @@ const structuredData = {
           name: "Is this the Containers for Change 10¢ refund?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "No. The scheme pays 10¢ when eligible containers are presented at a refund point. You earn a 5¢ sorting credit from The Good Sort. We are not claiming approval as a Containers for Change refund point.",
+            text: "No. Sorting credits (10¢ per eligible container) are a private reward paid by The Good Sort after pickup and depot verification. The Good Sort is not claiming approval as a Containers for Change refund point.",
           },
         },
         {
@@ -98,7 +98,7 @@ const structuredData = {
           name: "Do I have to scan every container?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Scan is how you earn the 5¢ sorting credit and build suburb volume. Pending credits clear after we collect and containers are verified at a refund point or depot.",
+            text: "Scan is how you earn the 10¢ sorting credit and build suburb volume. Pending credits clear after we collect and containers are verified at a refund point or depot.",
           },
         },
       ],

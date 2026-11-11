@@ -127,7 +127,7 @@ public class ScanTokenSingleUseTests : IClassFixture<ScanTokenSingleUseTests.Hos
         }
 
         Assert.Equal(1, accepted);
-        Assert.Equal(HouseholdCredit.CentsPerContainer * 2, await PendingCents(client, profileId));
+        Assert.Equal(HouseholdCredit.CentsPerContainer, await PendingCents(client, profileId));
     }
 
     [Fact]
@@ -142,7 +142,7 @@ public class ScanTokenSingleUseTests : IClassFixture<ScanTokenSingleUseTests.Hos
 
         Assert.Equal(HttpStatusCode.OK, a.StatusCode);
         Assert.Equal(HttpStatusCode.OK, b.StatusCode);
-        Assert.Equal(HouseholdCredit.CentsPerContainer * 2 * 2, await PendingCents(client, profileId));
+        Assert.Equal(HouseholdCredit.CentsPerContainer * 2, await PendingCents(client, profileId));
     }
 
     [Fact]

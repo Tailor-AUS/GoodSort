@@ -7,7 +7,7 @@ export const SITE_URL = (
 export const SITE_NAME = "The Good Sort";
 export const SITE_TITLE = "The Good Sort | Start scanning today in Brisbane";
 export const SITE_DESCRIPTION =
-  "Scan eligible cans and bottles in Brisbane. Earn 5¢ sorting credit each. When your suburb hits enough containers for one driver trip, bag out — we take them to a refund point.";
+  "Scan eligible cans and bottles in Brisbane. Earn 10¢ sorting credit each. When your suburb hits enough containers for one driver trip, bag out — we take them to a refund point.";
 
 export const SOCIAL_IMAGE = {
   url: "/opengraph-image",

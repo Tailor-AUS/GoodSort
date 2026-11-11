@@ -144,7 +144,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
               <div className="text-center mb-8">
                 <div className="flex justify-center mb-5"><Logo size="lg" /></div>
                 <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-2">Start scanning today</h1>
-                <p className="text-slate-400 text-[13px]">Your email. Then your address. Scan for 5¢ — suburb volume unlocks a driver trip.</p>
+                <p className="text-slate-400 text-[13px]">Your email. Then your address &amp; payout details. Scan for 10¢ — suburb volume unlocks a driver trip.</p>
               </div>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com"
                 onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}
@@ -203,7 +203,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
             Scan, sort, skip the depot.
           </h1>
           <p className="text-slate-700 text-[17px] sm:text-[19px] leading-relaxed mb-4 max-w-xl">
-            Scan a can, earn 5¢. We collect from your kerb — you never drive to a depot.
+            Scan a can, earn 10¢. We collect from your kerb — you never drive to a depot.
           </p>
           {/* The badge depends on /api/growth/brisbane, so on first paint it is
               absent and everything below sits higher — then it pops in and
@@ -227,7 +227,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
             )
           )}
           <p className="text-slate-500 text-[13px] mb-8 max-w-xl">
-            A 5¢ sorting credit, not the 10¢ scheme refund. <a href="/terms" className="underline text-violet-800">How it works</a>.
+            A 10¢ sorting credit paid after pickup and depot verification. <a href="/terms" className="underline text-violet-800">How it works</a>.
           </p>
 
           <div className="w-full max-w-xs">
@@ -288,8 +288,8 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
             About a third of eligible containers in Queensland never reach a refund point. People are recycling. They are not driving to a depot for 10¢ a bottle.
           </p>
           <div className="grid grid-cols-3 gap-3 max-w-xs mx-auto">
-            <MiniStat value="10¢" label="scheme refund" />
-            <MiniStat value="5¢" label="your credit" />
+            <MiniStat value="10¢" label="your credit" />
+            <MiniStat value="+1¢" label="street bonus" />
             <MiniStat value="scan" label="the habit" />
           </div>
         </div>
@@ -304,7 +304,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
           <div className="space-y-10">
             <StepRow icon={<Home className="w-5 h-5" />} color="from-violet-400 to-violet-600" num={1}
               title="Scan a container"
-              body="Point your camera at a can or bottle. 5¢ pending, straight away."
+              body="Point your camera at a can or bottle. 10¢ pending, straight away."
               tag="Scan first" tagColor="bg-violet-100 text-violet-700" />
             <StepRow icon={<Recycle className="w-5 h-5" />} color="from-blue-400 to-blue-600" num={2}
               title="Sort into your bags"
@@ -317,7 +317,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
             <StepRow icon={<Banknote className="w-5 h-5" />} color="from-emerald-400 to-emerald-600" num={4}
               title="Get paid — plus 1¢/can from your Container Mafia"
               body="Credits clear after the depot verifies. Invite neighbours with your link to build your street Container Mafia: earn $1 when they join plus 1¢ commission on every container they sort."
-              tag="5¢ credit + 1¢ Container Mafia commission" tagColor="bg-emerald-100 text-emerald-700" />
+              tag="10¢ credit + 1¢ Container Mafia commission" tagColor="bg-emerald-100 text-emerald-700" />
           </div>
         </div>
       </section>

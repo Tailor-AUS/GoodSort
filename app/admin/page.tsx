@@ -410,7 +410,7 @@ export default function AdminPage() {
                     : "bg-amber-50 text-amber-800 border-amber-200"
                 }`}
               >
-                {crpLedger.crpActive ? "COEX CRP Active (10¢ Sorter)" : "CRP Building — Pre-CCA Mode (5¢ base + pro-forma 17.68¢)"}
+                {crpLedger.crpActive ? "COEX CRP Active (10¢ Sorter)" : "CRP Building — Pre-CCA Mode (10¢ home sorter + pro-forma 17.68¢)"}
               </span>
             </div>
 

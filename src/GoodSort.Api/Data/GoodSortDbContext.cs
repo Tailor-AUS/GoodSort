@@ -84,6 +84,12 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
 
             e.HasIndex(p => p.Email).IsUnique().HasFilter("[Email] IS NOT NULL");
             e.HasIndex(p => p.Phone).HasFilter("[Phone] IS NOT NULL");
+            e.Property(p => p.PreferredPayoutMethod).HasMaxLength(16);
+            e.Property(p => p.PayIdType).HasMaxLength(16);
+            e.Property(p => p.PayIdValue).HasMaxLength(128);
+            e.Property(p => p.BankBsb).HasMaxLength(16);
+            e.Property(p => p.BankAccountNumber).HasMaxLength(32);
+            e.Property(p => p.BankAccountName).HasMaxLength(128);
         });
 
         // Scan

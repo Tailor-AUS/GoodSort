@@ -103,19 +103,18 @@ public class Tier2_BoundaryCornerTests : IClassFixture<OpaqueBoxHost>
     }
 
     [Fact]
-    public async Task F2_B04_Launch_Bonus_Container_50_Pays_10c()
+    public async Task F2_B04_Launch_Bonus_Container_50_Pays_Double_When_Cap_Configured()
     {
-        // Container index 49 (50th container) pays LaunchBonus rate (10c)
         var cents = LaunchBonus.CentsForContainerAt(49, 50);
-        Assert.Equal(10, cents);
+        Assert.Equal(LaunchBonus.CentsPerContainer, cents);
     }
 
     [Fact]
-    public async Task F2_B05_Launch_Bonus_Container_51_Steps_Down_To_5c()
+    public async Task F2_B05_Launch_Bonus_Container_51_Steps_Down_To_Standard_10c()
     {
-        // Container index 50 (51st container) steps down to standard rate (5c)
         var cents = LaunchBonus.CentsForContainerAt(50, 50);
-        Assert.Equal(5, cents);
+        Assert.Equal(HouseholdCredit.CentsPerContainer, cents);
+        Assert.Equal(10, cents);
     }
 
     // =========================================================================

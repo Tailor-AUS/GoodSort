@@ -103,7 +103,7 @@ export default function MarketplacePage() {
             Scan at home. Earn from every can.
           </h1>
           <p className="text-slate-600 text-[16px] sm:text-[18px] leading-relaxed mb-6 max-w-xl mx-auto">
-            Point your phone at drink cans and bottles for 5¢ each, keep 4 bags at home, and skip the depot — we collect from your front kerb once your Brisbane suburb hits {LIVE_VOLUME_THRESHOLD.toLocaleString()} containers.
+            Point your phone at drink cans and bottles for 10¢ each, keep 4 bags at home, and skip the depot — we collect from your front kerb once your Brisbane suburb hits {LIVE_VOLUME_THRESHOLD.toLocaleString()} containers.
           </p>
           <div className="max-w-xs mx-auto">
             <Link
@@ -136,7 +136,7 @@ export default function MarketplacePage() {
                 1. Scan in your kitchen
               </h3>
               <p className="text-[13px] text-slate-500 leading-relaxed">
-                Snap a quick photo or barcode before tossing a drink container in a bag. 5¢ pending credit straight away — plus 1¢/can when neighbours you invite scan.
+                Snap a quick photo or barcode before tossing a drink container in a bag. 10¢ pending credit straight away — plus 1¢/can when neighbours you invite scan.
               </p>
             </div>
 
