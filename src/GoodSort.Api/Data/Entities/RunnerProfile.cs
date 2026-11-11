@@ -12,6 +12,7 @@ public class RunnerProfile
     public string VehicleRego { get; set; } = "";
     public int CapacityBags { get; set; } = 10;
     public double ServiceRadiusKm { get; set; } = 10.0;
+    public string? CoexSchemeId { get; set; }
 
     // Live location (heartbeat)
     public bool IsOnline { get; set; }

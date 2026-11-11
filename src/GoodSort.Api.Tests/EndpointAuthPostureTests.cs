@@ -81,6 +81,7 @@ public class EndpointAuthPostureTests : IClassFixture<EndpointAuthPostureTests.H
         ["/api/bins/{id:guid}/qr"] = "Renders the printable label for a physical bin. The claim here used to be \"no member data\", which was wrong — it rendered bin.Name, and a household bin's name IS the household's name. It now shows a name only for hosted bins, where it is a venue.",
 
         ["/api/marketplace/runs"] = "Available-work board for runners. Deliberately projected to run centroid, stop COUNT and aggregate materials — never a stop address or a household coordinate.",
+        ["/api/marketplace/overview"] = "Two-sided Sorters & Runners marketplace overview. Projected strictly to canonical suburb names, ~1.1km rounded suburb centroids, aggregate container/bag counts, and payout rates — never member names, street addresses, or exact household coordinates.",
         ["/api/runner/leaderboard"] = "Public runner standings.",
         ["/api/cashout/status"] = "Whether payouts are switched on. A flag, not a balance.",
         ["/api/version"] = "Which commit is serving. A deploy check that required a token would be unusable by an uptime probe. Sha and build time only — never config or environment.",

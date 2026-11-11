@@ -5,11 +5,11 @@ import {
   type User, type SortBin, type Depot,
 } from "@/lib/store";
 import { getUserApi, getDepotsApi, getBinsApi } from "@/lib/store-api";
-import type { MarketplaceRun, RunDetail, RunnerEarnings, LeaderboardEntry } from "@/lib/marketplace";
+import type { MarketplaceRun, RunDetail, RunnerEarnings, LeaderboardEntry, DiscrepancyCode } from "@/lib/marketplace";
 import {
   getRunnerProfile, getAvailableRuns, getActiveRun,
   claimRun, startRun, arriveAtStop, pickupStop, skipStop,
-  deliverRun, completeRun, getRunnerEarnings, getLeaderboard,
+  deliverRun, completeRun, settleRun, getRunnerEarnings, getLeaderboard,
   sendHeartbeat, registerAsRunner,
 } from "@/lib/marketplace-api";
 import { MapView } from "@/app/components/shared/map-view";
@@ -148,9 +148,14 @@ export default function RunnerApp() {
     if (updated) setActiveRun(updated);
   }, [activeRun]);
 
-  const handlePickup = useCallback(async (stopId: string, count: number, photoUrl?: string) => {
+  const handlePickup = useCallback(async (
+    stopId: string,
+    count: number,
+    photoUrl?: string,
+    discrepancy?: { contaminationFlag?: boolean; discrepancyCode?: DiscrepancyCode; discrepancyNote?: string }
+  ) => {
     if (!activeRun) return;
-    const result = await pickupStop(activeRun.id, stopId, count, photoUrl);
+    const result = await pickupStop(activeRun.id, stopId, count, photoUrl, discrepancy);
     if (!result) {
       setActionError("That pickup did not save. Check your signal and tap it again — you will not be paid for a stop we never recorded.");
       return;
@@ -181,16 +186,33 @@ export default function RunnerApp() {
     setActiveRun(result);
   }, [activeRun]);
 
-  const handleComplete = useCallback(async () => {
-    if (!activeRun) return;
-    const result = await completeRun(activeRun.id);
-    if (!result) {
-      setActionError("Could not complete the run. Check your signal and try again — settling is what pays you.");
-      return;
+  const handleComplete = useCallback(async (
+    depotVerifiedContainers?: number,
+    coexDocketRef?: string
+  ): Promise<{ earned: number; containers: number } | null> => {
+    if (!activeRun) return null;
+    let current = activeRun;
+    if (current.status === "delivering") {
+      const completed = await completeRun(current.id, depotVerifiedContainers, coexDocketRef);
+      if (!completed) {
+        setActionError("Could not record depot drop-off. Check your signal and try again.");
+        return null;
+      }
+      current = completed;
+      setActiveRun(completed);
     }
+
+    const settled = await settleRun(current.id);
+    if (!settled) {
+      setActionError("Drop-off recorded, but settlement did not finish. Tap Confirm again to settle your payout.");
+      return null;
+    }
+
     setActionError(null);
-    setActiveRun(result);
-  }, [activeRun]);
+    setActiveRun(null);
+    await refreshData();
+    return { earned: settled.actualPayoutCents, containers: settled.actualContainers };
+  }, [activeRun, refreshData]);
 
   if (loading || !user) {
     return (

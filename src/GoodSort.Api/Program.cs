@@ -1799,14 +1799,15 @@ app.MapPost("/api/routes/{id:guid}/optimize", async (HttpContext ctx, Guid id, G
     return Results.Ok(new { optimized = true, durationMin = route.EstimatedDurationMin, distanceKm = route.EstimatedDistanceKm });
 }).RequireAuthorization();
 
-// ── Cash-out ──
+// ── Cash-out (ABA BSB+Account & NPP PayID) ──
 app.MapGet("/api/cashout/status", (CashoutService cashout) =>
     Results.Ok(new
     {
         open = cashout.PayoutsOpen(),
+        payIdOpen = cashout.PayIdPayoutsOpen(),
         minCents = 2000,
-        message = cashout.PayoutsOpen()
-            ? "Bank transfers run weekly once you hit $20."
+        message = (cashout.PayoutsOpen() || cashout.PayIdPayoutsOpen())
+            ? "PayID and bank transfers run weekly once you hit $20."
             : "Payouts are not open yet. Sorting credits stay on your account until bank transfers are live.",
     }));
 
@@ -1820,6 +1821,15 @@ app.MapPost("/api/cashout", async (HttpContext ctx, CashoutRequestDto req, Casho
     return success ? Results.Ok(new { success = true }) : Results.BadRequest(new { error });
 }).RequireAuthorization();
 
+app.MapPost("/api/cashout/payid", async (HttpContext ctx, PayIdCashoutRequestDto req, CashoutService cashout) =>
+{
+    var userId = ctx.GetCallerId();
+    if (userId is null) return Results.Unauthorized();
+    var (success, error) = await cashout.RequestPayIdCashout(
+        userId.Value, req.AmountCents, req.PayIdType, req.PayIdValue, req.AccountName);
+    return success ? Results.Ok(new { success = true }) : Results.BadRequest(new { error });
+}).RequireAuthorization();
+
 // ── Admin: Generate ABA file (admin only — file contains every payee's BSB+account) ──
 app.MapGet("/api/admin/aba-export", async (CashoutService cashout) =>
 {
@@ -1827,6 +1837,125 @@ app.MapGet("/api/admin/aba-export", async (CashoutService cashout) =>
     var aba = await cashout.GenerateAbaFile();
     if (string.IsNullOrEmpty(aba)) return Results.Ok(new { message = "No pending cashouts" });
     return Results.Text(aba, "text/plain");
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
+
+// ── Admin: Generate NPP PayID batch CSV (admin only — file contains payee PayIDs) ──
+app.MapGet("/api/admin/payid-export", async (CashoutService cashout) =>
+{
+    if (!cashout.PayIdPayoutsOpen()) return Results.Ok(new { message = "PayID payouts are not enabled. Set PAYID_PAYOUTS_ENABLED=true or enable ABA payouts." });
+    var csv = await cashout.GeneratePayIdCsv();
+    if (string.IsNullOrEmpty(csv)) return Results.Ok(new { message = "No pending PayID cashouts" });
+    return Results.Text(csv, "text/csv");
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
+
+// ── Admin: COEX 17.68¢ Secondary-Sorted CRP Settlement Ledger ──
+app.MapGet("/api/admin/crp-ledger", async (GoodSortDbContext db, CashoutService cashout, IConfiguration cfg) =>
+{
+    var crpActive = CrpSettlement.IsCrpActive(cfg);
+    var rows = await db.RunSettlementLedgers.AsNoTracking()
+        .OrderByDescending(l => l.CreatedAt)
+        .Take(100)
+        .ToListAsync();
+
+    var allTotals = await db.RunSettlementLedgers.AsNoTracking()
+        .GroupBy(_ => 1)
+        .Select(g => new
+        {
+            SettledRuns = g.Count(),
+            VerifiedContainers = g.Sum(x => x.VerifiedContainers),
+            BagsVerified = g.Sum(x => x.BagsVerified),
+            DiscrepancyStops = g.Sum(x => x.DiscrepancyStops),
+            GrossBp = g.Sum(x => x.GrossRevenueBasisPoints),
+            ProFormaGrossBp = g.Sum(x => x.ProFormaCoexGrossBasisPoints),
+            HouseholdCents = g.Sum(x => x.HouseholdPayoutCents),
+            MafiaCents = g.Sum(x => x.ContainerMafiaCents),
+            RunnerCents = g.Sum(x => x.RunnerPayoutCents),
+            TotalPayoutCents = g.Sum(x => x.TotalPayoutCents),
+            NetMarginBp = g.Sum(x => x.NetMarginBasisPoints),
+            ProFormaMarginBp = g.Sum(x => x.ProFormaCrpNetMarginBasisPoints),
+        })
+        .FirstOrDefaultAsync();
+
+    var pendingCashouts = await db.CashoutRequests.AsNoTracking()
+        .Where(c => c.Status == "pending")
+        .Select(c => new { c.PayoutMethod, c.AmountCents })
+        .ToListAsync();
+
+    var pendingPayId = pendingCashouts.Where(c => c.PayoutMethod == "payid").ToList();
+    var pendingAba = pendingCashouts.Where(c => c.PayoutMethod != "payid").ToList();
+
+    var totalBags = await db.SortedBags.CountAsync(b => b.Status != "cancelled");
+    var kerbBags = await db.SortedBags.CountAsync(b => b.Status == "on_kerb");
+
+    return Results.Ok(new
+    {
+        crpActive,
+        activeHouseholdRateCents = CrpSettlement.ActiveHouseholdRateCents(cfg),
+        rateCard = new
+        {
+            coexRefundCents = 10.00m,
+            coexHandlingFeeCents = 7.68m,
+            coexGrossCents = 17.68m,
+            sorterCents = CrpSettlement.CrpHouseholdCentsPerContainer,
+            containerMafiaCents = CrpSettlement.ContainerMafiaCentsPerContainer,
+            runnerTargetCents = CrpSettlement.CrpRunnerTargetCentsPerContainer,
+            netMarginWithMafiaCents = 3.68m,
+            netMarginDirectCents = 4.68m,
+        },
+        payouts = new
+        {
+            abaOpen = cashout.PayoutsOpen(),
+            payIdOpen = cashout.PayIdPayoutsOpen(),
+            pendingAbaCount = pendingAba.Count,
+            pendingAbaCents = pendingAba.Sum(x => x.AmountCents),
+            pendingPayIdCount = pendingPayId.Count,
+            pendingPayIdCents = pendingPayId.Sum(x => x.AmountCents),
+        },
+        bags = new
+        {
+            totalSealed = totalBags,
+            onKerb = kerbBags,
+        },
+        totals = new
+        {
+            settledRuns = allTotals?.SettledRuns ?? 0,
+            verifiedContainers = allTotals?.VerifiedContainers ?? 0,
+            bagsVerified = allTotals?.BagsVerified ?? 0,
+            discrepancyStops = allTotals?.DiscrepancyStops ?? 0,
+            grossRevenueDollars = CrpSettlement.BasisPointsToDollars(allTotals?.GrossBp ?? 0),
+            proFormaCoexGrossDollars = CrpSettlement.BasisPointsToDollars(allTotals?.ProFormaGrossBp ?? 0),
+            householdPayoutCents = allTotals?.HouseholdCents ?? 0,
+            containerMafiaCents = allTotals?.MafiaCents ?? 0,
+            runnerPayoutCents = allTotals?.RunnerCents ?? 0,
+            totalPayoutCents = allTotals?.TotalPayoutCents ?? 0,
+            netMarginDollars = CrpSettlement.BasisPointsToDollars(allTotals?.NetMarginBp ?? 0),
+            proFormaCrpNetMarginDollars = CrpSettlement.BasisPointsToDollars(allTotals?.ProFormaMarginBp ?? 0),
+        },
+        entries = rows.Select(l => new
+        {
+            l.Id,
+            l.RunId,
+            l.AreaName,
+            l.SettlementMode,
+            l.CoexDocketRef,
+            l.VerifiedContainers,
+            l.BagsVerified,
+            l.DiscrepancyStops,
+            coexRefundDollars = CrpSettlement.BasisPointsToDollars(l.CoexRefundBasisPoints),
+            coexHandlingFeeDollars = CrpSettlement.BasisPointsToDollars(l.CoexHandlingFeeBasisPoints),
+            grossRevenueDollars = CrpSettlement.BasisPointsToDollars(l.GrossRevenueBasisPoints),
+            proFormaCoexGrossDollars = CrpSettlement.BasisPointsToDollars(l.ProFormaCoexGrossBasisPoints),
+            l.HouseholdPayoutCents,
+            l.ContainerMafiaCents,
+            l.RunnerPayoutCents,
+            l.TotalPayoutCents,
+            netMarginDollars = CrpSettlement.BasisPointsToDollars(l.NetMarginBasisPoints),
+            netMarginCentsPerCan = CrpSettlement.BasisPointsToCentsPerCan(l.NetMarginBasisPoints, l.VerifiedContainers),
+            proFormaCrpNetMarginDollars = CrpSettlement.BasisPointsToDollars(l.ProFormaCrpNetMarginBasisPoints),
+            proFormaMarginCentsPerCan = CrpSettlement.BasisPointsToCentsPerCan(l.ProFormaCrpNetMarginBasisPoints, l.VerifiedContainers),
+            l.CreatedAt,
+        }),
+    });
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
 // ── Admin: Dashboard stats (auth required) ──
@@ -2259,8 +2388,346 @@ app.MapDelete("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, GoodSo
 
 
 // ══════════════════════════════════════════════════════════════════════
-// ── RUNNER MARKETPLACE ──
+// ── 4-STREAM SECONDARY-SORTED QR BAG TAGS (SORTERS) ──
 // ══════════════════════════════════════════════════════════════════════
+
+app.MapPost("/api/bags", async (HttpContext ctx, CreateSortedBagRequest req, GoodSortDbContext db) =>
+{
+    var callerId = ctx.GetCallerId();
+    if (callerId is null) return Results.Unauthorized();
+
+    var profile = await db.Profiles.FindAsync(callerId.Value);
+    if (profile is null) return Results.NotFound("Profile not found");
+    if (profile.HouseholdId is not Guid hhId)
+        return Results.BadRequest(new { error = "Add your street address first so QR bag tags link to your household." });
+
+    var household = await db.Households.FindAsync(hhId);
+    if (household is null) return Results.NotFound("Household not found");
+
+    var stream = CrpSettlement.NormalizeStream(req.Stream);
+    if (stream is null)
+        return Results.BadRequest(new { error = "Stream must be aluminium, pet_clear, pet_coloured, or glass." });
+
+    var unbaggedScans = await db.Scans
+        .Where(s => s.HouseholdId == hhId && s.Status == "pending" && s.SortedBagId == null)
+        .OrderBy(s => s.CreatedAt)
+        .ToListAsync();
+
+    var matchingScans = unbaggedScans
+        .Where(s => CrpSettlement.ScanMatchesBagStream(s.Material, stream))
+        .ToList();
+
+    var declared = req.DeclaredContainers is > 0
+        ? Math.Clamp(req.DeclaredContainers.Value, 1, 500)
+        : Math.Clamp(Math.Max(matchingScans.Count, 1), 1, 500);
+
+    var code = CrpSettlement.GenerateBagCode(stream);
+    for (var attempt = 0; attempt < 5 && await db.SortedBags.AnyAsync(b => b.Code == code); attempt++)
+        code = CrpSettlement.GenerateBagCode(stream);
+
+    var putOnKerb = req.PutOnKerb == true;
+    var bag = new SortedBag
+    {
+        Code = code,
+        HouseholdId = hhId,
+        CreatorProfileId = profile.Id,
+        Stream = stream,
+        DeclaredContainers = declared,
+        Status = putOnKerb ? "on_kerb" : "sealed",
+        KerbAt = putOnKerb ? DateTime.UtcNow : null,
+    };
+
+    var scansToLink = matchingScans.Take(declared).ToList();
+    foreach (var scan in scansToLink)
+        scan.SortedBagId = bag.Id;
+    bag.LinkedScanCount = scansToLink.Count;
+
+    if (putOnKerb)
+    {
+        household.BinIsOut = true;
+        household.BinIsOutAt = DateTime.UtcNow;
+    }
+
+    db.SortedBags.Add(bag);
+    await db.SaveChangesAsync();
+
+    return Results.Created($"/api/bags/{bag.Id}", new
+    {
+        bag.Id,
+        bag.Code,
+        bag.Stream,
+        bag.DeclaredContainers,
+        bag.LinkedScanCount,
+        bag.VerifiedContainers,
+        bag.Status,
+        bag.CreatedAt,
+        bag.KerbAt,
+    });
+}).RequireAuthorization();
+
+app.MapGet("/api/bags/mine", async (HttpContext ctx, GoodSortDbContext db) =>
+{
+    var callerId = ctx.GetCallerId();
+    if (callerId is null) return Results.Unauthorized();
+
+    var profile = await db.Profiles.AsNoTracking().FirstOrDefaultAsync(p => p.Id == callerId.Value);
+    if (profile is null) return Results.NotFound();
+
+    var pendingScans = profile.HouseholdId is Guid hhId
+        ? await db.Scans.AsNoTracking()
+            .Where(s => s.HouseholdId == hhId && s.Status == "pending" && s.SortedBagId == null)
+            .Select(s => s.Material)
+            .ToListAsync()
+        : await db.Scans.AsNoTracking()
+            .Where(s => s.UserId == profile.Id && s.Status == "pending" && s.SortedBagId == null)
+            .Select(s => s.Material)
+            .ToListAsync();
+
+    var unbaggedByStream = new
+    {
+        aluminium = pendingScans.Count(m => CrpSettlement.ScanMatchesBagStream(m, "aluminium")),
+        pet_clear = pendingScans.Count(m => CrpSettlement.ScanMatchesBagStream(m, "pet_clear")),
+        pet_coloured = pendingScans.Count(m => CrpSettlement.ScanMatchesBagStream(m, "pet_coloured")),
+        glass = pendingScans.Count(m => CrpSettlement.ScanMatchesBagStream(m, "glass")),
+    };
+
+    if (profile.HouseholdId is not Guid householdId)
+    {
+        return Results.Ok(new
+        {
+            hasHousehold = false,
+            unbaggedByStream,
+            bags = Array.Empty<object>(),
+        });
+    }
+
+    var bags = await db.SortedBags.AsNoTracking()
+        .Where(b => b.HouseholdId == householdId && b.Status != "cancelled")
+        .OrderByDescending(b => b.CreatedAt)
+        .Take(50)
+        .Select(b => new
+        {
+            b.Id,
+            b.Code,
+            b.Stream,
+            b.DeclaredContainers,
+            b.LinkedScanCount,
+            b.VerifiedContainers,
+            b.ContaminationFlag,
+            b.DiscrepancyCode,
+            b.DiscrepancyNote,
+            b.Status,
+            b.CreatedAt,
+            b.KerbAt,
+            b.PickedUpAt,
+            b.VerifiedAt,
+        })
+        .ToListAsync();
+
+    return Results.Ok(new
+    {
+        hasHousehold = true,
+        unbaggedByStream,
+        bags,
+    });
+}).RequireAuthorization();
+
+app.MapPatch("/api/bags/{id:guid}/status", async (HttpContext ctx, Guid id, UpdateSortedBagStatusRequest req, GoodSortDbContext db) =>
+{
+    var bag = await db.SortedBags.FindAsync(id);
+    if (bag is null) return Results.NotFound();
+    if (!await CallerCanAccessHousehold(ctx, bag.HouseholdId, db)) return Results.Forbid();
+
+    if (bag.Status is "picked_up" or "verified")
+        return Results.BadRequest(new { error = "This bag has already been collected by a Runner." });
+
+    var next = (req.Status ?? "").Trim().ToLowerInvariant();
+    if (next is not ("sealed" or "on_kerb" or "cancelled"))
+        return Results.BadRequest(new { error = "Status must be sealed, on_kerb, or cancelled." });
+
+    bag.Status = next;
+    if (next == "on_kerb")
+    {
+        bag.KerbAt = DateTime.UtcNow;
+        var hh = await db.Households.FindAsync(bag.HouseholdId);
+        if (hh is not null)
+        {
+            hh.BinIsOut = true;
+            hh.BinIsOutAt = DateTime.UtcNow;
+        }
+    }
+    else if (next == "sealed")
+    {
+        bag.KerbAt = null;
+    }
+    else if (next == "cancelled")
+    {
+        var linkedScans = await db.Scans.Where(s => s.SortedBagId == bag.Id).ToListAsync();
+        foreach (var s in linkedScans) s.SortedBagId = null;
+        bag.LinkedScanCount = 0;
+    }
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new
+    {
+        bag.Id,
+        bag.Code,
+        bag.Stream,
+        bag.DeclaredContainers,
+        bag.LinkedScanCount,
+        bag.Status,
+        bag.KerbAt,
+    });
+}).RequireAuthorization();
+
+app.MapGet("/api/bags/lookup/{code}", async (HttpContext ctx, string code, GoodSortDbContext db) =>
+{
+    var callerId = ctx.GetCallerId();
+    if (callerId is null) return Results.Unauthorized();
+
+    var normalized = code.Trim().ToUpperInvariant();
+    var bag = await db.SortedBags.AsNoTracking()
+        .Include(b => b.Household)
+        .FirstOrDefaultAsync(b => b.Code == normalized);
+    if (bag is null) return Results.NotFound(new { error = "Bag tag not found" });
+
+    var isRunner = await db.RunnerProfiles.AnyAsync(rp => rp.ProfileId == callerId.Value);
+    var canAccessHousehold = await CallerCanAccessHousehold(ctx, bag.HouseholdId, db);
+    if (!isRunner && !canAccessHousehold) return Results.Forbid();
+
+    return Results.Ok(new
+    {
+        bag.Id,
+        bag.Code,
+        bag.Stream,
+        bag.DeclaredContainers,
+        bag.LinkedScanCount,
+        bag.VerifiedContainers,
+        bag.ContaminationFlag,
+        bag.DiscrepancyCode,
+        bag.Status,
+        suburb = BinDayService.CanonicalSuburb(bag.Household?.Suburb),
+    });
+}).RequireAuthorization();
+
+// ══════════════════════════════════════════════════════════════════════
+// ── SORTERS & RUNNERS MARKETPLACE ──
+// ══════════════════════════════════════════════════════════════════════
+
+// Public marketplace overview: aggregate suburb pools + active run bounties.
+// Strictly projected to canonical suburb names, ~1.1km rounded suburb centroids,
+// aggregate container/bag counts, and payout rates — NEVER member names, street
+// addresses, or exact household coordinates.
+app.MapGet("/api/marketplace/overview", async (GoodSortDbContext db, IConfiguration cfg) =>
+{
+    var crpActive = CrpSettlement.IsCrpActive(cfg);
+    var activeSorterRate = CrpSettlement.ActiveHouseholdRateCents(cfg);
+
+    var availableRuns = await db.Runs.AsNoTracking()
+        .Include(r => r.Stops)
+        .Where(r => r.Status == "available" && r.ExpiresAt > DateTime.UtcNow)
+        .OrderByDescending(r => r.EstimatedPayoutCents)
+        .Take(30)
+        .ToListAsync();
+
+    var residentialRows = await db.Households.AsNoTracking()
+        .Where(h => h.Type != "unit_complex" && h.Suburb != null && h.Lat != 0 && h.Lng != 0)
+        .Select(h => new { h.Id, h.Suburb, h.Lat, h.Lng, h.PendingContainers, h.BinIsOut })
+        .ToListAsync();
+
+    var openBagsByHousehold = await db.SortedBags.AsNoTracking()
+        .Where(b => b.Status == "sealed" || b.Status == "on_kerb")
+        .GroupBy(b => b.HouseholdId)
+        .Select(g => new { HouseholdId = g.Key, Bags = g.Count(), OnKerb = g.Count(x => x.Status == "on_kerb") })
+        .ToDictionaryAsync(x => x.HouseholdId);
+
+    var suburbPools = residentialRows
+        .Where(r => WaitlistDensity.CanAllocateSuburb(r.Suburb))
+        .GroupBy(r => BinDayService.CanonicalSuburb(r.Suburb)!)
+        .Select(g =>
+        {
+            var pendingContainers = g.Sum(x => Math.Max(0, x.PendingContainers));
+            var bagsSealed = g.Sum(x => openBagsByHousehold.TryGetValue(x.Id, out var bc) ? bc.Bags : 0);
+            var bagsOnKerb = g.Sum(x => openBagsByHousehold.TryGetValue(x.Id, out var bc) ? bc.OnKerb : 0);
+            var sortersCount = g.Count();
+            // Privacy floor: round suburb centroids to 2 decimal places (~1.1 km)
+            // so a single-household suburb never reveals an exact house pin.
+            var centroidLat = Math.Round(g.Average(x => x.Lat), 2);
+            var centroidLng = Math.Round(g.Average(x => x.Lng), 2);
+            var ready = WaitlistDensity.CanDispatch(pendingContainers, sortersCount);
+            return new
+            {
+                suburb = g.Key,
+                centroidLat,
+                centroidLng,
+                sortersCount,
+                pendingContainers,
+                targetContainers = WaitlistDensity.LiveThreshold,
+                progressPct = Math.Min(100, (int)Math.Round(100.0 * pendingContainers / WaitlistDensity.LiveThreshold)),
+                bagsSealed,
+                bagsOnKerb,
+                readyForRun = ready,
+                estimatedRunnerBountyCents = Math.Max(pendingContainers, WaitlistDensity.LiveThreshold) * CrpSettlement.CrpRunnerTargetCentsPerContainer,
+                estimatedSorterPoolCents = pendingContainers * CrpSettlement.CrpHouseholdCentsPerContainer,
+            };
+        })
+        .OrderByDescending(p => p.pendingContainers)
+        .ThenByDescending(p => p.sortersCount)
+        .Take(30)
+        .ToList();
+
+    var activeSorters = await db.Profiles.CountAsync(p => p.TotalContainers > 0 || p.HouseholdId != null);
+    var registeredRunners = await db.RunnerProfiles.CountAsync();
+    var runnersOnline = await db.RunnerProfiles.CountAsync(rp => rp.IsOnline);
+    var totalContainersSorted = await db.Profiles.SumAsync(p => p.TotalContainers);
+    var totalBagsOnKerb = await db.SortedBags.CountAsync(b => b.Status == "on_kerb");
+
+    return Results.Ok(new
+    {
+        crpActive,
+        rateCard = new
+        {
+            coexGrossCents = 17.68m,
+            coexRefundCents = 10.00m,
+            coexHandlingFeeCents = 7.68m,
+            fullScaleSorterCents = CrpSettlement.CrpHouseholdCentsPerContainer,
+            currentSorterCents = activeSorterRate,
+            launchBonusCents = HouseholdCredit.CentsPerContainer + LaunchBonus.ExtraCentsPerContainer,
+            launchBonusCap = LaunchBonus.CapFrom(cfg),
+            containerMafiaCents = CrpSettlement.ContainerMafiaCentsPerContainer,
+            runnerTargetCents = CrpSettlement.CrpRunnerTargetCentsPerContainer,
+        },
+        stats = new
+        {
+            activeSorters,
+            registeredRunners,
+            runnersOnline,
+            totalContainersSorted,
+            bagsOnKerb = totalBagsOnKerb,
+            availableRunsCount = availableRuns.Count,
+            formingSuburbsCount = suburbPools.Count,
+        },
+        availableRuns = availableRuns.Select(r => new
+        {
+            r.Id,
+            r.AreaName,
+            CentroidLat = Math.Round(r.CentroidLat, 3),
+            CentroidLng = Math.Round(r.CentroidLng, 3),
+            r.MaterialFocus,
+            r.EstimatedContainers,
+            r.EstimatedWeightKg,
+            r.PerContainerCents,
+            r.EstimatedPayoutCents,
+            r.PricingTier,
+            r.EstimatedDistanceKm,
+            r.EstimatedDurationMin,
+            StopCount = r.Stops.Count,
+            r.ExpiresAt,
+            r.Materials,
+        }),
+        suburbPools,
+    });
+});
 
 // ── Runner: Register as runner ──
 app.MapPost("/api/runner/register", async (HttpContext ctx, RunnerRegisterRequest req, GoodSortDbContext db) =>
@@ -2271,7 +2738,20 @@ app.MapPost("/api/runner/register", async (HttpContext ctx, RunnerRegisterReques
     if (profile is null) return Results.NotFound("Profile not found");
 
     var existing = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == profileId.Value);
-    if (existing is not null) return Results.Ok(existing);
+    if (existing is not null)
+    {
+        if (!string.IsNullOrWhiteSpace(req.CoexSchemeId))
+        {
+            var trimmed = req.CoexSchemeId.Trim().ToUpperInvariant();
+            existing.CoexSchemeId = trimmed[..Math.Min(32, trimmed.Length)];
+            await db.SaveChangesAsync();
+        }
+        return Results.Ok(existing);
+    }
+
+    var schemeId = string.IsNullOrWhiteSpace(req.CoexSchemeId)
+        ? null
+        : req.CoexSchemeId.Trim().ToUpperInvariant()[..Math.Min(32, req.CoexSchemeId.Trim().Length)];
 
     var runner = new RunnerProfile
     {
@@ -2281,6 +2761,7 @@ app.MapPost("/api/runner/register", async (HttpContext ctx, RunnerRegisterReques
         VehicleRego = req.VehicleRego ?? "",
         CapacityBags = req.CapacityBags ?? 10,
         ServiceRadiusKm = req.ServiceRadiusKm ?? 10.0,
+        CoexSchemeId = schemeId,
     };
     profile.Role = "both";
     db.RunnerProfiles.Add(runner);
@@ -2305,6 +2786,11 @@ app.MapPatch("/api/runner/profile/{profileId:guid}", async (HttpContext ctx, Gui
     if (req.VehicleType is not null) runner.VehicleType = req.VehicleType;
     if (req.CapacityBags.HasValue) runner.CapacityBags = req.CapacityBags.Value;
     if (req.ServiceRadiusKm.HasValue) runner.ServiceRadiusKm = req.ServiceRadiusKm.Value;
+    if (req.CoexSchemeId is not null)
+    {
+        var trimmed = req.CoexSchemeId.Trim().ToUpperInvariant();
+        runner.CoexSchemeId = trimmed.Length == 0 ? null : trimmed[..Math.Min(32, trimmed.Length)];
+    }
     await db.SaveChangesAsync();
     return Results.Ok(runner);
 }).RequireAuthorization();
@@ -2445,7 +2931,145 @@ app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/arrive",
     return Results.Ok(stop);
 }).RequireAuthorization();
 
-// ── Marketplace: Complete pickup at stop (with photo) ──
+// ── Marketplace: Kerbside bag manifest for a stop (run's runner or admin) ──
+app.MapGet("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/manifest",
+    async (HttpContext ctx, Guid runId, Guid stopId, GoodSortDbContext db) =>
+{
+    var run = await db.Runs.AsNoTracking().FirstOrDefaultAsync(r => r.Id == runId);
+    if (run is null) return Results.NotFound();
+    if (!await CallerOwnsRun(ctx, run, db)) return Results.Forbid();
+
+    var stop = await db.RunStops.AsNoTracking().FirstOrDefaultAsync(s => s.RunId == runId && s.Id == stopId);
+    if (stop is null) return Results.NotFound();
+
+    var bin = await db.Bins.AsNoTracking().FirstOrDefaultAsync(b => b.Id == stop.BinId);
+    if (bin?.HouseholdId is not Guid hhId)
+    {
+        return Results.Ok(new
+        {
+            stopId = stop.Id,
+            scannedBagCount = stop.ScannedBagCount,
+            bags = Array.Empty<object>(),
+        });
+    }
+
+    var bags = await db.SortedBags.AsNoTracking()
+        .Where(b => b.HouseholdId == hhId
+                    && b.Status != "cancelled"
+                    && (b.RunStopId == stopId || (b.RunId == null && b.Status != "verified")))
+        .OrderByDescending(b => b.Status == "on_kerb")
+        .ThenByDescending(b => b.CreatedAt)
+        .Select(b => new
+        {
+            b.Id,
+            b.Code,
+            b.Stream,
+            b.DeclaredContainers,
+            b.LinkedScanCount,
+            b.VerifiedContainers,
+            b.ContaminationFlag,
+            b.DiscrepancyCode,
+            b.DiscrepancyNote,
+            b.Status,
+            b.KerbAt,
+            b.PickedUpAt,
+        })
+        .ToListAsync();
+
+    return Results.Ok(new
+    {
+        stopId = stop.Id,
+        scannedBagCount = stop.ScannedBagCount,
+        bags,
+    });
+}).RequireAuthorization();
+
+// ── Marketplace: Runner scans & verifies a physical QR bag tag at kerbside ──
+app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/scan-bag",
+    async (HttpContext ctx, Guid runId, Guid stopId, RunnerScanBagRequest req, GoodSortDbContext db) =>
+{
+    var run = await db.Runs.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == runId);
+    if (run is null || run.Status != "in_progress")
+        return Results.BadRequest(new { error = "Run is not in progress." });
+    if (!await CallerOwnsRun(ctx, run, db)) return Results.Forbid();
+
+    var stop = run.Stops.FirstOrDefault(s => s.Id == stopId);
+    if (stop is null || (stop.Status != "pending" && stop.Status != "arrived"))
+        return Results.BadRequest(new { error = "Stop is not active." });
+
+    var code = (req.BagCode ?? "").Trim().ToUpperInvariant();
+    if (string.IsNullOrEmpty(code))
+        return Results.BadRequest(new { error = "Bag code is required." });
+
+    var bag = await db.SortedBags.FirstOrDefaultAsync(b => b.Code == code);
+    if (bag is null)
+        return Results.NotFound(new { error = $"Bag tag {code} not found." });
+    if (bag.Status is "cancelled" or "verified")
+        return Results.BadRequest(new { error = $"Bag {code} is already {bag.Status}." });
+
+    var bin = await db.Bins.AsNoTracking().FirstOrDefaultAsync(b => b.Id == stop.BinId);
+    if (bin?.HouseholdId is Guid stopHhId && bag.HouseholdId != stopHhId)
+        return Results.BadRequest(new { error = "Bag tag belongs to a different household stop." });
+
+    var discrepancyCode = string.IsNullOrWhiteSpace(req.DiscrepancyCode)
+        ? "none"
+        : req.DiscrepancyCode.Trim().ToLowerInvariant();
+    if (!CrpSettlement.ValidDiscrepancyCodes.Contains(discrepancyCode))
+        return Results.BadRequest(new { error = "Invalid discrepancy code." });
+
+    if (bag.Status != "picked_up")
+        stop.ScannedBagCount += 1;
+
+    bag.Status = "picked_up";
+    bag.PickedUpAt ??= DateTime.UtcNow;
+    bag.RunId = run.Id;
+    bag.RunStopId = stop.Id;
+    bag.PickedUpByRunnerId = run.RunnerId;
+    bag.VerifiedContainers = req.VerifiedContainers.HasValue
+        ? Math.Clamp(req.VerifiedContainers.Value, 0, maxContainersPerStop)
+        : bag.DeclaredContainers;
+    bag.ContaminationFlag = req.ContaminationFlag ?? false;
+    bag.DiscrepancyCode = discrepancyCode;
+    bag.DiscrepancyNote = string.IsNullOrWhiteSpace(req.DiscrepancyNote)
+        ? null
+        : req.DiscrepancyNote.Trim()[..Math.Min(280, req.DiscrepancyNote.Trim().Length)];
+
+    if (stop.Status == "pending")
+    {
+        stop.Status = "arrived";
+        stop.ArrivedAt ??= DateTime.UtcNow;
+    }
+    if (bag.ContaminationFlag) stop.ContaminationFlag = true;
+    if (discrepancyCode != "none" && string.IsNullOrEmpty(stop.DiscrepancyCode))
+        stop.DiscrepancyCode = discrepancyCode;
+
+    await db.SaveChangesAsync();
+
+    var stopVerifiedTotal = await db.SortedBags.AsNoTracking()
+        .Where(b => b.RunStopId == stop.Id && b.Status == "picked_up")
+        .SumAsync(b => b.VerifiedContainers ?? b.DeclaredContainers);
+
+    return Results.Ok(new
+    {
+        bag = new
+        {
+            bag.Id,
+            bag.Code,
+            bag.Stream,
+            bag.DeclaredContainers,
+            bag.LinkedScanCount,
+            bag.VerifiedContainers,
+            bag.ContaminationFlag,
+            bag.DiscrepancyCode,
+            bag.DiscrepancyNote,
+            bag.Status,
+        },
+        scannedBagCount = stop.ScannedBagCount,
+        stopVerifiedTotal,
+    });
+}).RequireAuthorization();
+
+// ── Marketplace: Complete pickup at stop (with photo & optional discrepancy manifest) ──
 app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/pickup",
     async (HttpContext ctx, Guid runId, Guid stopId, RunStopPickupRequest req, GoodSortDbContext db) =>
 {
@@ -2455,6 +3079,21 @@ app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/pickup",
 
     var stop = run.Stops.FirstOrDefault(s => s.Id == stopId);
     if (stop is null || (stop.Status != "pending" && stop.Status != "arrived")) return Results.BadRequest();
+
+    if (!string.IsNullOrWhiteSpace(req.DiscrepancyCode))
+    {
+        var code = req.DiscrepancyCode.Trim().ToLowerInvariant();
+        if (!CrpSettlement.ValidDiscrepancyCodes.Contains(code))
+            return Results.BadRequest(new { error = "Invalid discrepancy code." });
+        stop.DiscrepancyCode = code;
+    }
+    if (!string.IsNullOrWhiteSpace(req.DiscrepancyNote))
+    {
+        var note = req.DiscrepancyNote.Trim();
+        stop.DiscrepancyNote = note[..Math.Min(280, note.Length)];
+    }
+    if (req.ContaminationFlag.HasValue)
+        stop.ContaminationFlag = req.ContaminationFlag.Value;
 
     stop.Status = "picked_up";
     stop.PickedUpAt = DateTime.UtcNow;
@@ -2497,24 +3136,43 @@ app.MapPost("/api/marketplace/runs/{id:guid}/deliver", async (HttpContext ctx, G
     return Results.Ok(run);
 }).RequireAuthorization();
 
-// ── Marketplace: Complete delivery at drop point ──
+// ── Marketplace: Complete delivery at drop point (with optional CRP/depot docket verification) ──
 app.MapPost("/api/marketplace/runs/{id:guid}/complete", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
     var run = await db.Runs.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == id);
     if (run is null || run.Status != "delivering") return Results.BadRequest();
     if (!await CallerOwnsRun(ctx, run, db)) return Results.Forbid();
 
+    CompleteRunRequest? req = null;
+    if (ctx.Request.ContentLength is > 0 || (ctx.Request.ContentType?.Contains("json", StringComparison.OrdinalIgnoreCase) ?? false))
+    {
+        try { req = await ctx.Request.ReadFromJsonAsync<CompleteRunRequest>(); }
+        catch { /* empty body is allowed for backwards compatibility */ }
+    }
+
+    var kerbsideSum = run.Stops.Where(s => s.Status == "picked_up").Sum(s => s.ActualContainers ?? s.EstimatedContainers);
+    if (req?.DepotVerifiedContainers is int dvc && dvc >= 0)
+    {
+        var maxRunCap = Math.Max(maxContainersPerStop * Math.Max(1, run.Stops.Count), 10000);
+        run.DepotVerifiedContainers = Math.Clamp(dvc, 0, maxRunCap);
+    }
+    if (!string.IsNullOrWhiteSpace(req?.CoexDocketRef))
+    {
+        var docket = req.CoexDocketRef.Trim();
+        run.CoexDocketRef = docket[..Math.Min(64, docket.Length)];
+    }
+
     run.Status = "completed";
     run.CompletedAt = DateTime.UtcNow;
     run.DeliveredAt = DateTime.UtcNow;
-    run.ActualContainers = run.Stops.Where(s => s.Status == "picked_up").Sum(s => s.ActualContainers ?? s.EstimatedContainers);
+    run.ActualContainers = run.DepotVerifiedContainers ?? kerbsideSum;
 
     await db.SaveChangesAsync();
     return Results.Ok(run);
 }).RequireAuthorization();
 
 // ── Marketplace: Settle a completed run (run's runner or admin) ──
-app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Guid id, GoodSortDbContext db, RunnerService runnerService) =>
+app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Guid id, GoodSortDbContext db, RunnerService runnerService, IConfiguration cfg) =>
 {
     var run = await db.Runs.Include(r => r.Stops).Include(r => r.DropPoint).FirstOrDefaultAsync(r => r.Id == id);
     if (run is null || run.Status != "completed") return Results.BadRequest();
@@ -2531,6 +3189,9 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
     {
     if (!await StatusClaim.TryClaimRun(db, run.Id, from: "completed", to: "settled"))
         return Results.BadRequest(new { error = "This run has already been settled." });
+
+    var crpActive = CrpSettlement.IsCrpActive(cfg);
+    var householdRateCents = CrpSettlement.ActiveHouseholdRateCents(cfg);
 
     // Calculate actual payout
     run.ActualPayoutCents = run.ActualContainers * run.PerContainerCents;
@@ -2554,6 +3215,9 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
     // For each picked-up stop: clear the bin counts AND move user/household credit
     // from "pending" (scanned but not yet collected) to "cleared" (cashout-eligible).
     var creditedHouseholds = new List<Household>();
+    var totalHouseholdPayoutCents = 0;
+    var totalMafiaCents = 0;
+
     foreach (var stop in run.Stops.Where(s => s.Status == "picked_up"))
     {
         var bin = await db.Bins.FindAsync(stop.BinId);
@@ -2561,11 +3225,11 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
 
         var count = stop.ActualContainers ?? stop.EstimatedContainers;
         bin.PendingContainers = Math.Max(0, bin.PendingContainers - count);
-        bin.PendingValueCents = bin.PendingContainers * 5;
+        bin.PendingValueCents = bin.PendingContainers * householdRateCents;
         bin.LastCollectedAt = DateTime.UtcNow;
         if (bin.PendingContainers == 0) bin.Materials = new MaterialBreakdown();
 
-        // Household credit is the runner count (5¢), not Vision scans.
+        // Household credit uses ActiveHouseholdRateCents (10¢ under COEX CRP, 5¢ pre-CCA).
         if (bin.HouseholdId.HasValue)
         {
             var hh = await db.Households.Include(h => h.Members).FirstOrDefaultAsync(h => h.Id == bin.HouseholdId);
@@ -2581,24 +3245,57 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
                 var extra = await db.Profiles.FindAsync(scan.UserId);
                 if (extra is not null) payees.Add(extra);
             }
-            HouseholdCredit.ApplyPickup(payees, pendingScans, count);
+            var clearedBefore = payees.Sum(m => m.ClearedCents);
+            HouseholdCredit.ApplyPickup(payees, pendingScans, count, householdRateCents);
+            var clearedAfter = payees.Sum(m => m.ClearedCents);
+            totalHouseholdPayoutCents += Math.Max(0, clearedAfter - clearedBefore);
 
             var referredMember = payees.FirstOrDefault(m => m.ReferrerId.HasValue && m.ReferrerId.Value != m.Id);
             if (referredMember?.ReferrerId is Guid referrerId && count > 0)
             {
                 var referrer = await db.Profiles.FindAsync(referrerId);
                 if (referrer is not null)
-                    referrer.ClearedCents += HouseholdCredit.ReferralCommissionForPickup(count);
+                {
+                    var mafiaCommission = HouseholdCredit.ReferralCommissionForPickup(count);
+                    referrer.ClearedCents += mafiaCommission;
+                    totalMafiaCents += mafiaCommission;
+                }
             }
 
             hh.PendingContainers = Math.Max(0, hh.PendingContainers - count);
-            hh.PendingValueCents = hh.PendingContainers * HouseholdCredit.CentsPerContainer;
+            hh.PendingValueCents = hh.PendingContainers * householdRateCents;
             hh.EstimatedBags = (int)Math.Ceiling(hh.PendingContainers / 150.0);
             hh.LastPickupAt = DateTime.UtcNow;
             if (hh.PendingContainers == 0) hh.Materials = new MaterialBreakdown();
             creditedHouseholds.Add(hh);
         }
     }
+
+    // Mark physical QR bags scanned on this run as verified for COEX CRP audit
+    var runBags = await db.SortedBags.Where(b => b.RunId == run.Id).ToListAsync();
+    foreach (var bag in runBags)
+    {
+        bag.Status = "verified";
+        bag.VerifiedAt ??= DateTime.UtcNow;
+        bag.VerifiedContainers ??= bag.DeclaredContainers;
+    }
+
+    var discrepancyStops = run.Stops.Count(s =>
+        s.ContaminationFlag || (!string.IsNullOrEmpty(s.DiscrepancyCode) && s.DiscrepancyCode != "none"));
+
+    var ledger = CrpSettlement.BuildLedger(
+        runId: run.Id,
+        areaName: run.AreaName,
+        crpActive: crpActive,
+        verifiedContainers: run.DepotVerifiedContainers ?? run.ActualContainers,
+        bagsVerified: runBags.Count,
+        discrepancyStops: discrepancyStops,
+        householdPayoutCents: totalHouseholdPayoutCents,
+        containerMafiaCents: totalMafiaCents,
+        runnerPayoutCents: run.ActualPayoutCents,
+        coexDocketRef: run.CoexDocketRef);
+
+    db.RunSettlementLedgers.Add(ledger);
 
     await db.SaveChangesAsync();
 
@@ -2614,7 +3311,21 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
         catch (Exception ex) { app.Logger.LogError(ex, "Post-pickup email burst failed"); }
     });
 
-    return Results.Ok(new { run.Id, run.ActualPayoutCents, run.ActualContainers, rating = rating.Stars, householdsCredited = creditedHouseholds.Count });
+    return Results.Ok(new
+    {
+        run.Id,
+        run.ActualPayoutCents,
+        run.ActualContainers,
+        rating = rating.Stars,
+        householdsCredited = creditedHouseholds.Count,
+        settlementMode = ledger.SettlementMode,
+        bagsVerified = ledger.BagsVerified,
+        householdPayoutCents = ledger.HouseholdPayoutCents,
+        containerMafiaCents = ledger.ContainerMafiaCents,
+        grossRevenueDollars = CrpSettlement.BasisPointsToDollars(ledger.GrossRevenueBasisPoints),
+        proFormaCoexGrossDollars = CrpSettlement.BasisPointsToDollars(ledger.ProFormaCoexGrossBasisPoints),
+        netMarginDollars = CrpSettlement.BasisPointsToDollars(ledger.NetMarginBasisPoints),
+    });
     });
 }).RequireAuthorization();
 
@@ -2643,7 +3354,7 @@ app.MapGet("/api/runner/active/{profileId:guid}", async (HttpContext ctx, Guid p
     var active = await db.Runs
         .Include(r => r.Stops.OrderBy(s => s.Sequence))
         .Include(r => r.DropPoint)
-        .Where(r => r.RunnerId == runner.Id && (r.Status == "claimed" || r.Status == "in_progress" || r.Status == "delivering"))
+        .Where(r => r.RunnerId == runner.Id && (r.Status == "claimed" || r.Status == "in_progress" || r.Status == "delivering" || r.Status == "completed"))
         .FirstOrDefaultAsync();
 
     return active is not null ? Results.Ok(active) : Results.NotFound();
@@ -2765,6 +3476,8 @@ app.MapPost("/api/admin/reset-baseline", async (HttpContext ctx, AdminResetBasel
 
     return await Atomic.RunAsync(db, async () =>
     {
+        db.RunSettlementLedgers.RemoveRange(await db.RunSettlementLedgers.ToListAsync());
+        db.SortedBags.RemoveRange(await db.SortedBags.ToListAsync());
         db.RunStops.RemoveRange(await db.RunStops.ToListAsync());
         db.RunnerRatings.RemoveRange(await db.RunnerRatings.ToListAsync());
         db.Runs.RemoveRange(await db.Runs.ToListAsync());
@@ -2864,6 +3577,11 @@ record ProfileUpdateRequest(string? Name, Guid? HouseholdId);
 // NOTE: caller-supplied UserId fields are ignored; endpoints read the caller from the JWT.
 // Kept on the record for frontend backwards compatibility — safe to remove once frontend stops sending them.
 record CashoutRequestDto(Guid UserId, int AmountCents, string Bsb, string AccountNumber, string AccountName);
+record PayIdCashoutRequestDto(int AmountCents, string PayIdType, string PayIdValue, string AccountName);
+record CreateSortedBagRequest(string Stream, int? DeclaredContainers = null, bool? PutOnKerb = null);
+record UpdateSortedBagStatusRequest(string Status);
+record RunnerScanBagRequest(string BagCode, int? VerifiedContainers = null, bool? ContaminationFlag = null, string? DiscrepancyCode = null, string? DiscrepancyNote = null);
+record CompleteRunRequest(int? DepotVerifiedContainers = null, string? CoexDocketRef = null);
 record PhotoScanRequest(string Image, string? BinCode = null);
 record PhotoConfirmRequest(string ScanToken, Guid? UserId = null, List<PhotoConfirmItem>? Items = null, string? BinCode = null, double? Lat = null, double? Lng = null);
 record PhotoConfirmItem(string Name, string Material, int Count, bool Eligible);
@@ -2872,7 +3590,7 @@ record VerifyOtpRequest(string Email, string Code, Guid? ReferrerId = null);
 record ScanRequest(Guid UserId, string Barcode, string ContainerName, string Material);
 record ClaimRequest(Guid DriverId);
 record PickupRequest(int ActualCount);
-record RunnerRegisterRequest(Guid ProfileId, string? VehicleType, string? VehicleMake, string? VehicleRego, int? CapacityBags, double? ServiceRadiusKm);
+record RunnerRegisterRequest(Guid ProfileId, string? VehicleType, string? VehicleMake, string? VehicleRego, int? CapacityBags, double? ServiceRadiusKm, string? CoexSchemeId = null);
 record WaitlistEventRequest(string Name, string? Suburb, string? Path);
 record UnitComplexWaitlistRequest(string BuildingName, string Address, double Lat, double Lng, string? Suburb = null);
 record StreetPatchRequest(string? Address, double? Lat, double? Lng, string? Suburb, int? CouncilCollectionDay, string? CouncilArea, bool? AccessConsent);
@@ -2892,10 +3610,10 @@ record HouseholdCreateRequest(
 record BinDayLookupRequest(double Lat, double Lng, string? Address);
 record BinOutRequest(bool Out);
 record BinStatusRequest(string Status);
-record RunnerProfileUpdateRequest(string? VehicleType, int? CapacityBags, double? ServiceRadiusKm);
+record RunnerProfileUpdateRequest(string? VehicleType, int? CapacityBags, double? ServiceRadiusKm, string? CoexSchemeId = null);
 record RunnerHeartbeatRequest(Guid ProfileId, double Lat, double Lng, bool IsOnline);
 record MarketplaceClaimRequest(Guid ProfileId);
-record RunStopPickupRequest(int ActualContainers, string? PhotoUrl);
+record RunStopPickupRequest(int ActualContainers, string? PhotoUrl = null, bool? ContaminationFlag = null, string? DiscrepancyCode = null, string? DiscrepancyNote = null);
 record PricingSimulateRequest(int Containers, double DistanceKm, int StopCount);
 record AdminBootstrapRequest(string Email);
 record AdminResetBaselineRequest(string Confirm);

@@ -34,6 +34,7 @@ public class Scan
     // per-unit code, this holds it — the gold-standard single-use proof. Until
     // then it stays null and we rely on the event-verification layers.
     public string? SerialId { get; set; }
+    public Guid? SortedBagId { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

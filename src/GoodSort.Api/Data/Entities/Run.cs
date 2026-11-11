@@ -33,6 +33,8 @@ public class Run
     // Container estimates
     public int EstimatedContainers { get; set; }
     public int ActualContainers { get; set; }
+    public int? DepotVerifiedContainers { get; set; }
+    public string? CoexDocketRef { get; set; }
 
     // Estimated weight helps runners decide (glass = heavy = need a car)
     public double EstimatedWeightKg { get; set; }

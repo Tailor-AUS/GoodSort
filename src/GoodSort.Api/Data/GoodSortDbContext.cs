@@ -26,6 +26,8 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
     public DbSet<GrowthEvent> GrowthEvents => Set<GrowthEvent>();
     public DbSet<UsedScanToken> UsedScanTokens => Set<UsedScanToken>();
     public DbSet<SingletonLeaseRow> SingletonLeases => Set<SingletonLeaseRow>();
+    public DbSet<SortedBag> SortedBags => Set<SortedBag>();
+    public DbSet<RunSettlementLedger> RunSettlementLedgers => Set<RunSettlementLedger>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -258,6 +260,56 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
         {
             e.HasIndex(v => v.CreatedAt);
             e.HasIndex(v => v.Provider);
+        });
+
+        // SortedBag — 4-stream QR bag tags linking household scans to Runner kerbside verification
+        modelBuilder.Entity<SortedBag>(e =>
+        {
+            e.HasOne(b => b.Household)
+                .WithMany()
+                .HasForeignKey(b => b.HouseholdId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.Property(b => b.Code).HasMaxLength(32);
+            e.Property(b => b.Stream).HasMaxLength(24);
+            e.Property(b => b.Status).HasMaxLength(24);
+            e.Property(b => b.DiscrepancyCode).HasMaxLength(32);
+            e.Property(b => b.DiscrepancyNote).HasMaxLength(280);
+
+            e.HasIndex(b => b.Code).IsUnique();
+            e.HasIndex(b => b.HouseholdId);
+            e.HasIndex(b => b.Status);
+            e.HasIndex(b => b.RunId);
+            e.HasIndex(b => b.RunStopId);
+        });
+
+        // RunSettlementLedger — immutable per-run COEX 17.68¢ CRP ledger
+        modelBuilder.Entity<RunSettlementLedger>(e =>
+        {
+            e.HasOne(l => l.Run)
+                .WithMany()
+                .HasForeignKey(l => l.RunId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.Property(l => l.AreaName).HasMaxLength(128);
+            e.Property(l => l.SettlementMode).HasMaxLength(24);
+            e.Property(l => l.CoexDocketRef).HasMaxLength(64);
+
+            e.HasIndex(l => l.RunId).IsUnique();
+            e.HasIndex(l => l.CreatedAt);
+        });
+
+        modelBuilder.Entity<Scan>(e =>
+        {
+            e.HasIndex(s => s.SortedBagId);
+        });
+
+        modelBuilder.Entity<CashoutRequest>(e =>
+        {
+            e.Property(c => c.PayoutMethod).HasMaxLength(16);
+            e.Property(c => c.PayIdType).HasMaxLength(16);
+            e.Property(c => c.PayIdValue).HasMaxLength(128);
+            e.HasIndex(c => new { c.Status, c.PayoutMethod });
         });
 
         // Seed default pricing config (static CreatedAt)

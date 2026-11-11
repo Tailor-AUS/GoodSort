@@ -12,8 +12,8 @@ public static class HouseholdCredit
     public const int ReferralCommissionCentsPerContainer = 1;
     public const int DefaultUnscannedEstimate = 20;
 
-    public static int ClearedCentsForPickup(int containerCount) =>
-        containerCount > 0 ? containerCount * CentsPerContainer : 0;
+    public static int ClearedCentsForPickup(int containerCount, int centsPerContainer = CentsPerContainer) =>
+        containerCount > 0 ? containerCount * Math.Max(0, centsPerContainer) : 0;
 
     public static int ReferralCommissionForPickup(int containerCount) =>
         containerCount > 0 ? containerCount * ReferralCommissionCentsPerContainer : 0;
@@ -37,11 +37,20 @@ public static class HouseholdCredit
     /// Drop pending scan estimates (the bin was emptied) and credit the
     /// household owner from the runner count. Do not also clear the standard
     /// scan cents into ClearedCents — that would double-pay scanned containers.
-    /// The launch-bonus portion is the exception: it is a marketing grant, not
-    /// an estimate the runner count supersedes, so it clears to the scanner.
+    /// The launch-bonus portion is the exception in 5¢ pre-CCA mode: it is a
+    /// marketing grant, not an estimate the runner count supersedes, so it clears
+    /// to the scanner. In 10¢ CRP mode, the full 10¢ is already paid by the
+    /// pickup rate, so any overlapping launch-bonus bridge is absorbed rather
+    /// than double-paying 15¢.
     /// </summary>
-    public static int ApplyPickup(IReadOnlyList<Profile> members, IReadOnlyList<Scan> pendingScans, int pickupCount)
+    public static int ApplyPickup(
+        IReadOnlyList<Profile> members,
+        IReadOnlyList<Scan> pendingScans,
+        int pickupCount,
+        int centsPerContainer = CentsPerContainer)
     {
+        var rateUpgrade = Math.Max(0, centsPerContainer - CentsPerContainer);
+        var bonusCleared = 0;
         foreach (var scan in pendingScans)
         {
             scan.Status = "settled";
@@ -49,15 +58,15 @@ public static class HouseholdCredit
             if (user is null) continue;
             user.PendingCents = Math.Max(0, user.PendingCents - scan.RefundCents);
 
-            // The launch bonus is a grant, not an estimate of what the runner
-            // will find, so it clears to the member who scanned instead of
-            // being dropped with the rest of the estimate. Without this the
-            // bonus would sit in PendingCents forever and never be payable.
-            var bonus = LaunchBonus.BonusPortionOf(scan.RefundCents);
-            if (bonus > 0) user.ClearedCents += bonus;
+            var bonus = Math.Max(0, LaunchBonus.BonusPortionOf(scan.RefundCents) - rateUpgrade);
+            if (bonus > 0)
+            {
+                user.ClearedCents += bonus;
+                bonusCleared += bonus;
+            }
         }
 
-        var credit = ClearedCentsForPickup(pickupCount);
+        var credit = ClearedCentsForPickup(pickupCount, centsPerContainer);
         var owner = members.FirstOrDefault();
         if (owner is not null && credit > 0)
             owner.ClearedCents += credit;

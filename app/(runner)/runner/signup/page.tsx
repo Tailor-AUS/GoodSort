@@ -13,6 +13,7 @@ export default function RunnerSignupPage() {
   const [vehicleRego, setVehicleRego] = useState("");
   const [capacityBags, setCapacityBags] = useState(10);
   const [serviceRadiusKm, setServiceRadiusKm] = useState(10);
+  const [coexSchemeId, setCoexSchemeId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -33,6 +34,7 @@ export default function RunnerSignupPage() {
           vehicleRego,
           capacityBags,
           serviceRadiusKm,
+          coexSchemeId: coexSchemeId.trim() || undefined,
         }),
       });
       if (!res.ok) { setError("Registration failed."); setLoading(false); return; }
@@ -87,6 +89,11 @@ export default function RunnerSignupPage() {
               <input type="number" min={1} max={50} value={serviceRadiusKm} onChange={e => setServiceRadiusKm(+e.target.value)}
                 className="w-full border border-slate-200 rounded-xl px-4 py-3 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500" />
             </div>
+          </div>
+          <div>
+            <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">Containers for Change Scheme ID (optional)</label>
+            <input type="text" value={coexSchemeId} onChange={e => setCoexSchemeId(e.target.value.toUpperCase())} placeholder="e.g. C101234567"
+              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-base text-slate-900 placeholder-slate-300 font-mono focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500" />
           </div>
           {error && <p className="text-red-500 text-[13px]">{error}</p>}
           <button type="submit" disabled={loading}

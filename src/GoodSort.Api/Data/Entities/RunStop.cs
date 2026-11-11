@@ -27,8 +27,12 @@ public class RunStop
     public DateTime? ArrivedAt { get; set; }
     public DateTime? PickedUpAt { get; set; }
 
-    // Verification photo
+    // Verification photo & kerbside bag-scan manifest
     public string? PhotoUrl { get; set; }
+    public int ScannedBagCount { get; set; }
+    public bool ContaminationFlag { get; set; }
+    public string? DiscrepancyCode { get; set; }
+    public string? DiscrepancyNote { get; set; }
 
     public int Sequence { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
