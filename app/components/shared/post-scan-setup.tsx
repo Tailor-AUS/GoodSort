@@ -12,6 +12,8 @@ export type PayIdTypeChoice = "email" | "phone" | "abn";
 
 export interface SavedPayoutSummary {
   hasPayoutDetails: boolean;
+  householdId?: string | null;
+  profileName?: string | null;
   preferredPayoutMethod?: string | null;
   payIdType?: string | null;
   payIdValue?: string | null;

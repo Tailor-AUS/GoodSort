@@ -527,11 +527,15 @@ public class CashoutService
         }
     }
 
-    private static string CsvSafeField(string raw, bool allowLeadingPlus = false)
+    public static string CsvSafeField(string raw, bool allowLeadingPlus = false)
     {
-        var s = raw.Replace("\r", " ").Replace("\n", " ").Trim();
-        if (s.Length > 0 && (s[0] == '=' || s[0] == '-' || s[0] == '@' || (!allowLeadingPlus && s[0] == '+')))
-            s = "'" + s;
+        var s = SanitizeSingleLine(raw);
+        if (s.Length > 0)
+        {
+            var safeE164Plus = allowLeadingPlus && s[0] == '+' && s.Length > 1 && s[1..].All(char.IsDigit);
+            if (s[0] is '=' or '-' or '@' or '|' || (s[0] == '+' && !safeE164Plus))
+                s = "'" + s;
+        }
         if (s.Contains(',') || s.Contains('"'))
             return "\"" + s.Replace("\"", "\"\"") + "\"";
         return s;

@@ -63,12 +63,13 @@ export default function AdminBinsPage() {
         <form onSubmit={handleCreate} className="bg-white rounded-xl border border-slate-200 p-4 mb-6 space-y-3">
           <div className="flex items-center gap-2 mb-1"><Plus className="w-4 h-4 text-green-600" /><p className="text-[13px] font-semibold text-slate-900">New bin</p></div>
           <div className="grid grid-cols-2 gap-3">
-            <input value={code} onChange={e => setCode(e.target.value)} placeholder="Code (optional, auto GS-XXXX)"
+            <input aria-label="Bin code" value={code} onChange={e => setCode(e.target.value)} placeholder="Code (optional, auto GS-XXXX)"
               className="border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/20" />
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="Name (e.g. 45 Boundary St)"
+            <input aria-label="Bin name" value={name} onChange={e => setName(e.target.value)} placeholder="Name (e.g. 45 Boundary St)"
               className="border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/20" required />
           </div>
           <AddressAutocomplete
+            ariaLabel="Bin address"
             value={address}
             onChange={(text) => { setAddress(text); setLat(null); setLng(null); }}
             onSelect={(sel) => { setAddress(sel.address); setLat(sel.lat); setLng(sel.lng); }}

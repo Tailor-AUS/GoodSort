@@ -2878,6 +2878,11 @@ app.MapPost("/api/bags", async (HttpContext ctx, CreateSortedBagRequest req, Goo
     if (req.DeclaredContainers is < 0)
         return Results.BadRequest(new { error = "Declared containers must be between 1 and 500." });
 
+    var activeBagCount = await db.SortedBags.CountAsync(b =>
+        b.HouseholdId == hhId && (b.Status == "sealed" || b.Status == "on_kerb"));
+    if (activeBagCount >= 50)
+        return Results.BadRequest(new { error = "Maximum 50 active uncollected QR bags per household." });
+
     var unbaggedScans = await db.Scans
         .Where(s => s.HouseholdId == hhId && s.Status == "pending" && s.SortedBagId == null)
         .OrderBy(s => s.CreatedAt)
@@ -2973,7 +2978,8 @@ app.MapGet("/api/bags/mine", async (HttpContext ctx, GoodSortDbContext db) =>
 
     var bags = await db.SortedBags.AsNoTracking()
         .Where(b => b.HouseholdId == householdId && b.Status != "cancelled")
-        .OrderByDescending(b => b.CreatedAt)
+        .OrderBy(b => b.Status == "verified" ? 1 : 0)
+        .ThenByDescending(b => b.CreatedAt)
         .Take(50)
         .Select(b => new
         {
@@ -3029,12 +3035,34 @@ app.MapPatch("/api/bags/{id:guid}/status", async (HttpContext ctx, Guid id, Upda
     else if (next == "sealed")
     {
         bag.KerbAt = null;
+        var stillOnKerb = await db.SortedBags.AnyAsync(b =>
+            b.HouseholdId == bag.HouseholdId && b.Id != bag.Id && b.Status == "on_kerb");
+        if (!stillOnKerb)
+        {
+            var hh = await db.Households.FindAsync(bag.HouseholdId);
+            if (hh is not null)
+            {
+                hh.BinIsOut = false;
+                hh.BinIsOutAt = null;
+            }
+        }
     }
     else if (next == "cancelled")
     {
         var linkedScans = await db.Scans.Where(s => s.SortedBagId == bag.Id).ToListAsync();
         foreach (var s in linkedScans) s.SortedBagId = null;
         bag.LinkedScanCount = 0;
+        var stillOnKerb = await db.SortedBags.AnyAsync(b =>
+            b.HouseholdId == bag.HouseholdId && b.Id != bag.Id && b.Status == "on_kerb");
+        if (!stillOnKerb)
+        {
+            var hh = await db.Households.FindAsync(bag.HouseholdId);
+            if (hh is not null)
+            {
+                hh.BinIsOut = false;
+                hh.BinIsOutAt = null;
+            }
+        }
     }
 
     await db.SaveChangesAsync();

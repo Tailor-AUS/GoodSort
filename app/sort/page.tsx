@@ -209,7 +209,7 @@ export default function SorterApp() {
           pickupConfirmed={pickupConfirmed}
           onScanPress={() => router.push("/scan")}
         />
-        <AccountPanel user={user} open={showAccount} onClose={() => { setShowAccount(false); refreshData(); }} />
+        <AccountPanel user={user} open={showAccount} onRefresh={refreshData} onClose={() => { setShowAccount(false); refreshData(); }} />
       </div>
     );
   }
@@ -260,7 +260,7 @@ export default function SorterApp() {
         onDeselectBin={() => setSelectedBinId(null)}
       />
 
-      <AccountPanel user={user} open={showAccount} onClose={() => { setShowAccount(false); refreshData(); }} />
+      <AccountPanel user={user} open={showAccount} onRefresh={refreshData} onClose={() => { setShowAccount(false); refreshData(); }} />
     </div>
   );
 }
