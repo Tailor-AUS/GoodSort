@@ -31,7 +31,7 @@ export function RunMarketplace({ runs, onClaim, loading }: RunMarketplaceProps) 
       <div className="glass rounded-2xl p-6 border border-white/40 shadow-sm text-center">
         <Package className="w-8 h-8 text-slate-300 mx-auto mb-2" />
         <p className="text-slate-500 text-[13px] font-medium">No runs available nearby</p>
-        <p className="text-slate-400 text-[11px] mt-1">Runs appear when bins reach 50+ containers</p>
+        <p className="text-slate-400 text-[11px] mt-1">Runs appear when a Brisbane suburb reaches 1,000 scanned containers across 3+ homes</p>
       </div>
     );
   }

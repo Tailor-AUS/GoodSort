@@ -143,7 +143,7 @@ public class VisionService
     /// <summary>
     /// Map Tailor Vision material names to GoodSort's material system.
     /// </summary>
-    private static string MapMaterial(string tvMaterial) => tvMaterial.ToLower() switch
+    private static string MapMaterial(string? tvMaterial) => (tvMaterial ?? "").Trim().ToLowerInvariant() switch
     {
         "aluminium" => "aluminium",
         "pet" => "pet",
@@ -233,15 +233,17 @@ No containers (blurry):
         // that exists.
         var deploymentName = _config["AZURE_OPENAI_DEPLOYMENT"] ?? VisionDefaults.OpenAiDeployment;
 
-        if (string.IsNullOrEmpty(apiKey))
+        if (string.IsNullOrWhiteSpace(apiKey)
+            || !Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri)
+            || (endpointUri.Scheme != Uri.UriSchemeHttps && endpointUri.Scheme != Uri.UriSchemeHttp))
         {
-            _logger.LogError("No vision API configured (neither Tailor Vision nor Azure OpenAI)");
+            _logger.LogError("No valid vision API configured (neither Tailor Vision nor valid Azure OpenAI endpoint/key)");
             await LogCall("none", success: false, containerCount: 0, 0, userId,
                 errorSummary: "No vision provider configured");
             return new VisionResult { Message = "Photo scan is temporarily unavailable. Please try again later." };
         }
 
-        var client = new AzureOpenAIClient(new Uri(endpoint), new ApiKeyCredential(apiKey));
+        var client = new AzureOpenAIClient(endpointUri, new ApiKeyCredential(apiKey));
         var result = await RunChatVision(client.GetChatClient(deploymentName), "openai", base64Image, userId);
         return result ?? new VisionResult { Message = "Something went wrong analysing that photo. Give it another go!" };
     }
@@ -270,6 +272,15 @@ No containers (blurry):
 
             _logger.LogInformation("Calling {Provider} chat vision (fallback path)", provider);
             var response = await chatClient.CompleteChatAsync(messages);
+            if (response.Value.Content.Count == 0 || string.IsNullOrWhiteSpace(response.Value.Content[0].Text))
+            {
+                await LogCall(provider, success: true, containerCount: 0, sw.ElapsedMilliseconds, userId);
+                return new VisionResult
+                {
+                    Containers = [],
+                    Message = "I couldn't quite make that out — try getting closer with better lighting.",
+                };
+            }
             var content = response.Value.Content[0].Text.Trim();
 
             // Strip markdown code fences if present
@@ -280,18 +291,22 @@ No containers (blurry):
                 content = content.Trim();
             }
 
-            // New format returns { containers: [], message: "" }
-            var result = JsonSerializer.Deserialize<VisionResult>(content, new JsonSerializerOptions
+            // Legacy plain-array format [...] must be checked before VisionResult object deserialization,
+            // otherwise JsonSerializer.Deserialize<VisionResult> throws JsonException.
+            if (!content.StartsWith('['))
             {
-                PropertyNameCaseInsensitive = true,
-            });
+                var result = JsonSerializer.Deserialize<VisionResult>(content, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                });
 
-            if (result != null)
-            {
-                _logger.LogInformation("{Provider} identified {Count} container types, message: {Message}",
-                    provider, result.Containers.Count, result.Message);
-                await LogCall(provider, success: true, containerCount: result.Containers.Sum(c => c.Count), sw.ElapsedMilliseconds, userId);
-                return result;
+                if (result != null)
+                {
+                    _logger.LogInformation("{Provider} identified {Count} container types, message: {Message}",
+                        provider, result.Containers.Count, result.Message);
+                    await LogCall(provider, success: true, containerCount: result.Containers.Sum(c => Math.Max(0, c.Count)), sw.ElapsedMilliseconds, userId);
+                    return result;
+                }
             }
 
             // Fallback: try parsing as old format (plain array)

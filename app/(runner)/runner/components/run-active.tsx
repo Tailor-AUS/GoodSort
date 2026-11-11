@@ -501,6 +501,7 @@ export function RunActive({
 
   // ═══════ DELIVERING OR COMPLETED — Confirm CRP Docket & Settle ═══════
   if (run.status === "delivering" || run.status === "completed") {
+    const isLockedCompleted = run.status === "completed";
     const collected = run.stops.filter((s) => s.status === "picked_up");
     const kerbsideContainers = collected.reduce(
       (sum, s) => sum + (s.actualContainers ?? s.estimatedContainers),
@@ -510,12 +511,14 @@ export function RunActive({
       depotVerifiedInput.trim() === ""
         ? kerbsideContainers
         : Math.max(0, Number(depotVerifiedInput) || 0);
+    const effectiveVerified = isLockedCompleted ? run.actualContainers : parsedVerified;
+    const effectiveDocketRef = isLockedCompleted ? (run.coexDocketRef ?? "") : coexDocketRef;
 
     return (
       <>
         <div className="mb-4">
           <p className="text-[12px] text-slate-400 font-semibold uppercase tracking-[0.12em]">
-            {run.status === "completed" ? "Ready to settle payout" : "At Depot Drop-off"}
+            {isLockedCompleted ? "Ready to settle payout" : "At Depot Drop-off"}
           </p>
           <p className="text-xl font-display font-extrabold text-slate-900 mt-1">
             {run.dropPoint?.name || "Depot Drop Point"}
@@ -533,34 +536,38 @@ export function RunActive({
           </div>
           <div className="pt-2 border-t border-slate-100 space-y-2">
             <div>
-              <label className="block text-[11px] font-bold text-slate-600 mb-1">
+              <label htmlFor="depot-verified-count" className="block text-[11px] font-bold text-slate-600 mb-1">
                 Depot verified count
               </label>
               <input
+                id="depot-verified-count"
                 type="number"
                 min={0}
-                value={depotVerifiedInput === "" ? kerbsideContainers : depotVerifiedInput}
+                disabled={isLockedCompleted}
+                value={isLockedCompleted ? run.actualContainers : (depotVerifiedInput === "" ? kerbsideContainers : depotVerifiedInput)}
                 onChange={(e) => setDepotVerifiedInput(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-900"
+                className="w-full rounded-xl border border-slate-200 bg-white disabled:bg-slate-50 disabled:text-slate-500 px-3 py-2 text-sm font-bold text-slate-900"
               />
             </div>
             <div>
-              <label className="block text-[11px] font-bold text-slate-600 mb-1">
+              <label htmlFor="depot-docket-ref" className="block text-[11px] font-bold text-slate-600 mb-1">
                 Depot docket reference (optional)
               </label>
               <input
+                id="depot-docket-ref"
                 type="text"
-                value={coexDocketRef}
+                disabled={isLockedCompleted}
+                value={effectiveDocketRef}
                 onChange={(e) => setCoexDocketRef(e.target.value)}
                 placeholder="e.g. DOCKET-1042"
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-mono text-slate-900"
+                className="w-full rounded-xl border border-slate-200 bg-white disabled:bg-slate-50 disabled:text-slate-500 px-3 py-2 text-xs font-mono text-slate-900"
               />
             </div>
           </div>
           <div className="flex justify-between items-center pt-2 border-t border-slate-100">
             <span className="text-[12px] text-slate-400 font-semibold uppercase tracking-[0.12em]">Runner Payout</span>
             <span className="text-green-600 font-display font-extrabold text-xl">
-              {formatCents(parsedVerified * run.perContainerCents)}
+              {formatCents(effectiveVerified * run.perContainerCents)}
             </span>
           </div>
         </div>
@@ -570,7 +577,7 @@ export function RunActive({
           disabled={submittingComplete}
           onClick={async () => {
             setSubmittingComplete(true);
-            await onComplete(parsedVerified, coexDocketRef.trim() || undefined);
+            await onComplete(effectiveVerified, effectiveDocketRef.trim() || undefined);
             setSubmittingComplete(false);
           }}
           className="w-full bg-gradient-to-b from-green-500 to-green-600 disabled:opacity-50 text-white font-extrabold py-4 rounded-2xl text-[15px] shadow-lg shadow-green-600/20 flex items-center justify-center gap-2 min-h-[48px] active:scale-[0.98] transition-transform"

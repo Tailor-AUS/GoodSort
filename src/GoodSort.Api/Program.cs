@@ -1987,18 +1987,27 @@ app.MapGet("/api/scans", async (HttpContext ctx, Guid userId, int? limit, GoodSo
 // of which houses have bags at the kerb and when. This was anonymous. It
 // returned nothing only because no run has been generated yet; the first real
 // collection would have published every participating address to the internet.
-app.MapGet("/api/routes", async (string? status, GoodSortDbContext db) =>
+app.MapGet("/api/routes", async (HttpContext ctx, string? status, GoodSortDbContext db) =>
 {
+    var callerId = ctx.GetCallerId();
+    if (callerId is null) return Results.Unauthorized();
     var q = db.Routes.Include(r => r.Stops).AsQueryable();
+    if (!ctx.IsAdmin()) q = q.Where(r => r.DriverId == callerId.Value);
     if (!string.IsNullOrEmpty(status)) q = q.Where(r => r.Status == status);
     return Results.Ok(await q.OrderByDescending(r => r.CreatedAt).ToListAsync());
 }).RequireAuthorization();
 
-// Same payload as the list above, for one route. Same reason.
-app.MapGet("/api/routes/{id:guid}", async (Guid id, GoodSortDbContext db) =>
-    await db.Routes.Include(r => r.Stops.OrderBy(s => s.Sequence)).Include(r => r.Depot)
-        .FirstOrDefaultAsync(r => r.Id == id) is { } r ? Results.Ok(r) : Results.NotFound())
-    .RequireAuthorization();
+// Same payload as the list above, for one route. Restricted to the route's driver or admin.
+app.MapGet("/api/routes/{id:guid}", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
+{
+    var callerId = ctx.GetCallerId();
+    if (callerId is null) return Results.Unauthorized();
+    var r = await db.Routes.Include(x => x.Stops.OrderBy(s => s.Sequence)).Include(x => x.Depot)
+        .FirstOrDefaultAsync(x => x.Id == id);
+    if (r is null) return Results.NotFound();
+    if (!ctx.IsAdmin() && r.DriverId != callerId.Value) return Results.Forbid();
+    return Results.Ok(r);
+}).RequireAuthorization();
 
 app.MapPost("/api/routes/{id:guid}/claim", async (HttpContext ctx, Guid id, ClaimRequest req, GoodSortDbContext db) =>
 {
@@ -2772,25 +2781,57 @@ app.MapDelete("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, GoodSo
     var referredProfiles = await db.Profiles.Where(p => p.ReferrerId == id).ToListAsync();
     foreach (var r in referredProfiles) r.ReferrerId = null;
 
-    // Null out runner claims so runs aren't orphaned
+    // Null out runner claims so runs aren't orphaned or stuck in an active state
     var claimedRoutes = await db.Routes.Where(r => r.DriverId == id).ToListAsync();
-    foreach (var r in claimedRoutes) r.DriverId = null;
+    foreach (var r in claimedRoutes)
+    {
+        r.DriverId = null;
+        if (r.Status is "claimed" or "in_progress")
+        {
+            r.Status = "pending";
+            r.ClaimedAt = null;
+        }
+    }
 
     var runnerProfile = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == id);
     if (runnerProfile != null)
     {
-        var runnerRuns = await db.Runs.Where(r => r.RunnerId == runnerProfile.Id).ToListAsync();
+        var runnerRuns = await db.Runs.Include(r => r.Stops).Where(r => r.RunnerId == runnerProfile.Id).ToListAsync();
+        var releasedRunIds = new HashSet<Guid>();
         foreach (var r in runnerRuns)
         {
             r.RunnerId = null;
-            if (r.Status == "claimed")
+            if (r.Status is "claimed" or "in_progress" or "delivering")
             {
                 r.Status = "available";
                 r.ClaimedAt = null;
+                r.StartedAt = null;
+                releasedRunIds.Add(r.Id);
+                foreach (var s in r.Stops)
+                {
+                    if (s.Status is "arrived" or "picked_up" or "skipped")
+                    {
+                        s.Status = "pending";
+                        s.ArrivedAt = null;
+                        s.PickedUpAt = null;
+                        s.ActualContainers = null;
+                        s.ScannedBagCount = 0;
+                    }
+                }
             }
         }
         var runnerBags = await db.SortedBags.Where(b => b.PickedUpByRunnerId == runnerProfile.Id).ToListAsync();
-        foreach (var b in runnerBags) b.PickedUpByRunnerId = null;
+        foreach (var b in runnerBags)
+        {
+            b.PickedUpByRunnerId = null;
+            if (b.Status == "picked_up" && b.RunId is Guid bagRunId && releasedRunIds.Contains(bagRunId))
+            {
+                b.Status = "on_kerb";
+                b.PickedUpAt = null;
+                b.RunId = null;
+                b.RunStopId = null;
+            }
+        }
 
         // RunnerRating → RunnerProfile uses DeleteBehavior.NoAction on SQL Server;
         // remove ratings first so deleting a runner with settled runs never 500s.
@@ -3135,8 +3176,8 @@ app.MapGet("/api/marketplace/overview", async (GoodSortDbContext db, IConfigurat
         {
             r.Id,
             r.AreaName,
-            CentroidLat = Math.Round(r.CentroidLat, 3),
-            CentroidLng = Math.Round(r.CentroidLng, 3),
+            CentroidLat = Math.Round(r.CentroidLat, 2),
+            CentroidLng = Math.Round(r.CentroidLng, 2),
             r.MaterialFocus,
             r.EstimatedContainers,
             r.EstimatedWeightKg,
@@ -3280,8 +3321,8 @@ app.MapGet("/api/marketplace/runs", async (double lat, double lng, double? radiu
                 x.Run.Id,
                 x.Run.Status,
                 x.Run.AreaName,
-                CentroidLat = Math.Round(x.Run.CentroidLat, 3),
-                CentroidLng = Math.Round(x.Run.CentroidLng, 3),
+                CentroidLat = Math.Round(x.Run.CentroidLat, 2),
+                CentroidLng = Math.Round(x.Run.CentroidLng, 2),
                 x.Run.MaterialFocus,
                 x.Run.EstimatedContainers,
                 x.Run.EstimatedWeightKg,
@@ -3370,6 +3411,7 @@ app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/arrive",
     var run = await db.Runs.FindAsync(runId);
     if (run is null) return Results.NotFound();
     if (!await CallerOwnsRun(ctx, run, db)) return Results.Forbid();
+    if (run.Status != "in_progress") return Results.BadRequest(new { error = "Run is not in progress." });
     var stop = await db.RunStops.FirstOrDefaultAsync(s => s.RunId == runId && s.Id == stopId);
     if (stop is null || stop.Status != "pending") return Results.BadRequest();
     stop.Status = "arrived";
@@ -3453,6 +3495,8 @@ app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/scan-bag",
         return Results.NotFound(new { error = $"Bag tag {code} not found." });
     if (bag.Status is "cancelled" or "verified")
         return Results.BadRequest(new { error = $"Bag {code} is already {bag.Status}." });
+    if (bag.Status == "picked_up" && bag.RunStopId is Guid existingStopId && existingStopId != stop.Id)
+        return Results.BadRequest(new { error = $"Bag {code} has already been picked up on another stop." });
 
     var bin = await db.Bins.AsNoTracking().FirstOrDefaultAsync(b => b.Id == stop.BinId);
     if (bin?.HouseholdId is Guid stopHhId && bag.HouseholdId != stopHhId)
@@ -3542,10 +3586,25 @@ app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/pickup",
     if (req.ContaminationFlag.HasValue)
         stop.ContaminationFlag = req.ContaminationFlag.Value;
 
+    string? validatedPhotoUrl = null;
+    if (!string.IsNullOrWhiteSpace(req.PhotoUrl))
+    {
+        var candidate = req.PhotoUrl.Trim();
+        if (candidate.Length > 2_000_000 || candidate.Contains('<') || candidate.Contains('>'))
+            return Results.BadRequest(new { error = "Invalid pickup photo URL." });
+        var isSafeHttps = candidate.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+            && Uri.TryCreate(candidate, UriKind.Absolute, out var parsedUri)
+            && parsedUri.Scheme == Uri.UriSchemeHttps;
+        var isSafeDataImage = candidate.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase);
+        if (!isSafeHttps && !isSafeDataImage)
+            return Results.BadRequest(new { error = "Pickup photo must be an https:// URL or data:image/ payload." });
+        validatedPhotoUrl = candidate;
+    }
+
     stop.Status = "picked_up";
     stop.PickedUpAt = DateTime.UtcNow;
     stop.ActualContainers = Math.Clamp(req.ActualContainers, 0, maxContainersPerStop);
-    if (req.PhotoUrl is not null) stop.PhotoUrl = req.PhotoUrl;
+    if (validatedPhotoUrl is not null) stop.PhotoUrl = validatedPhotoUrl;
 
     await db.SaveChangesAsync();
     return Results.Ok(run);

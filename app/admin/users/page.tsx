@@ -76,7 +76,7 @@ export default function AdminUsersPage() {
     const headers = { Authorization: `Bearer ${token}` };
     Promise.all([
       fetch(apiUrl("/api/admin/users"), { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-      fetch(apiUrl("/api/bins")).then(r => r.json()),
+      fetch(apiUrl("/api/bins"), { headers }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
     ])
       .then(([u, b]) => { setUsers(u); setBins(b); })
       .catch(e => setErr(`Failed to load: ${e}`))
