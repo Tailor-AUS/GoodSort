@@ -45,11 +45,14 @@ describe("Pass 13 — Runner stop/dropPoint graph, claimed-run release & inline 
     assert.match(invite, /<Link\s+href="\/flyer"/);
   });
 
-  it("keeps app-version and SW_VERSION synchronized on 20261112-qa-pass13", () => {
+  it("keeps app-version and SW_VERSION synchronized", () => {
     const layout = fs.readFileSync(path.join(ROOT, "app/layout.tsx"), "utf8");
     const sw = fs.readFileSync(path.join(ROOT, "public/sw.js"), "utf8");
 
-    assert.match(layout, /name="app-version"\s+content="20261112-qa-pass13"/);
-    assert.match(sw, /SW_VERSION\s*=\s*"20261112-qa-pass13"/);
+    const layoutMatch = layout.match(/name="app-version"\s+content="(20261112-qa-pass\d+)"/);
+    const swMatch = sw.match(/SW_VERSION\s*=\s*"(20261112-qa-pass\d+)"/);
+    assert.ok(layoutMatch, "app/layout.tsx must declare app-version meta");
+    assert.ok(swMatch, "public/sw.js must declare SW_VERSION");
+    assert.equal(layoutMatch[1], swMatch[1]);
   });
 });

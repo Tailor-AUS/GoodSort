@@ -209,6 +209,24 @@ export async function flushUnsyncedScans(): Promise<{ sent: number; refused: num
       continue;
     }
     if (data !== null) {
+      if (typeof data.creditedCents === "number") {
+        const localUser = getLocalUser();
+        const storedScan = localUser?.scans.find((s) => s.id === scan.id);
+        if (localUser && storedScan && storedScan.refundCents !== data.creditedCents) {
+          const delta = data.creditedCents - storedScan.refundCents;
+          storedScan.refundCents = data.creditedCents;
+          localUser.pendingCents = Math.max(0, localUser.pendingCents + delta);
+          saveLocalUser(localUser);
+          if (localUser.householdId) {
+            const households = getLocalHouseholds();
+            const hh = households.find((h) => h.id === localUser.householdId);
+            if (hh) {
+              hh.pendingValueCents = Math.max(0, hh.pendingValueCents + delta);
+              saveLocalHouseholds(households);
+            }
+          }
+        }
+      }
       markScanSynced(scan.id);
       sent++;
       continue;

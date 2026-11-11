@@ -201,6 +201,12 @@ public class AuthService
         otp.Used = true;
         await _db.SaveChangesAsync();
 
+        // Reject Guid.Empty so a default/blank GUID never occupies ReferrerId
+        // and blocks a subsequent legitimate neighbour referral link.
+        Guid? validReferrerId = referrerId is Guid candidateRid && candidateRid != Guid.Empty
+            ? candidateRid
+            : null;
+
         // Find or create profile
         var profile = await _db.Profiles.FirstOrDefaultAsync(p => p.Email == email || p.Phone == email);
         if (profile == null)
@@ -208,21 +214,23 @@ public class AuthService
             var prefix = email.Split('@')[0].Replace('.', ' ').Replace('_', ' ').Replace('-', ' ');
             var displayName = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(prefix);
 
+            var newProfileId = Guid.NewGuid();
             profile = new Profile
             {
+                Id = newProfileId,
                 Name = displayName,
                 Email = email,
                 Phone = email, // Backward compat
                 Role = "sorter",
-                ReferrerId = referrerId,
+                ReferrerId = validReferrerId != newProfileId ? validReferrerId : null,
             };
             _db.Profiles.Add(profile);
             await _db.SaveChangesAsync();
         }
-        else if (referrerId is Guid rid
+        else if (validReferrerId is Guid rid
                  && rid != profile.Id
                  && profile.HouseholdId is null
-                 && profile.ReferrerId is null)
+                 && (profile.ReferrerId is null || profile.ReferrerId == Guid.Empty))
         {
             // Neighbour invite after a first OTP (no household yet) still counts.
             profile.ReferrerId = rid;

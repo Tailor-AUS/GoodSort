@@ -1848,11 +1848,10 @@ app.MapPut("/api/profiles/me/payout", async (HttpContext ctx, PayoutDetailsUpdat
 app.MapGet("/api/profiles/{id:guid}/network", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
     if (!ctx.IsOwnerOrAdmin(id)) return Results.Forbid();
-    var referred = await db.Profiles.AsNoTracking()
+    var referredRows = await db.Profiles.AsNoTracking()
         .Where(p => p.ReferrerId == id && p.Id != id)
         .Select(p => new
         {
-            p.Id,
             p.Name,
             p.TotalContainers,
             HasHousehold = p.HouseholdId != null,
@@ -1862,8 +1861,18 @@ app.MapGet("/api/profiles/{id:guid}/network", async (HttpContext ctx, Guid id, G
         .ThenByDescending(p => p.CreatedAt)
         .ToListAsync();
 
-    var activeHouseholds = referred.Count(r => r.HasHousehold);
-    var referredContainers = referred.Sum(r => r.TotalContainers);
+    var referred = referredRows
+        .Select(r => new
+        {
+            name = InvitePreview.PublicFirstName(r.Name, "A neighbour"),
+            totalContainers = r.TotalContainers,
+            hasHousehold = r.HasHousehold,
+            createdAt = r.CreatedAt,
+        })
+        .ToList();
+
+    var activeHouseholds = referredRows.Count(r => r.HasHousehold);
+    var referredContainers = referredRows.Sum(r => r.TotalContainers);
     var signupBonusCents = activeHouseholds * 100;
     var containerCommissionCents = referredContainers * HouseholdCredit.ReferralCommissionCentsPerContainer;
 
@@ -2065,18 +2074,33 @@ app.MapPost("/api/routes/{id:guid}/claim", async (HttpContext ctx, Guid id, Clai
     // Trusting the body would let anyone assign a route to another user.
     var callerId = ctx.GetCallerId();
     if (callerId is null) return Results.Unauthorized();
-    var route = await db.Routes.FindAsync(id);
+    var route = await db.Routes
+        .Include(r => r.Stops.OrderBy(s => s.Sequence))
+        .Include(r => r.Depot)
+        .FirstOrDefaultAsync(r => r.Id == id);
     if (route is null || route.Status != "pending") return Results.BadRequest("Not available");
-    route.Status = "claimed"; route.DriverId = callerId.Value; route.ClaimedAt = DateTime.UtcNow;
-    var profile = await db.Profiles.FindAsync(callerId.Value);
-    if (profile is not null) profile.Role = "both";
-    await db.SaveChangesAsync();
-    return Results.Ok(route);
+
+    return await Atomic.RunAsync<IResult>(db, async () =>
+    {
+        if (!await StatusClaim.TryAssignDriverToRoute(db, route.Id, callerId.Value))
+            return Results.BadRequest("Not available");
+
+        route.Status = "claimed";
+        route.DriverId = callerId.Value;
+        route.ClaimedAt ??= DateTime.UtcNow;
+        var profile = await db.Profiles.FindAsync(callerId.Value);
+        if (profile is not null) profile.Role = "both";
+        await db.SaveChangesAsync();
+        return Results.Ok(route);
+    });
 }).RequireAuthorization();
 
 app.MapPost("/api/routes/{id:guid}/start", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
-    var route = await db.Routes.FindAsync(id);
+    var route = await db.Routes
+        .Include(r => r.Stops.OrderBy(s => s.Sequence))
+        .Include(r => r.Depot)
+        .FirstOrDefaultAsync(r => r.Id == id);
     if (route is null || route.Status != "claimed") return Results.BadRequest();
     if (route.DriverId != ctx.GetCallerId() && !ctx.IsAdmin()) return Results.Forbid();
     route.Status = "in_progress"; route.StartedAt = DateTime.UtcNow;
@@ -2087,7 +2111,10 @@ app.MapPost("/api/routes/{id:guid}/start", async (HttpContext ctx, Guid id, Good
 app.MapPost("/api/routes/{routeId:guid}/stops/{stopId:guid}/pickup",
     async (HttpContext ctx, Guid routeId, Guid stopId, PickupRequest req, GoodSortDbContext db) =>
 {
-    var route = await db.Routes.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == routeId);
+    var route = await db.Routes
+        .Include(r => r.Stops.OrderBy(s => s.Sequence))
+        .Include(r => r.Depot)
+        .FirstOrDefaultAsync(r => r.Id == routeId);
     if (route is null || route.Status != "in_progress") return Results.BadRequest();
     if (route.DriverId != ctx.GetCallerId() && !ctx.IsAdmin()) return Results.Forbid();
     var stop = route.Stops.FirstOrDefault(s => s.Id == stopId);
@@ -2102,7 +2129,10 @@ app.MapPost("/api/routes/{routeId:guid}/stops/{stopId:guid}/pickup",
 app.MapPost("/api/routes/{routeId:guid}/stops/{stopId:guid}/skip",
     async (HttpContext ctx, Guid routeId, Guid stopId, GoodSortDbContext db) =>
 {
-    var route = await db.Routes.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == routeId);
+    var route = await db.Routes
+        .Include(r => r.Stops.OrderBy(s => s.Sequence))
+        .Include(r => r.Depot)
+        .FirstOrDefaultAsync(r => r.Id == routeId);
     if (route is null || route.Status != "in_progress") return Results.BadRequest();
     if (route.DriverId != ctx.GetCallerId() && !ctx.IsAdmin()) return Results.Forbid();
     var stop = route.Stops.FirstOrDefault(s => s.Id == stopId);
@@ -2113,7 +2143,7 @@ app.MapPost("/api/routes/{routeId:guid}/stops/{stopId:guid}/skip",
     return Results.Ok(route);
 }).RequireAuthorization();
 
-app.MapPost("/api/routes/{id:guid}/settle", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
+app.MapPost("/api/routes/{id:guid}/settle", async (HttpContext ctx, Guid id, GoodSortDbContext db, IConfiguration cfg) =>
 {
     var route = await db.Routes.Include(r => r.Stops).Include(r => r.Depot)
         .FirstOrDefaultAsync(r => r.Id == id);
@@ -2137,6 +2167,7 @@ app.MapPost("/api/routes/{id:guid}/settle", async (HttpContext ctx, Guid id, Goo
     if (!await StatusClaim.TryClaimRoute(db, route.Id, from: "at_depot", to: "settled"))
         return Results.BadRequest(new { error = "This route has already been settled." });
 
+    var householdRateCents = CrpSettlement.ActiveHouseholdRateCents(cfg);
     var pickedUp = route.Stops.Where(s => s.Status == "picked_up").ToList();
     var totalCollected = pickedUp.Sum(s => s.ActualContainerCount ?? s.ContainerCount);
     var driverPayout = totalCollected * 5; // 5c per container, no base
@@ -2146,22 +2177,77 @@ app.MapPost("/api/routes/{id:guid}/settle", async (HttpContext ctx, Guid id, Goo
     // the tracked entity so the response body matches what is stored.
     route.Status = "settled"; route.SettledAt ??= DateTime.UtcNow;
 
+    var creditedHouseholds = new List<Household>();
     foreach (var stop in pickedUp)
     {
-        var hh = await db.Households.FindAsync(stop.HouseholdId);
+        var hh = await db.Households.Include(h => h.Members).FirstOrDefaultAsync(h => h.Id == stop.HouseholdId);
         if (hh is null) continue;
+
+        var bin = await db.Bins.FirstOrDefaultAsync(b => b.HouseholdId == hh.Id && b.Status == "active");
+        var isFirstHouseholdPickup = bin is not null ? bin.LastCollectedAt is null : hh.LastPickupAt is null;
+
         var count = stop.ActualContainerCount ?? stop.ContainerCount;
+        if (bin is not null)
+        {
+            bin.PendingContainers = Math.Max(0, bin.PendingContainers - count);
+            bin.PendingValueCents = bin.PendingContainers * householdRateCents;
+            bin.LastCollectedAt = DateTime.UtcNow;
+            if (bin.PendingContainers == 0) bin.Materials = new MaterialBreakdown();
+        }
+
+        var pendingScans = await db.Scans
+            .Where(s => s.HouseholdId == hh.Id && s.Status == "pending")
+            .ToListAsync();
+        var payees = hh.Members.ToList();
+        foreach (var scan in pendingScans)
+        {
+            if (payees.Any(m => m.Id == scan.UserId)) continue;
+            var extra = await db.Profiles.FindAsync(scan.UserId);
+            if (extra is not null) payees.Add(extra);
+        }
+        HouseholdCredit.ApplyPickup(payees, pendingScans, count, householdRateCents);
+
+        var referredMember = payees.FirstOrDefault(m => m.ReferrerId.HasValue && m.ReferrerId.Value != m.Id);
+        if (referredMember?.ReferrerId is Guid referrerId && count > 0)
+        {
+            var referrer = await db.Profiles.FindAsync(referrerId);
+            if (referrer is not null)
+                referrer.ClearedCents += HouseholdCredit.ReferralCommissionForPickup(count);
+        }
+
+        if (isFirstHouseholdPickup && count > 0)
+        {
+            var distinctReferrerIds = hh.Members
+                .Where(m => m.ReferrerId.HasValue && m.ReferrerId.Value != m.Id)
+                .Select(m => m.ReferrerId!.Value)
+                .Distinct()
+                .ToList();
+            foreach (var signupReferrerId in distinctReferrerIds)
+            {
+                var signupReferrer = await db.Profiles.FindAsync(signupReferrerId);
+                if (signupReferrer is null) continue;
+                var signupBonusToClear = Math.Min(100, Math.Max(0, signupReferrer.PendingCents));
+                if (signupBonusToClear > 0)
+                {
+                    signupReferrer.PendingCents -= signupBonusToClear;
+                    signupReferrer.ClearedCents += signupBonusToClear;
+                }
+            }
+        }
+
         hh.PendingContainers = Math.Max(0, hh.PendingContainers - count);
-        hh.PendingValueCents = hh.PendingContainers * HouseholdCredit.CentsPerContainer;
+        hh.PendingValueCents = hh.PendingContainers * householdRateCents;
         hh.EstimatedBags = (int)Math.Ceiling(hh.PendingContainers / 150.0);
         if (hh.PendingContainers == 0) hh.Materials = new MaterialBreakdown();
         hh.LastPickupAt = DateTime.UtcNow;
         var hasRemainingKerbBags = await db.SortedBags.AnyAsync(b => b.HouseholdId == hh.Id && b.Status == "on_kerb");
-        if (!hasRemainingKerbBags)
+        if (!hasRemainingKerbBags
+            && (hh.BinIsOutAt is null || stop.PickedUpAt is null || hh.BinIsOutAt <= stop.PickedUpAt))
         {
             hh.BinIsOut = false;
             hh.BinIsOutAt = null;
         }
+        creditedHouseholds.Add(hh);
     }
 
     if (route.DriverId.HasValue)
@@ -2180,6 +2266,18 @@ app.MapPost("/api/routes/{id:guid}/settle", async (HttpContext ctx, Guid id, Goo
     }
 
     await db.SaveChangesAsync();
+
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            using var scope = app.Services.CreateScope();
+            var notif = scope.ServiceProvider.GetRequiredService<NotificationService>();
+            foreach (var hh in creditedHouseholds) await notif.SendPickupConfirmation(hh.Id);
+        }
+        catch (Exception ex) { app.Logger.LogError(ex, "Route post-pickup email burst failed"); }
+    });
+
     return Results.Ok(new { route.Id, driverPayout, totalCollected });
     });
 }).RequireAuthorization();
