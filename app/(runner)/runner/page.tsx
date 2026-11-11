@@ -9,7 +9,7 @@ import { getUserApi, getDepotsApi, getBinsApi } from "@/lib/store-api";
 import type { MarketplaceRun, RunDetail, RunnerEarnings, LeaderboardEntry, DiscrepancyCode } from "@/lib/marketplace";
 import {
   getRunnerProfile, getAvailableRuns, getActiveRun,
-  claimRun, startRun, arriveAtStop, pickupStop, skipStop,
+  claimRun, startRun, releaseRun, arriveAtStop, pickupStop, skipStop,
   deliverRun, completeRun, settleRun, getRunnerEarnings, getLeaderboard,
   sendHeartbeat,
 } from "@/lib/marketplace-api";
@@ -141,6 +141,18 @@ export default function RunnerApp() {
     setActionError(null);
     setActiveRun(result);
   }, [activeRun]);
+
+  const handleRelease = useCallback(async () => {
+    if (!activeRun) return;
+    const released = await releaseRun(activeRun.id);
+    if (!released) {
+      setActionError("Could not release the run. Check your signal and try again.");
+      return;
+    }
+    setActionError(null);
+    setActiveRun(null);
+    await refreshData();
+  }, [activeRun, refreshData]);
 
   const handleArrive = useCallback(async (stopId: string) => {
     if (!activeRun) return;
@@ -347,6 +359,7 @@ export default function RunnerApp() {
         loading={loading}
         onClaim={handleClaim}
         onStart={handleStart}
+        onRelease={handleRelease}
         onArrive={handleArrive}
         onPickup={handlePickup}
         onSkip={handleSkip}

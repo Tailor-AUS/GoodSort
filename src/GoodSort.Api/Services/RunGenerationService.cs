@@ -95,11 +95,14 @@ public class RunGenerationService : BackgroundService
         }
     }
 
+    public static readonly TimeSpan StaleClaimWindow = TimeSpan.FromHours(24);
+
     private async Task ExpireOldRuns(GoodSortDbContext db)
     {
+        var now = DateTime.UtcNow;
         var expired = await db.Runs
             .Where(r => RunLifecycle.Unclaimed.Contains(r.Status)
-                     && r.ExpiresAt <= DateTime.UtcNow)
+                     && r.ExpiresAt <= now)
             .ToListAsync();
 
         foreach (var run in expired)
@@ -108,7 +111,25 @@ public class RunGenerationService : BackgroundService
             _logger.LogInformation("Expired run {RunId}", run.Id);
         }
 
-        if (expired.Count > 0)
+        // Reclaim abandoned "claimed" runs that were never started within 24 hours so
+        // an inactive runner can never permanently lock a suburb's household bins inside
+        // RunLifecycle.HoldsBin.
+        var staleCutoff = now - StaleClaimWindow;
+        var staleClaimed = await db.Runs
+            .Where(r => r.Status == "claimed"
+                     && (r.ClaimedAt ?? r.CreatedAt) <= staleCutoff)
+            .ToListAsync();
+
+        foreach (var run in staleClaimed)
+        {
+            run.RunnerId = null;
+            run.ClaimedAt = null;
+            run.LastBriefedAt = null;
+            run.Status = run.ExpiresAt > now ? "available" : "expired";
+            _logger.LogInformation("Reclaimed stale claimed run {RunId} -> {Status}", run.Id, run.Status);
+        }
+
+        if (expired.Count > 0 || staleClaimed.Count > 0)
             await db.SaveChangesAsync();
     }
 
@@ -365,9 +386,10 @@ public class RunGenerationService : BackgroundService
                                              + bin.Materials.Other * 0.020;
             touchedRuns.Add(nearestRun.Run);
 
-            // Reset the flag
-            hh.BinIsOut = false;
-            hh.BinIsOutAt = null;
+            // Keep hh.BinIsOut = true until settlement (or until the household brings
+            // its bags back inside): RunLifecycle.HoldsBin already excludes this bin
+            // from duplicate absorption while the run is active, and preserving BinIsOut
+            // ensures a kerb-flagged household is re-clustered if an unclaimed run expires.
             absorbed++;
 
             _logger.LogInformation(

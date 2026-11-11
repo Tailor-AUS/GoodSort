@@ -3490,7 +3490,10 @@ app.MapPost("/api/marketplace/runs/{id:guid}/claim", async (HttpContext ctx, Gui
 {
     var profileId = ctx.GetCallerId();
     if (profileId is null) return Results.Unauthorized();
-    var run = await db.Runs.Include(r => r.Stops.OrderBy(s => s.Sequence)).FirstOrDefaultAsync(r => r.Id == id);
+    var run = await db.Runs
+        .Include(r => r.Stops.OrderBy(s => s.Sequence))
+        .Include(r => r.DropPoint)
+        .FirstOrDefaultAsync(r => r.Id == id);
     if (run is null || (run.Status != "available" && run.Status != "below_threshold"))
         return Results.BadRequest(new { error = "Run not available" });
     if (run.ExpiresAt <= DateTime.UtcNow)
@@ -3500,12 +3503,19 @@ app.MapPost("/api/marketplace/runs/{id:guid}/claim", async (HttpContext ctx, Gui
     if (runner is null)
         return Results.BadRequest(new { error = "Not registered as runner" });
 
-    // Re-price with runner's level bonus, then atomically claim the status transition
+    // Re-price with runner's level bonus, enforce one active run per runner (preventing
+    // run hoarding and mass stop-coordinate scraping), then atomically claim the transition
     // so two runners tapping Claim at once never both receive the stop list.
     var result = await pricing.CalculateRate(run, runner);
 
-    return await Atomic.RunAsync<IResult>(db, async () =>
+    return await StatusClaim.WithUserGateAsync(runner.Id, () => Atomic.RunAsync<IResult>(db, async () =>
     {
+        var alreadyHasActiveRun = await db.Runs.AsNoTracking().AnyAsync(r =>
+            r.RunnerId == runner.Id
+            && (r.Status == "claimed" || r.Status == "in_progress" || r.Status == "delivering" || r.Status == "completed"));
+        if (alreadyHasActiveRun)
+            return Results.BadRequest(new { error = "Finish or release your current active run before claiming another." });
+
         var won = await StatusClaim.TryAssignRunnerToRun(
             db, run.Id, runner.Id, result.PerContainerCents, result.EstimatedPayoutCents, result.PricingTier);
         if (!won)
@@ -3518,15 +3528,47 @@ app.MapPost("/api/marketplace/runs/{id:guid}/claim", async (HttpContext ctx, Gui
         run.Status = "claimed";
         run.ClaimedAt ??= DateTime.UtcNow;
 
-        // Return run with stops (now includes lat/lng for navigation)
+        // Return run with stops and drop point (now includes lat/lng for navigation)
         return Results.Ok(run);
-    });
+    }), ctx.RequestAborted);
+}).RequireAuthorization();
+
+// ── Marketplace: Release a claimed run (before collection starts) ──
+app.MapPost("/api/marketplace/runs/{id:guid}/release", async (HttpContext ctx, Guid id, GoodSortDbContext db, PricingService pricing) =>
+{
+    var run = await db.Runs
+        .Include(r => r.Stops.OrderBy(s => s.Sequence))
+        .Include(r => r.DropPoint)
+        .FirstOrDefaultAsync(r => r.Id == id);
+    if (run is null) return Results.NotFound();
+    if (!await CallerOwnsRun(ctx, run, db)) return Results.Forbid();
+    if (run.Status != "claimed")
+        return Results.BadRequest(new { error = "Only a claimed run that has not started can be released." });
+
+    run.Status = "available";
+    run.RunnerId = null;
+    run.ClaimedAt = null;
+    run.LastBriefedAt = null;
+    if (run.ExpiresAt <= DateTime.UtcNow.AddHours(2))
+        run.ExpiresAt = DateTime.UtcNow.AddHours(6);
+
+    var repriced = await pricing.CalculateRate(run);
+    run.PerContainerCents = repriced.PerContainerCents;
+    run.EstimatedPayoutCents = repriced.EstimatedPayoutCents;
+    run.PricingTier = repriced.PricingTier;
+    run.LastPricedAt = DateTime.UtcNow;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { released = true, id = run.Id, status = run.Status });
 }).RequireAuthorization();
 
 // ── Marketplace: Start a run ──
 app.MapPost("/api/marketplace/runs/{id:guid}/start", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
-    var run = await db.Runs.FindAsync(id);
+    var run = await db.Runs
+        .Include(r => r.Stops.OrderBy(s => s.Sequence))
+        .Include(r => r.DropPoint)
+        .FirstOrDefaultAsync(r => r.Id == id);
     if (run is null || run.Status != "claimed") return Results.BadRequest();
     if (!await CallerOwnsRun(ctx, run, db)) return Results.Forbid();
     run.Status = "in_progress";
@@ -3695,7 +3737,10 @@ app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/scan-bag",
 app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/pickup",
     async (HttpContext ctx, Guid runId, Guid stopId, RunStopPickupRequest req, GoodSortDbContext db) =>
 {
-    var run = await db.Runs.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == runId);
+    var run = await db.Runs
+        .Include(r => r.Stops.OrderBy(s => s.Sequence))
+        .Include(r => r.DropPoint)
+        .FirstOrDefaultAsync(r => r.Id == runId);
     if (run is null || run.Status != "in_progress") return Results.BadRequest();
     if (!await CallerOwnsRun(ctx, run, db)) return Results.Forbid();
 
@@ -3745,7 +3790,10 @@ app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/pickup",
 app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/skip",
     async (HttpContext ctx, Guid runId, Guid stopId, GoodSortDbContext db) =>
 {
-    var run = await db.Runs.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == runId);
+    var run = await db.Runs
+        .Include(r => r.Stops.OrderBy(s => s.Sequence))
+        .Include(r => r.DropPoint)
+        .FirstOrDefaultAsync(r => r.Id == runId);
     if (run is null || run.Status != "in_progress") return Results.BadRequest();
     if (!await CallerOwnsRun(ctx, run, db)) return Results.Forbid();
 
@@ -3760,7 +3808,10 @@ app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/skip",
 // ── Marketplace: Mark run as delivering (heading to drop point) ──
 app.MapPost("/api/marketplace/runs/{id:guid}/deliver", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
-    var run = await db.Runs.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == id);
+    var run = await db.Runs
+        .Include(r => r.Stops.OrderBy(s => s.Sequence))
+        .Include(r => r.DropPoint)
+        .FirstOrDefaultAsync(r => r.Id == id);
     if (run is null || run.Status != "in_progress") return Results.BadRequest();
     if (!await CallerOwnsRun(ctx, run, db)) return Results.Forbid();
 
@@ -3776,7 +3827,10 @@ app.MapPost("/api/marketplace/runs/{id:guid}/deliver", async (HttpContext ctx, G
 // ── Marketplace: Complete delivery at drop point (with optional CRP/depot docket verification) ──
 app.MapPost("/api/marketplace/runs/{id:guid}/complete", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
-    var run = await db.Runs.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == id);
+    var run = await db.Runs
+        .Include(r => r.Stops.OrderBy(s => s.Sequence))
+        .Include(r => r.DropPoint)
+        .FirstOrDefaultAsync(r => r.Id == id);
     if (run is null || run.Status != "delivering") return Results.BadRequest();
     if (!await CallerOwnsRun(ctx, run, db)) return Results.Forbid();
 

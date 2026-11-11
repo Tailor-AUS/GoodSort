@@ -23,6 +23,7 @@ interface RunnerSheetProps {
   loading: boolean;
   onClaim: (runId: string) => void;
   onStart: () => void;
+  onRelease?: () => void;
   onArrive: (stopId: string) => void;
   onPickup: (
     stopId: string,
@@ -38,7 +39,7 @@ interface RunnerSheetProps {
 
 export function RunnerSheet({
   user: _user, availableRuns, activeRun, earnings, leaderboard, runnerId, loading,
-  onClaim, onStart, onArrive, onPickup, onSkip, onDeliver, onComplete, onDataUpdate,
+  onClaim, onStart, onRelease, onArrive, onPickup, onSkip, onDeliver, onComplete, onDataUpdate,
 }: RunnerSheetProps) {
   const [showSuccess, setShowSuccess] = useState<{ earned: number; containers: number } | null>(null);
   const [tab, setTab] = useState<Tab>("runs");
@@ -83,6 +84,7 @@ export function RunnerSheet({
             <RunActive
               run={activeRun}
               onStart={onStart}
+              onRelease={onRelease}
               onArrive={onArrive}
               onPickup={onPickup}
               onSkip={onSkip}
@@ -119,6 +121,7 @@ export function RunnerSheet({
                 ].map(({ key, label, icon: Icon }) => (
                   <button
                     key={key}
+                    type="button"
                     onClick={() => setTab(key)}
                     className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[12px] font-bold transition-all ${
                       tab === key
