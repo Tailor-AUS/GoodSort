@@ -704,10 +704,13 @@ app.MapPost("/api/scan/photo", async (HttpContext ctx, PhotoScanRequest req, Vis
             app.Logger.LogWarning(ex, "Could not release vision reservation {Id}", reservation.Id);
         }
     }
-    var totalItems = result.Containers.Sum(c => c.Count);
+    var normalizedContainers = (result.Containers ?? [])
+        .Select(VisionService.NormalizeContainer)
+        .ToList();
     // Preview must quote what /confirm will actually credit, launch bonus included.
     var previewProfile = await db.Profiles.FindAsync(userId.Value);
-    var eligibleCount = result.Containers.Where(c => c.Eligible).Sum(c => Math.Clamp(c.Count, 0, 100));
+    var eligibleCount = normalizedContainers.Where(c => c.Eligible).Sum(c => c.Count);
+    var totalItems = eligibleCount;
     var totalCents = LaunchBonus.TotalCents(
         previewProfile?.TotalContainers ?? 0, eligibleCount, LaunchBonus.CapFrom(cfg));
 
@@ -730,7 +733,7 @@ app.MapPost("/api/scan/photo", async (HttpContext ctx, PhotoScanRequest req, Vis
     var scanToken = tokens.Issue(new ScanTokenPayload
     {
         Uid = userId.Value,
-        Items = result.Containers.Select(c => new ScanTokenItem
+        Items = normalizedContainers.Select(c => new ScanTokenItem
         {
             Name = c.Name, Material = c.Material, Count = c.Count, Eligible = c.Eligible,
         }).ToList(),
@@ -742,7 +745,7 @@ app.MapPost("/api/scan/photo", async (HttpContext ctx, PhotoScanRequest req, Vis
 
     return Results.Ok(new
     {
-        containers = result.Containers,
+        containers = normalizedContainers,
         totalItems,
         totalCents,
         message = result.Message,
@@ -781,7 +784,10 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
     // signed token (not client-supplied) to the device location at confirm.
     // Tunable radius; absent device location is treated as out-of-fence when a
     // bin is bound. Non-bin scans (household/runner) skip this entirely.
-    var geofenceRadiusM = double.TryParse(cfg["DEPOSIT_GEOFENCE_RADIUS_M"], out var gr) ? gr : 150.0;
+    var geofenceRadiusM = double.TryParse(cfg["DEPOSIT_GEOFENCE_RADIUS_M"], out var gr)
+        && double.IsFinite(gr) && gr is >= 10.0 and <= 5000.0
+            ? gr
+            : 150.0;
     var binBound = payload.BinLat.HasValue && payload.BinLng.HasValue;
     double? depositDistanceM = null;
     var geofenceVerified = false;
@@ -890,6 +896,8 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
         // Cap per-scan count to a sane upper bound — defends against a
         // poisoned vision response too (defence in depth, not just client trust).
         var safeCount = Math.Clamp(item.Count, 0, 100);
+        var normalizedName = VisionService.NormalizeContainerName(item.Name);
+        var normalizedMaterial = VisionService.MapMaterial(item.Material);
         var itemCents = 0;
         for (var i = 0; i < safeCount; i++)
         {
@@ -902,8 +910,8 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
                 HouseholdId = household?.Id,
                 BinCode = payload.BinCode,
                 Barcode = "PHOTO",
-                ContainerName = item.Name,
-                Material = item.Material,
+                ContainerName = normalizedName,
+                Material = normalizedMaterial,
                 RefundCents = cents,
                 Status = "pending",
                 DepositLat = req.Lat,
@@ -917,7 +925,7 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
             itemCents += cents;
         }
         if (safeCount > 0)
-            perItemCredits.Add((item.Material, safeCount, itemCents));
+            perItemCredits.Add((normalizedMaterial, safeCount, itemCents));
     }
 
     profile.PendingCents += totalCents;

@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Azure.AI.OpenAI;
 using GoodSort.Api.Data;
 using GoodSort.Api.Data.Entities;
@@ -114,7 +115,7 @@ public class VisionService
                 tvResponse.Classification.Material,
                 tvResponse.Classification.Confidence);
 
-            var container = new IdentifiedContainer
+            var container = NormalizeContainer(new IdentifiedContainer
             {
                 Name = tvResponse.Classification.Description,
                 Material = MapMaterial(tvResponse.Classification.Material),
@@ -122,7 +123,7 @@ public class VisionService
                 Eligible = tvResponse.Cds?.Eligible ?? false,
                 Confidence = tvResponse.Classification.Confidence,
                 Barcode = tvResponse.Barcode?.Value,
-            };
+            });
 
             var msg = container.Eligible
                 ? $"Found a {container.Name} 🎉"
@@ -141,18 +142,37 @@ public class VisionService
     }
 
     /// <summary>
-    /// Map Tailor Vision material names to GoodSort's material system.
+    /// Map Tailor Vision and LLM material names to GoodSort's canonical material system.
     /// </summary>
-    private static string MapMaterial(string? tvMaterial) => (tvMaterial ?? "").Trim().ToLowerInvariant() switch
+    public static string MapMaterial(string? tvMaterial) => (tvMaterial ?? "").Trim().ToLowerInvariant() switch
     {
-        "aluminium" => "aluminium",
-        "pet" => "pet",
-        "glass" => "glass",
+        "aluminium" or "aluminum" or "can" or "cans" or "alu" => "aluminium",
+        "pet" or "pet_clear" or "pet_coloured" or "pet_colored" or "plastic" => "pet",
+        "glass" or "glass_clear" or "glass_brown" or "glass_green" => "glass",
         "steel" => "steel",
         "hdpe" => "hdpe",
-        "liquid_paperboard" => "liquid_paperboard",
+        "liquid_paperboard" or "carton" or "popper" or "tetra_pak" => "liquid_paperboard",
         _ => "other",
     };
+
+    public static string NormalizeContainerName(string? name)
+    {
+        var trimmed = (name ?? "").Trim();
+        if (trimmed.Length == 0) return "Beverage container";
+        return trimmed.Length <= 200 ? trimmed : trimmed[..200];
+    }
+
+    public static IdentifiedContainer NormalizeContainer(IdentifiedContainer c)
+    {
+        c.Name = NormalizeContainerName(c.Name);
+        c.Material = MapMaterial(c.Material);
+        c.Count = Math.Clamp(c.Count, 0, 100);
+        if (!double.IsFinite(c.Confidence) || c.Confidence < 0 || c.Confidence > 1)
+            c.Confidence = 0;
+        if (!string.IsNullOrEmpty(c.Barcode))
+            c.Barcode = Truncate(c.Barcode.Trim(), 64);
+        return c;
+    }
 
     // ── LLM fallback: Sovrgn (preferred) → Azure OpenAI ───────────────────
 
@@ -281,48 +301,20 @@ No containers (blurry):
                     Message = "I couldn't quite make that out — try getting closer with better lighting.",
                 };
             }
-            var content = response.Value.Content[0].Text.Trim();
-
-            // Strip markdown code fences if present
-            if (content.StartsWith("```"))
+            var parsed = ParseChatVisionJson(response.Value.Content[0].Text);
+            if (parsed != null)
             {
-                content = content.Split('\n', 2).Length > 1 ? content.Split('\n', 2)[1] : content;
-                if (content.EndsWith("```")) content = content[..^3];
-                content = content.Trim();
+                _logger.LogInformation("{Provider} identified {Count} container types, message: {Message}",
+                    provider, parsed.Containers.Count, parsed.Message);
+                await LogCall(provider, success: true, containerCount: parsed.Containers.Sum(c => c.Count), sw.ElapsedMilliseconds, userId);
+                return parsed;
             }
 
-            // Legacy plain-array format [...] must be checked before VisionResult object deserialization,
-            // otherwise JsonSerializer.Deserialize<VisionResult> throws JsonException.
-            if (!content.StartsWith('['))
-            {
-                var result = JsonSerializer.Deserialize<VisionResult>(content, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true,
-                });
-
-                if (result != null)
-                {
-                    _logger.LogInformation("{Provider} identified {Count} container types, message: {Message}",
-                        provider, result.Containers.Count, result.Message);
-                    await LogCall(provider, success: true, containerCount: result.Containers.Sum(c => Math.Max(0, c.Count)), sw.ElapsedMilliseconds, userId);
-                    return result;
-                }
-            }
-
-            // Fallback: try parsing as old format (plain array)
-            var containers = JsonSerializer.Deserialize<List<IdentifiedContainer>>(content, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true,
-            });
-
-            _logger.LogInformation("{Provider} identified {Count} container types (legacy format)", provider, containers?.Count ?? 0);
-            await LogCall(provider, success: true, containerCount: containers?.Sum(c => c.Count) ?? 0, sw.ElapsedMilliseconds, userId);
+            await LogCall(provider, success: true, containerCount: 0, sw.ElapsedMilliseconds, userId);
             return new VisionResult
             {
-                Containers = containers ?? [],
-                Message = containers?.Count > 0
-                    ? $"Found {containers.Count} container{(containers.Count != 1 ? "s" : "")}!"
-                    : "No containers spotted — try pointing the camera at a can or bottle!",
+                Containers = [],
+                Message = "No containers spotted — try pointing the camera at a can or bottle!",
             };
         }
         catch (Exception ex)
@@ -332,6 +324,46 @@ No containers (blurry):
                 errorSummary: ex.Message);
             return null;
         }
+    }
+
+    public static VisionResult? ParseChatVisionJson(string? rawContent)
+    {
+        if (string.IsNullOrWhiteSpace(rawContent)) return null;
+        var content = rawContent.Trim();
+
+        // Strip markdown code fences if present
+        if (content.StartsWith("```"))
+        {
+            content = content.Split('\n', 2).Length > 1 ? content.Split('\n', 2)[1] : content;
+            if (content.EndsWith("```")) content = content[..^3];
+            content = content.Trim();
+        }
+
+        var jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+        // Legacy plain-array format [...] must be checked before VisionResult object deserialization,
+        // otherwise JsonSerializer.Deserialize<VisionResult> throws JsonException.
+        if (!content.StartsWith('['))
+        {
+            var result = JsonSerializer.Deserialize<VisionResult>(content, jsonOpts);
+            if (result != null)
+            {
+                result.Containers = (result.Containers ?? []).Select(NormalizeContainer).ToList();
+                return result;
+            }
+        }
+
+        // Fallback: try parsing as old format (plain array)
+        var containers = JsonSerializer.Deserialize<List<IdentifiedContainer>>(content, jsonOpts);
+        var normalized = (containers ?? []).Select(NormalizeContainer).ToList();
+        var totalSpotted = normalized.Sum(c => c.Count);
+        return new VisionResult
+        {
+            Containers = normalized,
+            Message = totalSpotted > 0
+                ? $"Found {totalSpotted} container{(totalSpotted != 1 ? "s" : "")}!"
+                : "No containers spotted — try pointing the camera at a can or bottle!",
+        };
     }
 }
 
@@ -378,10 +410,10 @@ public class VisionResult
 
     /// <summary>
     /// Model-authored text shown at the top of the results screen. The model
-    /// must never author money copy: the scheme refund is 10c and the product
-    /// credit is 5c, and conflating them would imply we pass through the
-    /// Containers for Change refund. Any money-like token replaces the whole
-    /// message with product-authored text rather than being redacted in place.
+    /// must never author money copy: the scheme refund is 10c and our domestic
+    /// sorting credit is separate from a direct Containers for Change pass-through.
+    /// Any money-like token replaces the whole message with product-authored text
+    /// rather than being redacted in place.
     /// </summary>
     public string Message
     {
@@ -390,12 +422,15 @@ public class VisionResult
     }
 
     private static readonly string[] MoneyWords = ["cent", "dollar", "refund", "$", "¢"];
+    private static readonly Regex AttachedCentAmount =
+        new(@"\b\d+(?:\.\d+)?c\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// <summary>True if the text makes any money claim we have not authored.</summary>
     internal static bool LooksLikeMoney(string text)
     {
         foreach (var w in MoneyWords)
             if (text.Contains(w, StringComparison.OrdinalIgnoreCase)) return true;
+        if (AttachedCentAmount.IsMatch(text)) return true;
         return false;
     }
 

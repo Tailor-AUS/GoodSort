@@ -65,7 +65,7 @@ export default function FlyerPage() {
               </p>
             </div>
             <div className="rounded-xl bg-emerald-500 text-slate-950 font-extrabold px-3.5 py-2 text-xs uppercase tracking-wider">
-              +10¢ / Can Bonus
+              Earn 10¢ / Can
             </div>
           </div>
         </div>

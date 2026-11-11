@@ -255,6 +255,10 @@ export default function OnboardPage() {
         return;
       }
       const hh = await hhRes.json();
+      if (typeof hh?.id === "string" && hh.id) {
+        profile.householdId = hh.id;
+        localStorage.setItem("goodsort_profile", JSON.stringify(profile));
+      }
 
       // A 2xx is not the same as "done". If the household came back still
       // missing a suburb, pushing to /sort just bounces the member
@@ -290,6 +294,13 @@ export default function OnboardPage() {
             memberName: name.trim() || holder,
           }),
         });
+        if (payRes.status === 401) {
+          clearAuth();
+          setError("Your session expired — please sign in again.");
+          setLoading(false);
+          router.push("/login");
+          return;
+        }
         if (!payRes.ok) {
           const payErr = await payRes.json().catch(() => ({} as { error?: string }));
           setError(payErr.error || "Couldn't save your payout details.");

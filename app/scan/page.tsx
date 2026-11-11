@@ -399,7 +399,9 @@ function ScanPageContent() {
   async function confirm() {
     if (confirming) return;
     setConfirming(true);
-    const eligible = results.filter((r) => r.eligible);
+    const eligible = results
+      .filter((r) => r.eligible)
+      .map((r) => ({ ...r, count: Math.max(0, Math.min(100, r.count)) }));
     const total = eligible.reduce((s, r) => s + r.count, 0);
     setTotalItems(total);
 
@@ -427,7 +429,10 @@ function ScanPageContent() {
         setStep("results");
         return;
       }
-      const data = await res.json().catch(() => ({} as { totalCents?: number }));
+      const data = await res.json().catch(() => ({} as { totalCents?: number; totalContainers?: number }));
+      if (typeof data.totalContainers === "number") {
+        setTotalItems(data.totalContainers);
+      }
       setConfirmedCents(typeof data.totalCents === "number" ? data.totalCents : quotedCents);
       trackScanCredited();
       setStep("done");

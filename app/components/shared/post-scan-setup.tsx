@@ -544,6 +544,12 @@ export function PostScanSetup({
         }
 
         const hh = await hhRes.json();
+        if (typeof hh?.id === "string" && hh.id) {
+          finalHouseholdId = hh.id;
+          profile.householdId = hh.id;
+          localStorage.setItem("goodsort_profile", JSON.stringify(profile));
+          setExistingHouseholdId(hh.id);
+        }
         if (residentialNeedsStreet(hh)) {
           setError("Pick your full street address including your Brisbane suburb (for example, Moorooka).");
           setSaving(false);
@@ -584,6 +590,13 @@ export function PostScanSetup({
             memberName: trimmedName || holder,
           }),
         });
+
+        if (payoutRes.status === 401) {
+          clearAuth();
+          setError("Your session expired — please sign in again.");
+          setSaving(false);
+          return;
+        }
 
         if (!payoutRes.ok) {
           const data = await payoutRes.json().catch(() => ({} as { error?: string }));
