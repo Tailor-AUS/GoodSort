@@ -114,27 +114,32 @@ public class PricingService
     }
 
     /// <summary>
-    /// Re-price all unclaimed available runs (biased upward over time).
+    /// Re-price all unclaimed runs (biased upward over time, promoting
+    /// below_threshold runs once payout crosses minimum).
     /// Called every 30 minutes by RunGenerationService.
     /// </summary>
-    public async Task RepriceAvailableRuns()
+    public async Task RepriceAvailableRuns(int minPayoutCents = 2000)
     {
-        var availableRuns = await _db.Runs
+        var unclaimedRuns = await _db.Runs
             .Include(r => r.Stops)
-            .Where(r => r.Status == "available" && r.ExpiresAt > DateTime.UtcNow)
+            .Where(r => RunLifecycle.Unclaimed.Contains(r.Status) && r.ExpiresAt > DateTime.UtcNow)
             .ToListAsync();
 
-        foreach (var run in availableRuns)
+        foreach (var run in unclaimedRuns)
         {
             var result = await CalculateRate(run);
 
             // Bias upward: never decrease price on re-price (incentivize taking older runs)
-            if (result.PerContainerCents >= run.PerContainerCents)
+            if (result.PerContainerCents >= run.PerContainerCents || run.Status == "below_threshold")
             {
-                run.PerContainerCents = result.PerContainerCents;
-                run.EstimatedPayoutCents = result.EstimatedPayoutCents;
+                run.PerContainerCents = Math.Max(run.PerContainerCents, result.PerContainerCents);
+                run.EstimatedPayoutCents = run.PerContainerCents * run.EstimatedContainers;
                 run.PricingTier = result.PricingTier;
                 run.LastPricedAt = DateTime.UtcNow;
+                if (run.Status == "below_threshold" && run.EstimatedPayoutCents >= minPayoutCents)
+                {
+                    run.Status = "available";
+                }
             }
         }
 

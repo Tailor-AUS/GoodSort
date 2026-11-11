@@ -70,13 +70,17 @@ public class RunGenerationService : BackgroundService
 
         try
         {
+            var minPayoutCents = ResolveMinPayoutCents();
             await ExpireOldRuns(db);
-            await GenerateRuns(db, pricing);
-            await AbsorbFullBinHouseholds(db);
+            // Absorb flagged full-bin households into nearby existing unclaimed
+            // runs BEFORE GenerateRuns; otherwise GenerateRuns turns each late
+            // full-bin household into a separate 1-stop below_threshold run.
+            await AbsorbFullBinHouseholds(db, pricing, minPayoutCents);
+            await GenerateRuns(db, pricing, minPayoutCents);
 
             if ((DateTime.UtcNow - _lastRepriceAt).TotalMinutes >= 30)
             {
-                await pricing.RepriceAvailableRuns();
+                await pricing.RepriceAvailableRuns(minPayoutCents);
                 _lastRepriceAt = DateTime.UtcNow;
             }
 
@@ -108,11 +112,11 @@ public class RunGenerationService : BackgroundService
             await db.SaveChangesAsync();
     }
 
-    private async Task GenerateRuns(GoodSortDbContext db, PricingService pricing)
-    {
-        var minPayoutCents = int.TryParse(
-            Environment.GetEnvironmentVariable("MINIMUM_RUN_PAYOUT_CENTS"), out var mp) ? mp : 2000;
+    private static int ResolveMinPayoutCents() =>
+        int.TryParse(Environment.GetEnvironmentVariable("MINIMUM_RUN_PAYOUT_CENTS"), out var mp) ? mp : 2000;
 
+    private async Task GenerateRuns(GoodSortDbContext db, PricingService pricing, int minPayoutCents)
+    {
         // Find all bins with pending containers NOT already in an active run
         var activeBinIds = await db.RunStops
             .Where(s => RunLifecycle.HoldsBin.Contains(s.Run.Status))
@@ -271,10 +275,10 @@ public class RunGenerationService : BackgroundService
 
     /// <summary>
     /// Households that flagged "my bin is full" get absorbed into the nearest
-    /// existing profitable run, even if it slightly dilutes the run's $/hr.
-    /// This ensures full-bin households don't wait indefinitely.
+    /// existing unclaimed run, re-pricing it and promoting below-threshold runs
+    /// once combined payout crosses the minimum threshold.
     /// </summary>
-    private async Task AbsorbFullBinHouseholds(GoodSortDbContext db)
+    private async Task AbsorbFullBinHouseholds(GoodSortDbContext db, PricingService pricing, int minPayoutCents)
     {
         // Find households with BinIsOut=true (user flagged "bin is full")
         // whose bin is NOT already in an active run
@@ -307,6 +311,7 @@ public class RunGenerationService : BackgroundService
             .Where(r => RunLifecycle.Unclaimed.Contains(r.Status))
             .ToListAsync();
 
+        var touchedRuns = new HashSet<Run>();
         var absorbed = 0;
         foreach (var hh in flaggedHouseholds)
         {
@@ -322,13 +327,19 @@ public class RunGenerationService : BackgroundService
 
             if (nearestRun is null) continue;
 
-            // Add this bin as a new stop on the run
-            nearestRun.Run.Stops.Add(new RunStop
+            var addedContainers = HouseholdCredit.EstimatedContainers(bin.PendingContainers);
+
+            // Add this bin as a new stop on the run. Explicit db.RunStops.Add is
+            // required because RunStop.Id defaults to Guid.NewGuid() (non-empty),
+            // which EF Core otherwise treats as an existing Modified row and throws
+            // DbUpdateConcurrencyException on SaveChangesAsync.
+            var newStop = new RunStop
             {
+                RunId = nearestRun.Run.Id,
                 BinId = bin.Id,
                 Lat = bin.Lat,
                 Lng = bin.Lng,
-                EstimatedContainers = HouseholdCredit.EstimatedContainers(bin.PendingContainers),
+                EstimatedContainers = addedContainers,
                 PickupInstruction = HouseholdCredit.PickupInstruction(hh.Name),
                 Materials = new MaterialBreakdown
                 {
@@ -338,10 +349,21 @@ public class RunGenerationService : BackgroundService
                     Other = bin.Materials.Other,
                 },
                 Sequence = nearestRun.Run.Stops.Count,
-            });
+            };
+            db.RunStops.Add(newStop);
+            nearestRun.Run.Stops.Add(newStop);
 
-            nearestRun.Run.EstimatedContainers += HouseholdCredit.EstimatedContainers(bin.PendingContainers);
+            nearestRun.Run.EstimatedContainers += addedContainers;
             nearestRun.Run.EstimatedDurationMin += 1; // +1 min for the extra stop
+            nearestRun.Run.Materials.Aluminium += bin.Materials.Aluminium;
+            nearestRun.Run.Materials.Pet += bin.Materials.Pet;
+            nearestRun.Run.Materials.Glass += bin.Materials.Glass;
+            nearestRun.Run.Materials.Other += bin.Materials.Other;
+            nearestRun.Run.EstimatedWeightKg += bin.Materials.Aluminium * 0.015
+                                             + bin.Materials.Pet * 0.025
+                                             + bin.Materials.Glass * 0.300
+                                             + bin.Materials.Other * 0.020;
+            touchedRuns.Add(nearestRun.Run);
 
             // Reset the flag
             hh.BinIsOut = false;
@@ -351,6 +373,19 @@ public class RunGenerationService : BackgroundService
             _logger.LogInformation(
                 "Absorbed full-bin household {HouseholdId} into run {RunId} ({Area})",
                 hh.Id, nearestRun.Run.Id, nearestRun.Run.AreaName);
+        }
+
+        foreach (var run in touchedRuns)
+        {
+            var result = await pricing.CalculateRate(run);
+            run.PerContainerCents = result.PerContainerCents;
+            run.EstimatedPayoutCents = result.EstimatedPayoutCents;
+            run.PricingTier = result.PricingTier;
+            run.LastPricedAt = DateTime.UtcNow;
+            if (run.Status == "below_threshold" && run.EstimatedPayoutCents >= minPayoutCents)
+            {
+                run.Status = "available";
+            }
         }
 
         if (absorbed > 0)

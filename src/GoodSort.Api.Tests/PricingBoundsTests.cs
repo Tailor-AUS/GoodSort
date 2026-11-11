@@ -135,4 +135,38 @@ public class PricingBoundsTests
 
         Assert.Null(PricingBounds.Reject(c));
     }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    public void Non_finite_multipliers_and_weights_are_refused(double nonFinite)
+    {
+        var surge = Sane(); surge.MorningSurge = nonFinite;
+        var weight = Sane(); weight.DistanceEfficiencyWeight = nonFinite;
+
+        Assert.NotNull(PricingBounds.Reject(surge));
+        Assert.NotNull(PricingBounds.Reject(weight));
+    }
+
+    [Fact]
+    public void Zero_sum_or_negative_weights_and_out_of_range_spot_prices_are_refused()
+    {
+        var negWeight = Sane(); negWeight.BinDensityWeight = -0.1;
+        Assert.NotNull(PricingBounds.Reject(negWeight));
+
+        var zeroSum = Sane();
+        zeroSum.DistanceEfficiencyWeight = 0;
+        zeroSum.BinDensityWeight = 0;
+        zeroSum.SupplyDemandWeight = 0;
+        zeroSum.TimeOfDayWeight = 0;
+        zeroSum.MaterialMixWeight = 0;
+        zeroSum.ScrapPriceWeight = 0;
+        Assert.NotNull(PricingBounds.Reject(zeroSum));
+
+        var negSpot = Sane(); negSpot.AluminiumSpotCents = -10;
+        var hugeSpot = Sane(); hugeSpot.PetSpotCents = 50_000;
+        Assert.NotNull(PricingBounds.Reject(negSpot));
+        Assert.NotNull(PricingBounds.Reject(hugeSpot));
+    }
 }

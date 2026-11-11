@@ -141,6 +141,48 @@ builder.Services.AddRateLimiter(options =>
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+
+    // Per-IP ceiling on /api/auth/send-otp so a scripted loop rotating random
+    // email addresses cannot exhaust ACS sending quota or flood OtpCodes.
+    // AuthService still enforces 5/hour per email address independently.
+    options.AddPolicy("auth-otp", ctx =>
+    {
+        var configured = builder.Configuration["OTP_IP_RATE_PER_MINUTE"];
+        if (configured == "0")
+            return System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter("disabled");
+        // WebApplicationFactory's in-memory TestServer sets RemoteIpAddress = null
+        // across every test in a shared fixture; real Kestrel TCP / Envoy always
+        // populates RemoteIpAddress. Still honour explicit OTP_IP_RATE_PER_MINUTE
+        // in tests that verify the 429 path.
+        if (ctx.Connection.RemoteIpAddress is null && string.IsNullOrEmpty(configured))
+            return System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter("testserver");
+        var limit = int.TryParse(configured, out var opm) && opm > 0 ? opm : 30;
+        return System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = limit,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            });
+    });
+});
+
+// Forwarded headers for Azure Container Apps Envoy ingress. Without this,
+// ctx.Connection.RemoteIpAddress on every production request is the internal
+// Envoy proxy address, collapsing per-IP rate limiters ("barcode-lookup",
+// "growth-events", "auth-otp") into a single shared bucket per replica.
+// ForwardLimit = 1 reads only the rightmost hop appended by Envoy so a
+// client-supplied X-Forwarded-For prefix cannot spoof RemoteIpAddress.
+builder.Services.Configure<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor
+                             | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
+    options.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(System.Net.IPAddress.Parse("10.0.0.0"), 8));
+    options.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(System.Net.IPAddress.Parse("172.16.0.0"), 12));
+    options.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(System.Net.IPAddress.Parse("192.168.0.0"), 16));
+    options.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(System.Net.IPAddress.Parse("100.64.0.0"), 10));
 });
 
 // CORS — restrict to actual domains
@@ -242,6 +284,7 @@ var app = builder.Build();
 // Tune via RUNNER_STOP_MAX_CONTAINERS; the default is intentionally lenient.
 var maxContainersPerStop = int.TryParse(builder.Configuration["RUNNER_STOP_MAX_CONTAINERS"], out var mc) ? mc : 2000;
 
+app.UseForwardedHeaders();
 app.UseCors();
 app.UseAuthentication();
 // After authentication, deliberately. The "scans" policy partitions by member
@@ -400,17 +443,21 @@ app.MapPost("/api/admin/bootstrap", async (HttpContext ctx, AdminBootstrapReques
 // ── Auth (Azure Communication Services Email OTP) ──
 app.MapPost("/api/auth/send-otp", async (SendOtpRequest req, AuthService auth) =>
 {
-    var email = req.Email.Trim().ToLower();
-    if (!email.Contains('@')) return Results.BadRequest(new { error = "Invalid email" });
+    var email = AuthService.NormalizeValidEmail(req?.Email);
+    if (email is null) return Results.BadRequest(new { error = "Invalid email" });
     var (success, error, devCode) = await auth.SendOtp(email);
     if (!success) return Results.BadRequest(new { error = error ?? "Failed to send code" });
     return Results.Ok(new { sent = true, devCode = app.Environment.IsDevelopment() ? devCode : null });
-});
+}).RequireRateLimiting("auth-otp");
 
 app.MapPost("/api/auth/verify-otp", async (VerifyOtpRequest req, AuthService auth) =>
 {
-    var email = req.Email.Trim().ToLower();
-    var (token, profile, error) = await auth.VerifyOtp(email, req.Code, req.ReferrerId);
+    var email = AuthService.NormalizeValidEmail(req?.Email);
+    if (email is null) return Results.BadRequest(new { error = "Invalid email" });
+    var code = req?.Code?.Trim();
+    if (string.IsNullOrEmpty(code) || code.Length > 16)
+        return Results.Json(new { error = "Enter the 6-digit code from your email." }, statusCode: StatusCodes.Status401Unauthorized);
+    var (token, profile, error) = await auth.VerifyOtp(email, code, req?.ReferrerId);
     if (token == null) return Results.Json(new { error = error ?? "Invalid or expired code." }, statusCode: StatusCodes.Status401Unauthorized);
     return Results.Ok(new { token, profile });
 });
@@ -3636,12 +3683,22 @@ app.MapPatch("/api/admin/pricing", async (PricingConfig update, GoodSortDbContex
     if (PricingBounds.Reject(update) is string reason)
         return Results.BadRequest(new { error = reason });
 
-    // Update individual fields
+    // Update all validated fields
     config.FloorCents = update.FloorCents;
     config.CeilingCents = update.CeilingCents;
     config.BaseCents = update.BaseCents;
+    config.DistanceEfficiencyWeight = update.DistanceEfficiencyWeight;
+    config.BinDensityWeight = update.BinDensityWeight;
+    config.SupplyDemandWeight = update.SupplyDemandWeight;
+    config.TimeOfDayWeight = update.TimeOfDayWeight;
+    config.MaterialMixWeight = update.MaterialMixWeight;
+    config.ScrapPriceWeight = update.ScrapPriceWeight;
     config.MorningSurge = update.MorningSurge;
+    config.AfternoonNormal = update.AfternoonNormal;
+    config.EveningSurge = update.EveningSurge;
     config.NightDiscount = update.NightDiscount;
+    config.BronzeBonus = update.BronzeBonus;
+    config.SilverBonus = update.SilverBonus;
     config.GoldBonus = update.GoldBonus;
     config.PlatinumBonus = update.PlatinumBonus;
     config.AluminiumSpotCents = update.AluminiumSpotCents;
@@ -3655,6 +3712,13 @@ app.MapPatch("/api/admin/pricing", async (PricingConfig update, GoodSortDbContex
 // ── Admin: Simulate pricing for a run ──
 app.MapPost("/api/admin/pricing/simulate", async (PricingSimulateRequest req, PricingService pricing) =>
 {
+    if (req.Containers < 0 || req.Containers > 100_000)
+        return Results.BadRequest(new { error = "Containers must be between 0 and 100,000." });
+    if (!double.IsFinite(req.DistanceKm) || req.DistanceKm < 0 || req.DistanceKm > 1_000)
+        return Results.BadRequest(new { error = "DistanceKm must be a finite number between 0 and 1,000." });
+    if (req.StopCount < 0 || req.StopCount > 500)
+        return Results.BadRequest(new { error = "StopCount must be between 0 and 500." });
+
     var simulatedRun = new Run
     {
         EstimatedContainers = req.Containers,
@@ -3823,8 +3887,8 @@ record CompleteRunRequest(int? DepotVerifiedContainers = null, string? CoexDocke
 record PhotoScanRequest(string Image, string? BinCode = null);
 record PhotoConfirmRequest(string ScanToken, Guid? UserId = null, List<PhotoConfirmItem>? Items = null, string? BinCode = null, double? Lat = null, double? Lng = null);
 record PhotoConfirmItem(string Name, string Material, int Count, bool Eligible);
-record SendOtpRequest(string Email);
-record VerifyOtpRequest(string Email, string Code, Guid? ReferrerId = null);
+record SendOtpRequest(string? Email = null);
+record VerifyOtpRequest(string? Email = null, string? Code = null, Guid? ReferrerId = null);
 record ScanRequest(Guid UserId, string Barcode, string ContainerName, string Material);
 record ClaimRequest(Guid DriverId);
 record PickupRequest(int ActualCount);

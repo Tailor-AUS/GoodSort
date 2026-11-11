@@ -1,7 +1,7 @@
 // The Good Sort — Service Worker
 // Push only. NO page cache. Do not intercept /sw.js, cross-origin API/tile
 // traffic, or non-GET mutations (prevents body proxying & offline rejections).
-const SW_VERSION = "20261111-qa-pass4";
+const SW_VERSION = "20261111-qa-pass5";
 
 self.addEventListener("install", () => {
   self.skipWaiting();

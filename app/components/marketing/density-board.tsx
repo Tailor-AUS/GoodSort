@@ -24,7 +24,7 @@ export function DensityBoard() {
   }, []);
 
   const closest = rankByUnlockProximity(suburbs)
-    .filter((s) => (clusterForDay(s)?.containers ?? clusterForDay(s)?.households ?? 0) > 0)
+    .filter((s) => (s.containers ?? s.households ?? 0) > 0)
     .slice(0, 8);
 
   if (state === "loading") {
@@ -68,13 +68,13 @@ export function DensityBoard() {
         {closest.map((s) => {
           const day = clusterForDay(s);
           const label = titleSuburb(s.suburb);
-          const have = day?.containers ?? 0;
+          const have = s.containers ?? 0;
           return (
             <li key={s.suburb}>
-              <Link href={streetInvitePath({ suburb: s.suburb, day: day?.day, dayName: day?.dayName })} className="flex items-center justify-between border border-slate-200 rounded-xl px-3 py-3 hover:border-violet-400">
+              <Link href={streetInvitePath({ suburb: s.suburb, day: day?.day ?? s.bestDay, dayName: day?.dayName ?? s.bestDayName })} className="flex items-center justify-between border border-slate-200 rounded-xl px-3 py-3 hover:border-violet-400">
                 <span className="text-[14px] font-semibold text-slate-900">{label}</span>
                 <span className="text-[12px] text-slate-500">
-                  {day?.live ? "Ready to run" : `${have}/${LIVE_VOLUME_THRESHOLD}`}
+                  {s.live ? "Ready to run" : `${have}/${LIVE_VOLUME_THRESHOLD}`}
                 </span>
               </Link>
             </li>

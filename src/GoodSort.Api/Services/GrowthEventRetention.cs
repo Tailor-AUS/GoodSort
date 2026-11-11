@@ -71,6 +71,63 @@ public static class UsedScanTokenRetention
 }
 
 /// <summary>
+/// Prunes used or expired OTP codes past the 30-day audit window. Active,
+/// unexpired codes are never touched even if clocks skew.
+/// </summary>
+public static class OtpCodeRetention
+{
+    public const int RetentionDays = 30;
+
+    public static async Task<int> SweepAsync(GoodSortDbContext db, CancellationToken ct = default)
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-RetentionDays);
+        var stale = db.OtpCodes.Where(o => o.CreatedAt < cutoff && (o.Used || o.ExpiresAt < cutoff));
+
+        try
+        {
+            return await stale.ExecuteDeleteAsync(ct);
+        }
+        catch (InvalidOperationException)
+        {
+            var rows = await stale.ToListAsync(ct);
+            if (rows.Count == 0) return 0;
+            db.OtpCodes.RemoveRange(rows);
+            await db.SaveChangesAsync(ct);
+            return rows.Count;
+        }
+    }
+}
+
+/// <summary>
+/// Prunes VisionCall telemetry rows past 90 days. Daily caps only read the
+/// trailing 24 hours, so 90 days keeps three months of cost history without
+/// unbounded append-only table growth.
+/// </summary>
+public static class VisionCallRetention
+{
+    public const int RetentionDays = 90;
+
+    public static async Task<int> SweepAsync(GoodSortDbContext db, CancellationToken ct = default)
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-RetentionDays);
+        var stale = db.VisionCalls.Where(v => v.CreatedAt < cutoff);
+
+        try
+        {
+            return await stale.ExecuteDeleteAsync(ct);
+        }
+        catch (InvalidOperationException)
+        {
+            var rows = await stale.ToListAsync(ct);
+            if (rows.Count == 0) return 0;
+            db.VisionCalls.RemoveRange(rows);
+            await db.SaveChangesAsync(ct);
+            return rows.Count;
+        }
+    }
+}
+
+/// <summary>
 /// Daily sweep. Mirrors PickupReminderHost: resolve a scoped DbContext per
 /// pass, log and continue on failure, never let a background fault take the
 /// API down.
@@ -107,8 +164,14 @@ public class GrowthEventRetentionHost(IServiceProvider services, ILogger<GrowthE
 
                 var removed = await GrowthEventRetention.SweepAsync(db, stoppingToken);
                 var spent = await UsedScanTokenRetention.SweepAsync(db, stoppingToken);
+                var otps = await OtpCodeRetention.SweepAsync(db, stoppingToken);
+                var visionCalls = await VisionCallRetention.SweepAsync(db, stoppingToken);
                 if (spent > 0)
                     log.LogInformation("Pruned {Count} spent scan tokens older than {Days} days", spent, UsedScanTokenRetention.RetentionDays);
+                if (otps > 0)
+                    log.LogInformation("Pruned {Count} expired OTP codes older than {Days} days", otps, OtpCodeRetention.RetentionDays);
+                if (visionCalls > 0)
+                    log.LogInformation("Pruned {Count} vision call records older than {Days} days", visionCalls, VisionCallRetention.RetentionDays);
                 if (removed > 0)
                     log.LogInformation("Pruned {Count} growth events older than {Days} days", removed, GrowthEventRetention.RetentionDays);
             }

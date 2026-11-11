@@ -197,16 +197,15 @@ public static class WaitlistDensity
     {
         var match = SuburbCluster(board, suburb);
         if (match is null) return null;
-        if (day is int d)
-        {
-            var onDay = match.ByDay.FirstOrDefault(x => x.Day == d);
-            if (onDay is not null) return onDay;
-        }
-        // Suburb-level progress exposed as a synthetic day row for callers that
-        // still read Households/Needed/Live off GrowthDayDto.
+        var resolvedDay = day ?? match.BestDay ?? -1;
+        var dayName = day is >= 0 and <= 6
+            ? DayNames[day.Value]
+            : (match.BestDayName ?? "suburb");
+        // Suburb-level progress exposed as a synthetic day row so callers never
+        // pair single-day container counts with suburb-wide Needed/Live.
         return new GrowthDayDto(
-            day ?? match.BestDay ?? -1,
-            match.BestDayName ?? "suburb",
+            resolvedDay,
+            dayName,
             match.Households,
             match.Containers,
             match.Live,

@@ -55,19 +55,23 @@ export type DayClusterStats = {
   dayName: string | null;
 };
 
-/** Prefer day cluster when present. Never city-wide totals. */
+/** Suburb-wide volume stats (with optional recycling-day label). Never city-wide totals. */
 export function dayClusterStats(
   suburb?: GrowthSuburb | null,
   day?: number | null,
 ): DayClusterStats | null {
-  const cluster = clusterForDay(suburb, day);
-  if (!cluster) return null;
+  if (!suburb) return null;
+  const dayRow = clusterForDay(suburb, day);
+  const dayName =
+    day != null && day >= 0 && day < DAY_NAMES.length
+      ? DAY_NAMES[day]
+      : dayRow?.dayName ?? suburb.bestDayName ?? null;
   return {
-    households: cluster.households,
-    containers: cluster.containers,
-    needed: cluster.needed,
-    live: cluster.live,
-    dayName: cluster.dayName,
+    households: suburb.households,
+    containers: suburb.containers,
+    needed: suburb.needed,
+    live: suburb.live,
+    dayName,
   };
 }
 
@@ -124,16 +128,14 @@ export function residentialNeedsStreet(hh: {
   return canonicalSuburb(hh.suburb) === null || hh.councilCollectionDay == null;
 }
 
-/** Closest to a run = fewest more containers needed. Suburb-wide totals never rank a street. */
+/** Closest to a run = fewest more containers needed across the suburb. Never city-wide totals. */
 export function rankByUnlockProximity(suburbs: GrowthSuburb[]): GrowthSuburb[] {
   return [...suburbs].sort((a, b) => {
-    const ac = clusterForDay(a);
-    const bc = clusterForDay(b);
-    const aNeeded = ac?.needed ?? LIVE_VOLUME_THRESHOLD;
-    const bNeeded = bc?.needed ?? LIVE_VOLUME_THRESHOLD;
+    const aNeeded = a.needed ?? LIVE_VOLUME_THRESHOLD;
+    const bNeeded = b.needed ?? LIVE_VOLUME_THRESHOLD;
     if (aNeeded !== bNeeded) return aNeeded - bNeeded;
-    const aHave = ac?.containers ?? ac?.households ?? 0;
-    const bHave = bc?.containers ?? bc?.households ?? 0;
+    const aHave = a.containers ?? a.households ?? 0;
+    const bHave = b.containers ?? b.households ?? 0;
     if (bHave !== aHave) return bHave - aHave;
     return a.suburb.localeCompare(b.suburb);
   });

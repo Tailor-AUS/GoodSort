@@ -117,6 +117,7 @@ public static class SingletonLease
         }
         catch (InvalidOperationException)
         {
+            db.ChangeTracker.Clear();
             var row = await db.Set<SingletonLeaseRow>()
                 .FirstOrDefaultAsync(l => l.Name == name && l.Holder == me, ct);
             if (row is null) return;
