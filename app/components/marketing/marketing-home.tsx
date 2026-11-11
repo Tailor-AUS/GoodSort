@@ -158,7 +158,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
                 <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-2">Start scanning today</h1>
                 <p className="text-slate-400 text-[13px]">Your email. Then your address &amp; payout details. Scan for 10¢ — suburb volume unlocks a driver trip.</p>
               </div>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com"
+              <input type="email" aria-label="Email address" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com"
                 onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}
                 className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 mb-3" autoFocus />
               {error && <p className="text-red-500 text-[12px] mb-2">{error}</p>}
@@ -177,7 +177,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
                 <p className="text-slate-400 text-[13px]">Code sent to {email}. The code is in the subject line — check spam too. It expires in 15 minutes.</p>
                 {devCode && <p className="text-[12px] text-violet-700 mt-2">Local code {devCode} — ACS email is not configured on this machine.</p>}
               </div>
-              <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp}
+              <input type="text" aria-label="6-digit verification code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} placeholder="000000"
                 className="w-full text-center text-3xl font-display font-extrabold tracking-[0.3em] border border-slate-200 rounded-xl px-4 py-4 text-slate-900 placeholder-slate-200 focus:outline-none focus:ring-2 focus:ring-green-500/30 mb-3" autoFocus />
               {error && <p className="text-red-500 text-[12px] mb-2 text-center">{error}</p>}

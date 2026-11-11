@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type User, type SortBin, type Depot, getUser } from "@/lib/store";
 import { getUserApi, getDepotsApi, getBinsApi } from "@/lib/store-api";
-import { apiUrl, authHeaders } from "@/lib/config";
+import { apiUrl, authHeaders, hasValidToken, readStoredProfile } from "@/lib/config";
 import { isCollecting, LIVE_VOLUME_THRESHOLD, sameSuburb, streetStatsForViewer, type GrowthSuburb, householdCountsTowardUnlock } from "@/lib/brisbane";
 import { getDepots } from "@/lib/store";
 import { MapView } from "@/app/components/shared/map-view";
@@ -61,11 +61,27 @@ export default function SorterApp() {
     setBins(apiBins);
     setDepot((apiDepots.length > 0 ? apiDepots : getDepots())[0] || null);
 
-    const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
-    if (profile.householdId) {
+    const profile = readStoredProfile();
+    let effectiveHhId =
+      (apiUser?.householdId && apiUser.householdId.trim()) ||
+      (typeof profile.householdId === "string" && profile.householdId ? profile.householdId : "");
+
+    if (!effectiveHhId && hasValidToken()) {
+      const payoutMe = await fetch(apiUrl("/api/profiles/me/payout"), { headers: authHeaders() })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+      if (payoutMe && typeof payoutMe.householdId === "string" && payoutMe.householdId) {
+        effectiveHhId = payoutMe.householdId;
+        profile.householdId = payoutMe.householdId;
+        if (typeof payoutMe.profileName === "string" && payoutMe.profileName) profile.name = payoutMe.profileName;
+        try { localStorage.setItem("goodsort_profile", JSON.stringify(profile)); } catch { /* ignore */ }
+      }
+    }
+
+    if (effectiveHhId) {
       const [hh, pickup] = await Promise.all([
-        fetch(apiUrl(`/api/households/${profile.householdId}`), { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
-        fetch(apiUrl(`/api/households/${profile.householdId}/next-pickup`), { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        fetch(apiUrl(`/api/households/${effectiveHhId}`), { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        fetch(apiUrl(`/api/households/${effectiveHhId}/next-pickup`), { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
       ]);
       if (hh) {
         let areaLive = false;
@@ -100,7 +116,7 @@ export default function SorterApp() {
         let suburbHint: string | null = null;
         try { suburbHint = sessionStorage.getItem("goodsort_suburb_hint"); } catch { /* ignore */ }
         setHousehold({
-          id: profile.householdId,
+          id: effectiveHhId,
           binIsOut: false,
           suburb: suburbHint,
           binStatus: "waitlisted",

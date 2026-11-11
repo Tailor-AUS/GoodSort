@@ -14,6 +14,8 @@ import {
 export { geocodeAddress, PHOTON_TIMEOUT_MS, suburbFromPhoton, type AddressSelection };
 
 interface AddressAutocompleteProps {
+  id?: string;
+  ariaLabel?: string;
   value: string;
   onChange: (text: string) => void;
   onSelect: (sel: AddressSelection) => void;
@@ -22,7 +24,7 @@ interface AddressAutocompleteProps {
   className?: string;
 }
 
-export function AddressAutocomplete({ value, onChange, onSelect, placeholder, autoFocus, className }: AddressAutocompleteProps) {
+export function AddressAutocomplete({ id, ariaLabel, value, onChange, onSelect, placeholder, autoFocus, className }: AddressAutocompleteProps) {
   const [results, setResults] = useState<PhotonFeature[]>([]);
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
@@ -76,6 +78,8 @@ export function AddressAutocomplete({ value, onChange, onSelect, placeholder, au
   return (
     <div ref={containerRef} className="relative">
       <input
+        id={id}
+        aria-label={ariaLabel}
         ref={inputRef}
         type="text"
         value={value}

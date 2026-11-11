@@ -189,9 +189,13 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
             onClick={async () => {
               if (!confirm("Permanently delete your account, all scans and earnings? This cannot be undone.")) return;
               const token = localStorage.getItem("goodsort_token");
-              const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
-              if (!profile.id || !token) return;
-              const res = await fetch(apiUrl(`/api/profiles/${profile.id}`), {
+              let profileId = "";
+              try {
+                const parsed = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
+                if (parsed && typeof parsed.id === "string") profileId = parsed.id;
+              } catch { /* ignore */ }
+              if (!profileId || !token) return;
+              const res = await fetch(apiUrl(`/api/profiles/${profileId}`), {
                 method: "DELETE",
                 headers: { Authorization: `Bearer ${token}` },
               });

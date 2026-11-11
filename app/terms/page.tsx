@@ -62,10 +62,10 @@ export default function TermsPage() {
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">5. Cash Out</h2>
         <p className="text-slate-600 text-sm mb-4">
-          Cleared balances may be cashed out via bank transfer to an Australian bank account once
-          payouts are live. A minimum threshold of $20.00 applies. Until a remitter is configured,
-          cash-out stays closed — we will not promise a transfer date. When payouts are open,
-          requests are processed in weekly ABA batches. The Good Sort is not a financial institution,
+          Cleared balances may be cashed out via PayID or bank transfer (BSB and account number) to an
+          Australian account once payouts are live. A minimum threshold of $20.00 applies. Until a remitter
+          is configured, cash-out stays closed — we will not promise a transfer date. When payouts are open,
+          requests are processed in weekly PayID or ABA batches. The Good Sort is not a financial institution,
           and credit balances are not insured deposits or held on trust.
         </p>
 

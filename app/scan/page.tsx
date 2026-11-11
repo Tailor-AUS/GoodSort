@@ -243,15 +243,25 @@ function ScanPageContent() {
     const video = videoRef.current;
     if (video.videoWidth === 0 || video.videoHeight === 0) return; // Not ready
 
+    const { width, height } = fitWithin(video.videoWidth, video.videoHeight);
+    if (width === 0 || height === 0) return;
+
     const canvas = canvasRef.current;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    canvas.width = width;
+    canvas.height = height;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    ctx.drawImage(video, 0, 0);
+    ctx.drawImage(video, 0, 0, width, height);
     stopCamera();
 
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+    let dataUrl = canvas.toDataURL("image/jpeg", QUALITY_LADDER[0]);
+    for (const quality of QUALITY_LADDER) {
+      const candidate = canvas.toDataURL("image/jpeg", quality);
+      dataUrl = candidate;
+      const body = candidate.split(",")[1] ?? "";
+      if (body.length <= TARGET_BASE64_CHARS) break;
+    }
+
     setCapturedImage(dataUrl);
     const base64 = dataUrl.split(",")[1];
     await analyzeImage(base64);
@@ -456,7 +466,7 @@ function ScanPageContent() {
       <p className="text-slate-400 text-[13px] mb-6">
         Your photo is ready. Enter your email to save your 10¢ sorting credit — next we&apos;ll ask where to collect and pay you.
       </p>
-      <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
+      <input type="email" aria-label="Email address" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
         onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}
         className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 mb-3" autoFocus />
       {authError && <p className="text-red-500 text-[12px] mb-2">{authError}</p>}
@@ -476,7 +486,7 @@ function ScanPageContent() {
           Dev code: <strong>{devCode}</strong>
         </p>
       )}
-      <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp}
+      <input type="text" aria-label="6-digit verification code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp}
         onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} placeholder="000000"
         className="w-full text-center text-3xl font-display font-extrabold tracking-[0.3em] border border-slate-200 rounded-xl px-4 py-4 text-slate-900 placeholder-slate-200 focus:outline-none focus:ring-2 focus:ring-green-500/30 mb-3" autoFocus />
       {authError && <p className="text-red-500 text-[12px] mb-2 text-center">{authError}</p>}

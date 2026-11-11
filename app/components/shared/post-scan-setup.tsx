@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Check, MapPin, Wallet } from "lucide-react";
-import { apiUrl, authHeaders, clearAuth, hasValidToken } from "@/lib/config";
+import { apiUrl, authHeaders, clearAuth, hasValidToken, readStoredProfile } from "@/lib/config";
 import { canonicalSuburb, residentialNeedsStreet, titleSuburb } from "@/lib/brisbane";
 import { track } from "@/lib/analytics";
 import { AddressAutocomplete, geocodeAddress } from "@/app/components/shared/address-autocomplete";
@@ -112,6 +112,7 @@ export function PayoutFields({
   onAccountNameChange,
   defaultEmail,
 }: PayoutFieldsProps) {
+  const fieldPrefix = useId();
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-xl">
@@ -171,10 +172,11 @@ export function PayoutFields({
           </div>
 
           <div>
-            <label className="block text-[12px] font-semibold text-slate-600 mb-1">
+            <label htmlFor={`${fieldPrefix}-payid`} className="block text-[12px] font-semibold text-slate-600 mb-1">
               {payIdType === "email" ? "PayID email" : payIdType === "phone" ? "PayID mobile number" : "PayID ABN"}
             </label>
             <input
+              id={`${fieldPrefix}-payid`}
               type={payIdType === "email" ? "email" : "tel"}
               inputMode={payIdType === "email" ? "email" : "numeric"}
               value={payIdValue}
@@ -193,8 +195,9 @@ export function PayoutFields({
       ) : (
         <div className="grid grid-cols-5 gap-2">
           <div className="col-span-2">
-            <label className="block text-[12px] font-semibold text-slate-600 mb-1">BSB</label>
+            <label htmlFor={`${fieldPrefix}-bsb`} className="block text-[12px] font-semibold text-slate-600 mb-1">BSB</label>
             <input
+              id={`${fieldPrefix}-bsb`}
               type="text"
               inputMode="numeric"
               maxLength={7}
@@ -205,8 +208,9 @@ export function PayoutFields({
             />
           </div>
           <div className="col-span-3">
-            <label className="block text-[12px] font-semibold text-slate-600 mb-1">Account number</label>
+            <label htmlFor={`${fieldPrefix}-acct`} className="block text-[12px] font-semibold text-slate-600 mb-1">Account number</label>
             <input
+              id={`${fieldPrefix}-acct`}
               type="text"
               inputMode="numeric"
               maxLength={9}
@@ -220,8 +224,9 @@ export function PayoutFields({
       )}
 
       <div>
-        <label className="block text-[12px] font-semibold text-slate-600 mb-1">Account holder name</label>
+        <label htmlFor={`${fieldPrefix}-holder`} className="block text-[12px] font-semibold text-slate-600 mb-1">Account holder name</label>
         <input
+          id={`${fieldPrefix}-holder`}
           type="text"
           value={accountName}
           onChange={(e) => onAccountNameChange(e.target.value)}
@@ -248,6 +253,7 @@ export function PostScanSetup({
   isPublicBinScan = false,
   onScanAnother,
 }: PostScanSetupProps) {
+  const setupFieldPrefix = useId();
   const [checking, setChecking] = useState(true);
   const [hasCompleteAddress, setHasCompleteAddress] = useState(false);
   const [editingAddress, setEditingAddress] = useState(false);
@@ -284,9 +290,10 @@ export function PostScanSetup({
     let cancelled = false;
     async function load() {
       try {
-        const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
+        const profile = readStoredProfile();
         const emailStr = typeof profile.email === "string" ? profile.email : "";
-        const derivedName = deriveDefaultName(profile.name, emailStr);
+        const storedName = typeof profile.name === "string" ? profile.name : "";
+        const derivedName = deriveDefaultName(storedName, emailStr);
         if (!cancelled) {
           setDefaultEmail(emailStr);
           setName(derivedName);
@@ -294,10 +301,10 @@ export function PostScanSetup({
           setPayIdValue(typeof profile.payIdValue === "string" && profile.payIdValue ? profile.payIdValue : emailStr);
         }
 
-        const hhId = typeof profile.householdId === "string" && profile.householdId ? profile.householdId : null;
+        let hhId = typeof profile.householdId === "string" && profile.householdId ? profile.householdId : null;
         if (!cancelled) setExistingHouseholdId(hhId);
 
-        const [hhRes, payoutRes] = await Promise.all([
+        const [initialHhRes, payoutRes] = await Promise.all([
           hhId && hasValidToken()
             ? fetch(apiUrl(`/api/households/${hhId}`), { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)).catch(() => null)
             : Promise.resolve(null),
@@ -306,7 +313,24 @@ export function PostScanSetup({
             : Promise.resolve(null),
         ]);
 
+        let hhRes = initialHhRes;
+        if (!hhId && payoutRes && typeof payoutRes.householdId === "string" && payoutRes.householdId && hasValidToken()) {
+          hhId = payoutRes.householdId;
+          profile.householdId = hhId;
+          if (typeof payoutRes.profileName === "string" && payoutRes.profileName) profile.name = payoutRes.profileName;
+          try { localStorage.setItem("goodsort_profile", JSON.stringify(profile)); } catch { /* ignore */ }
+          if (!cancelled) setExistingHouseholdId(hhId);
+          hhRes = await fetch(apiUrl(`/api/households/${hhId}`), { headers: authHeaders() })
+            .then((r) => (r.ok ? r.json() : null))
+            .catch(() => null);
+        }
+
         if (cancelled) return;
+
+        if (!derivedName && typeof payoutRes?.profileName === "string" && payoutRes.profileName && payoutRes.profileName !== "New User") {
+          setName(payoutRes.profileName);
+          setAccountName((prev) => prev || payoutRes.profileName);
+        }
 
         if (hhRes && !residentialNeedsStreet(hhRes)) {
           setHasCompleteAddress(true);
@@ -442,7 +466,7 @@ export function PostScanSetup({
     setError("");
 
     try {
-      const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
+      const profile = readStoredProfile();
       let finalHouseholdId = existingHouseholdId;
 
       if (wantAddress) {
@@ -525,7 +549,7 @@ export function PostScanSetup({
         }
 
         finalHouseholdId = hh.id;
-        if (profile.id) {
+        if (typeof profile.id === "string" && profile.id) {
           await fetch(apiUrl(`/api/profiles/${profile.id}`), {
             method: "PATCH",
             headers: authHeaders(),
@@ -534,6 +558,12 @@ export function PostScanSetup({
         }
         profile.name = trimmedName;
         profile.householdId = hh.id;
+        localStorage.setItem("goodsort_profile", JSON.stringify(profile));
+        setExistingHouseholdId(hh.id);
+        setHasCompleteAddress(true);
+        setEditingAddress(false);
+        setSavedAddressLabel(hh.address || titleSuburb(hh.suburb ?? ""));
+        setSavedSuburb(hh.suburb ?? suburb ?? null);
         track("household_joined", { suburb: hh.suburb ?? suburb });
       }
 
@@ -635,8 +665,9 @@ export function PostScanSetup({
                   </div>
 
                   <div>
-                    <label className="block text-[12px] font-semibold text-slate-600 mb-1">Your name</label>
+                    <label htmlFor={`${setupFieldPrefix}-name`} className="block text-[12px] font-semibold text-slate-600 mb-1">Your name</label>
                     <input
+                      id={`${setupFieldPrefix}-name`}
                       type="text"
                       value={name}
                       onChange={(e) => {
@@ -650,8 +681,9 @@ export function PostScanSetup({
                   </div>
 
                   <div>
-                    <label className="block text-[12px] font-semibold text-slate-600 mb-1">Brisbane home address</label>
+                    <label htmlFor={`${setupFieldPrefix}-address`} className="block text-[12px] font-semibold text-slate-600 mb-1">Brisbane home address</label>
                     <AddressAutocomplete
+                      id={`${setupFieldPrefix}-address`}
                       value={address}
                       onChange={(text) => {
                         setAddress(text);

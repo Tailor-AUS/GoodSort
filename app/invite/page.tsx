@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Users, ChevronRight } from "lucide-react";
-import { apiUrl, authHeaders, readStoredProfileId } from "@/lib/config";
+import { apiUrl, authHeaders, hasValidToken, readStoredProfile, readStoredProfileId } from "@/lib/config";
 import { formatCredit } from "@/lib/credit";
 import { inviteMessage, residentialNeedsStreet, sameSuburb, streetInviteUrl, streetStatsForViewer, titleSuburb, type GrowthSuburb } from "@/lib/brisbane";
 import { Logo } from "@/app/components/shared/logo";
@@ -28,13 +28,28 @@ export default function InvitePage() {
         .then((d) => { if (d) setNetwork(d); })
         .catch(() => {});
     }
-    const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
-    if (!profile.householdId) { router.replace("/onboard"); return; }
-    Promise.all([
-      fetch(apiUrl(`/api/households/${profile.householdId}`), { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)),
-      fetch(apiUrl("/api/growth/brisbane")).then((r) => (r.ok ? r.json() : null)),
-    ])
-      .then(([hh, g]) => {
+    async function loadInviteContext() {
+      const profile = readStoredProfile();
+      let hhId = typeof profile.householdId === "string" && profile.householdId ? profile.householdId : "";
+      if (!hhId && hasValidToken()) {
+        const me = await fetch(apiUrl("/api/profiles/me/payout"), { headers: authHeaders() })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null);
+        if (me && typeof me.householdId === "string" && me.householdId) {
+          hhId = me.householdId;
+          profile.householdId = hhId;
+          try { localStorage.setItem("goodsort_profile", JSON.stringify(profile)); } catch { /* ignore */ }
+        }
+      }
+      if (!hhId) {
+        router.replace("/onboard");
+        return;
+      }
+      try {
+        const [hh, g] = await Promise.all([
+          fetch(apiUrl(`/api/households/${hhId}`), { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)),
+          fetch(apiUrl("/api/growth/brisbane")).then((r) => (r.ok ? r.json() : null)),
+        ]);
         if (residentialNeedsStreet(hh)) {
           router.replace("/onboard");
           return;
@@ -44,8 +59,11 @@ export default function InvitePage() {
         setBuilding(hh?.type === "unit_complex");
         const match = g?.suburbs?.find((s: GrowthSuburb) => sameSuburb(s.suburb, hh?.suburb));
         if (match) setGrowth(match);
-      })
-      .catch(() => {});
+      } catch {
+        /* ignore */
+      }
+    }
+    void loadInviteContext();
   }, [router]);
 
   const cluster = streetStatsForViewer(growth, binDay, !building);

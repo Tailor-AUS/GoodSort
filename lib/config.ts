@@ -54,14 +54,23 @@ function asProfileId(raw: string | null | undefined): string | undefined {
   return value && PROFILE_ID.test(value) ? value : undefined;
 }
 
+/** Safe client-only reader for localStorage goodsort_profile. Never throws on corrupt JSON. */
+export function readStoredProfile(): Record<string, unknown> {
+  if (typeof window === "undefined") return {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
 /** Client-only profile id. Empty on the first render so static HTML matches. */
 export function readStoredProfileId(): string | undefined {
-  if (typeof window === "undefined") return undefined;
-  try {
-    return asProfileId(JSON.parse(localStorage.getItem("goodsort_profile") || "{}").id);
-  } catch {
-    return undefined;
-  }
+  const id = readStoredProfile().id;
+  return typeof id === "string" ? asProfileId(id) : undefined;
 }
 
 function resolveApiBase(): string {
@@ -124,12 +133,21 @@ export function readReferrerId(): string | undefined {
 /** After OTP: finish the street, or go sort at home. Never invent a suburb. */
 export async function waitlistContinuePath(): Promise<"/onboard" | "/sort"> {
   if (!hasValidToken()) return "/onboard";
-  let householdId: string | undefined;
-  try {
-    const id = JSON.parse(localStorage.getItem("goodsort_profile") || "{}").householdId;
-    householdId = typeof id === "string" && id ? id : undefined;
-  } catch {
-    return "/onboard";
+  const stored = readStoredProfile();
+  let householdId = typeof stored.householdId === "string" && stored.householdId ? stored.householdId : undefined;
+  if (!householdId) {
+    try {
+      const me = await fetch(apiUrl("/api/profiles/me/payout"), { headers: authHeaders() })
+        .then((r) => (r.ok ? r.json() : null));
+      if (me && typeof me.householdId === "string" && me.householdId) {
+        householdId = me.householdId;
+        stored.householdId = me.householdId;
+        if (typeof me.profileName === "string" && me.profileName) stored.name = me.profileName;
+        localStorage.setItem("goodsort_profile", JSON.stringify(stored));
+      }
+    } catch {
+      /* ignore */
+    }
   }
   if (!householdId) return "/onboard";
   try {

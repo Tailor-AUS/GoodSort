@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, Recycle, Check } from "lucide-react";
-import { apiUrl, authHeaders, hasValidToken, clearAuth, readDayHint, readPlaceHint, readStoredProfileId, writePlaceHint } from "@/lib/config";
+import { apiUrl, authHeaders, hasValidToken, clearAuth, readDayHint, readPlaceHint, readStoredProfile, readStoredProfileId, writePlaceHint } from "@/lib/config";
 import { track } from "@/lib/analytics";
 import { canonicalSuburb, DAY_NAMES, inviteMessage, streetInviteUrl, residentialNeedsStreet } from "@/lib/brisbane";
 import { AddressAutocomplete, geocodeAddress } from "@/app/components/shared/address-autocomplete";
@@ -13,6 +13,7 @@ import { PayoutFields, validateClientPayout, type PayIdTypeChoice, type PayoutMe
 type Step = "place" | "unit_waitlist";
 
 export default function OnboardPage() {
+  const onboardFieldId = useId();
   const [step, setStep] = useState<Step>("place");
   const [name, setName] = useState("");
   const [type, setType] = useState<"residential" | "unit_complex">("residential");
@@ -58,11 +59,11 @@ export default function OnboardPage() {
       if (hinted == null) lookupBinDay(place.lat, place.lng, place.address);
     }
     try {
-      const p = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
+      const p = readStoredProfile();
       const emailStr = typeof p.email === "string" ? p.email : "";
       setDefaultEmail(emailStr);
       let initialName = "";
-      if (p.name && p.name !== "New User" && p.name !== "You") initialName = p.name;
+      if (typeof p.name === "string" && p.name && p.name !== "New User" && p.name !== "You") initialName = p.name;
       else if (emailStr.includes("@")) initialName = emailStr.split("@")[0];
       if (initialName) {
         setName(initialName);
@@ -70,11 +71,38 @@ export default function OnboardPage() {
       }
       if (emailStr) setPayIdValue(emailStr);
 
+      const applyExistingHousehold = (hhId: string) => {
+        fetch(apiUrl(`/api/households/${hhId}`), { headers: authHeaders() })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((hh) => {
+            if (!hh) return;
+            setResuming(true);
+            if (hh.address) setAddress(hh.address);
+            if (typeof hh.lat === "number" && hh.lat !== 0) setLat(hh.lat);
+            if (typeof hh.lng === "number" && hh.lng !== 0) setLng(hh.lng);
+            if (hh.councilArea) setCouncilArea(hh.councilArea);
+            if (hh.councilCollectionDay != null) { setCollectionDay(hh.councilCollectionDay); setDayAuto(true); }
+            if (hh.suburb) { setPickedSuburb(hh.suburb); setSuburbHint(hh.suburb); }
+            // Do not make someone consent twice to the same thing.
+            if (hh.accessConsent === true) setAccessConsent(true);
+          })
+          .catch(() => { /* fall back to a blank form */ });
+      };
+
+      const storedHhId = typeof p.householdId === "string" && p.householdId ? p.householdId : null;
+
       if (hasValidToken()) {
         fetch(apiUrl("/api/profiles/me/payout"), { headers: authHeaders() })
           .then((r) => (r.ok ? r.json() : null))
           .then((pay) => {
-            if (!pay?.hasPayoutDetails) return;
+            if (!pay) return;
+            if (!storedHhId && typeof pay.householdId === "string" && pay.householdId) {
+              p.householdId = pay.householdId;
+              if (typeof pay.profileName === "string" && pay.profileName) p.name = pay.profileName;
+              try { localStorage.setItem("goodsort_profile", JSON.stringify(p)); } catch { /* ignore */ }
+              applyExistingHousehold(pay.householdId);
+            }
+            if (!pay.hasPayoutDetails) return;
             if (pay.preferredPayoutMethod === "aba") setPayoutMethod("aba");
             if (pay.payIdType) setPayIdType(pay.payIdType as PayIdTypeChoice);
             if (pay.payIdValue) setPayIdValue(pay.payIdValue);
@@ -92,22 +120,8 @@ export default function OnboardPage() {
       // start again. Opening a blank form gives them no sign we already hold
       // their details and makes them retype an address we stored — and legacy
       // rows land here precisely because something is missing.
-      if (typeof p.householdId === "string" && p.householdId) {
-        fetch(apiUrl(`/api/households/${p.householdId}`), { headers: authHeaders() })
-          .then((r) => (r.ok ? r.json() : null))
-          .then((hh) => {
-            if (!hh) return;
-            setResuming(true);
-            if (hh.address) setAddress(hh.address);
-            if (typeof hh.lat === "number" && hh.lat !== 0) setLat(hh.lat);
-            if (typeof hh.lng === "number" && hh.lng !== 0) setLng(hh.lng);
-            if (hh.councilArea) setCouncilArea(hh.councilArea);
-            if (hh.councilCollectionDay != null) { setCollectionDay(hh.councilCollectionDay); setDayAuto(true); }
-            if (hh.suburb) { setPickedSuburb(hh.suburb); setSuburbHint(hh.suburb); }
-            // Do not make someone consent twice to the same thing.
-            if (hh.accessConsent === true) setAccessConsent(true);
-          })
-          .catch(() => { /* fall back to a blank form */ });
+      if (storedHhId) {
+        applyExistingHousehold(storedHhId);
       }
     } catch { /* ignore */ }
   }, []);
@@ -176,7 +190,7 @@ export default function OnboardPage() {
     setLoading(true); setError("");
 
     try {
-      const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
+      const profile = readStoredProfile();
       const existingId = typeof profile.householdId === "string" && profile.householdId ? profile.householdId : null;
       const hhRes = await fetch(apiUrl(existingId ? `/api/households/${existingId}/street` : "/api/households"), {
         method: existingId ? "PATCH" : "POST", headers: authHeaders(),
@@ -223,14 +237,15 @@ export default function OnboardPage() {
         return;
       }
 
-      if (profile.id) {
+      if (typeof profile.id === "string" && profile.id) {
         await fetch(apiUrl(`/api/profiles/${profile.id}`), {
           method: "PATCH", headers: authHeaders(),
           body: JSON.stringify({ name, householdId: hh.id }),
         });
-        profile.name = name; profile.householdId = hh.id;
-        localStorage.setItem("goodsort_profile", JSON.stringify(profile));
       }
+      profile.name = name;
+      profile.householdId = hh.id;
+      localStorage.setItem("goodsort_profile", JSON.stringify(profile));
       if (hasEnteredPayout) {
         const holder = accountName.trim() || name.trim();
         const payRes = await fetch(apiUrl("/api/profiles/me/payout"), {
@@ -291,8 +306,8 @@ export default function OnboardPage() {
         return;
       }
       const data = await res.json().catch(() => ({}));
-      const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
-      if (profile.id && data.id) {
+      const profile = readStoredProfile();
+      if (data.id) {
         profile.householdId = data.id;
         localStorage.setItem("goodsort_profile", JSON.stringify(profile));
       }
@@ -347,8 +362,8 @@ export default function OnboardPage() {
       <div className="space-y-3 mb-4">
         {type === "residential" && (
           <div>
-            <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">Your name</label>
-            <input type="text" value={name} onChange={e => {
+            <label htmlFor={`${onboardFieldId}-name`} className="block text-[13px] font-semibold text-slate-700 mb-1.5">Your name</label>
+            <input id={`${onboardFieldId}-name`} type="text" value={name} onChange={e => {
               const v = e.target.value;
               setName(v);
               if (!accountNameTouched) setAccountName(v);
@@ -358,14 +373,15 @@ export default function OnboardPage() {
         )}
         {type === "unit_complex" && (
           <div>
-            <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">Building name</label>
-            <input type="text" value={buildingName} onChange={e => setBuildingName(e.target.value)} placeholder="e.g. Kurilpa Apartments"
+            <label htmlFor={`${onboardFieldId}-building`} className="block text-[13px] font-semibold text-slate-700 mb-1.5">Building name</label>
+            <input id={`${onboardFieldId}-building`} type="text" value={buildingName} onChange={e => setBuildingName(e.target.value)} placeholder="e.g. Kurilpa Apartments"
               className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500" />
           </div>
         )}
         <div>
-          <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">Address</label>
+          <label htmlFor={`${onboardFieldId}-address`} className="block text-[13px] font-semibold text-slate-700 mb-1.5">Address</label>
           <AddressAutocomplete
+            id={`${onboardFieldId}-address`}
             value={address}
             onChange={(text) => {
               setAddress(text);

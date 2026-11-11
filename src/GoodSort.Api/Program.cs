@@ -1752,6 +1752,8 @@ app.MapGet("/api/profiles/me/payout", async (HttpContext ctx, GoodSortDbContext 
         bankAccountNumber = p.BankAccountNumber,
         bankAccountName = p.BankAccountName,
         payoutUpdatedAt = p.PayoutUpdatedAt,
+        householdId = p.HouseholdId,
+        profileName = p.Name,
     });
 }).RequireAuthorization();
 
@@ -1775,8 +1777,10 @@ app.MapPut("/api/profiles/me/payout", async (HttpContext ctx, PayoutDetailsUpdat
     p.BankAccountName = details.BankAccountName;
     p.PayoutUpdatedAt = DateTime.UtcNow;
 
-    if (!string.IsNullOrWhiteSpace(req.MemberName))
-        p.Name = req.MemberName.Trim();
+    var cleanedMemberName = CashoutService.SanitizeSingleLine(req.MemberName);
+    if (cleanedMemberName.Length > 128) cleanedMemberName = cleanedMemberName[..128].TrimEnd();
+    if (!string.IsNullOrWhiteSpace(cleanedMemberName))
+        p.Name = cleanedMemberName;
     else if (string.IsNullOrWhiteSpace(p.Name) || p.Name == "New User")
         p.Name = details.BankAccountName;
 
@@ -1791,6 +1795,7 @@ app.MapPut("/api/profiles/me/payout", async (HttpContext ctx, PayoutDetailsUpdat
         bankAccountNumber = p.BankAccountNumber,
         bankAccountName = p.BankAccountName,
         payoutUpdatedAt = p.PayoutUpdatedAt,
+        householdId = p.HouseholdId,
         profileName = p.Name,
     });
 }).RequireAuthorization();
