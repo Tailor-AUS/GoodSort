@@ -107,13 +107,17 @@ public class RunnerService
         // Update streak
         UpdateStreak(runner, nowUtc);
 
-        // Update efficiency (containers/hour EMA, α=0.3)
+        // Update efficiency (containers/hour EMA, α=0.3). Floor elapsed duration at
+        // 5 minutes and cap per-run throughput at 3,600 containers/hr so starting and
+        // completing a run within seconds at the kerb/depot cannot poison the public
+        // leaderboard with millions of containers/hr.
         if (run.StartedAt.HasValue && run.CompletedAt.HasValue)
         {
             var hours = (run.CompletedAt.Value - run.StartedAt.Value).TotalHours;
             if (hours > 0)
             {
-                var runEfficiency = run.ActualContainers / hours;
+                var effectiveHours = Math.Max(hours, 5.0 / 60.0);
+                var runEfficiency = Math.Min(3600.0, run.ActualContainers / effectiveHours);
                 runner.EfficiencyScore = runner.EfficiencyScore == 0
                     ? runEfficiency
                     : runner.EfficiencyScore * 0.7 + runEfficiency * 0.3;

@@ -124,6 +124,15 @@ function AutoLocate({ onLocated }: { onLocated: (loc: LatLng) => void }) {
 
 // ── Marker helpers ──
 
+export function escapeSvgText(value: string): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function svgMarker(svg: string): HTMLDivElement {
   const el = document.createElement("div");
   el.style.cssText = "line-height:0; pointer-events:auto;";
@@ -167,13 +176,15 @@ function binMarkerSvg(bin: SortBin, isSelected: boolean): string {
   const borderWidth = isSelected ? 3 : 2.5;
   const r = size / 2;
   const inner = r - borderWidth;
+  const count = Number(bin.pendingContainers) || 0;
+  const safeCode = escapeSvgText(bin.code);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size + 16}">
     <circle cx="${r}" cy="${r}" r="${inner}" fill="${color}" stroke="${borderColor}" stroke-width="${borderWidth}"/>
     <text x="${r}" y="${r - 2}" text-anchor="middle" fill="#fff" font-size="16">♻</text>
-    <text x="${r}" y="${r + 12}" text-anchor="middle" fill="#fff" font-size="8" font-weight="700" font-family="Inter,system-ui,sans-serif">${bin.pendingContainers}</text>
+    <text x="${r}" y="${r + 12}" text-anchor="middle" fill="#fff" font-size="8" font-weight="700" font-family="Inter,system-ui,sans-serif">${count}</text>
     <rect x="${r - 18}" y="${size + 1}" width="36" height="14" rx="7" fill="${color}" opacity="0.9"/>
-    <text x="${r}" y="${size + 11}" text-anchor="middle" fill="#fff" font-size="8" font-weight="700" font-family="Inter,system-ui,sans-serif">${bin.code}</text>
+    <text x="${r}" y="${size + 11}" text-anchor="middle" fill="#fff" font-size="8" font-weight="700" font-family="Inter,system-ui,sans-serif">${safeCode}</text>
   </svg>`;
 }
 
@@ -335,10 +346,12 @@ function CentroidBubbles({ centroids }: { centroids: RunCentroid[] }) {
     }
     for (const c of centroids) {
       const color = tierColor(c.pricingTier);
+      const safeContainers = Number(c.containers) || 0;
+      const safeLabel = escapeSvgText(c.label);
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="44">
         <rect x="0" y="0" width="80" height="30" rx="15" fill="${color}" opacity="0.9"/>
-        <text x="40" y="14" text-anchor="middle" fill="#fff" font-size="10" font-weight="800" font-family="Inter,system-ui,sans-serif">${c.containers}</text>
-        <text x="40" y="24" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="7" font-family="Inter,system-ui,sans-serif">${c.label}</text>
+        <text x="40" y="14" text-anchor="middle" fill="#fff" font-size="10" font-weight="800" font-family="Inter,system-ui,sans-serif">${safeContainers}</text>
+        <text x="40" y="24" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="7" font-family="Inter,system-ui,sans-serif">${safeLabel}</text>
       </svg>`;
       const m = prev.get(c.id);
       if (m) {

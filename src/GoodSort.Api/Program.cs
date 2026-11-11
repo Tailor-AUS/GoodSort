@@ -3780,6 +3780,11 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
         var bin = await db.Bins.FindAsync(stop.BinId);
         if (bin is null) continue;
 
+        // Capture before stamping LastCollectedAt: PickupReminderService stamps
+        // Household.LastPickupAt at 6pm the night before collection day, so bin.LastCollectedAt
+        // is the true signal that this household bin has never had a settled pickup before.
+        var wasNeverCollected = bin.LastCollectedAt is null;
+
         var count = stop.ActualContainers ?? stop.EstimatedContainers;
         bin.PendingContainers = Math.Max(0, bin.PendingContainers - count);
         bin.PendingValueCents = bin.PendingContainers * householdRateCents;
@@ -3792,7 +3797,7 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
             var hh = await db.Households.Include(h => h.Members).FirstOrDefaultAsync(h => h.Id == bin.HouseholdId);
             if (hh is null) continue;
 
-            var isFirstHouseholdPickup = hh.LastPickupAt is null;
+            var isFirstHouseholdPickup = wasNeverCollected;
 
             var pendingScans = await db.Scans
                 .Where(s => s.HouseholdId == hh.Id && s.Status == "pending")

@@ -6,12 +6,16 @@ import { lookupContainer, lookupContainerAsync } from "@/lib/containers";
 import { CENTS_PER_CONTAINER, formatCredit, launchBonusNote } from "@/lib/credit";
 import { fitWithin, QUALITY_LADDER, TARGET_BASE64_CHARS } from "@/lib/image-budget";
 import { track } from "@/lib/analytics";
-import { apiUrl, authHeaders } from "@/lib/config";
+import { apiUrl, authHeaders, readStoredProfileId } from "@/lib/config";
 import { mapToMaterialType, type BagInfo } from "@/lib/store";
 import { addScanApi } from "@/lib/store-api";
 
 function getStoredUserId(): string {
-  try { return JSON.parse(localStorage.getItem("goodsort_profile") || "{}").id || ""; } catch { return ""; }
+  try {
+    const id = JSON.parse(localStorage.getItem("goodsort_profile") || "{}").id;
+    if (typeof id === "string" && id.trim()) return id.trim();
+  } catch { /* ignore */ }
+  return readStoredProfileId() ?? "";
 }
 
 interface ScannerProps {
@@ -34,6 +38,8 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const zxingControlsRef = useRef<{ stop: () => void } | null>(null);
+  const cameraSessionRef = useRef(0);
   const processedRef = useRef(false);
   const [mode, setMode] = useState<ScanMode>("photo");
   const [scanning, setScanning] = useState(false);
@@ -64,17 +70,24 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stopCamera = useCallback(() => {
+    cameraSessionRef.current += 1;
     if (scanIntervalRef.current) { clearInterval(scanIntervalRef.current); scanIntervalRef.current = null; }
+    if (zxingControlsRef.current) { zxingControlsRef.current.stop(); zxingControlsRef.current = null; }
     if (streamRef.current) { streamRef.current.getTracks().forEach((t) => t.stop()); streamRef.current = null; }
   }, []);
 
   const startCamera = useCallback(async () => {
+    const session = ++cameraSessionRef.current;
     setScanning(true);
     setCameraFailed(false);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
       });
+      if (cameraSessionRef.current !== session) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -86,7 +99,7 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
       }
 
       // In barcode mode, start detection
-      if (mode === "barcode") {
+      if (mode === "barcode" && cameraSessionRef.current === session) {
         if ("BarcodeDetector" in window) {
           // Native BarcodeDetector (Chrome Android, Safari 17.2+)
           const detector = new (window as unknown as {
@@ -104,12 +117,18 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
           // ZXing fallback for iOS Safari and older browsers
           try {
             const { BrowserMultiFormatReader } = await import("@zxing/browser");
+            if (cameraSessionRef.current !== session || !videoRef.current) return;
             const reader = new BrowserMultiFormatReader();
-            reader.decodeFromVideoElement(videoRef.current!, (result) => {
+            const controls = await reader.decodeFromVideoElement(videoRef.current, (result) => {
               if (result && !processedRef.current) {
                 processBarcodeResult(result.getText());
               }
             });
+            if (cameraSessionRef.current !== session) {
+              controls.stop();
+            } else {
+              zxingControlsRef.current = controls;
+            }
           } catch {
             // ZXing failed — show manual entry
             setShowManual(true);
@@ -652,13 +671,13 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
         ) : (
           <div>
             {!showManual && (
-              <button onClick={() => setShowManual(true)} className="text-neutral-500 text-[13px] font-medium w-full text-center">
+              <button type="button" onClick={() => setShowManual(true)} className="text-neutral-500 text-[13px] font-medium w-full text-center">
                 Enter barcode manually
               </button>
             )}
             {showManual && (
               <form onSubmit={(e) => { e.preventDefault(); if (manualBarcode.trim()) processBarcodeResult(manualBarcode.trim()); }} className="flex gap-2">
-                <input type="text" inputMode="numeric" value={manualBarcode} onChange={(e) => setManualBarcode(e.target.value)}
+                <input type="text" inputMode="numeric" aria-label="Manual barcode number" value={manualBarcode} onChange={(e) => setManualBarcode(e.target.value)}
                   placeholder="Enter barcode..." autoFocus
                   className="flex-1 bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white text-base placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-green-500/30" />
                 <button type="submit" className="bg-green-600 text-white font-bold px-5 py-3 rounded-xl shadow-lg shadow-green-600/25">Add</button>
