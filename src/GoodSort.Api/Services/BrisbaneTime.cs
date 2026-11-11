@@ -30,4 +30,18 @@ public static class BrisbaneTime
 
     /// <summary>Brisbane local time for a given UTC instant.</summary>
     public static DateTime FromUtc(DateTime utc) => utc + Offset;
+
+    /// <summary>Brisbane calendar date (00:00 local) for a given UTC instant.</summary>
+    public static DateTime TodayFor(DateTime utc) => FromUtc(utc).Date;
+
+    /// <summary>UTC instant corresponding to 00:00 today in Brisbane (UTC+10).</summary>
+    public static DateTime StartOfTodayUtc(DateTime? utcNow = null) =>
+        TodayFor(utcNow ?? DateTime.UtcNow) - Offset;
+
+    /// <summary>UTC instant corresponding to Sunday 00:00 of the current Brisbane week.</summary>
+    public static DateTime StartOfWeekUtc(DateTime? utcNow = null)
+    {
+        var today = TodayFor(utcNow ?? DateTime.UtcNow);
+        return today.AddDays(-(int)today.DayOfWeek) - Offset;
+    }
 }

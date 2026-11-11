@@ -121,12 +121,37 @@ export default function OnboardPage() {
     }).catch(() => {});
   }
 
-  async function handleResidentialSubmit(override?: { address?: string; lat?: number; lng?: number; suburb?: string | null }) {
+  async function lookupBinDayOnce(la: number, ln: number, addr: string): Promise<{ day: number; area: string | null }> {
+    if (collectionDay != null) return { day: collectionDay, area: councilArea };
+    try {
+      const r = await fetch(apiUrl("/api/households/lookup-bin-day"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat: la, lng: ln, address: addr }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        if (d?.found && typeof d.dayOfWeek === "number") {
+          setCollectionDay(d.dayOfWeek);
+          const resolvedArea = d.councilArea ?? councilArea;
+          setCouncilArea(resolvedArea);
+          setDayAuto(true);
+          return { day: d.dayOfWeek, area: resolvedArea };
+        }
+      }
+    } catch {
+      /* fall through to default day */
+    }
+    return { day: 0, area: councilArea };
+  }
+
+  async function handleResidentialSubmit(override?: { address?: string; lat?: number; lng?: number; suburb?: string | null; day?: number; area?: string | null }) {
     const addr = override?.address ?? address;
     const la = override?.lat ?? lat;
     const ln = override?.lng ?? lng;
     const suburb = canonicalSuburb(override?.suburb) ?? canonicalSuburb(pickedSuburb) ?? canonicalSuburb(suburbHint);
-    const effectiveDay = collectionDay ?? 0;
+    const effectiveDay = override?.day ?? collectionDay ?? 0;
+    const effectiveArea = override?.area !== undefined ? override.area : councilArea;
     if (!addr || la == null || ln == null) { setError("Pick your address."); return; }
     if (!accessConsent) { setError("Tick the box so we can tell you when to bag out."); return; }
     const hasEnteredPayout = payoutMethod === "payid" ? Boolean(payIdValue.trim()) : Boolean(bsb.trim() || accountNumber.trim());
@@ -159,14 +184,14 @@ export default function OnboardPage() {
           address: addr, lat: la, lng: ln,
           suburb,
           councilCollectionDay: effectiveDay,
-          councilArea,
+          councilArea: effectiveArea,
           accessConsent: true,
         } : {
           name: `${name}'s Place`,
           address: addr, lat: la, lng: ln,
           type: "residential",
           councilCollectionDay: effectiveDay,
-          councilArea,
+          councilArea: effectiveArea,
           suburb,
           usesDivider: true,
           accessConsent: true,
@@ -174,7 +199,7 @@ export default function OnboardPage() {
         }),
       });
       if (hhRes.status === 401) {
-        writePlaceHint({ address: addr, lat: la, lng: ln, suburb, councilArea });
+        writePlaceHint({ address: addr, lat: la, lng: ln, suburb, councilArea: effectiveArea });
         clearAuth();
         setError("Your session expired — please sign in again.");
         router.push("/login");
@@ -294,7 +319,6 @@ export default function OnboardPage() {
       suburb = geo.suburb ?? suburb;
       setAddress(geo.address); setLat(geo.lat); setLng(geo.lng);
       setPickedSuburb(geo.suburb ?? null);
-      lookupBinDay(geo.lat, geo.lng, geo.address);
     }
     setError("");
     if (type === "unit_complex") {
@@ -302,7 +326,8 @@ export default function OnboardPage() {
       await handleUnitWaitlist(la, ln);
       return;
     }
-    await handleResidentialSubmit({ address: resolved, lat: la, lng: ln, suburb });
+    const { day: resolvedDay, area: resolvedArea } = await lookupBinDayOnce(la, ln, resolved);
+    await handleResidentialSubmit({ address: resolved, lat: la, lng: ln, suburb, day: resolvedDay, area: resolvedArea });
   }
 
   if (step === "place") return (

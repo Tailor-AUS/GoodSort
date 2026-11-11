@@ -4,6 +4,7 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import { X, Camera, ScanBarcode, Check, RotateCcw } from "lucide-react";
 import { lookupContainer, lookupContainerAsync } from "@/lib/containers";
 import { CENTS_PER_CONTAINER, formatCredit, launchBonusNote } from "@/lib/credit";
+import { fitWithin, QUALITY_LADDER, TARGET_BASE64_CHARS } from "@/lib/image-budget";
 import { track } from "@/lib/analytics";
 import { apiUrl, authHeaders } from "@/lib/config";
 import { mapToMaterialType, type BagInfo } from "@/lib/store";
@@ -129,15 +130,28 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
   // ── Photo capture ──
   async function capturePhoto() {
     if (!videoRef.current || !canvasRef.current) return;
-    setAnalyzing(true);
+    const video = videoRef.current;
+    if (video.videoWidth === 0 || video.videoHeight === 0) return;
+
+    const { width, height } = fitWithin(video.videoWidth, video.videoHeight);
+    if (width === 0 || height === 0) return;
 
     const canvas = canvasRef.current;
-    const video = videoRef.current;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext("2d")!;
-    ctx.drawImage(video, 0, 0);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    setAnalyzing(true);
+    ctx.drawImage(video, 0, 0, width, height);
+
+    let dataUrl = canvas.toDataURL("image/jpeg", QUALITY_LADDER[0]);
+    for (const quality of QUALITY_LADDER) {
+      const candidate = canvas.toDataURL("image/jpeg", quality);
+      const body = candidate.split(",")[1] ?? "";
+      dataUrl = candidate;
+      if (body.length <= TARGET_BASE64_CHARS) break;
+    }
     setCapturedImage(dataUrl);
     const base64 = dataUrl.split(",")[1];
 
@@ -307,6 +321,8 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     setResultSummary("");
     setCapturedImage(null);
     setScanToken(null);
+    setQuotedCents(null);
+    setBonusRemaining(null);
     processedRef.current = false;
     startCamera();
   }
