@@ -103,19 +103,21 @@ public class ChallengerVerificationTests : IDisposable
         var task2 = client2.PostAsJsonAsync("/api/households", req2);
         var responses = await Task.WhenAll(task1, task2);
 
-        // Both requests succeed because there is no locking or concurrency guard!
+        // Both requests return 201 Created idempotently, and StatusClaim.TryClaimFirstHousehold
+        // + WithUserGateAsync guarantee only ONE household is created and orphan scans are attached once.
         Assert.All(responses, r => Assert.Equal(HttpStatusCode.Created, r.StatusCode));
+        var id1 = (await responses[0].Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var id2 = (await responses[1].Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        Assert.Equal(id1, id2);
 
-        // 3. Inspect database: Two households were created, and both counted the orphan containers!
+        // 3. Inspect database: Exactly one household exists, and the 2 orphan containers are counted once.
         await _host.WithDbContextAsync(async db =>
         {
             var households = await db.Households.ToListAsync();
-            Assert.Equal(2, households.Count);
+            Assert.Single(households);
 
-            // Check-then-act bug: BOTH households claim the 2 orphan containers!
-            // Total pending containers across households is 4, even though user only had 2 containers!
             var totalPendingInHouseholds = households.Sum(h => h.PendingContainers);
-            Assert.True(totalPendingInHouseholds >= 2, "Containers were attached during race.");
+            Assert.Equal(2, totalPendingInHouseholds);
         });
 
         authClient.Dispose();
@@ -396,8 +398,9 @@ public class ChallengerVerificationTests : IDisposable
             Assert.Equal(5, usedTokens.Count);
 
             var profile = await db.Profiles.SingleAsync(p => p.Id == profileId);
-            // Invertible observation: verify total scans in DB
-            Assert.Equal(5, scans.Count);
+            // Zero lost updates across 5 concurrent distinct-token confirmations:
+            Assert.Equal(50, profile.PendingCents);
+            Assert.Equal(5, profile.TotalContainers);
         });
     }
 

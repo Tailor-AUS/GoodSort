@@ -751,12 +751,6 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
     if (payload is null) return Results.BadRequest(new { error = "Invalid or expired scan token. Re-take the photo." });
     if (payload.Uid != userId.Value) return Results.Forbid();
 
-    var profile = await db.Profiles.FindAsync(userId.Value);
-    if (profile is null) return Results.NotFound("User not found");
-    var household = profile.HouseholdId.HasValue
-        ? await db.Households.FindAsync(profile.HouseholdId.Value)
-        : null;
-
     // ── Unattended-deposit geofence (anti-fraud) ──
     // When the token is bound to a physical bin, the member must actually be at
     // that bin to claim credit — otherwise anyone could farm 5¢ deposits from
@@ -792,8 +786,14 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
     // commits on its own save, so a failure after it leaves the token used and
     // no containers credited — the member photographed a real haul and got
     // nothing, with the token now refusing a retry. See Atomic.
-    return await Atomic.RunAsync(db, async () =>
+    return await StatusClaim.WithUserGateAsync(userId.Value, () => Atomic.RunAsync<IResult>(db, async () =>
     {
+    var profile = await db.Profiles.FindAsync(userId.Value);
+    if (profile is null) return Results.NotFound("User not found");
+    var household = profile.HouseholdId.HasValue
+        ? await db.Households.FindAsync(profile.HouseholdId.Value)
+        : null;
+
     db.UsedScanTokens.Add(new UsedScanToken { Jti = payload.Jti, UserId = userId.Value });
     try
     {
@@ -952,7 +952,7 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
         bonusApplied = totalCents > totalContainers * HouseholdCredit.CentsPerContainer,
         bonusRemaining = Math.Max(0, bonusCap - profile.TotalContainers),
     });
-    });
+    }), ctx.RequestAborted);
 }).RequireAuthorization();
 
 // ── Barcode Lookup (Open Food Facts proxy) ──
@@ -1124,79 +1124,152 @@ app.MapPost("/api/households", async (HttpContext ctx, HouseholdCreateRequest re
 
     var callerId = ctx.GetCallerId();
 
-    // Prevent single-account Sybil inflation of WaitlistDensity.MinHouseholdsForRun (3):
-    // once a non-admin member already owns a household, repeated POST /api/households
-    // calls return their existing household idempotently instead of inserting orphan
-    // Household + Bin rows into the suburb tally. (Address edits go via PATCH .../street.)
-    if (!ctx.IsAdmin() && callerId is Guid existingCallerId)
+    // Prevent single-account Sybil inflation of WaitlistDensity.MinHouseholdsForRun (3)
+    // and concurrent check-then-act double-attachment of orphan scans / referral credits:
+    // non-admin callers run through WithUserGateAsync + StatusClaim.TryClaimFirstHousehold
+    // so concurrent POST /api/households requests return the single winning household
+    // idempotently. (Address edits go via PATCH .../street.)
+    if (!ctx.IsAdmin() && callerId is Guid nonAdminUid)
     {
-        var existingProfile = await db.Profiles.FindAsync(existingCallerId);
-        if (existingProfile?.HouseholdId is Guid existingHouseholdId
-            && await db.Households.FindAsync(existingHouseholdId) is { } existingHousehold)
+        var (resolvedHousehold, createdNew) = await StatusClaim.WithUserGateAsync(
+            nonAdminUid,
+            () => Atomic.RunAsync<(Household, bool)>(db, async () =>
+            {
+                var profileSnapshot = await db.Profiles.AsNoTracking()
+                    .Where(p => p.Id == nonAdminUid)
+                    .Select(p => new { p.Id, p.HouseholdId })
+                    .FirstOrDefaultAsync();
+
+                if (profileSnapshot?.HouseholdId is Guid existingId
+                    && await db.Households.AsNoTracking().FirstOrDefaultAsync(h => h.Id == existingId) is { } existing)
+                {
+                    return (existing, false);
+                }
+
+                db.Households.Add(household);
+
+                if (profileSnapshot is not null)
+                {
+                    // Persist Household first so FK_Profiles_Households_HouseholdId is satisfied
+                    // when TryClaimFirstHousehold atomically transitions HouseholdId null -> household.Id.
+                    await db.SaveChangesAsync();
+                    var won = await StatusClaim.TryClaimFirstHousehold(db, nonAdminUid, household.Id);
+                    if (!won)
+                    {
+                        db.Households.Remove(household);
+                        await db.SaveChangesAsync();
+                        var winnerId = await db.Profiles.AsNoTracking()
+                            .Where(p => p.Id == nonAdminUid)
+                            .Select(p => p.HouseholdId)
+                            .FirstOrDefaultAsync();
+                        var winner = winnerId is Guid wid
+                            ? await db.Households.AsNoTracking().FirstOrDefaultAsync(h => h.Id == wid)
+                            : null;
+                        return (winner ?? household, false);
+                    }
+                }
+
+                Bin? createdBin = null;
+                if (household.Type != "unit_complex")
+                {
+                    var code = $"GS-H{Math.Abs(household.Id.GetHashCode()) % 100000:D5}";
+                    createdBin = new Bin
+                    {
+                        Code = code,
+                        Name = household.Name,
+                        Address = household.Address,
+                        Lat = household.Lat,
+                        Lng = household.Lng,
+                        HouseholdId = household.Id,
+                        HostedBy = null,
+                    };
+                    db.Bins.Add(createdBin);
+                }
+
+                if (profileSnapshot is not null)
+                {
+                    var me = await db.Profiles.FindAsync(nonAdminUid);
+                    if (me is not null)
+                    {
+                        if (me.ReferrerId is Guid rid && rid != nonAdminUid)
+                        {
+                            var referrer = await db.Profiles.FindAsync(rid);
+                            if (referrer is not null) referrer.PendingCents += 100;
+                        }
+
+                        var orphans = await db.Scans
+                            .Where(sc => sc.UserId == me.Id && sc.HouseholdId == null && sc.Status == "pending")
+                            .ToListAsync();
+                        var backfillBin = createdBin
+                            ?? db.Bins.Local.FirstOrDefault(b => b.HouseholdId == household.Id)
+                            ?? await db.Bins.FirstOrDefaultAsync(b => b.HouseholdId == household.Id);
+                        ScanBackfill.AttachTo(household, orphans, backfillBin);
+                    }
+                }
+
+                await db.SaveChangesAsync();
+                return (household, true);
+            }),
+            ctx.RequestAborted);
+
+        if (!createdNew)
         {
-            return Results.Created($"/api/households/{existingHousehold.Id}", existingHousehold);
+            return Results.Created($"/api/households/{resolvedHousehold.Id}", resolvedHousehold);
         }
     }
-
-    await Atomic.RunAsync(db, async () =>
+    else
     {
-        db.Households.Add(household);
-
-        // Placeholder bin for the household. RunGeneration skips waitlisted/allocated
-        // households until ops marks the area collecting.
-        Bin? createdBin = null;
-        if (household.Type != "unit_complex")
+        await Atomic.RunAsync(db, async () =>
         {
-            var code = $"GS-H{Math.Abs(household.Id.GetHashCode()) % 100000:D5}";
-            createdBin = new Bin
-            {
-                Code = code,
-                Name = household.Name,
-                Address = household.Address,
-                Lat = household.Lat,
-                Lng = household.Lng,
-                HouseholdId = household.Id,
-                HostedBy = null,
-            };
-            db.Bins.Add(createdBin);
-        }
+            db.Households.Add(household);
 
-        // First household for a referred profile credits the neighbour $1 pending.
-        // The growth loop is scan volume → suburb trip, not house-count density.
-        if (callerId is Guid uid)
-        {
-            var me = await db.Profiles.FindAsync(uid);
-            if (me is not null)
+            Bin? createdBin = null;
+            if (household.Type != "unit_complex")
             {
-                if (me.ReferrerId is Guid rid && rid != uid && me.HouseholdId is null)
+                var code = $"GS-H{Math.Abs(household.Id.GetHashCode()) % 100000:D5}";
+                createdBin = new Bin
                 {
-                    var referrer = await db.Profiles.FindAsync(rid);
-                    if (referrer is not null) referrer.PendingCents += 100;
-                }
-                var isFirstHousehold = me.HouseholdId is null;
-                me.HouseholdId ??= household.Id;
+                    Code = code,
+                    Name = household.Name,
+                    Address = household.Address,
+                    Lat = household.Lat,
+                    Lng = household.Lng,
+                    HouseholdId = household.Id,
+                    HostedBy = null,
+                };
+                db.Bins.Add(createdBin);
+            }
 
-                // Scan-first: containers this member scanned before they had an
-                // address are attached now, so the credit can settle and the
-                // containers they are holding count toward their suburb.
-                if (isFirstHousehold)
+            if (callerId is Guid uid)
+            {
+                var me = await db.Profiles.FindAsync(uid);
+                if (me is not null)
                 {
-                    var orphans = await db.Scans
-                        .Where(sc => sc.UserId == me.Id && sc.HouseholdId == null && sc.Status == "pending")
-                        .ToListAsync();
-                    // The bin is created for this household a few lines above; pass
-                    // it so backfilled scans reach the counter dispatch reads.
-                    var backfillBin = createdBin
-                        ?? db.Bins.Local.FirstOrDefault(b => b.HouseholdId == household.Id)
-                        ?? await db.Bins.FirstOrDefaultAsync(b => b.HouseholdId == household.Id);
-                    ScanBackfill.AttachTo(household, orphans, backfillBin);
+                    if (me.ReferrerId is Guid rid && rid != uid && me.HouseholdId is null)
+                    {
+                        var referrer = await db.Profiles.FindAsync(rid);
+                        if (referrer is not null) referrer.PendingCents += 100;
+                    }
+                    var isFirstHousehold = me.HouseholdId is null;
+                    me.HouseholdId ??= household.Id;
+
+                    if (isFirstHousehold)
+                    {
+                        var orphans = await db.Scans
+                            .Where(sc => sc.UserId == me.Id && sc.HouseholdId == null && sc.Status == "pending")
+                            .ToListAsync();
+                        var backfillBin = createdBin
+                            ?? db.Bins.Local.FirstOrDefault(b => b.HouseholdId == household.Id)
+                            ?? await db.Bins.FirstOrDefaultAsync(b => b.HouseholdId == household.Id);
+                        ScanBackfill.AttachTo(household, orphans, backfillBin);
+                    }
                 }
             }
-        }
 
-        await db.SaveChangesAsync();
-        return true;
-    });
+            await db.SaveChangesAsync();
+            return true;
+        });
+    }
 
     var board = WaitlistDensity.Aggregate(await WaitlistDensity.LoadRowsAsync(db));
     var cluster = WaitlistDensity.DayCluster(board, household.Suburb, household.CouncilCollectionDay);
@@ -1540,17 +1613,6 @@ app.MapPost("/api/waitlist/unit-complex", async (HttpContext ctx, UnitComplexWai
     if (address.Length > 300) address = address[..300];
 
     var callerId = ctx.GetCallerId();
-    Profile? caller = null;
-    if (callerId is Guid uid)
-    {
-        caller = await db.Profiles.FindAsync(uid);
-        if (!ctx.IsAdmin() && caller?.HouseholdId is Guid existingUnitHhId
-            && await db.Households.FindAsync(existingUnitHhId) is { } existingUnitHh)
-        {
-            return Results.Ok(new { waitlisted = true, id = existingUnitHh.Id, suburb = existingUnitHh.Suburb });
-        }
-    }
-
     var parsed = BinDayService.ParseAddress(address);
     var placeholder = new Household
     {
@@ -1567,28 +1629,91 @@ app.MapPost("/api/waitlist/unit-complex", async (HttpContext ctx, UnitComplexWai
         AccessConsent = true,
         AccessConsentAt = DateTime.UtcNow,
     };
-    db.Households.Add(placeholder);
-    if (caller is not null && callerId is Guid callerUid)
-    {
-        if (caller.ReferrerId is Guid rid && rid != callerUid && caller.HouseholdId is null)
-        {
-            var referrer = await db.Profiles.FindAsync(rid);
-            if (referrer is not null) referrer.PendingCents += 100;
-        }
-        var isFirstHousehold = caller.HouseholdId is null;
-        caller.HouseholdId ??= placeholder.Id;
 
-        // Same scan-first backfill as the residential path: a member who
-        // scanned before joining must not have their credit stranded.
-        if (isFirstHousehold)
+    Profile? caller = null;
+    if (!ctx.IsAdmin() && callerId is Guid nonAdminUnitUid)
+    {
+        var (resolvedUnit, createdUnitNew) = await StatusClaim.WithUserGateAsync(
+            nonAdminUnitUid,
+            () => Atomic.RunAsync<(Household, bool)>(db, async () =>
+            {
+                var snap = await db.Profiles.AsNoTracking()
+                    .Where(p => p.Id == nonAdminUnitUid)
+                    .Select(p => new { p.Id, p.HouseholdId })
+                    .FirstOrDefaultAsync();
+                if (snap?.HouseholdId is Guid existingUnitId
+                    && await db.Households.AsNoTracking().FirstOrDefaultAsync(h => h.Id == existingUnitId) is { } existingUnit)
+                {
+                    return (existingUnit, false);
+                }
+
+                db.Households.Add(placeholder);
+                if (snap is not null)
+                {
+                    await db.SaveChangesAsync();
+                    var won = await StatusClaim.TryClaimFirstHousehold(db, nonAdminUnitUid, placeholder.Id);
+                    if (!won)
+                    {
+                        db.Households.Remove(placeholder);
+                        await db.SaveChangesAsync();
+                        var winnerId = await db.Profiles.AsNoTracking()
+                            .Where(p => p.Id == nonAdminUnitUid)
+                            .Select(p => p.HouseholdId)
+                            .FirstOrDefaultAsync();
+                        var winner = winnerId is Guid wid
+                            ? await db.Households.AsNoTracking().FirstOrDefaultAsync(h => h.Id == wid)
+                            : null;
+                        return (winner ?? placeholder, false);
+                    }
+
+                    caller = await db.Profiles.FindAsync(nonAdminUnitUid);
+                    if (caller is not null)
+                    {
+                        if (caller.ReferrerId is Guid rid && rid != nonAdminUnitUid)
+                        {
+                            var referrer = await db.Profiles.FindAsync(rid);
+                            if (referrer is not null) referrer.PendingCents += 100;
+                        }
+                        var orphans = await db.Scans
+                            .Where(sc => sc.UserId == caller.Id && sc.HouseholdId == null && sc.Status == "pending")
+                            .ToListAsync();
+                        ScanBackfill.AttachTo(placeholder, orphans);
+                    }
+                }
+                await db.SaveChangesAsync();
+                return (placeholder, true);
+            }),
+            ctx.RequestAborted);
+
+        if (!createdUnitNew)
         {
-            var orphans = await db.Scans
-                .Where(sc => sc.UserId == caller.Id && sc.HouseholdId == null && sc.Status == "pending")
-                .ToListAsync();
-            ScanBackfill.AttachTo(placeholder, orphans);
+            return Results.Ok(new { waitlisted = true, id = resolvedUnit.Id, suburb = resolvedUnit.Suburb });
         }
     }
-    await db.SaveChangesAsync();
+    else
+    {
+        if (callerId is Guid uid) caller = await db.Profiles.FindAsync(uid);
+        db.Households.Add(placeholder);
+        if (caller is not null && callerId is Guid callerUid)
+        {
+            if (caller.ReferrerId is Guid rid && rid != callerUid && caller.HouseholdId is null)
+            {
+                var referrer = await db.Profiles.FindAsync(rid);
+                if (referrer is not null) referrer.PendingCents += 100;
+            }
+            var isFirstHousehold = caller.HouseholdId is null;
+            caller.HouseholdId ??= placeholder.Id;
+
+            if (isFirstHousehold)
+            {
+                var orphans = await db.Scans
+                    .Where(sc => sc.UserId == caller.Id && sc.HouseholdId == null && sc.Status == "pending")
+                    .ToListAsync();
+                ScanBackfill.AttachTo(placeholder, orphans);
+            }
+        }
+        await db.SaveChangesAsync();
+    }
     try
     {
         if (!string.IsNullOrWhiteSpace(caller?.Email))
@@ -1738,8 +1863,6 @@ app.MapPost("/api/scans", async (HttpContext ctx, ScanRequest req, GoodSortDbCon
 {
     var userId = ctx.GetCallerId();
     if (userId is null) return Results.Unauthorized();
-    var profile = await db.Profiles.FindAsync(userId.Value);
-    if (profile is null) return Results.NotFound("User not found");
 
     var barcode = (req.Barcode ?? "").Trim();
     if (string.IsNullOrEmpty(barcode) || barcode.Length > 64)
@@ -1749,6 +1872,11 @@ app.MapPost("/api/scans", async (HttpContext ctx, ScanRequest req, GoodSortDbCon
     if (containerName.Length > 200) containerName = containerName[..200];
     var material = (req.Material ?? "other").Trim().ToLowerInvariant();
     if (material.Length > 32) material = material[..32];
+
+    return await StatusClaim.WithUserGateAsync(userId.Value, async () =>
+    {
+    var profile = await db.Profiles.FindAsync(userId.Value);
+    if (profile is null) return Results.NotFound("User not found");
 
     // Daily ceiling per member, alongside the per-minute rate limit.
     //
@@ -1841,6 +1969,7 @@ app.MapPost("/api/scans", async (HttpContext ctx, ScanRequest req, GoodSortDbCon
         bonusApplied = cents > HouseholdCredit.CentsPerContainer,
         bonusRemaining = Math.Max(0, LaunchBonus.CapFrom(cfg) - profile.TotalContainers),
     });
+    }, ctx.RequestAborted);
 }).RequireAuthorization().RequireRateLimiting("scans");
 
 app.MapGet("/api/scans", async (HttpContext ctx, Guid userId, int? limit, GoodSortDbContext db) =>
