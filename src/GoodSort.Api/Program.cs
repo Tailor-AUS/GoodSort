@@ -409,8 +409,8 @@ app.MapPost("/api/auth/send-otp", async (SendOtpRequest req, AuthService auth) =
 app.MapPost("/api/auth/verify-otp", async (VerifyOtpRequest req, AuthService auth) =>
 {
     var email = req.Email.Trim().ToLower();
-    var (token, profile) = await auth.VerifyOtp(email, req.Code, req.ReferrerId);
-    if (token == null) return Results.Unauthorized();
+    var (token, profile, error) = await auth.VerifyOtp(email, req.Code, req.ReferrerId);
+    if (token == null) return Results.Json(new { error = error ?? "Invalid or expired code." }, statusCode: StatusCodes.Status401Unauthorized);
     return Results.Ok(new { token, profile });
 });
 
@@ -2504,6 +2504,8 @@ app.MapPost("/api/bags", async (HttpContext ctx, CreateSortedBagRequest req, Goo
     var stream = CrpSettlement.NormalizeStream(req.Stream);
     if (stream is null)
         return Results.BadRequest(new { error = "Stream must be aluminium, pet_clear, pet_coloured, or glass." });
+    if (req.DeclaredContainers is < 0)
+        return Results.BadRequest(new { error = "Declared containers must be between 1 and 500." });
 
     var unbaggedScans = await db.Scans
         .Where(s => s.HouseholdId == hhId && s.Status == "pending" && s.SortedBagId == null)
@@ -2833,6 +2835,11 @@ app.MapPost("/api/runner/register", async (HttpContext ctx, RunnerRegisterReques
     if (profileId is null) return Results.Unauthorized();
     var profile = await db.Profiles.FindAsync(profileId.Value);
     if (profile is null) return Results.NotFound("Profile not found");
+
+    if (req.CapacityBags is < 1 or > 100)
+        return Results.BadRequest(new { error = "Bag capacity must be between 1 and 100." });
+    if (req.ServiceRadiusKm is <= 0 or > 200 || (req.ServiceRadiusKm is double radius && !double.IsFinite(radius)))
+        return Results.BadRequest(new { error = "Service radius must be between 1 and 200 km." });
 
     var existing = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == profileId.Value);
     if (existing is not null)

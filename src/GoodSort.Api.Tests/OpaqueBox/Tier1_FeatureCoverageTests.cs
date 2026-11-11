@@ -180,6 +180,8 @@ public class Tier1_FeatureCoverageTests : IClassFixture<OpaqueBoxHost>
 
         var verify = await client.PostAsJsonAsync("/api/auth/verify-otp", new { email, code = wrong });
         Assert.Equal(HttpStatusCode.Unauthorized, verify.StatusCode);
+        var errJson = await verify.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Contains("Incorrect 6-digit code", errJson.GetProperty("error").GetString());
     }
 
     [Fact]
@@ -195,6 +197,8 @@ public class Tier1_FeatureCoverageTests : IClassFixture<OpaqueBoxHost>
 
         var second = await client.PostAsJsonAsync("/api/auth/verify-otp", new { email, code = devCode });
         Assert.Equal(HttpStatusCode.Unauthorized, second.StatusCode);
+        var secondErr = await second.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Contains("expired or was already used", secondErr.GetProperty("error").GetString());
     }
 
     // =========================================================================

@@ -5,7 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { hasValidToken, clearAuth } from "@/lib/config";
 
 const PUBLIC_EXACT_PATHS = ["/"];
-const PUBLIC_PATH_PREFIXES = ["/login", "/verify", "/onboard", "/invite", "/privacy", "/terms", "/scan", "/start", "/brisbane", "/guides", "/flyer", "/marketplace"];
+const PUBLIC_PATH_PREFIXES = ["/login", "/verify", "/onboard", "/invite", "/privacy", "/terms", "/scan", "/start", "/brisbane", "/guides", "/flyer", "/marketplace", "/bags", "/sort", "/runner"];
 
 function isPublicPath(pathname: string) {
   return (

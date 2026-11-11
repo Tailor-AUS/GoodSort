@@ -24,6 +24,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [devCode, setDevCode] = useState("");
+  const [resendIn, setResendIn] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [growth, setGrowth] = useState<GrowthResponse | null>(null);
@@ -73,6 +74,12 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
+
   const place = suburbName ?? lookedUpSuburb;
   const local = place
       ? growth?.suburbs.find((s) => sameSuburb(s.suburb, place))
@@ -110,6 +117,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
         setDevCode("");
       }
       track("otp_sent", { suburb: place });
+      setResendIn(30);
       setStep("verify");
     } catch { setError("Something went wrong"); }
     setLoading(false);
@@ -124,8 +132,12 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), code: otp, referrerId }),
       });
-      if (!res.ok) { setError("Invalid code"); setLoading(false); return; }
-      const data = await res.json();
+      const data = await res.json().catch(() => ({} as { error?: string; token?: string; profile?: unknown }));
+      if (!res.ok || !data.token || !data.profile) {
+        setError(typeof data.error === "string" && data.error ? data.error : "Verification failed. Please try again.");
+        setLoading(false);
+        return;
+      }
       localStorage.setItem("goodsort_token", data.token);
       localStorage.setItem("goodsort_profile", JSON.stringify(data.profile));
       document.cookie = `goodsort_token=${data.token}; path=/; max-age=${30*24*60*60}; SameSite=Lax; Secure`;
@@ -172,9 +184,23 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
               <GreenButton onClick={verifyOtp} disabled={loading || otp.length < 6}>
                 {loading ? "Verifying..." : "Verify"}
               </GreenButton>
-              <button type="button" onClick={() => void sendOtp()} className="w-full text-green-700 text-[13px] font-semibold py-3 mt-1">
-                Resend code
-              </button>
+              <div className="flex items-center justify-between mt-3 text-[13px]">
+                <button
+                  type="button"
+                  disabled={loading || resendIn > 0}
+                  onClick={() => void sendOtp()}
+                  className="text-green-700 font-semibold py-2 disabled:text-slate-300"
+                >
+                  {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setStep("email"); setOtp(""); setError(""); setDevCode(""); }}
+                  className="text-slate-400 hover:text-slate-600 py-2"
+                >
+                  Use a different email
+                </button>
+              </div>
             </>
           )}
         </div>

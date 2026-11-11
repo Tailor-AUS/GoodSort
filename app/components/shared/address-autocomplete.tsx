@@ -1,84 +1,17 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import {
+  formatPhotonAddress,
+  geocodeAddress,
+  PHOTON_TIMEOUT_MS,
+  searchPhoton,
+  suburbFromPhoton,
+  type AddressSelection,
+  type PhotonFeature,
+} from "@/lib/photon";
 
-// Photon (komoot) is OSM-based and free with no API key. We bias results
-// toward Brisbane and filter to AU only.
-const PHOTON_URL = "https://photon.komoot.io/api/";
-const BRISBANE = { lat: -27.4698, lon: 153.0251 };
-
-interface PhotonProps {
-  name?: string;
-  housenumber?: string;
-  street?: string;
-  city?: string;
-  district?: string;
-  state?: string;
-  postcode?: string;
-  country?: string;
-  countrycode?: string;
-}
-
-interface PhotonFeature {
-  type: "Feature";
-  geometry: { type: "Point"; coordinates: [number, number] };
-  properties: PhotonProps;
-}
-
-export interface AddressSelection {
-  address: string;
-  lat: number;
-  lng: number;
-  suburb?: string;
-  street?: string;
-}
-
-/** Photon sets city=Brisbane and district=the suburb. City-wide "Brisbane" must never be the cluster. */
-export function suburbFromPhoton(p: PhotonProps): string | undefined {
-  const district = (p.district ?? "").trim();
-  const city = (p.city ?? "").trim();
-  if (district && (!city || /^brisbane$/i.test(city))) return district;
-  if (/^brisbane city$/i.test(city)) return city;
-  if (city && !/^brisbane$/i.test(city) && !/^queensland$/i.test(city)) return city;
-  return district || undefined;
-}
-
-function formatAddress(p: PhotonProps): string {
-  const street = [p.housenumber, p.street].filter(Boolean).join(" ");
-  const locality = suburbFromPhoton(p) ?? "";
-  const state = /^queensland$/i.test(p.state ?? "") ? "QLD" : (p.state ?? "");
-  const tail = [locality, state, p.postcode].filter(Boolean).join(" ");
-  return [street || p.name, tail].filter(Boolean).join(", ");
-}
-
-async function searchPhoton(query: string, limit = 6): Promise<PhotonFeature[]> {
-  if (query.trim().length < 3) return [];
-  const url = `${PHOTON_URL}?q=${encodeURIComponent(query)}&limit=${limit}&lang=en&lat=${BRISBANE.lat}&lon=${BRISBANE.lon}`;
-  const res = await fetch(url);
-  if (!res.ok) return [];
-  const data = await res.json() as { features?: PhotonFeature[] };
-  const au = (data.features ?? []).filter((f) => f.properties.countrycode === "AU");
-  // Street-only Photon hits miss BCC house-level days. Numbered houses first.
-  return au.sort((a, b) => {
-    const ah = a.properties.housenumber ? 0 : 1;
-    const bh = b.properties.housenumber ? 0 : 1;
-    return ah - bh;
-  });
-}
-
-/** One-shot geocode: returns the first matching AU place, or null. */
-export async function geocodeAddress(query: string): Promise<AddressSelection | null> {
-  const features = await searchPhoton(query, 1);
-  const f = features[0];
-  if (!f) return null;
-  return {
-    address: formatAddress(f.properties),
-    lng: f.geometry.coordinates[0],
-    lat: f.geometry.coordinates[1],
-    suburb: suburbFromPhoton(f.properties),
-    street: f.properties.street,
-  };
-}
+export { geocodeAddress, PHOTON_TIMEOUT_MS, suburbFromPhoton, type AddressSelection };
 
 interface AddressAutocompleteProps {
   value: string;
@@ -127,7 +60,7 @@ export function AddressAutocomplete({ value, onChange, onSelect, placeholder, au
 
   function pick(f: PhotonFeature) {
     const sel: AddressSelection = {
-      address: formatAddress(f.properties),
+      address: formatPhotonAddress(f.properties),
       lng: f.geometry.coordinates[0],
       lat: f.geometry.coordinates[1],
       suburb: suburbFromPhoton(f.properties),
@@ -163,7 +96,7 @@ export function AddressAutocomplete({ value, onChange, onSelect, placeholder, au
       {open && results.length > 0 && (
         <ul className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 max-h-72 overflow-y-auto">
           {results.map((f, i) => {
-            const text = formatAddress(f.properties);
+            const text = formatPhotonAddress(f.properties);
             return (
               <li
                 key={`${f.geometry.coordinates[0]},${f.geometry.coordinates[1]},${i}`}

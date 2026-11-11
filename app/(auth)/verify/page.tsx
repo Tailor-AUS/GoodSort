@@ -10,6 +10,7 @@ export default function VerifyPage() {
   const [otp, setOtp] = useState("");
   const [devCode, setDevCode] = useState("");
   const [email, setEmail] = useState("");
+  const [resendIn, setResendIn] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
@@ -26,6 +27,12 @@ export default function VerifyPage() {
     }
   }, [router]);
 
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
+
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
     if (otp.length < 6) return;
@@ -40,13 +47,13 @@ export default function VerifyPage() {
         body: JSON.stringify({ email, code: otp, referrerId }),
       });
 
-      if (!res.ok) {
-        setError("Invalid code. Please try again.");
+      const data = await res.json().catch(() => ({} as { error?: string; token?: string; profile?: unknown }));
+      if (!res.ok || !data.token || !data.profile) {
+        setError(typeof data.error === "string" && data.error ? data.error : "Verification failed. Please try again.");
         setLoading(false);
         return;
       }
 
-      const data = await res.json();
       localStorage.setItem("goodsort_token", data.token);
       localStorage.setItem("goodsort_profile", JSON.stringify(data.profile));
       document.cookie = `goodsort_token=${data.token}; path=/; max-age=${30 * 24 * 60 * 60}; SameSite=Lax; Secure`;
@@ -98,6 +105,7 @@ export default function VerifyPage() {
 
         <button
           type="button"
+          disabled={loading || resendIn > 0}
           onClick={async () => {
             setLoading(true); setError("");
             try {
@@ -109,18 +117,21 @@ export default function VerifyPage() {
               const data = await res.json().catch(() => ({} as { error?: string; devCode?: string }));
               if (!res.ok) {
                 setError(typeof data.error === "string" && data.error ? data.error : "Couldn't resend. Try again shortly.");
-              } else if (typeof data.devCode === "string" && data.devCode.length === 6) {
-                setDevCode(data.devCode);
-                setOtp(data.devCode);
+              } else {
+                setResendIn(30);
+                if (typeof data.devCode === "string" && data.devCode.length === 6) {
+                  setDevCode(data.devCode);
+                  setOtp(data.devCode);
+                }
               }
             } catch {
               setError("Couldn't resend. Try again shortly.");
             }
             setLoading(false);
           }}
-          className="w-full text-center text-[13px] text-green-700 hover:text-green-800 font-semibold py-3 mt-2"
+          className="w-full text-center text-[13px] text-green-700 hover:text-green-800 disabled:text-slate-300 font-semibold py-3 mt-2"
         >
-          Resend code
+          {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
         </button>
         <button onClick={() => router.push("/login")}
           className="w-full text-center text-[13px] text-slate-400 hover:text-slate-600 font-medium py-2 transition-colors">

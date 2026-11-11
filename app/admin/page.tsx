@@ -291,12 +291,12 @@ export default function AdminPage() {
                 className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-emerald-300 px-3 py-2 text-[12px] font-bold text-emerald-900 hover:bg-emerald-100"
               >
                 <Printer className="w-3.5 h-3.5" />
-                Printable Yellow-Bin Decal &amp; Flyer
+                Printable Home Sorting Guide &amp; Flyer
               </Link>
             </div>
           </div>
           <p className="text-[12px] text-emerald-900">
-            17 ready-to-send emails (11 organic user &amp; Container Mafia invites + 6 Containers for Change CRP, DETSI $100k grant, TOMRA, recycler &amp; yellow-bin sticker emails) are staged in Outlook Drafts for <code className="font-mono">knox@tailor.au</code>.
+            17 ready-to-send emails (11 organic user &amp; Container Mafia invites + 6 Containers for Change CRP, DETSI $100k grant, TOMRA, recycler &amp; street flyer emails) are staged in Outlook Drafts for <code className="font-mono">knox@tailor.au</code>.
           </p>
         </div>
 
