@@ -61,6 +61,7 @@ public class ConfigRestoreCoverageTests
         ["SCAN_DAILY_CAP"] = "Defaults to 2000, the documented faucet limit.",
         ["SCAN_RATE_PER_MINUTE"] = "Defaults to 60, the documented faucet limit.",
         ["OTP_IP_RATE_PER_MINUTE"] = "Defaults to 30/min per IP on /api/auth/send-otp, blunting scripted ACS exhaustion.",
+        ["BIN_DAY_IP_RATE_PER_MINUTE"] = "Defaults to 30/min per IP on /api/households/lookup-bin-day, bounding outbound traffic to BCC OpenDataSoft.",
         ["DEPOSIT_GEOFENCE_RADIUS_M"] = "Defaults to 150m, the intended geofence.",
         ["DEPOSIT_REPLAY_WINDOW_HOURS"] = "Anti-replay window; the code default is the intended value.",
         ["DEPOSIT_REPLAY_HAMMING_MAX"] = "Anti-replay threshold; the code default is the intended value.",

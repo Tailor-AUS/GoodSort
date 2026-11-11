@@ -23,10 +23,12 @@ public class BinDayService
 
     public async Task<BinDayResult?> Lookup(double lat, double lng, string? address = null)
     {
-        // Rough BCC bounding box; outside of this we don't have data
-        if (lat < -27.75 || lat > -27.20 || lng < 152.70 || lng > 153.30)
+        // IEEE-754 NaN comparisons (< and >) evaluate to false, so guard finiteness explicitly
+        // before the rough BCC bounding box check.
+        if (!double.IsFinite(lat) || !double.IsFinite(lng)
+            || lat < -27.75 || lat > -27.20 || lng < 152.70 || lng > 153.30)
             return null;
-        if (string.IsNullOrWhiteSpace(address)) return null;
+        if (string.IsNullOrWhiteSpace(address) || address.Length > 300) return null;
 
         var parsed = ParseAddress(address);
         if (parsed is null) return null;

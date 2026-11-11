@@ -10,9 +10,12 @@ export function DensityBoard() {
   const [state, setState] = useState<"loading" | "ready" | "unavailable">("loading");
 
   useEffect(() => {
-    fetch(apiUrl("/api/growth/brisbane"))
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    fetch(apiUrl("/api/growth/brisbane"), { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
+        if (controller.signal.aborted) return;
         if (d?.suburbs) {
           setSuburbs(d.suburbs);
           setState("ready");
@@ -20,7 +23,14 @@ export function DensityBoard() {
           setState("unavailable");
         }
       })
-      .catch(() => setState("unavailable"));
+      .catch(() => {
+        setState("unavailable");
+      })
+      .finally(() => clearTimeout(timer));
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, []);
 
   const closest = rankByUnlockProximity(suburbs)

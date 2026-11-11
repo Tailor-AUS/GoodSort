@@ -6,6 +6,8 @@ namespace GoodSort.Api.Services;
 
 public class PricingService
 {
+    public static readonly TimeSpan OnlineRunnerFreshness = TimeSpan.FromMinutes(15);
+
     private readonly GoodSortDbContext _db;
 
     public PricingService(GoodSortDbContext db)
@@ -34,8 +36,13 @@ public class PricingService
         // Normalize: 0.5km apart = 1.5 (dense), 5km = 0.5 (spread)
         var densityFactor = Math.Max(0.3, Math.Min(2.0, 2.5 - (avgKmBetween / 2.5)));
 
-        // Factor 3: Supply/demand — online runners / available runs
-        var onlineRunners = await _db.RunnerProfiles.CountAsync(rp => rp.IsOnline);
+        // Factor 3: Supply/demand — online runners / available runs.
+        // Require a heartbeat within OnlineRunnerFreshness (15 min) so runners who
+        // lock their phone or close mobile Safari without firing unload cleanup do
+        // not stay "online" forever and depress dynamic run pricing.
+        var onlineCutoff = DateTime.UtcNow - OnlineRunnerFreshness;
+        var onlineRunners = await _db.RunnerProfiles.CountAsync(
+            rp => rp.IsOnline && rp.LastLocationAt != null && rp.LastLocationAt >= onlineCutoff);
         var availableRuns = await _db.Runs.CountAsync(r => r.Status == "available");
         var ratio = availableRuns > 0
             ? (double)onlineRunners / availableRuns
@@ -46,8 +53,8 @@ public class PricingService
         // Factor 4: Time of day — windows below are local (Brisbane) hours, so we
         // must convert from UTC. The container clock is UTC, so DateTime.Now.Hour
         // was 10h off, firing the "morning surge" at ~4pm AEST. QLD observes no
-        // DST, so a fixed +10 offset is correct year-round.
-        var hour = DateTime.UtcNow.AddHours(10).Hour;
+        // DST, so BrisbaneTime (UTC+10) is accurate year-round.
+        var hour = BrisbaneTime.Now.Hour;
         var timeFactor = hour switch
         {
             >= 6 and < 10 => config.MorningSurge,
