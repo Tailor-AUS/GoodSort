@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { ScanBarcode, MapPin, X, QrCode, ChevronUp } from "lucide-react";
 import { type SortBin, type User, formatCents } from "@/lib/store";
+import { apiUrl, authHeaders, hasValidToken } from "@/lib/config";
 import { PoweredByTailor } from "@/app/components/shared/powered-by-tailor";
 import { WaitlistCard } from "@/app/components/shared/waitlist-card";
 import { CollectionNightCard } from "@/app/components/shared/collection-night-card";
@@ -41,6 +42,19 @@ export function SorterSheet({
 }: SorterSheetProps) {
   const activeBins = bins.filter((b) => b.status === "active" || b.status === "full");
   const [expanded, setExpanded] = useState(false);
+  const [hasPayoutDetails, setHasPayoutDetails] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!hasValidToken()) return;
+    fetch(apiUrl("/api/profiles/me/payout"), { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d && typeof d.hasPayoutDetails === "boolean") {
+          setHasPayoutDetails(d.hasPayoutDetails);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Drag state
   const dragRef = useRef({ startY: 0, dragging: false });
@@ -123,7 +137,7 @@ export function SorterSheet({
               />
 
               {household && isCollecting(household.binStatus) && (
-                <button onClick={onBinOut}
+                <button type="button" onClick={onBinOut}
                   className={`w-full font-extrabold py-4 rounded-2xl text-[15px] mb-3 min-h-[48px] border-2 ${
                     household.binIsOut
                       ? "bg-green-50 border-green-500 text-green-800"
@@ -133,7 +147,7 @@ export function SorterSheet({
                 </button>
               )}
 
-              <button onClick={onScanPress}
+              <button type="button" onClick={onScanPress}
                 className="w-full bg-white border border-slate-200 text-slate-700 font-semibold py-3 rounded-2xl text-[13px] mb-2.5 flex items-center justify-center gap-2 min-h-[44px]">
                 <ScanBarcode className="w-4 h-4" />
                 Scan a container · 10¢
@@ -155,6 +169,15 @@ export function SorterSheet({
                   Suburb map
                 </Link>
               </div>
+
+              {hasPayoutDetails === false && (
+                <Link
+                  href="/onboard"
+                  className="block mb-4 text-center text-[13px] font-semibold text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-xl py-3 px-3"
+                >
+                  Add your PayID or bank details so we can pay you →
+                </Link>
+              )}
 
               {/* Expandable content below the fold */}
               {isExpanded && (
@@ -234,7 +257,7 @@ export function SorterSheet({
                   <p className="text-[13px] text-slate-400 mt-0.5">{selectedBin.address}</p>
                   {selectedBin.hostedBy && <p className="text-[11px] text-slate-500 mt-0.5">Hosted by {selectedBin.hostedBy}</p>}
                 </div>
-                <button onClick={onDeselectBin} aria-label="Close bin details" className="p-2.5 -mr-1 text-slate-400 hover:text-slate-600 transition-colors duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center">
+                <button type="button" onClick={onDeselectBin} aria-label="Close bin details" className="p-2.5 -mr-1 text-slate-400 hover:text-slate-600 transition-colors duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center">
                   <X className="w-5 h-5" />
                 </button>
               </div>

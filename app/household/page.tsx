@@ -236,7 +236,7 @@ function BinOutToggle({ hh, onChange }: { hh: HouseholdDetail; onChange: (v: boo
     finally { setSaving(false); }
   }
   return (
-    <button onClick={toggle} disabled={saving}
+    <button type="button" role="switch" aria-checked={hh.binIsOut} onClick={toggle} disabled={saving}
       className={`w-full rounded-2xl p-4 mb-4 border-2 flex items-center justify-between transition-colors ${hh.binIsOut ? "bg-green-50 border-green-500" : "bg-white border-slate-300"}`}>
       <div className="text-left">
         <p className={`text-[14px] font-semibold ${hh.binIsOut ? "text-green-800" : "text-slate-900"}`}>
