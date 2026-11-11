@@ -145,14 +145,14 @@ export function SorterSheet({
                   className="bg-violet-50 border border-violet-200 text-violet-900 font-bold py-2.5 px-3 rounded-xl text-[12px] flex items-center justify-center gap-1.5 min-h-[42px] hover:bg-violet-100"
                 >
                   <QrCode className="w-3.5 h-3.5 text-violet-700" />
-                  4-Stream QR Bag Tags
+                  Tag home bags
                 </Link>
                 <Link
                   href="/marketplace"
                   className="bg-emerald-50 border border-emerald-200 text-emerald-900 font-bold py-2.5 px-3 rounded-xl text-[12px] flex items-center justify-center gap-1.5 min-h-[42px] hover:bg-emerald-100"
                 >
                   <MapPin className="w-3.5 h-3.5 text-emerald-700" />
-                  Sorters &amp; Runners Map
+                  Suburb map
                 </Link>
               </div>
 

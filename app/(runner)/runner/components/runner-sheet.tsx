@@ -154,7 +154,7 @@ export function RunnerSheet({
                 <span className="text-slate-300">·</span>
                 <Link href="/marketplace"
                   className="text-[13px] text-emerald-600 hover:text-emerald-700 font-semibold transition-colors duration-200">
-                  Sorters &amp; Runners Marketplace →
+                  Suburb map →
                 </Link>
               </div>
             </>

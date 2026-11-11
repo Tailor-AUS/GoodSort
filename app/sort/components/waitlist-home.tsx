@@ -142,13 +142,13 @@ export function WaitlistHome({
             href="/bags"
             className="rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 py-2.5 px-3 text-center text-[12px] font-bold text-emerald-900 transition-colors"
           >
-            4-Stream QR Bag Tags
+            Tag home bags
           </a>
           <a
             href="/marketplace"
-            className="rounded-xl border border-slate-200 bg-slate-900 hover:bg-slate-800 py-2.5 px-3 text-center text-[12px] font-bold text-white transition-colors"
+            className="rounded-xl border border-slate-200 bg-white hover:bg-slate-50 py-2.5 px-3 text-center text-[12px] font-bold text-slate-700 transition-colors"
           >
-            Sorters &amp; Runners Map
+            Suburb map
           </a>
         </div>
 

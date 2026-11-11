@@ -431,7 +431,7 @@ export function RunActive({
                   type="text"
                   value={discrepancyNote}
                   onChange={(e) => setDiscrepancyNote(e.target.value)}
-                  placeholder="Short note for CRP audit (optional)"
+                  placeholder="Short note (optional)"
                   className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800"
                 />
               )}
@@ -470,7 +470,7 @@ export function RunActive({
     return (
       <div className="text-center py-4">
         <p className="text-[12px] text-slate-400 font-semibold uppercase tracking-[0.12em]">All stops complete</p>
-        <p className="text-xl font-display font-extrabold text-slate-900 mt-2">Head to CRP / Drop Point</p>
+        <p className="text-xl font-display font-extrabold text-slate-900 mt-2">Head to Drop Point</p>
         {run.dropPoint && (
           <p className="text-[13px] text-slate-400 mt-1">{run.dropPoint.name}</p>
         )}
@@ -515,10 +515,10 @@ export function RunActive({
       <>
         <div className="mb-4">
           <p className="text-[12px] text-slate-400 font-semibold uppercase tracking-[0.12em]">
-            {run.status === "completed" ? "Ready to settle payout" : "At CRP / Depot Drop-off"}
+            {run.status === "completed" ? "Ready to settle payout" : "At Depot Drop-off"}
           </p>
           <p className="text-xl font-display font-extrabold text-slate-900 mt-1">
-            {run.dropPoint?.name || "Containers for Change Drop Point"}
+            {run.dropPoint?.name || "Depot Drop Point"}
           </p>
         </div>
 
@@ -534,7 +534,7 @@ export function RunActive({
           <div className="pt-2 border-t border-slate-100 space-y-2">
             <div>
               <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                Depot / CRP Verified Count
+                Depot verified count
               </label>
               <input
                 type="number"
@@ -546,13 +546,13 @@ export function RunActive({
             </div>
             <div>
               <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                COEX / Depot Docket Reference (optional)
+                Depot docket reference (optional)
               </label>
               <input
                 type="text"
                 value={coexDocketRef}
                 onChange={(e) => setCoexDocketRef(e.target.value)}
-                placeholder="e.g. COEX-SEQ-1042"
+                placeholder="e.g. DOCKET-1042"
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-mono text-slate-900"
               />
             </div>

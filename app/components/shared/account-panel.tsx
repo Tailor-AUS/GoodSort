@@ -143,13 +143,13 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
               onClick={onClose}
               className="bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 font-semibold py-2.5 px-3 rounded-xl text-[12px] transition-colors flex items-center justify-center gap-1.5">
               <Package className="w-3.5 h-3.5 text-emerald-600" />
-              QR Bag Tags
+              Home Bag Tags
             </Link>
             <Link href="/marketplace"
               onClick={onClose}
               className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 font-semibold py-2.5 px-3 rounded-xl text-[12px] transition-colors flex items-center justify-center gap-1.5">
               <Truck className="w-3.5 h-3.5 text-emerald-600" />
-              Marketplace
+              Suburb Map
             </Link>
           </div>
 
@@ -389,8 +389,8 @@ function CashoutSection({ clearedCents, waiting }: { clearedCents: number; waiti
         <p className="text-[13px] font-semibold text-green-700">Cashout requested</p>
         <p className="text-[11px] text-green-600 mt-1">
           {payoutMethod === "payid"
-            ? "Queued for the next PayID batch run."
-            : "Queued for the next weekly ABA bank file."}
+            ? "Queued for the next PayID transfer."
+            : "Queued for the next weekly bank transfer."}
         </p>
       </div>
     );
@@ -450,7 +450,7 @@ function CashoutSection({ clearedCents, waiting }: { clearedCents: number; waiti
               : "text-slate-500 disabled:opacity-40"
           }`}
         >
-          PayID (NPP)
+          PayID
         </button>
         <button
           type="button"
@@ -550,7 +550,7 @@ function CashoutSection({ clearedCents, waiting }: { clearedCents: number; waiti
       </button>
 
       <p className="text-[10px] text-slate-400 mt-2 text-center">
-        {payoutMethod === "payid" ? "NPP PayID payout batch" : "Weekly CEMTEX ABA bank file"}
+        {payoutMethod === "payid" ? "Paid to your PayID" : "Paid by weekly bank transfer"}
       </p>
     </div>
   );

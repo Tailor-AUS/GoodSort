@@ -241,13 +241,6 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
             }} className="block mt-3 text-green-700 text-[13px] font-semibold hover:text-green-800 transition-colors">
               No container handy? Join your suburb waitlist or sign in →
             </button>
-            <a
-              href="/marketplace"
-              className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-slate-900 text-white px-4 py-2.5 text-[12px] font-bold hover:bg-slate-800 transition-colors"
-            >
-              <Truck className="w-3.5 h-3.5 text-amber-400" />
-              Explore Sorters &amp; Runners Marketplace →
-            </a>
           </div>
 
           {place && (
@@ -358,6 +351,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
         </p>
         <div className="flex justify-center gap-4 mt-2">
           <a href="/brisbane" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">Brisbane suburbs</a>
+          <a href="/marketplace" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">Suburb map</a>
           <a href="/guides/containers-for-change-brisbane" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">Containers for Change</a>
           <a href="/terms" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">Terms</a>
           <a href="/privacy" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">Privacy</a>
