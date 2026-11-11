@@ -232,12 +232,12 @@ export default function SorterApp() {
         onBinOut={async () => {
           if (!household) return;
           const next = !household.binIsOut;
-          await fetch(apiUrl(`/api/households/${household.id}/bin-out`), {
+          const res = await fetch(apiUrl(`/api/households/${household.id}/bin-out`), {
             method: "POST",
             headers: authHeaders(),
             body: JSON.stringify({ out: next }),
           }).catch(() => null);
-          setHousehold({ ...household, binIsOut: next });
+          if (res?.ok) setHousehold({ ...household, binIsOut: next });
         }}
         onScanPress={() => router.push("/scan")}
         onDataUpdate={() => { refreshData(); setSelectedBinId(null); }}

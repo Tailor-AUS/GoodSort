@@ -47,29 +47,25 @@ export default function HouseholdPage() {
     }
     const profile = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
     if (!profile.householdId) { setErr("You haven't set up a household yet."); return; }
-    fetch(apiUrl(`/api/households/${profile.householdId}`), { headers: authHeaders() })
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(setHh)
+    Promise.all([
+      fetch(apiUrl(`/api/households/${profile.householdId}`), { headers: authHeaders() }).then(r => r.ok ? r.json() : null),
+      fetch(apiUrl(`/api/households/${profile.householdId}/next-pickup`), { headers: authHeaders() }).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(apiUrl("/api/growth/brisbane")).then(r => r.ok ? r.json() : null).catch(() => null),
+    ])
+      .then(([house, pickup, g]) => {
+        if (!house) {
+          setErr("Couldn't load household.");
+          return;
+        }
+        setHh(house);
+        if (pickup?.nextPickup) setNextPickup(pickup.nextPickup);
+        setPickupConfirmed(!!pickup?.confirmed);
+        if (g?.suburbs) {
+          const match = g.suburbs.find((s: GrowthSuburb) => sameSuburb(s.suburb, house.suburb));
+          setGrowth(streetStatsForViewer(match, house.councilCollectionDay, householdCountsTowardUnlock(house)));
+        }
+      })
       .catch(() => setErr("Couldn't load household."));
-    fetch(apiUrl(`/api/households/${profile.householdId}/next-pickup`), { headers: authHeaders() })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (d?.nextPickup) setNextPickup(d.nextPickup);
-        setPickupConfirmed(!!d?.confirmed);
-      })
-      .catch(() => {});
-    fetch(apiUrl("/api/growth/brisbane"))
-      .then(r => r.ok ? r.json() : null)
-      .then(g => {
-        if (!g?.suburbs) return;
-        return fetch(apiUrl(`/api/households/${profile.householdId}`), { headers: authHeaders() })
-          .then(r => r.ok ? r.json() : null)
-          .then(house => {
-            const match = g.suburbs.find((s: GrowthSuburb) => sameSuburb(s.suburb, house?.suburb));
-            setGrowth(streetStatsForViewer(match, house?.councilCollectionDay, householdCountsTowardUnlock(house)));
-          });
-      })
-      .catch(() => {});
     setMembers([{ id: profile.id, email: profile.email, name: profile.name, totalContainers: profile.totalContainers ?? 0 }]);
   }, []);
 
@@ -198,12 +194,13 @@ function BinOutToggle({ hh, onChange }: { hh: HouseholdDetail; onChange: (v: boo
     setSaving(true);
     const next = !hh.binIsOut;
     try {
-      await fetch(apiUrl(`/api/households/${hh.id}/bin-out`), {
+      const res = await fetch(apiUrl(`/api/households/${hh.id}/bin-out`), {
         method: "POST", headers: authHeaders(),
         body: JSON.stringify({ out: next }),
       });
-      onChange(next);
-    } finally { setSaving(false); }
+      if (res.ok) onChange(next);
+    } catch { /* keep previous state when offline */ }
+    finally { setSaving(false); }
   }
   return (
     <button onClick={toggle} disabled={saving}

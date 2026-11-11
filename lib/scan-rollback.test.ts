@@ -276,6 +276,24 @@ test("an accepted scan keeps its local copy and reports the server's credit", as
   assert.equal(snapshot().scans, 1);
 });
 
+test("an accepted launch-bonus scan reconciles local pendingCents and household value to the server's credit", async () => {
+  seed();
+  signedIn();
+
+  (globalThis as Record<string, unknown>).fetch = async () =>
+    new Response(JSON.stringify({ creditedCents: 20, bonusRemaining: 19 }), { status: 200 });
+
+  const result = await addScanApi("111", "Can A", "aluminium");
+
+  assert.equal(result.refused, false);
+  assert.equal(result.creditedCents, 20);
+  const after = snapshot();
+  assert.equal(after.scans, 1);
+  assert.equal(after.pendingCents, 20);
+  assert.equal(after.hhValueCents, 20);
+  assert.equal(getUser()!.scans[0].refundCents, 20);
+});
+
 /**
  * Scans made with no signal have to survive coming back online.
  *

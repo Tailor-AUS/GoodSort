@@ -56,7 +56,7 @@ public class RunnerService
         var actualMinutes = run.StartedAt.HasValue && run.CompletedAt.HasValue
             ? (run.CompletedAt.Value - run.StartedAt.Value).TotalMinutes
             : run.EstimatedDurationMin;
-        var allowedMinutes = run.EstimatedDurationMin * 1.25;
+        var allowedMinutes = Math.Max(1.0, run.EstimatedDurationMin * 1.25);
         var timeliness = actualMinutes <= allowedMinutes
             ? 1.0
             : Math.Max(0.0, 1.0 - (actualMinutes - allowedMinutes) / allowedMinutes);
@@ -90,12 +90,14 @@ public class RunnerService
     /// <summary>
     /// Update runner profile after a completed run: stats, streak, efficiency, level, badges.
     /// </summary>
-    public async Task UpdateRunnerStats(Run run)
+    public async Task UpdateRunnerStats(Run run, DateTime? utcNow = null)
     {
         if (run.RunnerId == null) return;
 
         var runner = await _db.RunnerProfiles.FindAsync(run.RunnerId.Value);
         if (runner == null) return;
+
+        var nowUtc = utcNow ?? DateTime.UtcNow;
 
         // Update totals
         runner.TotalRuns++;
@@ -103,7 +105,7 @@ public class RunnerService
         runner.LifetimeEarningsCents += run.ActualPayoutCents;
 
         // Update streak
-        UpdateStreak(runner);
+        UpdateStreak(runner, nowUtc);
 
         // Update efficiency (containers/hour EMA, α=0.3)
         if (run.StartedAt.HasValue && run.CompletedAt.HasValue)
@@ -137,14 +139,15 @@ public class RunnerService
         // Check new badges
         UpdateBadges(runner, run);
 
-        runner.LastRunCompletedAt = DateTime.UtcNow;
+        runner.LastRunCompletedAt = nowUtc;
         await _db.SaveChangesAsync();
     }
 
     // ── Streak ────────────────────────────────────────────────────────────
 
-    private static void UpdateStreak(RunnerProfile runner)
+    public static void UpdateStreak(RunnerProfile runner, DateTime? utcNow = null)
     {
+        var nowUtc = utcNow ?? DateTime.UtcNow;
         if (runner.LastRunCompletedAt == null)
         {
             runner.CurrentStreakDays = 1;
@@ -152,12 +155,12 @@ public class RunnerService
             return;
         }
 
-        var hoursSinceLastRun = (DateTime.UtcNow - runner.LastRunCompletedAt.Value).TotalHours;
+        var hoursSinceLastRun = (nowUtc - runner.LastRunCompletedAt.Value).TotalHours;
 
         if (hoursSinceLastRun <= 36) // 1.5 day grace period
         {
-            // Only increment if it's a new calendar day
-            if (runner.LastRunCompletedAt.Value.Date < DateTime.UtcNow.Date)
+            // Increment on a new Brisbane calendar day (UTC+10), never at 10:00 AM AEST (00:00 UTC).
+            if (BrisbaneTime.TodayFor(runner.LastRunCompletedAt.Value) < BrisbaneTime.TodayFor(nowUtc))
                 runner.CurrentStreakDays++;
         }
         else
@@ -192,8 +195,8 @@ public class RunnerService
                 runner.Badges.Add(badge);
         }
 
-        // Special badges that need run context
-        if (run.StartedAt.HasValue && run.StartedAt.Value.Hour < 7 && !runner.Badges.Contains("early_bird"))
+        // Special badges that need run context (evaluated in Brisbane local time, UTC+10)
+        if (run.StartedAt.HasValue && BrisbaneTime.FromUtc(run.StartedAt.Value).Hour < 7 && !runner.Badges.Contains("early_bird"))
             runner.Badges.Add("early_bird");
 
         if (run.EstimatedDurationMin > 0 && run.StartedAt.HasValue && run.CompletedAt.HasValue)

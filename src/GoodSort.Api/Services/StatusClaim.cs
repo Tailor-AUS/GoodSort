@@ -129,6 +129,54 @@ public static class StatusClaim
     }
 
     /// <summary>
+    /// Atomically binds a profile's first household (<c>HouseholdId == null</c>),
+    /// ensuring concurrent onboarding submissions across threads or replicas cannot
+    /// create duplicate households, double-attach orphan scans, or double-credit a referrer.
+    /// </summary>
+    public static async Task<bool> TryClaimFirstHousehold(GoodSortDbContext db, Guid profileId, Guid householdId)
+    {
+        try
+        {
+            var rows = await db.Profiles
+                .Where(p => p.Id == profileId && p.HouseholdId == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(p => p.HouseholdId, householdId));
+            return rows > 0;
+        }
+        catch (InvalidOperationException)
+        {
+            return await FallbackClaim(db, async () =>
+            {
+                var profile = await db.Profiles.FirstOrDefaultAsync(p => p.Id == profileId && p.HouseholdId == null);
+                if (profile is null) return false;
+                profile.HouseholdId = householdId;
+                return true;
+            });
+        }
+    }
+
+    private static readonly SemaphoreSlim[] UserStripes =
+        Enumerable.Range(0, 64).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
+
+    /// <summary>
+    /// Serialises in-process mutations keyed to a user/profile ID using a bounded
+    /// striped semaphore array (zero per-user memory growth), preventing lost updates
+    /// on concurrent scan confirmations and concurrent household registrations.
+    /// </summary>
+    public static async Task<T> WithUserGateAsync<T>(Guid key, Func<Task<T>> work, CancellationToken ct = default)
+    {
+        var gate = UserStripes[(uint)key.GetHashCode() % (uint)UserStripes.Length];
+        await gate.WaitAsync(ct);
+        try
+        {
+            return await work();
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    /// <summary>
     /// The InMemory provider used by tests and local dev cannot translate
     /// ExecuteUpdate. Production atomicity across replicas comes from the single
     /// SQL Server UPDATE above; FallbackGate serialises in-process InMemory callers

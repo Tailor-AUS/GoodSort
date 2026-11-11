@@ -7,6 +7,7 @@ import {
   getUser as getLocalUser,
   getOrCreateDefaultUser as getLocalDefault,
   getHouseholds as getLocalHouseholds,
+  saveHouseholds as saveLocalHouseholds,
   getRoutes as getLocalRoutes,
   getDepots as getLocalDepots,
   addScan as addLocalScan,
@@ -264,7 +265,24 @@ export async function addScanApi(
       if (scanId) markScanUnsynced(scanId);
     }
 
-    if (res && typeof res.creditedCents === "number") creditedCents = res.creditedCents;
+    if (res && typeof res.creditedCents === "number") {
+      creditedCents = res.creditedCents;
+      const topScan = localUser.scans[0];
+      if (topScan && topScan.refundCents !== res.creditedCents) {
+        const delta = res.creditedCents - topScan.refundCents;
+        topScan.refundCents = res.creditedCents;
+        localUser.pendingCents = Math.max(0, localUser.pendingCents + delta);
+        saveLocalUser(localUser);
+        if (localUser.householdId) {
+          const households = getLocalHouseholds();
+          const hh = households.find((h) => h.id === localUser.householdId);
+          if (hh) {
+            hh.pendingValueCents = Math.max(0, hh.pendingValueCents + delta);
+            saveLocalHouseholds(households);
+          }
+        }
+      }
+    }
     if (res && typeof res.bonusRemaining === "number") bonusRemaining = res.bonusRemaining;
   }
 
