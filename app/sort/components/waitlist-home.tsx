@@ -130,12 +130,27 @@ export function WaitlistHome({
           <button
             type="button"
             onClick={onScanPress}
-            className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-2xl text-[14px] mb-5 flex items-center justify-center gap-2 min-h-[48px] shadow-lg shadow-green-600/20"
+            className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-2xl text-[14px] mb-3 flex items-center justify-center gap-2 min-h-[48px] shadow-lg shadow-green-600/20"
           >
             <ScanBarcode className="w-4 h-4" />
             Scan a container
           </button>
         )}
+
+        <div className="grid grid-cols-2 gap-2 mb-5">
+          <a
+            href="/bags"
+            className="rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 py-2.5 px-3 text-center text-[12px] font-bold text-emerald-900 transition-colors"
+          >
+            4-Stream QR Bag Tags
+          </a>
+          <a
+            href="/marketplace"
+            className="rounded-xl border border-slate-200 bg-slate-900 hover:bg-slate-800 py-2.5 px-3 text-center text-[12px] font-bold text-white transition-colors"
+          >
+            Sorters &amp; Runners Map
+          </a>
+        </div>
 
         {residentialNeedsStreet(household) && (
           <a href="/onboard" className="block mb-4 text-center text-[13px] font-semibold text-violet-800 bg-violet-50 border border-violet-200 rounded-xl py-3">

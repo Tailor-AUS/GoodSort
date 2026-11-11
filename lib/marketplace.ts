@@ -14,6 +14,7 @@ export interface RunnerProfile {
   vehicleType: VehicleType;
   capacityBags: number;
   serviceRadiusKm: number;
+  coexSchemeId?: string | null;
   isOnline: boolean;
   lastLat: number | null;
   lastLng: number | null;
@@ -72,6 +73,8 @@ export interface RunDetail {
   estimatedDistanceKm: number;
   estimatedDurationMin: number;
   materials: MaterialBreakdown;
+  depotVerifiedContainers?: number | null;
+  coexDocketRef?: string | null;
   expiresAt: string;
   claimedAt: string | null;
   startedAt: string | null;
@@ -86,6 +89,14 @@ export interface RunDetail {
 
 export type RunStopStatus = "pending" | "arrived" | "picked_up" | "skipped" | "issue_reported";
 
+export type DiscrepancyCode =
+  | "none"
+  | "short_count"
+  | "extra_untagged"
+  | "mixed_streams"
+  | "crushed_or_ineligible"
+  | "bag_missing";
+
 export interface RunStopDetail {
   id: string;
   runId: string;
@@ -95,6 +106,10 @@ export interface RunStopDetail {
   lng: number;
   estimatedContainers: number;
   actualContainers: number | null;
+  scannedBagCount?: number;
+  contaminationFlag?: boolean;
+  discrepancyCode?: DiscrepancyCode | string | null;
+  discrepancyNote?: string | null;
   materials: MaterialBreakdown | null;
   status: RunStopStatus;
   arrivedAt: string | null;
@@ -102,6 +117,176 @@ export interface RunStopDetail {
   photoUrl: string | null;
   sequence: number;
 }
+
+// ── 4-Stream Secondary-Sorted QR Bag Tags ──
+
+export type BagStream = "aluminium" | "pet_clear" | "pet_coloured" | "glass";
+export type BagStatus = "sealed" | "on_kerb" | "picked_up" | "verified" | "cancelled";
+
+export interface SortedBagDto {
+  id: string;
+  code: string;
+  stream: BagStream;
+  declaredContainers: number;
+  linkedScanCount: number;
+  verifiedContainers?: number | null;
+  contaminationFlag?: boolean;
+  discrepancyCode?: string | null;
+  discrepancyNote?: string | null;
+  status: BagStatus;
+  createdAt?: string;
+  kerbAt?: string | null;
+  pickedUpAt?: string | null;
+  verifiedAt?: string | null;
+}
+
+export interface MyBagsResponse {
+  hasHousehold: boolean;
+  unbaggedByStream: {
+    aluminium: number;
+    pet_clear: number;
+    pet_coloured: number;
+    glass: number;
+  };
+  bags: SortedBagDto[];
+}
+
+export interface StopManifestResponse {
+  stopId: string;
+  scannedBagCount: number;
+  bags: SortedBagDto[];
+}
+
+export interface MarketplaceSuburbPool {
+  suburb: string;
+  centroidLat: number;
+  centroidLng: number;
+  sortersCount: number;
+  pendingContainers: number;
+  targetContainers: number;
+  progressPct: number;
+  bagsSealed: number;
+  bagsOnKerb: number;
+  readyForRun: boolean;
+  estimatedRunnerBountyCents: number;
+  estimatedSorterPoolCents: number;
+}
+
+export interface MarketplaceOverview {
+  crpActive: boolean;
+  rateCard: {
+    coexGrossCents: number;
+    coexRefundCents: number;
+    coexHandlingFeeCents: number;
+    fullScaleSorterCents: number;
+    currentSorterCents: number;
+    launchBonusCents: number;
+    launchBonusCap: number;
+    containerMafiaCents: number;
+    runnerTargetCents: number;
+  };
+  stats: {
+    activeSorters: number;
+    registeredRunners: number;
+    runnersOnline: number;
+    totalContainersSorted: number;
+    bagsOnKerb: number;
+    availableRunsCount: number;
+    formingSuburbsCount: number;
+  };
+  availableRuns: Array<{
+    id: string;
+    areaName: string;
+    centroidLat: number;
+    centroidLng: number;
+    materialFocus: string;
+    estimatedContainers: number;
+    estimatedWeightKg: number;
+    perContainerCents: number;
+    estimatedPayoutCents: number;
+    pricingTier: number;
+    estimatedDistanceKm: number;
+    estimatedDurationMin: number;
+    stopCount: number;
+    expiresAt: string;
+    materials: MaterialBreakdown;
+  }>;
+  suburbPools: MarketplaceSuburbPool[];
+}
+
+export interface RunSettlementResult {
+  id: string;
+  actualPayoutCents: number;
+  actualContainers: number;
+  rating: number;
+  householdsCredited: number;
+  settlementMode: string;
+  bagsVerified: number;
+  householdPayoutCents: number;
+  containerMafiaCents: number;
+  grossRevenueDollars: number;
+  proFormaCoexGrossDollars: number;
+  netMarginDollars: number;
+}
+
+export const BAG_STREAMS: Record<
+  BagStream,
+  {
+    codePrefix: string;
+    label: string;
+    shortLabel: string;
+    rule: string;
+    badgeBg: string;
+    badgeText: string;
+    accentHex: string;
+  }
+> = {
+  aluminium: {
+    codePrefix: "ALU",
+    label: "Aluminium Cans",
+    shortLabel: "Aluminium",
+    rule: "Uncrushed 150mL–3L drink cans, empty, barcodes readable.",
+    badgeBg: "bg-sky-100",
+    badgeText: "text-sky-800",
+    accentHex: "#0369a1",
+  },
+  pet_clear: {
+    codePrefix: "CLR",
+    label: "Clear PET Plastic",
+    shortLabel: "Clear PET",
+    rule: "Clear water & soft-drink PET bottles, lids off, uncrushed.",
+    badgeBg: "bg-emerald-100",
+    badgeText: "text-emerald-800",
+    accentHex: "#047857",
+  },
+  pet_coloured: {
+    codePrefix: "COL",
+    label: "Coloured PET / HDPE / LPB",
+    shortLabel: "Coloured / Other",
+    rule: "Sprite/juice/flavoured milk HDPE & poppers, empty, lids off.",
+    badgeBg: "bg-amber-100",
+    badgeText: "text-amber-800",
+    accentHex: "#b45309",
+  },
+  glass: {
+    codePrefix: "GLS",
+    label: "Glass Bottles",
+    shortLabel: "Glass",
+    rule: "Intact beer/cider/drink bottles (no wine/spirits, no broken glass).",
+    badgeBg: "bg-purple-100",
+    badgeText: "text-purple-800",
+    accentHex: "#7e22ce",
+  },
+};
+
+export const DISCREPANCY_OPTIONS: Array<{ value: DiscrepancyCode; label: string }> = [
+  { value: "none", label: "Clean Secondary-Sorted Bag (No Issues)" },
+  { value: "short_count", label: "Short Count (fewer containers than declared)" },
+  { value: "extra_untagged", label: "Extra Untagged Containers at Kerb" },
+  { value: "mixed_streams", label: "Mixed Streams in Same Bag" },
+  { value: "crushed_or_ineligible", label: "Crushed / Wine / Milk Ineligible Items" },
+  { value: "bag_missing", label: "Tagged Bag Missing at Kerb" },
+];
 
 // ── Gamification ──
 

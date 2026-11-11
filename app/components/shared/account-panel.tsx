@@ -138,8 +138,23 @@ export function AccountPanel({ user, open, onClose }: AccountPanelProps) {
 
           <InviteFriends user={user} />
 
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <Link href="/bags"
+              onClick={onClose}
+              className="bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 font-semibold py-2.5 px-3 rounded-xl text-[12px] transition-colors flex items-center justify-center gap-1.5">
+              <Package className="w-3.5 h-3.5 text-emerald-600" />
+              QR Bag Tags
+            </Link>
+            <Link href="/marketplace"
+              onClick={onClose}
+              className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 font-semibold py-2.5 px-3 rounded-xl text-[12px] transition-colors flex items-center justify-center gap-1.5">
+              <Truck className="w-3.5 h-3.5 text-emerald-600" />
+              Marketplace
+            </Link>
+          </div>
+
           <Link href="/runner/signup"
-            className="mt-3 w-full text-slate-600 hover:text-slate-900 font-medium py-3 rounded-xl text-[13px] transition-colors flex items-center justify-center gap-2">
+            className="mt-2 w-full text-slate-600 hover:text-slate-900 font-medium py-3 rounded-xl text-[13px] transition-colors flex items-center justify-center gap-2">
             <Car className="w-4 h-4" />
             Become a Runner
           </Link>
@@ -260,38 +275,81 @@ function InviteFriends({ user: _user }: { user: User }) {
 
 function CashoutSection({ clearedCents, waiting }: { clearedCents: number; waiting?: boolean }) {
   const [showForm, setShowForm] = useState(false);
+  const [payoutMethod, setPayoutMethod] = useState<"payid" | "aba">("payid");
+  const [payIdType, setPayIdType] = useState<"email" | "phone" | "abn">("email");
+  const [payIdValue, setPayIdValue] = useState("");
   const [bsb, setBsb] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [accountName, setAccountName] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
-  const [payoutsOpen, setPayoutsOpen] = useState<boolean | null>(null);
-  // Declared with the others, above every early return. It used to sit below
-  // `if (success) return`, so the render after a successful cash-out ran one
-  // fewer hook than the render before it and React threw "Rendered fewer hooks
-  // than expected" — blanking the panel into an error boundary at the exact
-  // moment the server had already deducted the balance and written the payout
-  // row. The money moved and the member saw a crash instead of a receipt.
+  const [abaOpen, setAbaOpen] = useState<boolean | null>(null);
+  const [payIdOpen, setPayIdOpen] = useState<boolean | null>(null);
+  // Declared with the others, above every early return (see hook-order.test.ts).
   const [showHint, setShowHint] = useState(false);
 
   useEffect(() => {
     fetch(apiUrl("/api/cashout/status"))
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d && typeof d.open === "boolean") setPayoutsOpen(d.open); })
-      .catch(() => setPayoutsOpen(false));
+      .then((d) => {
+        if (d) {
+          const isAba = Boolean(d.open);
+          const isPayId = typeof d.payIdOpen === "boolean" ? d.payIdOpen : isAba;
+          setAbaOpen(isAba);
+          setPayIdOpen(isPayId);
+          if (!isPayId && isAba) setPayoutMethod("aba");
+        }
+      })
+      .catch(() => {
+        setAbaOpen(false);
+        setPayIdOpen(false);
+      });
   }, []);
 
   const minCashout = 2000; // $20 in cents
-  const canCashout = payoutsOpen === true && clearedCents >= minCashout;
+  const anyPayoutOpen = abaOpen === true || payIdOpen === true;
+  const canCashout = anyPayoutOpen && clearedCents >= minCashout;
 
   async function handleCashout() {
-    if (!canCashout || !bsb || !accountNumber || !accountName) return;
+    if (!canCashout || !accountName) return;
+    if (accountName.trim().length < 2) { setError("Please enter the account holder name"); return; }
+
+    if (payoutMethod === "payid") {
+      if (!payIdValue.trim()) { setError("Please enter your PayID"); return; }
+      setLoading(true);
+      setError("");
+      try {
+        const res = await fetch(apiUrl("/api/cashout/payid"), {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({
+            amountCents: clearedCents,
+            payIdType,
+            payIdValue: payIdValue.trim(),
+            accountName: accountName.trim(),
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setError(data.error || "PayID cashout failed");
+          setLoading(false);
+          return;
+        }
+        setSuccess(true);
+        setLoading(false);
+      } catch {
+        setError("Something went wrong");
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (!bsb || !accountNumber) return;
     const cleanBsb = bsb.replace(/\D/g, "");
     const cleanAccount = accountNumber.replace(/\D/g, "");
     if (cleanBsb.length !== 6) { setError("BSB must be 6 digits"); return; }
-    if (cleanAccount.length < 6 || cleanAccount.length > 9) { setError("Account number must be 6-9 digits"); return; }
-    if (accountName.trim().length < 2) { setError("Please enter the account holder name"); return; }
+    if (cleanAccount.length < 5 || cleanAccount.length > 9) { setError("Account number must be 5-9 digits"); return; }
     setLoading(true);
     setError("");
 
@@ -303,9 +361,9 @@ function CashoutSection({ clearedCents, waiting }: { clearedCents: number; waiti
         body: JSON.stringify({
           userId,
           amountCents: clearedCents,
-          bsb: bsb.replace(/\D/g, ""),
-          accountNumber: accountNumber.replace(/\D/g, ""),
-          accountName,
+          bsb: cleanBsb,
+          accountNumber: cleanAccount,
+          accountName: accountName.trim(),
         }),
       });
 
@@ -329,13 +387,17 @@ function CashoutSection({ clearedCents, waiting }: { clearedCents: number; waiti
       <div className="mt-6 bg-green-50 border border-green-200 rounded-xl p-4 text-center">
         <CheckCircle className="w-6 h-6 text-green-600 mx-auto mb-2" />
         <p className="text-[13px] font-semibold text-green-700">Cashout requested</p>
-        <p className="text-[11px] text-green-600 mt-1">Queued for the next weekly bank file. Not sent yet.</p>
+        <p className="text-[11px] text-green-600 mt-1">
+          {payoutMethod === "payid"
+            ? "Queued for the next PayID batch run."
+            : "Queued for the next weekly ABA bank file."}
+        </p>
       </div>
     );
   }
 
   const remaining = Math.max(0, minCashout - clearedCents);
-  const moreContainers = Math.ceil(remaining / 5); // 5c per eligible container
+  const moreContainers = Math.ceil(remaining / 5);
   if (!showForm) {
     return (
       <div className="mt-6">
@@ -349,21 +411,26 @@ function CashoutSection({ clearedCents, waiting }: { clearedCents: number; waiti
         >
           <Wallet className="w-4 h-4" />
           {canCashout
-            ? `Cash Out $${(clearedCents / 100).toFixed(2)}`
+            ? `Cash Out $${(clearedCents / 100).toFixed(2)} (PayID / BSB)`
             : `Cash Out  ·  $${(clearedCents / 100).toFixed(2)} available`}
         </button>
         {!canCashout && showHint && (
           <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl p-3 text-[12px] text-amber-900 leading-relaxed">
-            {payoutsOpen === false
-              ? <>Bank transfers are not live yet. Credits stay on your account. Keep sorting — scan is optional.</>
+            {abaOpen === false && payIdOpen === false
+              ? <>PayID &amp; bank transfers are not live yet. Credits stay safely on your account until payouts open.</>
               : waiting
-              ? <>Credits start after we collect and a depot verifies the containers. Scan is optional. Cash out from $20 once payouts are open.</>
+              ? <>Credits clear after a Runner collects your QR bags and settles the run. Cash out from $20 via PayID or BSB.</>
               : <>You need <b>$20</b> to cash out. You have <b>${(clearedCents / 100).toFixed(2)}</b>, just <b>${(remaining / 100).toFixed(2)}</b> to go (≈ {moreContainers} more container{moreContainers === 1 ? "" : "s"}).</>}
           </div>
         )}
       </div>
     );
   }
+
+  const submitDisabled =
+    loading ||
+    !accountName.trim() ||
+    (payoutMethod === "payid" ? !payIdValue.trim() : !bsb || !accountNumber);
 
   return (
     <div className="mt-6 bg-slate-50 border border-slate-200 rounded-xl p-4">
@@ -372,39 +439,102 @@ function CashoutSection({ clearedCents, waiting }: { clearedCents: number; waiti
         <button onClick={() => setShowForm(false)} className="text-slate-400 text-[11px]">Cancel</button>
       </div>
 
+      <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-200/70 rounded-lg mb-3">
+        <button
+          type="button"
+          disabled={!payIdOpen}
+          onClick={() => setPayoutMethod("payid")}
+          className={`py-1.5 rounded-md text-xs font-bold transition-all ${
+            payoutMethod === "payid"
+              ? "bg-white text-slate-900 shadow-sm"
+              : "text-slate-500 disabled:opacity-40"
+          }`}
+        >
+          PayID (NPP)
+        </button>
+        <button
+          type="button"
+          disabled={!abaOpen}
+          onClick={() => setPayoutMethod("aba")}
+          className={`py-1.5 rounded-md text-xs font-bold transition-all ${
+            payoutMethod === "aba"
+              ? "bg-white text-slate-900 shadow-sm"
+              : "text-slate-500 disabled:opacity-40"
+          }`}
+        >
+          BSB + Account
+        </button>
+      </div>
+
       <div className="space-y-2.5">
+        {payoutMethod === "payid" ? (
+          <>
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-500 mb-1">PayID Type</label>
+              <select
+                aria-label="PayID Type"
+                value={payIdType}
+                onChange={(e) => setPayIdType(e.target.value as "email" | "phone" | "abn")}
+                className="w-full border border-slate-200 bg-white rounded-lg px-3 py-2 text-sm text-slate-900"
+              >
+                <option value="email">Email Address</option>
+                <option value="phone">Mobile Number</option>
+                <option value="abn">ABN (11 digits)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-500 mb-1">PayID</label>
+              <input
+                type="text"
+                value={payIdValue}
+                onChange={(e) => setPayIdValue(e.target.value)}
+                placeholder={
+                  payIdType === "email"
+                    ? "you@example.com"
+                    : payIdType === "phone"
+                    ? "0412 345 678"
+                    : "12 345 678 901"
+                }
+                className="w-full border border-slate-200 bg-white rounded-lg px-3 py-2.5 text-sm text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-500 mb-1">BSB</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={7}
+                value={bsb}
+                onChange={(e) => setBsb(e.target.value)}
+                placeholder="000-000"
+                className="w-full border border-slate-200 bg-white rounded-lg px-3 py-2.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-500 mb-1">Account Number</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={9}
+                value={accountNumber}
+                onChange={(e) => setAccountNumber(e.target.value)}
+                placeholder="Account number"
+                className="w-full border border-slate-200 bg-white rounded-lg px-3 py-2.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+              />
+            </div>
+          </>
+        )}
         <div>
-          <label className="block text-[11px] font-semibold text-slate-500 mb-1">BSB</label>
-          <input
-            type="text"
-            inputMode="numeric"
-            maxLength={7}
-            value={bsb}
-            onChange={(e) => setBsb(e.target.value)}
-            placeholder="000-000"
-            className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
-          />
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Account Number</label>
-          <input
-            type="text"
-            inputMode="numeric"
-            maxLength={9}
-            value={accountNumber}
-            onChange={(e) => setAccountNumber(e.target.value)}
-            placeholder="Account number"
-            className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
-          />
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Account Name</label>
+          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Payee Account Name</label>
           <input
             type="text"
             value={accountName}
             onChange={(e) => setAccountName(e.target.value)}
             placeholder="John Smith"
-            className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+            className="w-full border border-slate-200 bg-white rounded-lg px-3 py-2.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
           />
         </div>
       </div>
@@ -413,14 +543,14 @@ function CashoutSection({ clearedCents, waiting }: { clearedCents: number; waiti
 
       <button
         onClick={handleCashout}
-        disabled={loading || !bsb || !accountNumber || !accountName}
+        disabled={submitDisabled}
         className="mt-3 w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3 rounded-xl text-[13px] shadow-lg shadow-green-600/20 disabled:opacity-50 min-h-[44px]"
       >
         {loading ? "Processing..." : `Transfer $${(clearedCents / 100).toFixed(2)}`}
       </button>
 
       <p className="text-[10px] text-slate-400 mt-2 text-center">
-        Weekly bank file — only after payouts are switched on.
+        {payoutMethod === "payid" ? "NPP PayID payout batch" : "Weekly CEMTEX ABA bank file"}
       </p>
     </div>
   );

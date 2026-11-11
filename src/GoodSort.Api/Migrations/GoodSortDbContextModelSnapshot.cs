@@ -720,6 +720,9 @@ namespace GoodSort.Api.Migrations
                     b.Property<DateTime?>("ClaimedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("CoexDocketRef")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("datetime2");
 
@@ -728,6 +731,9 @@ namespace GoodSort.Api.Migrations
 
                     b.Property<DateTime?>("DeliveredAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<int?>("DepotVerifiedContainers")
+                        .HasColumnType("int");
 
                     b.Property<Guid>("DropPointId")
                         .HasColumnType("uniqueidentifier");
@@ -799,6 +805,81 @@ namespace GoodSort.Api.Migrations
                     b.ToTable("Runs");
                 });
 
+            modelBuilder.Entity("GoodSort.Api.Data.Entities.RunSettlementLedger", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AreaName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<int>("BagsVerified")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CoexDocketRef")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<long>("CoexHandlingFeeBasisPoints")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("CoexRefundBasisPoints")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("ContainerMafiaCents")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("DiscrepancyStops")
+                        .HasColumnType("int");
+
+                    b.Property<long>("GrossRevenueBasisPoints")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("HouseholdPayoutCents")
+                        .HasColumnType("int");
+
+                    b.Property<long>("NetMarginBasisPoints")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ProFormaCoexGrossBasisPoints")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ProFormaCrpNetMarginBasisPoints")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("RunnerPayoutCents")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SettlementMode")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<int>("TotalPayoutCents")
+                        .HasColumnType("int");
+
+                    b.Property<int>("VerifiedContainers")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("RunId")
+                        .IsUnique();
+
+                    b.ToTable("RunSettlementLedgers");
+                });
+
             modelBuilder.Entity("GoodSort.Api.Data.Entities.RunStop", b =>
                 {
                     b.Property<Guid>("Id")
@@ -814,8 +895,17 @@ namespace GoodSort.Api.Migrations
                     b.Property<Guid>("BinId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("ContaminationFlag")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("DiscrepancyCode")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DiscrepancyNote")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("EstimatedContainers")
                         .HasColumnType("int");
@@ -837,6 +927,9 @@ namespace GoodSort.Api.Migrations
 
                     b.Property<Guid>("RunId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ScannedBagCount")
+                        .HasColumnType("int");
 
                     b.Property<int>("Sequence")
                         .HasColumnType("int");
@@ -868,6 +961,9 @@ namespace GoodSort.Api.Migrations
 
                     b.Property<int>("CapacityBags")
                         .HasColumnType("int");
+
+                    b.Property<string>("CoexSchemeId")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -1039,6 +1135,9 @@ namespace GoodSort.Api.Migrations
                     b.Property<string>("SerialId")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<Guid?>("SortedBagId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
@@ -1053,6 +1152,8 @@ namespace GoodSort.Api.Migrations
                     b.HasIndex("BinId");
 
                     b.HasIndex("HouseholdId");
+
+                    b.HasIndex("SortedBagId");
 
                     b.HasIndex("Status");
 
@@ -1076,6 +1177,90 @@ namespace GoodSort.Api.Migrations
                     b.HasKey("Name");
 
                     b.ToTable("SingletonLeases");
+                });
+
+            modelBuilder.Entity("GoodSort.Api.Data.Entities.SortedBag", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<bool>("ContaminationFlag")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatorProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("DeclaredContainers")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DiscrepancyCode")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("DiscrepancyNote")
+                        .HasMaxLength(280)
+                        .HasColumnType("nvarchar(280)");
+
+                    b.Property<Guid>("HouseholdId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("KerbAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("LinkedScanCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("PickedUpAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("PickedUpByRunnerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("RunId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("RunStopId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<string>("Stream")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<DateTime?>("VerifiedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("VerifiedContainers")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("HouseholdId");
+
+                    b.HasIndex("RunId");
+
+                    b.HasIndex("RunStopId");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("SortedBags");
                 });
 
             modelBuilder.Entity("GoodSort.Api.Data.Entities.UsedScanToken", b =>
@@ -1158,12 +1343,25 @@ namespace GoodSort.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("PayIdType")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("PayIdValue")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("PayoutMethod")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
                     b.Property<DateTime?>("ProcessedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
@@ -1171,6 +1369,8 @@ namespace GoodSort.Api.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("UserId");
+
+                    b.HasIndex("Status", "PayoutMethod");
 
                     b.ToTable("CashoutRequests");
                 });
@@ -1390,6 +1590,17 @@ namespace GoodSort.Api.Migrations
                     b.Navigation("Runner");
                 });
 
+            modelBuilder.Entity("GoodSort.Api.Data.Entities.RunSettlementLedger", b =>
+                {
+                    b.HasOne("GoodSort.Api.Data.Entities.Run", "Run")
+                        .WithMany()
+                        .HasForeignKey("RunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Run");
+                });
+
             modelBuilder.Entity("GoodSort.Api.Data.Entities.RunStop", b =>
                 {
                     b.HasOne("GoodSort.Api.Data.Entities.Bin", "Bin")
@@ -1484,6 +1695,17 @@ namespace GoodSort.Api.Migrations
                     b.Navigation("Bin");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("GoodSort.Api.Data.Entities.SortedBag", b =>
+                {
+                    b.HasOne("GoodSort.Api.Data.Entities.Household", "Household")
+                        .WithMany()
+                        .HasForeignKey("HouseholdId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Household");
                 });
 
             modelBuilder.Entity("GoodSort.Api.Services.CashoutRequest", b =>

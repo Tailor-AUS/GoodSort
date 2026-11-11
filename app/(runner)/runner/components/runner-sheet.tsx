@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Truck, CheckCircle, BarChart3, Trophy as TrophyIcon } from "lucide-react";
 import { formatCents, type User } from "@/lib/store";
-import type { MarketplaceRun, RunDetail, RunnerEarnings, LeaderboardEntry } from "@/lib/marketplace";
+import type { MarketplaceRun, RunDetail, RunnerEarnings, LeaderboardEntry, DiscrepancyCode } from "@/lib/marketplace";
 import { RunMarketplace } from "./run-marketplace";
 import { RunActive } from "./run-active";
 import { RunnerStats } from "./runner-stats";
@@ -24,15 +24,20 @@ interface RunnerSheetProps {
   onClaim: (runId: string) => void;
   onStart: () => void;
   onArrive: (stopId: string) => void;
-  onPickup: (stopId: string, count: number, photoUrl?: string) => void;
+  onPickup: (
+    stopId: string,
+    count: number,
+    photoUrl?: string,
+    discrepancy?: { contaminationFlag?: boolean; discrepancyCode?: DiscrepancyCode; discrepancyNote?: string }
+  ) => void;
   onSkip: (stopId: string) => void;
   onDeliver: () => void;
-  onComplete: () => void;
+  onComplete: (depotVerifiedContainers?: number, coexDocketRef?: string) => Promise<{ earned: number; containers: number } | null>;
   onDataUpdate: () => void;
 }
 
 export function RunnerSheet({
-  user, availableRuns, activeRun, earnings, leaderboard, runnerId, loading,
+  user: _user, availableRuns, activeRun, earnings, leaderboard, runnerId, loading,
   onClaim, onStart, onArrive, onPickup, onSkip, onDeliver, onComplete, onDataUpdate,
 }: RunnerSheetProps) {
   const [showSuccess, setShowSuccess] = useState<{ earned: number; containers: number } | null>(null);
@@ -50,20 +55,16 @@ export function RunnerSheet({
           <p className="text-4xl font-display font-extrabold text-slate-900 mb-1 animate-ka-ching tracking-tight">
             +{formatCents(showSuccess.earned)}
           </p>
-          <p className="text-slate-500 text-[13px] mt-3">{showSuccess.containers} containers collected</p>
+          <p className="text-slate-500 text-[13px] mt-3">{showSuccess.containers} containers settled to your balance</p>
         </div>
       </div>
     );
   }
 
-  const handleComplete = () => {
-    onComplete();
-    // Show success after completion
-    if (activeRun) {
-      const containers = activeRun.stops
-        .filter((s) => s.status === "picked_up")
-        .reduce((sum, s) => sum + (s.actualContainers ?? s.estimatedContainers), 0);
-      setShowSuccess({ earned: containers * activeRun.perContainerCents, containers });
+  const handleComplete = async (depotVerifiedContainers?: number, coexDocketRef?: string) => {
+    const settled = await onComplete(depotVerifiedContainers, coexDocketRef);
+    if (settled) {
+      setShowSuccess(settled);
       setTimeout(() => { setShowSuccess(null); onDataUpdate(); }, 4000);
     }
   };
@@ -144,11 +145,18 @@ export function RunnerSheet({
                 <Leaderboard entries={leaderboard} currentRunnerId={runnerId} loading={loading} />
               )}
 
-              {/* Switch to Sort */}
-              <Link href="/sort"
-                className="block text-center text-[13px] text-slate-400 hover:text-green-600 font-medium py-3 mt-3 transition-colors duration-200">
-                ← Switch to Sorter mode
-              </Link>
+              {/* Switch to Sort / Marketplace */}
+              <div className="flex items-center justify-center gap-4 py-3 mt-3">
+                <Link href="/sort"
+                  className="text-[13px] text-slate-400 hover:text-green-600 font-medium transition-colors duration-200">
+                  ← Sorter mode
+                </Link>
+                <span className="text-slate-300">·</span>
+                <Link href="/marketplace"
+                  className="text-[13px] text-emerald-600 hover:text-emerald-700 font-semibold transition-colors duration-200">
+                  Sorters &amp; Runners Marketplace →
+                </Link>
+              </div>
             </>
           )}
         </div>

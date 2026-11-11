@@ -9,6 +9,14 @@ import type {
   RunnerEarnings,
   LeaderboardEntry,
   PricingResult,
+  BagStream,
+  BagStatus,
+  SortedBagDto,
+  MyBagsResponse,
+  StopManifestResponse,
+  DiscrepancyCode,
+  MarketplaceOverview,
+  RunSettlementResult,
 } from "./marketplace.ts";
 
 // ── Helpers ──
@@ -34,13 +42,17 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T | nul
 
 function getStoredUserId(): string | null {
   if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem("goodsort_user");
-    if (!raw) return null;
-    return JSON.parse(raw)?.id ?? null;
-  } catch {
-    return null;
+  for (const key of ["goodsort_profile", "goodsort_user"]) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const id = JSON.parse(raw)?.id;
+      if (typeof id === "string" && id.length > 0) return id;
+    } catch {
+      // try next key
+    }
   }
+  return null;
 }
 
 // ── Runner Profile ──
@@ -49,11 +61,12 @@ export async function registerAsRunner(
   profileId: string,
   vehicleType?: string,
   capacityBags?: number,
-  serviceRadiusKm?: number
+  serviceRadiusKm?: number,
+  coexSchemeId?: string
 ): Promise<RunnerProfile | null> {
   return apiFetch<RunnerProfile>("/api/runner/register", {
     method: "POST",
-    body: JSON.stringify({ profileId, vehicleType, capacityBags, serviceRadiusKm }),
+    body: JSON.stringify({ profileId, vehicleType, capacityBags, serviceRadiusKm, coexSchemeId }),
   });
 }
 
@@ -65,7 +78,7 @@ export async function getRunnerProfile(profileId?: string): Promise<RunnerProfil
 
 export async function updateRunnerProfile(
   profileId: string,
-  updates: { vehicleType?: string; capacityBags?: number; serviceRadiusKm?: number }
+  updates: { vehicleType?: string; capacityBags?: number; serviceRadiusKm?: number; coexSchemeId?: string }
 ): Promise<RunnerProfile | null> {
   return apiFetch<RunnerProfile>(`/api/runner/profile/${profileId}`, {
     method: "PATCH",
@@ -83,6 +96,36 @@ export async function sendHeartbeat(lat: number, lng: number, isOnline: boolean)
     body: JSON.stringify({ profileId, lat, lng, isOnline }),
   });
   return result !== null;
+}
+
+// ── Two-Sided Sorters & Runners Marketplace Overview ──
+
+export async function getMarketplaceOverview(): Promise<MarketplaceOverview | null> {
+  return apiFetch<MarketplaceOverview>("/api/marketplace/overview");
+}
+
+// ── 4-Stream QR Bag Tags (Sorters) ──
+
+export async function getMyBags(): Promise<MyBagsResponse | null> {
+  return apiFetch<MyBagsResponse>("/api/bags/mine");
+}
+
+export async function createSortedBag(
+  stream: BagStream,
+  declaredContainers?: number,
+  putOnKerb?: boolean
+): Promise<SortedBagDto | null> {
+  return apiFetch<SortedBagDto>("/api/bags", {
+    method: "POST",
+    body: JSON.stringify({ stream, declaredContainers, putOnKerb }),
+  });
+}
+
+export async function updateBagStatus(bagId: string, status: BagStatus): Promise<SortedBagDto | null> {
+  return apiFetch<SortedBagDto>(`/api/bags/${bagId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
 }
 
 // ── Marketplace ──
@@ -114,15 +157,47 @@ export async function arriveAtStop(runId: string, stopId: string): Promise<unkno
   });
 }
 
+export async function getStopManifest(runId: string, stopId: string): Promise<StopManifestResponse | null> {
+  return apiFetch<StopManifestResponse>(`/api/marketplace/runs/${runId}/stops/${stopId}/manifest`);
+}
+
+export async function scanBagAtStop(
+  runId: string,
+  stopId: string,
+  payload: {
+    bagCode: string;
+    verifiedContainers?: number;
+    contaminationFlag?: boolean;
+    discrepancyCode?: DiscrepancyCode;
+    discrepancyNote?: string;
+  }
+): Promise<{ bag: SortedBagDto; scannedBagCount: number; stopVerifiedTotal: number } | null> {
+  return apiFetch(`/api/marketplace/runs/${runId}/stops/${stopId}/scan-bag`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function pickupStop(
   runId: string,
   stopId: string,
   actualContainers: number,
-  photoUrl?: string
+  photoUrl?: string,
+  discrepancy?: {
+    contaminationFlag?: boolean;
+    discrepancyCode?: DiscrepancyCode;
+    discrepancyNote?: string;
+  }
 ): Promise<RunDetail | null> {
   return apiFetch<RunDetail>(`/api/marketplace/runs/${runId}/stops/${stopId}/pickup`, {
     method: "POST",
-    body: JSON.stringify({ actualContainers, photoUrl }),
+    body: JSON.stringify({
+      actualContainers,
+      photoUrl,
+      contaminationFlag: discrepancy?.contaminationFlag,
+      discrepancyCode: discrepancy?.discrepancyCode,
+      discrepancyNote: discrepancy?.discrepancyNote,
+    }),
   });
 }
 
@@ -138,8 +213,19 @@ export async function deliverRun(runId: string): Promise<RunDetail | null> {
   });
 }
 
-export async function completeRun(runId: string): Promise<RunDetail | null> {
+export async function completeRun(
+  runId: string,
+  depotVerifiedContainers?: number,
+  coexDocketRef?: string
+): Promise<RunDetail | null> {
   return apiFetch<RunDetail>(`/api/marketplace/runs/${runId}/complete`, {
+    method: "POST",
+    body: JSON.stringify({ depotVerifiedContainers, coexDocketRef }),
+  });
+}
+
+export async function settleRun(runId: string): Promise<RunSettlementResult | null> {
+  return apiFetch<RunSettlementResult>(`/api/marketplace/runs/${runId}/settle`, {
     method: "POST",
   });
 }

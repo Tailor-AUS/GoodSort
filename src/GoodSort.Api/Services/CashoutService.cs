@@ -24,6 +24,9 @@ public class CashoutService
         _config["ABA_TRACE_ACCOUNT"],
         _config["ABA_USER_ID"]);
 
+    public bool PayIdPayoutsOpen() =>
+        PayoutsOpen() || string.Equals(_config["PAYID_PAYOUTS_ENABLED"], "true", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     /// Bank files stay closed until Knox sets a real ABA remitter.
     /// The old 062-000 / 12345678 placeholders must never pay anyone.
@@ -49,27 +52,12 @@ public class CashoutService
         if (bsb.Length != 6 || !bsb.All(char.IsDigit)) return (false, "Invalid BSB");
         if (accountNumber.Length < 5 || accountNumber.Length > 9 || !accountNumber.All(char.IsDigit))
             return (false, "Invalid account number");
+        if (string.IsNullOrWhiteSpace(accountName) || accountName.Trim().Length < 2)
+            return (false, "Invalid account name");
 
         var exists = await _db.Profiles.AsNoTracking().AnyAsync(p => p.Id == userId);
         if (!exists) return (false, "User not found");
 
-        // Deduct before writing the payout row, and deduct conditionally.
-        //
-        // This used to read ClearedCents, compare it, and write the difference
-        // back. Two concurrent requests both read the same balance, both pass
-        // the comparison, and both write balance-minus-amount — so the member
-        // ends up with two pending CashoutRequest rows and a single deduction.
-        // GenerateAbaFile pays every pending row, so that is a real bank
-        // transfer of money the member did not have. There is no concurrency
-        // token on Profile to catch it.
-        //
-        // Ordering is deliberate. If the payout row failed to write after a
-        // successful deduction the member would be short, which is wrong but
-        // recoverable; the reverse would pay out money that was never debited.
-        // Deduction and payout row together, or neither. The deduction commits
-        // on its own statement, so without this a failure in between debits a
-        // member and writes no payout — they are simply short, with nothing to
-        // show for it.
         return await Atomic.RunAsync(_db, async () =>
         {
             if (!await TryDeductCleared(userId, amountCents))
@@ -79,9 +67,72 @@ public class CashoutService
             {
                 UserId = userId,
                 AmountCents = amountCents,
+                PayoutMethod = "aba",
                 Bsb = bsb,
                 AccountNumber = accountNumber,
-                AccountName = accountName,
+                AccountName = accountName.Trim(),
+                Status = "pending",
+            });
+            await _db.SaveChangesAsync();
+            return (true, (string?)null);
+        });
+    }
+
+    public async Task<(bool Success, string? Error)> RequestPayIdCashout(
+        Guid userId,
+        int amountCents,
+        string payIdType,
+        string payIdValue,
+        string accountName)
+    {
+        if (!PayIdPayoutsOpen())
+            return (false, "PayID payouts are not open yet. Credits stay on your account until payouts are switched on.");
+        if (amountCents < 2000) return (false, "Minimum cash-out is $20");
+        if (string.IsNullOrWhiteSpace(accountName) || accountName.Trim().Length < 2)
+            return (false, "Invalid account name");
+
+        var normalizedType = (payIdType ?? "").Trim().ToLowerInvariant();
+        var cleanedValue = (payIdValue ?? "").Trim();
+        if (normalizedType == "email")
+        {
+            if (cleanedValue.Length is < 5 or > 128 || !cleanedValue.Contains('@') || !cleanedValue.Contains('.'))
+                return (false, "Invalid PayID email");
+        }
+        else if (normalizedType == "phone")
+        {
+            var digits = Digits(cleanedValue);
+            if (digits.Length is < 9 or > 12)
+                return (false, "Invalid PayID phone number");
+            cleanedValue = digits.StartsWith("61", StringComparison.Ordinal) ? "+" + digits : digits;
+        }
+        else if (normalizedType == "abn")
+        {
+            var digits = Digits(cleanedValue);
+            if (digits.Length != 11)
+                return (false, "PayID ABN must be 11 digits");
+            cleanedValue = digits;
+        }
+        else
+        {
+            return (false, "PayID type must be email, phone, or abn");
+        }
+
+        var exists = await _db.Profiles.AsNoTracking().AnyAsync(p => p.Id == userId);
+        if (!exists) return (false, "User not found");
+
+        return await Atomic.RunAsync(_db, async () =>
+        {
+            if (!await TryDeductCleared(userId, amountCents))
+                return (false, (string?)"Insufficient balance");
+
+            _db.Set<CashoutRequest>().Add(new CashoutRequest
+            {
+                UserId = userId,
+                AmountCents = amountCents,
+                PayoutMethod = "payid",
+                PayIdType = normalizedType,
+                PayIdValue = cleanedValue,
+                AccountName = accountName.Trim(),
                 Status = "pending",
             });
             await _db.SaveChangesAsync();
@@ -252,7 +303,7 @@ public class CashoutService
     }
 
     /// <summary>
-    /// Moves every pending payout into one batch in a single statement, so two
+    /// Moves every pending ABA payout into one batch in a single statement, so two
     /// exports cannot both take the same rows. Returns how many were claimed.
     /// </summary>
     private async Task<int> ClaimPendingInto(Guid batchId)
@@ -260,7 +311,7 @@ public class CashoutService
         try
         {
             return await _db.Set<CashoutRequest>()
-                .Where(c => c.Status == "pending")
+                .Where(c => c.Status == "pending" && (c.PayoutMethod == null || c.PayoutMethod == "" || c.PayoutMethod == "aba"))
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(c => c.Status, "processing")
                     .SetProperty(c => c.BatchId, batchId));
@@ -271,7 +322,9 @@ public class CashoutService
             // the batching correct but NOT atomic; the atomicity comes from the
             // single UPDATE above, which is what production runs.
             // SqlConcurrencyTests covers the real behaviour.
-            var rows = await _db.Set<CashoutRequest>().Where(c => c.Status == "pending").ToListAsync();
+            var rows = await _db.Set<CashoutRequest>()
+                .Where(c => c.Status == "pending" && (c.PayoutMethod == null || c.PayoutMethod == "" || c.PayoutMethod == "aba"))
+                .ToListAsync();
             foreach (var row in rows)
             {
                 row.Status = "processing";
@@ -280,6 +333,91 @@ public class CashoutService
             if (rows.Count > 0) await _db.SaveChangesAsync();
             return rows.Count;
         }
+    }
+
+    /// <summary>
+    /// Claims pending PayID payouts atomically and emits an NPP PayID batch CSV.
+    /// </summary>
+    public async Task<string> GeneratePayIdCsv()
+    {
+        if (!PayIdPayoutsOpen()) return "";
+
+        return await Atomic.RunAsync(_db, async () =>
+        {
+            var batchId = Guid.NewGuid();
+            var claimed = await ClaimPendingPayIdInto(batchId);
+            if (claimed == 0) return "";
+
+            var pending = await _db.Set<CashoutRequest>()
+                .Where(c => c.BatchId == batchId)
+                .Include(c => c.User)
+                .OrderBy(c => c.CreatedAt)
+                .ToListAsync();
+
+            if (pending.Count == 0) return "";
+
+            var now = BrisbaneTime.Now;
+            var dateStr = now.ToString("yyyy-MM-dd");
+            var sb = new StringBuilder();
+            sb.AppendLine("BatchId,DateAEST,PayeeName,PayIdType,PayIdValue,AmountDollars,AmountCents,Reference");
+
+            foreach (var cashout in pending)
+            {
+                var dollars = (cashout.AmountCents / 100m).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+                var reference = $"GOODSORT-{cashout.Id.ToString("N")[..8].ToUpperInvariant()}";
+                sb.AppendLine(string.Join(",",
+                    batchId.ToString("D"),
+                    dateStr,
+                    CsvSafeField(cashout.AccountName ?? "GOODSORT MEMBER"),
+                    CsvSafeField(cashout.PayIdType ?? ""),
+                    CsvSafeField(cashout.PayIdValue ?? "", allowLeadingPlus: true),
+                    dollars,
+                    cashout.AmountCents.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    reference));
+            }
+
+            var processedAt = DateTime.UtcNow;
+            foreach (var cashout in pending)
+                cashout.ProcessedAt = processedAt;
+            await _db.SaveChangesAsync();
+
+            return sb.ToString();
+        });
+    }
+
+    private async Task<int> ClaimPendingPayIdInto(Guid batchId)
+    {
+        try
+        {
+            return await _db.Set<CashoutRequest>()
+                .Where(c => c.Status == "pending" && c.PayoutMethod == "payid")
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(c => c.Status, "processing")
+                    .SetProperty(c => c.BatchId, batchId));
+        }
+        catch (InvalidOperationException)
+        {
+            var rows = await _db.Set<CashoutRequest>()
+                .Where(c => c.Status == "pending" && c.PayoutMethod == "payid")
+                .ToListAsync();
+            foreach (var row in rows)
+            {
+                row.Status = "processing";
+                row.BatchId = batchId;
+            }
+            if (rows.Count > 0) await _db.SaveChangesAsync();
+            return rows.Count;
+        }
+    }
+
+    private static string CsvSafeField(string raw, bool allowLeadingPlus = false)
+    {
+        var s = raw.Replace("\r", " ").Replace("\n", " ").Trim();
+        if (s.Length > 0 && (s[0] == '=' || s[0] == '-' || s[0] == '@' || (!allowLeadingPlus && s[0] == '+')))
+            s = "'" + s;
+        if (s.Contains(',') || s.Contains('"'))
+            return "\"" + s.Replace("\"", "\"\"") + "\"";
+        return s;
     }
 
     private static string Digits(string? raw) =>
@@ -301,9 +439,12 @@ public class CashoutRequest
     public Guid UserId { get; set; }
     public Profile User { get; set; } = null!;
     public int AmountCents { get; set; }
+    public string PayoutMethod { get; set; } = "aba";
     public string? Bsb { get; set; }
     public string? AccountNumber { get; set; }
     public string? AccountName { get; set; }
+    public string? PayIdType { get; set; }
+    public string? PayIdValue { get; set; }
     public string Status { get; set; } = "pending";
 
     /// <summary>

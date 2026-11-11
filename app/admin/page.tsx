@@ -40,11 +40,64 @@ interface Stats {
   };
 }
 
+interface CrpLedgerEntry {
+  id: string;
+  runId: string;
+  areaName: string;
+  settlementMode: string;
+  coexDocketRef?: string | null;
+  verifiedContainers: number;
+  bagsVerified: number;
+  discrepancyStops: number;
+  grossRevenueDollars: number;
+  proFormaCoexGrossDollars: number;
+  householdPayoutCents: number;
+  containerMafiaCents: number;
+  runnerPayoutCents: number;
+  totalPayoutCents: number;
+  netMarginDollars: number;
+  proFormaCrpNetMarginDollars: number;
+  createdAt: string;
+}
+
+interface CrpLedgerData {
+  crpActive: boolean;
+  activeHouseholdRateCents: number;
+  payouts: {
+    abaOpen: boolean;
+    payIdOpen: boolean;
+    pendingAbaCount: number;
+    pendingAbaCents: number;
+    pendingPayIdCount: number;
+    pendingPayIdCents: number;
+  };
+  bags: {
+    totalSealed: number;
+    onKerb: number;
+  };
+  totals: {
+    settledRuns: number;
+    verifiedContainers: number;
+    bagsVerified: number;
+    discrepancyStops: number;
+    grossRevenueDollars: number;
+    proFormaCoexGrossDollars: number;
+    householdPayoutCents: number;
+    containerMafiaCents: number;
+    runnerPayoutCents: number;
+    totalPayoutCents: number;
+    netMarginDollars: number;
+    proFormaCrpNetMarginDollars: number;
+  };
+  entries: CrpLedgerEntry[];
+}
+
 export default function AdminPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [denied, setDenied] = useState(false);
   const [funnel, setFunnel] = useState<Funnel | null>(null);
+  const [crpLedger, setCrpLedger] = useState<CrpLedgerData | null>(null);
   const [readyDays, setReadyDays] = useState<{ suburb: string; dayName: string }[]>([]);
   const [stalledHouseholds, setStalledHouseholds] = useState(0);
   const [resetting, setResetting] = useState(false);
@@ -75,6 +128,10 @@ export default function AdminPage() {
     fetch(apiUrl("/api/admin/funnel"), { headers })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (d) setFunnel(d); })
+      .catch(() => {});
+    fetch(apiUrl("/api/admin/crp-ledger"), { headers })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setCrpLedger(d); })
       .catch(() => {});
     fetch(apiUrl("/api/admin/waitlist"), { headers })
       .then((r) => (r.ok ? r.json() : null))
@@ -132,9 +189,15 @@ export default function AdminPage() {
     const token = localStorage.getItem("goodsort_token");
     const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
     const res = await fetch(apiUrl("/api/admin/aba-export"), { headers });
+    const contentType = res.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.message || data.error || "No pending ABA cashouts to export");
+      return;
+    }
     const text = await res.text();
     if (!text || text.includes("No pending")) {
-      alert("No pending cashouts to export");
+      alert("No pending ABA cashouts to export");
       return;
     }
     const blob = new Blob([text], { type: "text/plain" });
@@ -143,6 +206,31 @@ export default function AdminPage() {
     a.href = url;
     a.download = `goodsort-payouts-${new Date().toISOString().split("T")[0]}.aba`;
     a.click();
+    loadDashboard();
+  }
+
+  async function exportPayIdCsv() {
+    const token = localStorage.getItem("goodsort_token");
+    const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+    const res = await fetch(apiUrl("/api/admin/payid-export"), { headers });
+    const contentType = res.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.message || data.error || "No pending PayID cashouts to export");
+      return;
+    }
+    const text = await res.text();
+    if (!text || text.includes("No pending")) {
+      alert("No pending PayID cashouts to export");
+      return;
+    }
+    const blob = new Blob([text], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `goodsort-payid-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    loadDashboard();
   }
 
   if (loading) return <div className="min-h-dvh bg-white flex items-center justify-center"><p className="text-slate-400">Loading...</p></div>;
@@ -304,8 +392,162 @@ export default function AdminPage() {
           </div>
         )}
 
+        {crpLedger && (
+          <div className="bg-white rounded-xl p-5 border border-violet-200 mb-8 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-violet-700">
+                  COEX Secondary-Sorted CRP Settlement Ledger (17.68¢/can)
+                </p>
+                <p className="text-[14px] font-extrabold text-slate-900">
+                  10.00¢ COEX Refund + 7.68¢ Handling = 17.68¢ → {crpLedger.activeHouseholdRateCents}¢ Sorter · 1¢ Mafia · 3¢ Runner · +3.68¢ CRP Margin
+                </p>
+              </div>
+              <span
+                className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-bold border ${
+                  crpLedger.crpActive
+                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                    : "bg-amber-50 text-amber-800 border-amber-200"
+                }`}
+              >
+                {crpLedger.crpActive ? "COEX CRP Active (10¢ Sorter)" : "CRP Building — Pre-CCA Mode (5¢ base + pro-forma 17.68¢)"}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-2.5 mb-4">
+              <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                <p className="text-lg font-display font-extrabold text-slate-900">{crpLedger.totals.settledRuns}</p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Settled Runs</p>
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                <p className="text-lg font-display font-extrabold text-slate-900">{crpLedger.totals.verifiedContainers}</p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Verified Cans</p>
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                <p className="text-lg font-display font-extrabold text-violet-700">{crpLedger.totals.bagsVerified}</p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">QR Bags Scanned</p>
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                <p className="text-lg font-display font-extrabold text-slate-900">
+                  {crpLedger.bags.onKerb} / {crpLedger.bags.totalSealed}
+                </p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">On Kerb / Sealed</p>
+              </div>
+              <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-100">
+                <p className="text-lg font-display font-extrabold text-emerald-800">
+                  ${crpLedger.totals.proFormaCoexGrossDollars.toFixed(2)}
+                </p>
+                <p className="text-[10px] text-emerald-700 uppercase tracking-wider">17.68¢ Gross</p>
+              </div>
+              <div className="bg-violet-50 rounded-lg p-3 border border-violet-100">
+                <p className="text-lg font-display font-extrabold text-violet-800">
+                  ${crpLedger.totals.proFormaCrpNetMarginDollars.toFixed(2)}
+                </p>
+                <p className="text-[10px] text-violet-700 uppercase tracking-wider">+3.68¢ Margin</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 mb-4">
+              <div className="flex items-center justify-between bg-slate-50 rounded-xl p-3 border border-slate-200">
+                <div>
+                  <p className="text-[12px] font-bold text-slate-900">
+                    Pending ABA Batch: {crpLedger.payouts.pendingAbaCount} ($
+                    {(crpLedger.payouts.pendingAbaCents / 100).toFixed(2)})
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    {crpLedger.payouts.abaOpen ? "ABA gate open" : "Gate closed (PAYOUTS_ENABLED=false)"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={exportAba}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-[11px] font-bold text-white hover:bg-slate-800"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Export .ABA
+                </button>
+              </div>
+              <div className="flex items-center justify-between bg-slate-50 rounded-xl p-3 border border-slate-200">
+                <div>
+                  <p className="text-[12px] font-bold text-slate-900">
+                    Pending NPP PayID Batch: {crpLedger.payouts.pendingPayIdCount} ($
+                    {(crpLedger.payouts.pendingPayIdCents / 100).toFixed(2)})
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    {crpLedger.payouts.payIdOpen ? "PayID gate open" : "Gate closed (PAYID_PAYOUTS_ENABLED=false)"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={exportPayIdCsv}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-[11px] font-bold text-white hover:bg-violet-700"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Export PayID .CSV
+                </button>
+              </div>
+            </div>
+
+            {crpLedger.entries.length > 0 && (
+              <div className="overflow-x-auto border-t border-slate-100 pt-3">
+                <table className="w-full text-left text-[12px]">
+                  <thead>
+                    <tr className="text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                      <th className="py-1.5 pr-2">Suburb Run</th>
+                      <th className="py-1.5 pr-2">Docket</th>
+                      <th className="py-1.5 pr-2">Cans</th>
+                      <th className="py-1.5 pr-2">Bags</th>
+                      <th className="py-1.5 pr-2">Payouts (S/M/R)</th>
+                      <th className="py-1.5 text-right">CRP Margin</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {crpLedger.entries.slice(0, 8).map((entry) => (
+                      <tr key={entry.id} className="border-b border-slate-50 last:border-0">
+                        <td className="py-2 pr-2 font-semibold text-slate-800">{entry.areaName}</td>
+                        <td className="py-2 pr-2 font-mono text-[11px] text-slate-500">
+                          {entry.coexDocketRef || "—"}
+                        </td>
+                        <td className="py-2 pr-2 text-slate-700">{entry.verifiedContainers}</td>
+                        <td className="py-2 pr-2 text-slate-700">
+                          {entry.bagsVerified}
+                          {entry.discrepancyStops > 0 ? ` (${entry.discrepancyStops}⚠)` : ""}
+                        </td>
+                        <td className="py-2 pr-2 text-slate-600">
+                          ${(entry.householdPayoutCents / 100).toFixed(2)} / $
+                          {(entry.containerMafiaCents / 100).toFixed(2)} / $
+                          {(entry.runnerPayoutCents / 100).toFixed(2)}
+                        </td>
+                        <td className="py-2 text-right font-bold text-violet-700">
+                          +${entry.proFormaCrpNetMarginDollars.toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Actions */}
         <div className="space-y-3">
+          <Link href="/marketplace"
+            className="flex items-center gap-3 w-full bg-white rounded-xl p-4 border border-slate-200 hover:border-green-300 transition-colors text-left">
+            <MapPin className="w-5 h-5 text-emerald-600" />
+            <div>
+              <p className="text-[14px] font-semibold text-slate-900">Sorters &amp; Runners Marketplace</p>
+              <p className="text-[12px] text-slate-400">Live Brisbane suburb bounties, forming 1,000-can pools, 4-stream rules &amp; leaderboard</p>
+            </div>
+          </Link>
+          <Link href="/bags"
+            className="flex items-center gap-3 w-full bg-white rounded-xl p-4 border border-slate-200 hover:border-green-300 transition-colors text-left">
+            <Printer className="w-5 h-5 text-violet-600" />
+            <div>
+              <p className="text-[14px] font-semibold text-slate-900">4-Stream Printable &amp; Mobile QR Bag Tags</p>
+              <p className="text-[12px] text-slate-400">Aluminium, Clear PET, Coloured PET &amp; Glass QR tags linked to scanned containers</p>
+            </div>
+          </Link>
           <Link href="/admin/users"
             className="flex items-center gap-3 w-full bg-white rounded-xl p-4 border border-slate-200 hover:border-green-300 transition-colors text-left">
             <MapPin className="w-5 h-5 text-green-600" />
@@ -343,7 +585,15 @@ export default function AdminPage() {
             <Download className="w-5 h-5 text-green-600" />
             <div>
               <p className="text-[14px] font-semibold text-slate-900">Export ABA File</p>
-              <p className="text-[12px] text-slate-400">Download bank transfer file for pending cashouts</p>
+              <p className="text-[12px] text-slate-400">Download Australian BSB/account batch file (.aba) for pending bank cashouts</p>
+            </div>
+          </button>
+          <button onClick={exportPayIdCsv}
+            className="flex items-center gap-3 w-full bg-white rounded-xl p-4 border border-slate-200 hover:border-violet-300 transition-colors text-left">
+            <Download className="w-5 h-5 text-violet-600" />
+            <div>
+              <p className="text-[14px] font-semibold text-slate-900">Export NPP PayID CSV</p>
+              <p className="text-[12px] text-slate-400">Download instant PayID (Email / Phone / ABN) batch CSV for pending cashouts</p>
             </div>
           </button>
           <button onClick={resetBaseline} disabled={resetting}

@@ -134,10 +134,27 @@ export function SorterSheet({
               )}
 
               <button onClick={onScanPress}
-                className="w-full bg-white border border-slate-200 text-slate-700 font-semibold py-3 rounded-2xl text-[13px] mb-4 flex items-center justify-center gap-2 min-h-[44px]">
+                className="w-full bg-white border border-slate-200 text-slate-700 font-semibold py-3 rounded-2xl text-[13px] mb-2.5 flex items-center justify-center gap-2 min-h-[44px]">
                 <ScanBarcode className="w-4 h-4" />
                 Optional: photo a container
               </button>
+
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                <Link
+                  href="/bags"
+                  className="bg-violet-50 border border-violet-200 text-violet-900 font-bold py-2.5 px-3 rounded-xl text-[12px] flex items-center justify-center gap-1.5 min-h-[42px] hover:bg-violet-100"
+                >
+                  <QrCode className="w-3.5 h-3.5 text-violet-700" />
+                  4-Stream QR Bag Tags
+                </Link>
+                <Link
+                  href="/marketplace"
+                  className="bg-emerald-50 border border-emerald-200 text-emerald-900 font-bold py-2.5 px-3 rounded-xl text-[12px] flex items-center justify-center gap-1.5 min-h-[42px] hover:bg-emerald-100"
+                >
+                  <MapPin className="w-3.5 h-3.5 text-emerald-700" />
+                  Sorters &amp; Runners Map
+                </Link>
+              </div>
 
               {/* Expandable content below the fold */}
               {isExpanded && (
