@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Users, ChevronRight } from "lucide-react";
 import { apiUrl, authHeaders, hasValidToken, readStoredProfile, readStoredProfileId } from "@/lib/config";
@@ -110,13 +111,13 @@ export default function InvitePage() {
         <p className="text-[12px] text-slate-400 text-center mb-3">
           Build your Container Mafia: earn $1 when a neighbour joins plus a 1¢ cut on every container they sort. Send this to three neighbours to build suburb volume.
         </p>
-        <a
+        <Link
           href="/flyer"
           className="block text-center text-[12px] font-semibold text-emerald-700 hover:text-emerald-900 mb-6"
         >
           Print Home Sorting Guide &amp; Street Flyer →
-        </a>
-        <button onClick={() => router.push("/sort")}
+        </Link>
+        <button type="button" onClick={() => router.push("/sort")}
           className="w-full text-green-700 font-semibold text-[14px] py-3 flex items-center justify-center gap-1">
           Continue to scan <ChevronRight className="w-4 h-4" />
         </button>

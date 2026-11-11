@@ -2,15 +2,23 @@
 
 import { useEffect, useId, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Recycle, Check } from "lucide-react";
-import { apiUrl, authHeaders, hasValidToken, clearAuth, readDayHint, readPlaceHint, readStoredProfile, readStoredProfileId, writePlaceHint } from "@/lib/config";
+import { ArrowLeft, Building2, Mail, Recycle, Check, ShieldCheck } from "lucide-react";
+import { apiUrl, authHeaders, hasValidToken, clearAuth, persistWaitlistFromUrl, readDayHint, readPlaceHint, readReferrerId, readStoredProfile, readStoredProfileId, writePlaceHint } from "@/lib/config";
 import { track } from "@/lib/analytics";
-import { canonicalSuburb, DAY_NAMES, inviteMessage, streetInviteUrl, residentialNeedsStreet } from "@/lib/brisbane";
+import { canonicalSuburb, inviteMessage, streetInviteUrl, residentialNeedsStreet } from "@/lib/brisbane";
 import { AddressAutocomplete, geocodeAddress } from "@/app/components/shared/address-autocomplete";
 import { InviteActions } from "@/app/components/shared/invite-actions";
 import { PayoutFields, validateClientPayout, type PayIdTypeChoice, type PayoutMethodChoice } from "@/app/components/shared/post-scan-setup";
 
-type Step = "place" | "unit_waitlist";
+type Step = "place" | "auth" | "verify" | "unit_waitlist";
+type PendingPlaceSubmit = {
+  address: string;
+  lat: number;
+  lng: number;
+  suburb: string | null;
+  day: number;
+  area: string | null;
+};
 
 export default function OnboardPage() {
   const onboardFieldId = useId();
@@ -40,9 +48,21 @@ export default function OnboardPage() {
   const [accountNumber, setAccountNumber] = useState("");
   const [accountName, setAccountName] = useState("");
   const [accountNameTouched, setAccountNameTouched] = useState(false);
+  const [authEmail, setAuthEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [devCode, setDevCode] = useState("");
+  const [resendIn, setResendIn] = useState(0);
+  const [pendingSubmit, setPendingSubmit] = useState<PendingPlaceSubmit | null>(null);
   const router = useRouter();
 
   useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
+
+  useEffect(() => {
+    persistWaitlistFromUrl();
     try { setSuburbHint(sessionStorage.getItem("goodsort_suburb_hint")); } catch { /* ignore */ }
     const hinted = readDayHint();
     if (hinted != null) { setCollectionDay(hinted); setDayAuto(true); }
@@ -69,7 +89,10 @@ export default function OnboardPage() {
         setName(initialName);
         setAccountName(initialName);
       }
-      if (emailStr) setPayIdValue(emailStr);
+      if (emailStr) {
+        setPayIdValue(emailStr);
+        setAuthEmail(emailStr);
+      }
 
       const applyExistingHousehold = (hhId: string) => {
         fetch(apiUrl(`/api/households/${hhId}`), { headers: authHeaders() })
@@ -159,13 +182,16 @@ export default function OnboardPage() {
     return { day: 0, area: councilArea };
   }
 
-  async function handleResidentialSubmit(override?: { address?: string; lat?: number; lng?: number; suburb?: string | null; day?: number; area?: string | null }) {
+  async function handleResidentialSubmit(override?: { address?: string; lat?: number; lng?: number; suburb?: string | null; day?: number; area?: string | null; tokenOverride?: string }) {
     const addr = override?.address ?? address;
     const la = override?.lat ?? lat;
     const ln = override?.lng ?? lng;
     const suburb = canonicalSuburb(override?.suburb) ?? canonicalSuburb(pickedSuburb) ?? canonicalSuburb(suburbHint);
     const effectiveDay = override?.day ?? collectionDay ?? 0;
     const effectiveArea = override?.area !== undefined ? override.area : councilArea;
+    const requestHeaders = override?.tokenOverride
+      ? { "Content-Type": "application/json", Authorization: `Bearer ${override.tokenOverride}` }
+      : authHeaders();
     if (!addr || la == null || ln == null) { setError("Pick your address."); return; }
     if (!accessConsent) { setError("Tick the box so we can tell you when to bag out."); return; }
     const hasEnteredPayout = payoutMethod === "payid" ? Boolean(payIdValue.trim()) : Boolean(bsb.trim() || accountNumber.trim());
@@ -180,11 +206,14 @@ export default function OnboardPage() {
       });
       if (payoutErr) { setError(payoutErr); return; }
     }
-    if (!hasValidToken()) {
-      writePlaceHint({ address: addr, lat: la, lng: ln, suburb, councilArea });
-      clearAuth();
-      setError("Your session expired — please sign in again.");
-      router.push("/login");
+    if (!override?.tokenOverride && !hasValidToken()) {
+      writePlaceHint({ address: addr, lat: la, lng: ln, suburb, councilArea: effectiveArea });
+      setPendingSubmit({ address: addr, lat: la, lng: ln, suburb, day: effectiveDay, area: effectiveArea });
+      if (!authEmail && payoutMethod === "payid" && payIdType === "email" && payIdValue.includes("@")) {
+        setAuthEmail(payIdValue.trim());
+      }
+      setError("");
+      setStep("auth");
       return;
     }
     setLoading(true); setError("");
@@ -193,7 +222,7 @@ export default function OnboardPage() {
       const profile = readStoredProfile();
       const existingId = typeof profile.householdId === "string" && profile.householdId ? profile.householdId : null;
       const hhRes = await fetch(apiUrl(existingId ? `/api/households/${existingId}/street` : "/api/households"), {
-        method: existingId ? "PATCH" : "POST", headers: authHeaders(),
+        method: existingId ? "PATCH" : "POST", headers: requestHeaders,
         body: JSON.stringify(existingId ? {
           address: addr, lat: la, lng: ln,
           suburb,
@@ -239,7 +268,7 @@ export default function OnboardPage() {
 
       if (typeof profile.id === "string" && profile.id) {
         await fetch(apiUrl(`/api/profiles/${profile.id}`), {
-          method: "PATCH", headers: authHeaders(),
+          method: "PATCH", headers: requestHeaders,
           body: JSON.stringify({ name, householdId: hh.id }),
         });
       }
@@ -250,7 +279,7 @@ export default function OnboardPage() {
         const holder = accountName.trim() || name.trim();
         const payRes = await fetch(apiUrl("/api/profiles/me/payout"), {
           method: "PUT",
-          headers: authHeaders(),
+          headers: requestHeaders,
           body: JSON.stringify({
             method: payoutMethod,
             payIdType: payoutMethod === "payid" ? payIdType : null,
@@ -284,14 +313,25 @@ export default function OnboardPage() {
     }
   }
 
-  async function handleUnitWaitlist(overrideLat?: number, overrideLng?: number) {
+  async function handleUnitWaitlist(overrideLat?: number, overrideLng?: number, tokenOverride?: string) {
     const la = overrideLat ?? lat;
     const ln = overrideLng ?? lng;
     if (!address || la == null || ln == null || !buildingName) { setError("Enter your building name and address."); return; }
+    if (!tokenOverride && !hasValidToken()) {
+      const suburb = canonicalSuburb(pickedSuburb) ?? canonicalSuburb(suburbHint);
+      writePlaceHint({ address, lat: la, lng: ln, suburb, councilArea });
+      setPendingSubmit({ address, lat: la, lng: ln, suburb, day: collectionDay ?? 0, area: councilArea });
+      setError("");
+      setStep("auth");
+      return;
+    }
+    const requestHeaders = tokenOverride
+      ? { "Content-Type": "application/json", Authorization: `Bearer ${tokenOverride}` }
+      : authHeaders();
     setLoading(true); setError("");
     try {
       const res = await fetch(apiUrl("/api/waitlist/unit-complex"), {
-        method: "POST", headers: authHeaders(),
+        method: "POST", headers: requestHeaders,
         body: JSON.stringify({
           buildingName,
           address,
@@ -343,6 +383,185 @@ export default function OnboardPage() {
     }
     const { day: resolvedDay, area: resolvedArea } = await lookupBinDayOnce(la, ln, resolved);
     await handleResidentialSubmit({ address: resolved, lat: la, lng: ln, suburb, day: resolvedDay, area: resolvedArea });
+  }
+
+  async function sendOtp(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    if (!authEmail.trim().includes("@")) {
+      setError("Enter a valid email address.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(apiUrl("/api/auth/send-otp"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: authEmail.trim() }),
+      });
+      const data = await res.json().catch(() => ({} as { error?: string; devCode?: string }));
+      if (!res.ok) {
+        setError(typeof data.error === "string" && data.error ? data.error : "Couldn't send code");
+        setLoading(false);
+        return;
+      }
+      if (typeof data.devCode === "string" && data.devCode.length === 6) {
+        setDevCode(data.devCode);
+        setOtp(data.devCode);
+      } else {
+        setDevCode("");
+      }
+      track("otp_sent");
+      setResendIn(30);
+      setStep("verify");
+    } catch {
+      setError("Something went wrong");
+    }
+    setLoading(false);
+  }
+
+  async function verifyOtp(e: React.FormEvent) {
+    e.preventDefault();
+    if (otp.length < 6) return;
+    setLoading(true);
+    setError("");
+    try {
+      const referrerId = readReferrerId();
+      const res = await fetch(apiUrl("/api/auth/verify-otp"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: authEmail.trim(), code: otp, referrerId }),
+      });
+      const data = await res.json().catch(() => ({} as { error?: string; token?: string; profile?: Record<string, unknown> }));
+      if (!res.ok || !data.token || !data.profile) {
+        setError(typeof data.error === "string" && data.error ? data.error : "Verification failed. Please try again.");
+        setLoading(false);
+        return;
+      }
+      localStorage.setItem("goodsort_token", data.token);
+      localStorage.setItem("goodsort_profile", JSON.stringify(data.profile));
+      document.cookie = `goodsort_token=${data.token}; path=/; max-age=${30 * 24 * 60 * 60}; SameSite=Lax; Secure`;
+      track("otp_verified");
+      if (type === "unit_complex") {
+        await handleUnitWaitlist(pendingSubmit?.lat, pendingSubmit?.lng, data.token);
+      } else {
+        await handleResidentialSubmit({
+          address: pendingSubmit?.address,
+          lat: pendingSubmit?.lat,
+          lng: pendingSubmit?.lng,
+          suburb: pendingSubmit?.suburb,
+          day: pendingSubmit?.day,
+          area: pendingSubmit?.area,
+          tokenOverride: data.token,
+        });
+      }
+    } catch {
+      setError("Verification failed");
+      setLoading(false);
+    }
+  }
+
+  if (step === "auth") {
+    return (
+      <Shell
+        icon={Mail}
+        title="Verify your email"
+        sub="We'll send a 6-digit code to link your household pickup address and sorting credits."
+      >
+        <form onSubmit={sendOtp} className="space-y-4">
+          <div>
+            <label htmlFor={`${onboardFieldId}-auth-email`} className="block text-[13px] font-semibold text-slate-700 mb-1.5">
+              Email address
+            </label>
+            <input
+              id={`${onboardFieldId}-auth-email`}
+              type="email"
+              value={authEmail}
+              onChange={(e) => setAuthEmail(e.target.value)}
+              placeholder="you@example.com"
+              autoFocus
+              required
+              className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+            />
+          </div>
+          {error && <p className="text-red-500 text-[13px]">{error}</p>}
+          <button
+            type="submit"
+            disabled={loading || !authEmail.includes("@")}
+            className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20 disabled:opacity-50 min-h-[48px]"
+          >
+            {loading ? "Sending code..." : "Send verification code"}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setError(""); setStep("place"); }}
+            className="w-full inline-flex items-center justify-center gap-1.5 text-[13px] text-slate-500 hover:text-slate-700 font-medium py-2"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" /> Back to address details
+          </button>
+        </form>
+      </Shell>
+    );
+  }
+
+  if (step === "verify") {
+    return (
+      <Shell
+        icon={ShieldCheck}
+        title="Check your email"
+        sub={`Enter the 6-digit code sent to ${authEmail}`}
+      >
+        <form onSubmit={verifyOtp} className="space-y-4">
+          {devCode && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
+              <p className="text-amber-700 text-[11px] font-medium mb-1">Dev mode — code auto-filled</p>
+              <p className="text-amber-900 font-mono font-bold text-lg tracking-widest">{devCode}</p>
+            </div>
+          )}
+          <div>
+            <label htmlFor={`${onboardFieldId}-otp`} className="sr-only">
+              6-digit verification code
+            </label>
+            <input
+              id={`${onboardFieldId}-otp`}
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={otp}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+              placeholder="000000"
+              autoFocus
+              className="w-full border border-slate-200 rounded-xl px-4 py-4 text-center text-2xl font-mono font-bold tracking-[0.3em] text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+            />
+          </div>
+          {error && <p className="text-red-500 text-[13px] text-center">{error}</p>}
+          <button
+            type="submit"
+            disabled={loading || otp.length < 6}
+            className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20 disabled:opacity-50 min-h-[48px]"
+          >
+            {loading ? "Saving your street..." : "Verify & Start Scanning"}
+          </button>
+          <div className="flex items-center justify-between text-[13px]">
+            <button
+              type="button"
+              onClick={() => { setStep("auth"); setOtp(""); setError(""); }}
+              className="text-slate-500 hover:text-slate-700 py-1"
+            >
+              Change email
+            </button>
+            <button
+              type="button"
+              onClick={() => void sendOtp()}
+              disabled={resendIn > 0 || loading}
+              className="text-green-600 font-semibold disabled:text-slate-300 py-1"
+            >
+              {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
+            </button>
+          </div>
+        </form>
+      </Shell>
+    );
   }
 
   if (step === "place") return (
@@ -478,7 +697,7 @@ export default function OnboardPage() {
       <div className="mb-4">
         <InviteActions url={inviteUrl} message={inviteMessage(inviteUrl, place)} />
       </div>
-      <button onClick={() => router.push("/sort")}
+      <button type="button" onClick={() => router.push("/sort")}
         className="w-full bg-slate-100 hover:bg-slate-200 text-slate-900 font-semibold py-3.5 rounded-xl text-[15px] min-h-[48px]">Done</button>
     </Shell>
     );
@@ -506,7 +725,7 @@ function Shell({ icon: Icon, title, sub, children }: { icon: React.ElementType; 
 
 function Continue({ onClick, disabled, label = "Continue" }: { onClick: () => void; disabled?: boolean; label?: string }) {
   return (
-    <button onClick={onClick} disabled={disabled}
+    <button type="button" onClick={onClick} disabled={disabled}
       className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20 disabled:opacity-50 transition-all min-h-[48px]">
       {label}
     </button>

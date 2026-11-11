@@ -29,6 +29,7 @@ const MAX_DEPOT_CONTAINERS = 50_000;
 interface RunActiveProps {
   run: RunDetail;
   onStart: () => void;
+  onRelease?: () => void;
   onArrive: (stopId: string) => void;
   onPickup: (
     stopId: string,
@@ -48,6 +49,7 @@ interface RunActiveProps {
 export function RunActive({
   run,
   onStart,
+  onRelease,
   onArrive,
   onPickup,
   onSkip,
@@ -73,7 +75,7 @@ export function RunActive({
   const currentStopId = currentStop?.id ?? null;
   const completedStops = run.stops.filter((s) => s.status === "picked_up").length;
   const totalStops = run.stops.length;
-  const allDone = run.stops.every((s) => s.status === "picked_up" || s.status === "skipped");
+  const allDone = totalStops > 0 && run.stops.every((s) => s.status === "picked_up" || s.status === "skipped");
 
   const loadManifest = useCallback(async (stopId: string) => {
     const res = await getStopManifest(run.id, stopId);
@@ -208,6 +210,15 @@ export function RunActive({
         >
           Start Collection
         </button>
+        {onRelease && (
+          <button
+            type="button"
+            onClick={onRelease}
+            className="w-full mt-2 py-2.5 text-[13px] font-semibold text-slate-500 hover:text-slate-700 min-h-[44px]"
+          >
+            Can&apos;t make it? Release Run
+          </button>
+        )}
       </>
     );
   }

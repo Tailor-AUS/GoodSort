@@ -151,6 +151,12 @@ export async function startRun(runId: string): Promise<RunDetail | null> {
   });
 }
 
+export async function releaseRun(runId: string): Promise<{ released: boolean; id: string; status: string } | null> {
+  return apiFetch<{ released: boolean; id: string; status: string }>(`/api/marketplace/runs/${runId}/release`, {
+    method: "POST",
+  });
+}
+
 export async function arriveAtStop(runId: string, stopId: string): Promise<unknown> {
   return apiFetch(`/api/marketplace/runs/${runId}/stops/${stopId}/arrive`, {
     method: "POST",
