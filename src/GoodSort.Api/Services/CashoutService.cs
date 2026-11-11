@@ -9,6 +9,9 @@ public class CashoutService
 {
     public const string PlaceholderTraceBsb = "062000";
     public const int MaxSingleCashoutCents = 99_999_999; // $999,999.99 (also fits 10-digit Cemtex ABA Amount field)
+    // 99 * 99_999_999 = 9_899_999_901 <= 9_999_999_999, guaranteeing Cemtex Record 7
+    // 10-digit File Total (cols 21-30 & 31-40) and 6-digit Record Count (cols 75-80) never overflow 120 chars.
+    public const int MaxAbaBatchRows = 99;
     private static readonly SemaphoreSlim FallbackGate = new(1, 1);
 
     private readonly GoodSortDbContext _db;
@@ -75,8 +78,10 @@ public class CashoutService
             var cleanedValue = (payIdValue ?? "").Trim();
             if (normalizedType == "email")
             {
-                if (cleanedValue.Length is < 5 or > 128 || !cleanedValue.Contains('@') || !cleanedValue.Contains('.'))
+                var normalizedEmail = AuthService.NormalizeValidEmail(cleanedValue);
+                if (normalizedEmail is null || normalizedEmail.Length is < 5 or > 128)
                     return (false, "Enter a valid PayID email address", null);
+                cleanedValue = normalizedEmail;
             }
             else if (normalizedType == "phone")
             {
@@ -182,8 +187,10 @@ public class CashoutService
         var cleanedValue = (payIdValue ?? "").Trim();
         if (normalizedType == "email")
         {
-            if (cleanedValue.Length is < 5 or > 128 || !cleanedValue.Contains('@') || !cleanedValue.Contains('.'))
+            var normalizedEmail = AuthService.NormalizeValidEmail(cleanedValue);
+            if (normalizedEmail is null || normalizedEmail.Length is < 5 or > 128)
                 return (false, "Invalid PayID email");
+            cleanedValue = normalizedEmail;
         }
         else if (normalizedType == "phone")
         {
@@ -328,6 +335,8 @@ public class CashoutService
         var pending = await _db.Set<CashoutRequest>()
             .Where(c => c.BatchId == batchId)
             .Include(c => c.User)
+            .OrderBy(c => c.CreatedAt)
+            .ThenBy(c => c.Id)
             .ToListAsync();
 
         if (pending.Count == 0) return "";
@@ -349,7 +358,7 @@ public class CashoutService
             "WBC" +                                         // Bank (Westpac example)
             "       " +                                     // Blank (7)
             Pad26(_config["ABA_USER_NAME"] ?? "THE GOOD SORT") + // User Name (26)
-            (_config["ABA_USER_ID"] ?? "").Trim().PadRight(6).Substring(0, 6) + // User ID (6)
+            SanitizeAbaText(_config["ABA_USER_ID"]).PadRight(6).Substring(0, 6) + // User ID (6)
             "PAYMENTS".PadRight(12) +                       // Description (12)
             now.ToString("ddMMyy") +                        // Date
             "                                        "      // Blank (40)
@@ -372,7 +381,7 @@ public class CashoutService
                 " " +                                       // Indicator
                 "53" +                                      // Transaction Code (53 = Pay)
                 (amount).ToString().PadLeft(10, '0') +      // Amount in cents (10)
-                SanitizeSingleLine(cashout.AccountName).PadRight(32).Substring(0, 32) + // Title (32)
+                SanitizeAbaText(cashout.AccountName).PadRight(32).Substring(0, 32) + // Title (32)
                 "GOODSORT PAYOUT   " +                      // Lodgement Ref (18)
                 FormatBsb(Digits(_config["ABA_TRACE_BSB"])) + // Trace BSB (7)
                 Digits(_config["ABA_TRACE_ACCOUNT"]).PadRight(9).Substring(0, 9) + // Trace Account (9)
@@ -406,15 +415,25 @@ public class CashoutService
     }
 
     /// <summary>
-    /// Moves every pending ABA payout into one batch in a single statement, so two
-    /// exports cannot both take the same rows. Returns how many were claimed.
+    /// Moves up to <see cref="MaxAbaBatchRows"/> pending ABA payouts into one batch in a single
+    /// statement, so two exports cannot both take the same rows and Record 7's 10-digit File Total
+    /// can never overflow 120 characters. Returns how many were claimed.
     /// </summary>
     private async Task<int> ClaimPendingInto(Guid batchId)
     {
         try
         {
-            return await _db.Set<CashoutRequest>()
+            var candidateIds = await _db.Set<CashoutRequest>()
                 .Where(c => c.Status == "pending" && (c.PayoutMethod == null || c.PayoutMethod == "" || c.PayoutMethod == "aba"))
+                .OrderBy(c => c.CreatedAt)
+                .ThenBy(c => c.Id)
+                .Select(c => c.Id)
+                .Take(MaxAbaBatchRows)
+                .ToListAsync();
+            if (candidateIds.Count == 0) return 0;
+
+            return await _db.Set<CashoutRequest>()
+                .Where(c => candidateIds.Contains(c.Id) && c.Status == "pending" && (c.PayoutMethod == null || c.PayoutMethod == "" || c.PayoutMethod == "aba"))
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(c => c.Status, "processing")
                     .SetProperty(c => c.BatchId, batchId));
@@ -428,6 +447,9 @@ public class CashoutService
             {
                 var rows = await _db.Set<CashoutRequest>()
                     .Where(c => c.Status == "pending" && (c.PayoutMethod == null || c.PayoutMethod == "" || c.PayoutMethod == "aba"))
+                    .OrderBy(c => c.CreatedAt)
+                    .ThenBy(c => c.Id)
+                    .Take(MaxAbaBatchRows)
                     .ToListAsync();
                 foreach (var row in rows)
                 {
@@ -571,11 +593,46 @@ public class CashoutService
         return sb.ToString().Trim();
     }
 
+    /// <summary>
+    /// Normalises text for fixed-width Cemtex ABA fields: folds Latin diacritics
+    /// (e.g. "José" -> "Jose"), maps smart punctuation to ASCII, strips remaining
+    /// non-ASCII bytes/emojis so UTF-8 byte length always equals character count,
+    /// and collapses whitespace.
+    /// </summary>
+    public static string SanitizeAbaText(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "";
+        var normalized = raw
+            .Replace('\u2018', '\'')
+            .Replace('\u2019', '\'')
+            .Replace('\u201C', '"')
+            .Replace('\u201D', '"')
+            .Replace('\u2013', '-')
+            .Replace('\u2014', '-')
+            .Normalize(NormalizationForm.FormD);
+
+        var sb = new StringBuilder(normalized.Length);
+        foreach (var ch in normalized)
+        {
+            var cat = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch);
+            if (cat == System.Globalization.UnicodeCategory.NonSpacingMark) continue;
+            if (char.IsControl(ch) || char.IsWhiteSpace(ch))
+            {
+                sb.Append(' ');
+            }
+            else if (ch is >= ' ' and <= '~')
+            {
+                sb.Append(ch);
+            }
+        }
+        return SanitizeSingleLine(sb.ToString());
+    }
+
     private static string Pad26(string name) =>
-        SanitizeSingleLine(name).ToUpperInvariant().PadRight(26).Substring(0, 26);
+        SanitizeAbaText(name).ToUpperInvariant().PadRight(26).Substring(0, 26);
 
     private static string Pad16(string name) =>
-        SanitizeSingleLine(name).ToUpperInvariant().PadRight(16).Substring(0, 16);
+        SanitizeAbaText(name).ToUpperInvariant().PadRight(16).Substring(0, 16);
 }
 
 public record ValidatedPayoutDetails(

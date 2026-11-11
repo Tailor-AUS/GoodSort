@@ -55,6 +55,7 @@ export default function AdminWaitlistPage() {
   }
 
   function reload() {
+    setErr(null);
     const t = token();
     if (!t) { setErr("Please log in first."); return; }
     fetch(apiUrl("/api/admin/waitlist"), { headers: { Authorization: `Bearer ${t}` } })
@@ -75,9 +76,10 @@ export default function AdminWaitlistPage() {
   useEffect(reload, []);
 
   async function postArea(path: string) {
+    const t = token();
     const res = await fetch(apiUrl(path), {
       method: "POST",
-      headers: { Authorization: `Bearer ${token()}` },
+      headers: { ...(t ? { Authorization: `Bearer ${t}` } : {}) },
     });
     const body = await res.json().catch(() => ({} as { error?: string }));
     if (!res.ok) throw new Error(typeof body.error === "string" && body.error ? body.error : String(res.status));
@@ -88,6 +90,7 @@ export default function AdminWaitlistPage() {
     if (!confirm(`Mark waitlisted houses in ${label} as allocated (ready to buy bins)?`)) return;
     const key = day != null ? `${suburb}-${day}` : suburb;
     setBusy(key);
+    setErr(null);
     try {
       const qs = day != null ? `?day=${day}` : "";
       await postArea(`/api/admin/areas/${encodeURIComponent(suburb)}/allocate${qs}`);
@@ -107,6 +110,7 @@ export default function AdminWaitlistPage() {
     if (!confirm(msg)) return;
     const key = `${to}-${suburb}-${day ?? "all"}`;
     setBusy(key);
+    setErr(null);
     try {
       const qs = new URLSearchParams({ to });
       if (day != null) qs.set("day", String(day));

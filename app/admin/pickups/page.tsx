@@ -25,22 +25,31 @@ export default function AdminPickupsPage() {
   const [triggerResult, setTriggerResult] = useState<string | null>(null);
 
   function reload() {
+    setErr(null);
     const token = localStorage.getItem("goodsort_token");
     if (!token) { setErr("Please log in first."); return; }
     fetch(apiUrl("/api/admin/pickups/tomorrow"), { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then((r) => {
+        if (r.status === 401 || r.status === 403) {
+          return Promise.reject("This login is not an admin. Set ADMIN_SEED_EMAIL on the API to your email and sign in once, or use the bootstrap secret.");
+        }
+        if (!r.ok) return Promise.reject(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(setData)
-      .catch(e => setErr(`Failed to load: ${e}`));
+      .catch((e) => setErr(`Failed to load: ${e}`));
   }
   useEffect(reload, []);
 
   async function triggerReminders() {
     if (!confirm("Send pickup reminder emails right now (ignoring the 6pm time-gate)?")) return;
     const token = localStorage.getItem("goodsort_token");
-    setTriggering(true); setTriggerResult(null);
+    setTriggering(true);
+    setTriggerResult(null);
+    setErr(null);
     try {
       const res = await fetch(apiUrl("/api/admin/trigger-pickup-reminders"), {
-        method: "POST", headers: { Authorization: `Bearer ${token}` },
+        method: "POST", headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -49,7 +58,7 @@ export default function AdminPickupsPage() {
       }
       setTriggerResult(`Sent: ${j.households} household email${j.households === 1 ? "" : "s"}, ${j.runners} runner email${j.runners === 1 ? "" : "s"}.`);
     } catch {
-      setTriggerResult("Failed.");
+      setErr("Network error while triggering reminders.");
     } finally { setTriggering(false); }
   }
 
@@ -61,12 +70,12 @@ export default function AdminPickupsPage() {
         </Link>
         <div className="flex items-center justify-between mb-1">
           <h1 className="text-2xl font-display font-extrabold text-slate-900">Tomorrow's pickups</h1>
-          <button onClick={triggerReminders} disabled={triggering}
+          <button type="button" onClick={triggerReminders} disabled={triggering}
             className="text-[12px] bg-slate-900 text-white font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 disabled:opacity-50">
             <Mail className="w-3.5 h-3.5" /> {triggering ? "Sending..." : "Trigger reminders now"}
           </button>
         </div>
-        {data && <p className="text-[13px] text-slate-500 mb-6">{DAY_NAMES[data.tomorrowDayOfWeek]} council day · {data.totalHouseholds} household{data.totalHouseholds === 1 ? "" : "s"}</p>}
+        {data && <p className="text-[13px] text-slate-500 mb-6">{DAY_NAMES[data.tomorrowDayOfWeek] ?? "Unknown"} council day · {data.totalHouseholds} household{data.totalHouseholds === 1 ? "" : "s"}</p>}
         {triggerResult && <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-[13px] text-green-700 mb-4">{triggerResult}</div>}
         {err && <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-[13px] text-red-700 mb-4">{err}</div>}
 
