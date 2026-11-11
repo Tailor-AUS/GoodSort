@@ -149,6 +149,37 @@ public class SqlConcurrencyTests : IClassFixture<SqlServerFixture>
     }
 
     [SkippableFact]
+    public async Task Concurrent_claims_assign_a_collection_route_to_one_driver_only()
+    {
+        Skip.IfNot(_sql.Available, SqlServerFixture.SkipReason);
+
+        var routeId = await _sql.SeedRoute("pending");
+        var driverIds = new List<Guid>();
+        for (var i = 0; i < Concurrency; i++)
+            driverIds.Add(await _sql.SeedProfile(clearedCents: 0));
+
+        using var gate = new SemaphoreSlim(0, Concurrency);
+        var tasks = driverIds.Select(async driverId =>
+        {
+            await using var db = _sql.NewContext();
+            await gate.WaitAsync();
+            return await StatusClaim.TryAssignDriverToRoute(db, routeId, driverId);
+        }).ToArray();
+
+        await Task.Delay(150);
+        gate.Release(Concurrency);
+        var results = await Task.WhenAll(tasks);
+
+        Assert.Equal(1, results.Count(won => won));
+
+        await using var check = _sql.NewContext();
+        var route = await check.Routes.AsNoTracking().FirstAsync(r => r.Id == routeId);
+        Assert.Equal("claimed", route.Status);
+        Assert.NotNull(route.DriverId);
+        Assert.Contains(route.DriverId!.Value, driverIds);
+    }
+
+    [SkippableFact]
     public async Task Concurrent_confirms_of_one_scan_token_are_spent_once()
     {
         Skip.IfNot(_sql.Available, SqlServerFixture.SkipReason);

@@ -54,6 +54,37 @@ public static class StatusClaim
         }
     }
 
+    /// <summary>
+    /// Atomically assigns a pending collection route to one driver so two concurrent
+    /// claim requests cannot overwrite DriverId or dispatch two vehicles to the same kerbs.
+    /// </summary>
+    public static async Task<bool> TryAssignDriverToRoute(GoodSortDbContext db, Guid routeId, Guid driverId)
+    {
+        var claimedAt = DateTime.UtcNow;
+        try
+        {
+            var rows = await db.Routes
+                .Where(r => r.Id == routeId && r.Status == "pending")
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(r => r.Status, "claimed")
+                    .SetProperty(r => r.DriverId, driverId)
+                    .SetProperty(r => r.ClaimedAt, claimedAt));
+            return rows > 0;
+        }
+        catch (InvalidOperationException)
+        {
+            return await FallbackClaim(db, async () =>
+            {
+                var route = await db.Routes.FirstOrDefaultAsync(r => r.Id == routeId && r.Status == "pending");
+                if (route is null) return false;
+                route.Status = "claimed";
+                route.DriverId = driverId;
+                route.ClaimedAt = claimedAt;
+                return true;
+            });
+        }
+    }
+
     /// <summary>As above, for a marketplace run.</summary>
     public static async Task<bool> TryClaimRun(GoodSortDbContext db, Guid id, string from, string to)
     {
