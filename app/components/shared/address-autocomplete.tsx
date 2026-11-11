@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useId } from "react";
 import {
   formatPhotonAddress,
   geocodeAddress,
@@ -25,6 +25,7 @@ interface AddressAutocompleteProps {
 }
 
 export function AddressAutocomplete({ id, ariaLabel, value, onChange, onSelect, placeholder, autoFocus, className }: AddressAutocompleteProps) {
+  const listboxId = useId();
   const [results, setResults] = useState<PhotonFeature[]>([]);
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
@@ -68,6 +69,10 @@ export function AddressAutocomplete({ id, ariaLabel, value, onChange, onSelect, 
       suburb: suburbFromPhoton(f.properties),
       street: f.properties.street,
     };
+    // Sync lastQueryRef BEFORE parent updates `value` so useEffect([value])
+    // does not fire a 250ms delayed Photon search and re-open the dropdown
+    // over adjacent PayID/BSB fields right after selection.
+    lastQueryRef.current = sel.address.trim();
     onChange(sel.address);
     onSelect(sel);
     setOpen(false);
@@ -75,11 +80,18 @@ export function AddressAutocomplete({ id, ariaLabel, value, onChange, onSelect, 
     inputRef.current?.blur();
   }
 
+  const isExpanded = open && results.length > 0;
+
   return (
     <div ref={containerRef} className="relative">
       <input
         id={id}
         aria-label={ariaLabel}
+        role="combobox"
+        aria-expanded={isExpanded}
+        aria-autocomplete="list"
+        aria-controls={isExpanded ? listboxId : undefined}
+        aria-activedescendant={isExpanded ? `${listboxId}-opt-${highlight}` : undefined}
         ref={inputRef}
         type="text"
         value={value}
@@ -97,12 +109,15 @@ export function AddressAutocomplete({ id, ariaLabel, value, onChange, onSelect, 
         autoComplete="off"
         className={className ?? "w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"}
       />
-      {open && results.length > 0 && (
-        <ul className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 max-h-72 overflow-y-auto">
+      {isExpanded && (
+        <ul id={listboxId} role="listbox" className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 max-h-72 overflow-y-auto">
           {results.map((f, i) => {
             const text = formatPhotonAddress(f.properties);
             return (
               <li
+                id={`${listboxId}-opt-${i}`}
+                role="option"
+                aria-selected={i === highlight}
                 key={`${f.geometry.coordinates[0]},${f.geometry.coordinates[1]},${i}`}
                 onMouseDown={(e) => { e.preventDefault(); pick(f); }}
                 onMouseEnter={() => setHighlight(i)}

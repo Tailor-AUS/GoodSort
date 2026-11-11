@@ -142,6 +142,7 @@ public class GrowthEventRetentionHost(IServiceProvider services, ILogger<GrowthE
     {
         while (!stoppingToken.IsCancellationRequested)
         {
+            var retryInOneHour = false;
             try
             {
                 using var scope = services.CreateScope();
@@ -162,25 +163,36 @@ public class GrowthEventRetentionHost(IServiceProvider services, ILogger<GrowthE
                     continue;
                 }
 
-                var removed = await GrowthEventRetention.SweepAsync(db, stoppingToken);
-                var spent = await UsedScanTokenRetention.SweepAsync(db, stoppingToken);
-                var otps = await OtpCodeRetention.SweepAsync(db, stoppingToken);
-                var visionCalls = await VisionCallRetention.SweepAsync(db, stoppingToken);
-                if (spent > 0)
-                    log.LogInformation("Pruned {Count} spent scan tokens older than {Days} days", spent, UsedScanTokenRetention.RetentionDays);
-                if (otps > 0)
-                    log.LogInformation("Pruned {Count} expired OTP codes older than {Days} days", otps, OtpCodeRetention.RetentionDays);
-                if (visionCalls > 0)
-                    log.LogInformation("Pruned {Count} vision call records older than {Days} days", visionCalls, VisionCallRetention.RetentionDays);
-                if (removed > 0)
-                    log.LogInformation("Pruned {Count} growth events older than {Days} days", removed, GrowthEventRetention.RetentionDays);
+                try
+                {
+                    var removed = await GrowthEventRetention.SweepAsync(db, stoppingToken);
+                    var spent = await UsedScanTokenRetention.SweepAsync(db, stoppingToken);
+                    var otps = await OtpCodeRetention.SweepAsync(db, stoppingToken);
+                    var visionCalls = await VisionCallRetention.SweepAsync(db, stoppingToken);
+                    if (spent > 0)
+                        log.LogInformation("Pruned {Count} spent scan tokens older than {Days} days", spent, UsedScanTokenRetention.RetentionDays);
+                    if (otps > 0)
+                        log.LogInformation("Pruned {Count} expired OTP codes older than {Days} days", otps, OtpCodeRetention.RetentionDays);
+                    if (visionCalls > 0)
+                        log.LogInformation("Pruned {Count} vision call records older than {Days} days", visionCalls, VisionCallRetention.RetentionDays);
+                    if (removed > 0)
+                        log.LogInformation("Pruned {Count} growth events older than {Days} days", removed, GrowthEventRetention.RetentionDays);
+                }
+                catch
+                {
+                    // Release the 6-hour lease on fault so a sibling replica can
+                    // retry in 1 hour rather than stranding the daily sweep.
+                    try { await SingletonLease.Release(db, LeaseName, ct: CancellationToken.None); } catch { /* best-effort */ }
+                    retryInOneHour = true;
+                    throw;
+                }
             }
             catch (Exception ex)
             {
                 log.LogWarning(ex, "Growth event retention sweep failed");
             }
 
-            try { await Task.Delay(TimeSpan.FromHours(24), stoppingToken); }
+            try { await Task.Delay(retryInOneHour ? TimeSpan.FromHours(1) : TimeSpan.FromHours(24), stoppingToken); }
             catch (TaskCanceledException) { break; }
         }
     }

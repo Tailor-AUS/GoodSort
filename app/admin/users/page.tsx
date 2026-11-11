@@ -105,6 +105,7 @@ export default function AdminUsersPage() {
 
       // Bin markers
       bins.forEach((b) => {
+        if (!Number.isFinite(b.lat) || !Number.isFinite(b.lng) || (!b.lat && !b.lng)) return;
         const popupHtml = `<div style="font-family:system-ui;font-size:13px"><b>${escapeHtml(b.code)} — ${escapeHtml(b.name)}</b><br/><span style="color:#666">${escapeHtml(b.address)}</span><br/><b style="color:#16a34a">${b.pendingContainers}</b> containers pending</div>`;
         const marker = new maplibregl.Marker({ element: binMarkerEl(b.pendingContainers), anchor: "center" })
           .setLngLat([b.lng, b.lat])
@@ -123,7 +124,7 @@ export default function AdminUsersPage() {
         if (u.email) households.get(k)!.emails.push(u.email);
       });
       households.forEach(({ h, emails }) => {
-        if (!h.lat || !h.lng) return;
+        if (!Number.isFinite(h.lat) || !Number.isFinite(h.lng) || (!h.lat && !h.lng)) return;
         const emailList = emails.map(escapeHtml).join("<br/>");
         const popupHtml = `<div style="font-family:system-ui;font-size:13px"><b>${escapeHtml(h.name || "Household")}</b><br/><span style="color:#666">${escapeHtml(h.address)}</span><br/>${emailList}<br/><b style="color:#2563eb">${h.pendingContainers}</b> containers pending</div>`;
         const marker = new maplibregl.Marker({ element: householdMarkerEl(), anchor: "center" })
