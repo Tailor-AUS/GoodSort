@@ -213,6 +213,7 @@ public class RunnerService
 
     public async Task<List<LeaderboardEntry>> GetLeaderboard(string period = "all", int limit = 20)
     {
+        var safeLimit = Math.Clamp(limit, 1, 100);
         var query = _db.RunnerProfiles
             .Include(rp => rp.Profile)
             .AsQueryable();
@@ -220,7 +221,7 @@ public class RunnerService
         // For weekly/monthly we'd filter by runs completed in period, but for MVP use lifetime stats
         var runners = await query
             .OrderByDescending(rp => rp.TotalContainersCollected)
-            .Take(limit)
+            .Take(safeLimit)
             .Select(rp => new LeaderboardEntry
             {
                 RunnerId = rp.Id,

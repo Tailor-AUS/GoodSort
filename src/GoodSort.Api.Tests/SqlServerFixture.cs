@@ -120,6 +120,22 @@ public class SqlServerFixture : IAsyncLifetime
         await db.SaveChangesAsync();
         return run.Id;
     }
+
+    public async Task<Guid> SeedRunnerProfile()
+    {
+        var profileId = await SeedProfile(clearedCents: 0);
+        await using var db = NewContext();
+        var rp = new RunnerProfile
+        {
+            ProfileId = profileId,
+            VehicleType = "car",
+            CapacityBags = 10,
+            ServiceRadiusKm = 15.0,
+        };
+        db.RunnerProfiles.Add(rp);
+        await db.SaveChangesAsync();
+        return rp.Id;
+    }
 }
 
 /// <summary>Keeps the SQL tests off each other's toes.</summary>

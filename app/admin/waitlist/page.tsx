@@ -157,6 +157,37 @@ export default function AdminWaitlistPage() {
                     </p>
                   )}
                 </div>
+                {s.suburb !== "UNKNOWN" && (
+                  <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                    {s.readyToOrder && (
+                      <button
+                        onClick={() => allocate(s.suburb)}
+                        disabled={busy === s.suburb}
+                        className="text-[11px] bg-violet-700 text-white font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1 disabled:opacity-50"
+                      >
+                        <Package className="w-3 h-3" /> {busy === s.suburb ? "…" : "Allocate suburb"}
+                      </button>
+                    )}
+                    {s.allocated > 0 && (
+                      <button
+                        onClick={() => advance(s.suburb, "delivered")}
+                        disabled={busy === `delivered-${s.suburb}-all`}
+                        className="text-[11px] bg-slate-800 text-white font-semibold px-2.5 py-1.5 rounded-lg disabled:opacity-50"
+                      >
+                        {busy === `delivered-${s.suburb}-all` ? "…" : "Mark delivered"}
+                      </button>
+                    )}
+                    {s.delivered > 0 && (
+                      <button
+                        onClick={() => advance(s.suburb, "collecting")}
+                        disabled={busy === `collecting-${s.suburb}-all`}
+                        className="text-[11px] bg-green-700 text-white font-semibold px-2.5 py-1.5 rounded-lg disabled:opacity-50"
+                      >
+                        {busy === `collecting-${s.suburb}-all` ? "…" : "Start collecting"}
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
               {s.days?.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-3">

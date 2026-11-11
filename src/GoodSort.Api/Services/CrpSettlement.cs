@@ -131,12 +131,18 @@ public static class CrpSettlement
                                 + (safeContainers * CrpRunnerTargetCentsPerContainer);
         var proFormaNetMarginBp = proFormaGrossBp - (proFormaPayoutCents * 100L);
 
+        var safeArea = string.IsNullOrWhiteSpace(areaName) ? "Brisbane" : areaName.Trim();
+        if (safeArea.Length > 128) safeArea = safeArea[..128];
+
+        var safeDocket = string.IsNullOrWhiteSpace(coexDocketRef) ? null : coexDocketRef.Trim();
+        if (safeDocket is { Length: > 64 }) safeDocket = safeDocket[..64];
+
         return new RunSettlementLedger
         {
             RunId = runId,
-            AreaName = areaName,
+            AreaName = safeArea,
             SettlementMode = crpActive ? "coex_crp" : "open_depot",
-            CoexDocketRef = string.IsNullOrWhiteSpace(coexDocketRef) ? null : coexDocketRef.Trim(),
+            CoexDocketRef = safeDocket,
             VerifiedContainers = safeContainers,
             BagsVerified = Math.Max(0, bagsVerified),
             DiscrepancyStops = Math.Max(0, discrepancyStops),

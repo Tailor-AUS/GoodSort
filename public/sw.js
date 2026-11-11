@@ -1,6 +1,7 @@
 // The Good Sort — Service Worker
-// Push only. NO page cache. Do not intercept /sw.js (that loops updates).
-const SW_VERSION = "20260825-join-loop";
+// Push only. NO page cache. Do not intercept /sw.js, cross-origin API/tile
+// traffic, or non-GET mutations (prevents body proxying & offline rejections).
+const SW_VERSION = "20261111-qa-pass4";
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -19,8 +20,9 @@ self.addEventListener("message", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
-  if (url.pathname === "/sw.js") return;
+  if (url.origin !== self.location.origin || url.pathname === "/sw.js") return;
   event.respondWith(fetch(event.request));
 });
 

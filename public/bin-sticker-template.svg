@@ -4,29 +4,29 @@
   <rect x="0" y="0" width="400" height="80" rx="20" fill="#7c3aed"/>
   <rect x="0" y="40" width="400" height="40" fill="#7c3aed"/>
   <text x="200" y="36" text-anchor="middle" fill="white" font-size="26" font-weight="800">The Good Sort</text>
-  <text x="200" y="62" text-anchor="middle" fill="rgba(255,255,255,0.85)" font-size="13" font-weight="600">Purple bin · 5c sorting credit · no depot trip</text>
+  <text x="200" y="62" text-anchor="middle" fill="rgba(255,255,255,0.85)" font-size="13" font-weight="600">4-stream home sorting · 10¢ credit · no depot trip</text>
 
   <rect x="100" y="100" width="200" height="200" rx="16" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="2"/>
   <text x="200" y="190" text-anchor="middle" fill="#7c3aed" font-size="60" font-weight="800">QR</text>
-  <text x="200" y="220" text-anchor="middle" fill="#64748b" font-size="14" font-weight="600">GS-XXXX</text>
-  <text x="200" y="280" text-anchor="middle" fill="#94a3b8" font-size="10">thegoodsort.org/scan?bin=GS-XXXX</text>
+  <text x="200" y="220" text-anchor="middle" fill="#64748b" font-size="14" font-weight="600">GSB-ALU-XXXXXXXX</text>
+  <text x="200" y="280" text-anchor="middle" fill="#94a3b8" font-size="10">thegoodsort.org/bags</text>
 
-  <text x="200" y="330" text-anchor="middle" fill="#0f172a" font-size="16" font-weight="800">THIS BIN</text>
+  <text x="200" y="330" text-anchor="middle" fill="#0f172a" font-size="16" font-weight="800">HOME SORTING BAG TAG</text>
 
   <circle cx="50" cy="365" r="16" fill="#7c3aed"/>
   <text x="50" y="370" text-anchor="middle" fill="white" font-size="14" font-weight="800">1</text>
-  <text x="80" y="362" fill="#0f172a" font-size="13" font-weight="700">Eligible cans and bottles in here</text>
-  <text x="80" y="378" fill="#64748b" font-size="11">Not the council yellow bin</text>
+  <text x="80" y="362" fill="#0f172a" font-size="13" font-weight="700">Scan eligible cans and bottles for 10¢</text>
+  <text x="80" y="378" fill="#64748b" font-size="11">150ml–3L containers with the 10¢ refund mark</text>
 
   <circle cx="50" cy="410" r="16" fill="#7c3aed"/>
   <text x="50" y="415" text-anchor="middle" fill="white" font-size="14" font-weight="800">2</text>
-  <text x="80" y="407" fill="#0f172a" font-size="13" font-weight="700">Scan is optional</text>
-  <text x="80" y="423" fill="#64748b" font-size="11">QR can count. Credit is the pickup count.</text>
+  <text x="80" y="407" fill="#0f172a" font-size="13" font-weight="700">Sort into four clean streams at home</text>
+  <text x="80" y="423" fill="#64748b" font-size="11">Attach a stream QR tag when a bag is full</text>
 
   <circle cx="50" cy="455" r="16" fill="#7c3aed"/>
   <text x="50" y="460" text-anchor="middle" fill="white" font-size="14" font-weight="800">3</text>
-  <text x="80" y="452" fill="#0f172a" font-size="13" font-weight="700">Kerb the night before council</text>
-  <text x="80" y="468" fill="#64748b" font-size="11">We collect this purple bin only</text>
+  <text x="80" y="452" fill="#0f172a" font-size="13" font-weight="700">Bag out when a suburb volume run unlocks</text>
+  <text x="80" y="468" fill="#64748b" font-size="11">~1,000 containers unlocks pickup · verified at CRP</text>
 
   <rect x="20" y="495" width="360" height="80" rx="12" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
   <rect x="30" y="505" width="75" height="60" rx="8" fill="#3b82f6" opacity="0.15"/>
@@ -34,13 +34,13 @@
   <text x="67" y="555" text-anchor="middle" fill="#3b82f6" font-size="10" font-weight="700">CANS</text>
   <rect x="115" y="505" width="75" height="60" rx="8" fill="#14b8a6" opacity="0.15"/>
   <circle cx="152" cy="525" r="12" fill="#14b8a6"/>
-  <text x="152" y="555" text-anchor="middle" fill="#14b8a6" font-size="10" font-weight="700">PLASTIC</text>
+  <text x="152" y="555" text-anchor="middle" fill="#14b8a6" font-size="10" font-weight="700">CLEAR PET</text>
   <rect x="200" y="505" width="75" height="60" rx="8" fill="#f59e0b" opacity="0.15"/>
   <circle cx="237" cy="525" r="12" fill="#f59e0b"/>
   <text x="237" y="555" text-anchor="middle" fill="#f59e0b" font-size="10" font-weight="700">GLASS</text>
   <rect x="285" y="505" width="95" height="60" rx="8" fill="#16a34a" opacity="0.15"/>
   <circle cx="332" cy="525" r="12" fill="#16a34a"/>
-  <text x="332" y="555" text-anchor="middle" fill="#16a34a" font-size="10" font-weight="700">OTHER</text>
+  <text x="332" y="555" text-anchor="middle" fill="#16a34a" font-size="10" font-weight="700">COLOURED</text>
 
-  <text x="200" y="593" text-anchor="middle" fill="#94a3b8" font-size="9">thegoodsort.org — Brisbane purple-bin waitlist</text>
+  <text x="200" y="593" text-anchor="middle" fill="#94a3b8" font-size="9">thegoodsort.org — Scan-first home sorting in Brisbane</text>
 </svg>

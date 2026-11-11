@@ -1,3 +1,4 @@
+using System.Net;
 using Azure.Communication.Email;
 using GoodSort.Api.Data;
 using GoodSort.Api.Data.Entities;
@@ -64,11 +65,13 @@ public class PickupReminderService
             {
                 foreach (var member in hh.Members.Where(m => !string.IsNullOrWhiteSpace(m.Email)))
                 {
+                    var helloHtml = WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(member.Name) ? "there" : member.Name);
+                    var addressHtml = WebUtility.HtmlEncode(hh.Address ?? "");
                     var subject = "Bag out tonight — The Good Sort pickup";
                     var body = $@"
                       <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
                         <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Bag out sorted containers</h1>
-                        <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {member.Name},</p>
+                        <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {helloHtml},</p>
                         <p style='font-size:14px;line-height:1.55'>We're collecting in your suburb. Bag out eligible cans and bottles on the kerb tonight or early morning.</p>
                         <div style='background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px;margin:16px 0'>
                           <p style='font-size:13px;font-weight:600;color:#166534;margin:0 0 6px'>Quick checklist</p>
@@ -78,8 +81,8 @@ public class PickupReminderService
                             <li>We take them to a refund point or depot</li>
                           </ul>
                         </div>
-                        <p style='font-size:14px;margin:12px 0'><a href='https://www.thegoodsort.org/household' style='color:#16a34a;font-weight:600'>Tap here once bags are on the kerb →</a></p>
-                        <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {hh.Address}</p>
+                        <p style='font-size:14px;margin:12px 0'><a href='https://thegoodsort.org/household' style='color:#16a34a;font-weight:600'>Tap here once bags are on the kerb →</a></p>
+                        <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {addressHtml}</p>
                       </div>";
                     await SendEmail(client, sender, member.Email!, subject, body);
                 }
@@ -124,16 +127,21 @@ public class PickupReminderService
             if (string.IsNullOrWhiteSpace(email)) continue;
 
             var stopsHtml = string.Join("", run.Stops.Select((s, i) =>
-                $"<li>{i + 1}. {s.PickupInstruction ?? $"Stop at {s.Lat:F4},{s.Lng:F4}"} — est. {s.EstimatedContainers} containers</li>"));
+                $"<li>{i + 1}. {WebUtility.HtmlEncode(s.PickupInstruction ?? $"Stop at {s.Lat:F4},{s.Lng:F4}")} — est. {s.EstimatedContainers} containers</li>"));
+
+            var runnerNameHtml = WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(run.Runner?.Profile?.Name) ? "there" : run.Runner.Profile.Name);
+            var areaNameHtml = WebUtility.HtmlEncode(run.AreaName ?? "");
+            var dropNameHtml = WebUtility.HtmlEncode(run.DropPoint?.Name ?? "");
+            var dropAddressHtml = WebUtility.HtmlEncode(run.DropPoint?.Address ?? "");
 
             var subject = $"Your Good Sort run tomorrow — {run.Stops.Count} stops";
             var body = $@"
               <div style='font-family:Inter,system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px 20px;color:#0f172a'>
                 <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Tomorrow's run</h1>
-                <p style='font-size:14px;color:#64748b;margin:0 0 12px'>Hi {run.Runner?.Profile?.Name},</p>
-                <p style='font-size:14px;line-height:1.55'><b>{run.AreaName}</b> — {run.Stops.Count} stops, est. {run.EstimatedContainers} containers, est. payout <b>${run.EstimatedPayoutCents / 100.0:F2}</b>.</p>
+                <p style='font-size:14px;color:#64748b;margin:0 0 12px'>Hi {runnerNameHtml},</p>
+                <p style='font-size:14px;line-height:1.55'><b>{areaNameHtml}</b> — {run.Stops.Count} stops, est. {run.EstimatedContainers} containers, est. payout <b>${run.EstimatedPayoutCents / 100.0:F2}</b>.</p>
                 <ol style='font-size:13px;line-height:1.6;color:#0f172a;padding-left:20px'>{stopsHtml}</ol>
-                <p style='font-size:13px;color:#64748b'>Drop off at: <b>{run.DropPoint?.Name}</b> — {run.DropPoint?.Address}</p>
+                <p style='font-size:13px;color:#64748b'>Drop off at: <b>{dropNameHtml}</b> — {dropAddressHtml}</p>
                 <p style='font-size:12px;color:#94a3b8;margin-top:24px'>Start in the app when you're ready to roll.</p>
               </div>";
             try

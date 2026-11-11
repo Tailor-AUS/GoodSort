@@ -22,22 +22,25 @@ export default function PrivacyPage() {
         </p>
         <ul className="list-disc pl-5 text-slate-600 text-sm space-y-1 mb-4">
           <li>Email address (for account verification)</li>
-          <li>Name and household address</li>
-          <li>Container scan records (barcodes, materials, timestamps)</li>
+          <li>Name and household pickup address</li>
+          <li>Payout preferences (PayID or Australian BSB, account number, and account holder name when you save a payout method or request cash-out)</li>
+          <li>Container scan records (barcodes, materials, QR bag tag IDs, timestamps)</li>
           <li>Photographs you take to identify containers, and a short mathematical
             fingerprint of each one</li>
           <li>Where a bin deposit was made, when you scan at one of our bins</li>
           <li>Location data (for map functionality and route optimization)</li>
-          <li>Waitlist consent and later collection of sorted containers or a The Good Sort bin</li>
+          <li>Pickup consent and kerbside collection status of your sorted home bags</li>
           <li>Collection, referral network, and earnings history</li>
         </ul>
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">2. How We Use Your Information</h2>
         <p className="text-slate-600 text-sm mb-4">
-          We use your information to operate the waitlist, decide when an area has enough density to
-          order bins, schedule collection of The Good Sort bins, process sorting credits, and improve
-          the service. We share your address and container counts with appointed runners for pickup
-          only after your area is collecting. We do not sell your personal information.
+          We use your information to track suburb container volume toward collection runs (about 1,000
+          scanned containers), coordinate kerbside pickup of QR-tagged home bags, verify depot counts,
+          process sorting credits and PayID/bank payouts, and improve the service. We share your pickup
+          address and bag counts with appointed runners only when a collection run is active for your
+          suburb. We never share your PayID or bank account details with runners, and we do not sell
+          your personal information.
         </p>
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">3. Data Storage</h2>

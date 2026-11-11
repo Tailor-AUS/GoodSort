@@ -542,14 +542,17 @@ app.MapGet("/api/bins/{id:guid}/qr", (Guid id, GoodSortDbContext db) =>
     // label; a household's does not, and its own occupants do not need to be
     // told their own house name by a sticker.
     var label = bin.HouseholdId is null ? bin.Name : "";
-    var url = $"https://thegoodsort.org/scan?bin={bin.Code}";
+    var codeXml = System.Net.WebUtility.HtmlEncode(bin.Code ?? "");
+    var labelXml = System.Net.WebUtility.HtmlEncode(label ?? "");
+    var url = $"https://thegoodsort.org/scan?bin={Uri.EscapeDataString(bin.Code ?? "")}";
+    var urlXml = System.Net.WebUtility.HtmlEncode(url);
     var svg = $@"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 380'>
         <rect width='300' height='380' fill='white' rx='16'/>
         <rect x='20' y='20' width='260' height='260' fill='#f1f5f9' rx='12'/>
-        <text x='150' y='160' text-anchor='middle' font-family='system-ui' font-size='48' font-weight='800' fill='#16a34a'>{bin.Code}</text>
+        <text x='150' y='160' text-anchor='middle' font-family='system-ui' font-size='48' font-weight='800' fill='#16a34a'>{codeXml}</text>
         <text x='150' y='200' text-anchor='middle' font-family='system-ui' font-size='14' fill='#64748b'>Optional count</text>
-        <text x='150' y='310' text-anchor='middle' font-family='system-ui' font-size='13' font-weight='700' fill='#0f172a'>{label}</text>
-        <text x='150' y='335' text-anchor='middle' font-family='system-ui' font-size='11' fill='#94a3b8'>{url}</text>
+        <text x='150' y='310' text-anchor='middle' font-family='system-ui' font-size='13' font-weight='700' fill='#0f172a'>{labelXml}</text>
+        <text x='150' y='335' text-anchor='middle' font-family='system-ui' font-size='11' fill='#94a3b8'>{urlXml}</text>
         <text x='150' y='365' text-anchor='middle' font-family='system-ui' font-size='10' fill='#16a34a'>thegoodsort.org</text>
     </svg>";
 
@@ -1634,12 +1637,21 @@ app.MapPost("/api/profiles", async (HttpContext ctx, ProfileCreateRequest req, G
 }).RequireAuthorization();
 
 // ── Scans ──
-app.MapPost("/api/scans", async (HttpContext ctx, ScanRequest req, GoodSortDbContext db, IConfiguration cfg) =>
+app.MapPost("/api/scans", async (HttpContext ctx, ScanRequest req, GoodSortDbContext db, IConfiguration cfg, NotificationService notif, ILogger<Program> log) =>
 {
     var userId = ctx.GetCallerId();
     if (userId is null) return Results.Unauthorized();
     var profile = await db.Profiles.FindAsync(userId.Value);
     if (profile is null) return Results.NotFound("User not found");
+
+    var barcode = (req.Barcode ?? "").Trim();
+    if (string.IsNullOrEmpty(barcode) || barcode.Length > 64)
+        return Results.BadRequest(new { error = "Barcode must be between 1 and 64 characters." });
+    var containerName = (req.ContainerName ?? "").Trim();
+    if (containerName.Length == 0) containerName = "Beverage container";
+    if (containerName.Length > 200) containerName = containerName[..200];
+    var material = (req.Material ?? "other").Trim().ToLowerInvariant();
+    if (material.Length > 32) material = material[..32];
 
     // Daily ceiling per member, alongside the per-minute rate limit.
     //
@@ -1664,8 +1676,8 @@ app.MapPost("/api/scans", async (HttpContext ctx, ScanRequest req, GoodSortDbCon
     {
         UserId = profile.Id,
         HouseholdId = profile.HouseholdId, // nullable — works without household
-        Barcode = req.Barcode, ContainerName = req.ContainerName,
-        Material = req.Material, RefundCents = cents, Status = "pending",
+        Barcode = barcode, ContainerName = containerName,
+        Material = material, RefundCents = cents, Status = "pending",
     };
     db.Scans.Add(scan);
 
@@ -1686,7 +1698,7 @@ app.MapPost("/api/scans", async (HttpContext ctx, ScanRequest req, GoodSortDbCon
         household.LastScanAt = DateTime.UtcNow;
 
         household.Materials ??= new MaterialBreakdown();
-        _ = req.Material switch
+        _ = material switch
         {
             "aluminium" => household.Materials.Aluminium++,
             "pet" => household.Materials.Pet++,
@@ -1698,10 +1710,31 @@ app.MapPost("/api/scans", async (HttpContext ctx, ScanRequest req, GoodSortDbCon
         // household's — see BinCounter. Without this the scan never reaches
         // the number that decides whether a driver is sent.
         var bin = await db.Bins.FirstOrDefaultAsync(b => b.HouseholdId == household.Id);
-        BinCounter.AddScan(bin, 1, cents, req.Material);
+        BinCounter.AddScan(bin, 1, cents, material);
     }
 
     await db.SaveChangesAsync();
+
+    if (household is not null && !string.IsNullOrWhiteSpace(household.Suburb) && !WaitlistDensity.IsCommitted(household.BinStatus))
+    {
+        try
+        {
+            var board = WaitlistDensity.Aggregate(await WaitlistDensity.LoadRowsAsync(db));
+            var cluster = WaitlistDensity.SuburbCluster(board, household.Suburb);
+            if (cluster is not null
+                && WaitlistDensity.ShouldAnnounceUnlock(cluster.Committed, cluster.Containers, 1))
+            {
+                var unlockDay = household.CouncilCollectionDay ?? cluster.BestDay ?? 0;
+                await notif.SendAreaUnlocked(household.Suburb!, unlockDay, userId);
+                await notif.SendOpsStreetReady(household.Suburb!, unlockDay);
+            }
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Area-unlocked announcement failed for {Suburb} - barcode scan succeeded", household.Suburb);
+        }
+    }
+
     return Results.Ok(new
     {
         scan.Id,
@@ -1717,8 +1750,9 @@ app.MapGet("/api/scans", async (HttpContext ctx, Guid userId, int? limit, GoodSo
 {
     // Owner or admin only — scans contain barcode + container history.
     if (!ctx.IsOwnerOrAdmin(userId)) return Results.Forbid();
+    var safeLimit = Math.Clamp(limit ?? 20, 1, 200);
     return Results.Ok(await db.Scans.Where(s => s.UserId == userId)
-        .OrderByDescending(s => s.CreatedAt).Take(limit ?? 20).ToListAsync());
+        .OrderByDescending(s => s.CreatedAt).Take(safeLimit).ToListAsync());
 }).RequireAuthorization();
 
 // ── Routes ──
@@ -2506,12 +2540,38 @@ app.MapDelete("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, GoodSo
     db.Scans.RemoveRange(profile.Scans);
     db.Collections.RemoveRange(profile.Collections);
 
+    var cashouts = await db.CashoutRequests.Where(c => c.UserId == id).ToListAsync();
+    db.CashoutRequests.RemoveRange(cashouts);
+
+    var referredProfiles = await db.Profiles.Where(p => p.ReferrerId == id).ToListAsync();
+    foreach (var r in referredProfiles) r.ReferrerId = null;
+
     // Null out runner claims so runs aren't orphaned
     var claimedRoutes = await db.Routes.Where(r => r.DriverId == id).ToListAsync();
     foreach (var r in claimedRoutes) r.DriverId = null;
 
     var runnerProfile = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == id);
-    if (runnerProfile != null) db.RunnerProfiles.Remove(runnerProfile);
+    if (runnerProfile != null)
+    {
+        var runnerRuns = await db.Runs.Where(r => r.RunnerId == runnerProfile.Id).ToListAsync();
+        foreach (var r in runnerRuns)
+        {
+            r.RunnerId = null;
+            if (r.Status == "claimed")
+            {
+                r.Status = "available";
+                r.ClaimedAt = null;
+            }
+        }
+        var runnerBags = await db.SortedBags.Where(b => b.PickedUpByRunnerId == runnerProfile.Id).ToListAsync();
+        foreach (var b in runnerBags) b.PickedUpByRunnerId = null;
+
+        // RunnerRating → RunnerProfile uses DeleteBehavior.NoAction on SQL Server;
+        // remove ratings first so deleting a runner with settled runs never 500s.
+        var ratings = await db.RunnerRatings.Where(rr => rr.RunnerId == runnerProfile.Id).ToListAsync();
+        db.RunnerRatings.RemoveRange(ratings);
+        db.RunnerProfiles.Remove(runnerProfile);
+    }
 
     // Expire OTPs
     var otps = await db.OtpCodes.Where(o => o.Email == profile.Email).ToListAsync();
@@ -2962,7 +3022,12 @@ app.MapPost("/api/runner/heartbeat", async (HttpContext ctx, RunnerHeartbeatRequ
 // ── Marketplace: Get available runs near location ──
 app.MapGet("/api/marketplace/runs", async (double lat, double lng, double? radiusKm, string? material, GoodSortDbContext db) =>
 {
-    var radius = radiusKm ?? 15.0;
+    if (!double.IsFinite(lat) || !double.IsFinite(lng) || lat is < -90 or > 90 || lng is < -180 or > 180)
+        return Results.BadRequest(new { error = "Valid lat and lng coordinates are required." });
+    if (radiusKm is double rk && (!double.IsFinite(rk) || rk <= 0))
+        return Results.BadRequest(new { error = "Radius must be greater than 0 km." });
+
+    var radius = Math.Clamp(radiusKm ?? 15.0, 0.5, 200.0);
     var q = db.Runs.Include(r => r.Stops)
         .Where(r => r.Status == "available" && r.ExpiresAt > DateTime.UtcNow);
 
@@ -2989,8 +3054,8 @@ app.MapGet("/api/marketplace/runs", async (double lat, double lng, double? radiu
                 x.Run.Id,
                 x.Run.Status,
                 x.Run.AreaName,
-                x.Run.CentroidLat,
-                x.Run.CentroidLng,
+                CentroidLat = Math.Round(x.Run.CentroidLat, 3),
+                CentroidLng = Math.Round(x.Run.CentroidLng, 3),
                 x.Run.MaterialFocus,
                 x.Run.EstimatedContainers,
                 x.Run.EstimatedWeightKg,
@@ -3000,7 +3065,7 @@ app.MapGet("/api/marketplace/runs", async (double lat, double lng, double? radiu
                 x.Run.EstimatedDistanceKm,
                 x.Run.EstimatedDurationMin,
                 StopCount = x.Run.Stops.Count,
-                x.DistanceKm,
+                DistanceKm = Math.Round(x.DistanceKm, 2),
                 x.Run.ExpiresAt,
                 x.Run.Materials,
                 // Material percentages for the runner to see at a glance
@@ -3027,28 +3092,37 @@ app.MapPost("/api/marketplace/runs/{id:guid}/claim", async (HttpContext ctx, Gui
 {
     var profileId = ctx.GetCallerId();
     if (profileId is null) return Results.Unauthorized();
-    var run = await db.Runs.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == id);
+    var run = await db.Runs.Include(r => r.Stops.OrderBy(s => s.Sequence)).FirstOrDefaultAsync(r => r.Id == id);
     if (run is null || (run.Status != "available" && run.Status != "below_threshold"))
-        return Results.BadRequest("Run not available");
-    if (run.ExpiresAt <= DateTime.UtcNow) return Results.BadRequest("Run expired");
+        return Results.BadRequest(new { error = "Run not available" });
+    if (run.ExpiresAt <= DateTime.UtcNow)
+        return Results.BadRequest(new { error = "Run expired" });
 
     var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == profileId.Value);
-    if (runner is null) return Results.BadRequest("Not registered as runner");
+    if (runner is null)
+        return Results.BadRequest(new { error = "Not registered as runner" });
 
-    // Re-price with runner's level bonus
+    // Re-price with runner's level bonus, then atomically claim the status transition
+    // so two runners tapping Claim at once never both receive the stop list.
     var result = await pricing.CalculateRate(run, runner);
-    run.PerContainerCents = result.PerContainerCents;
-    run.EstimatedPayoutCents = result.EstimatedPayoutCents;
-    run.PricingTier = result.PricingTier;
 
-    run.RunnerId = runner.Id;
-    run.Status = "claimed";
-    run.ClaimedAt = DateTime.UtcNow;
+    return await Atomic.RunAsync<IResult>(db, async () =>
+    {
+        var won = await StatusClaim.TryAssignRunnerToRun(
+            db, run.Id, runner.Id, result.PerContainerCents, result.EstimatedPayoutCents, result.PricingTier);
+        if (!won)
+            return Results.BadRequest(new { error = "Run has already been claimed by another runner." });
 
-    await db.SaveChangesAsync();
+        run.PerContainerCents = result.PerContainerCents;
+        run.EstimatedPayoutCents = result.EstimatedPayoutCents;
+        run.PricingTier = result.PricingTier;
+        run.RunnerId = runner.Id;
+        run.Status = "claimed";
+        run.ClaimedAt ??= DateTime.UtcNow;
 
-    // Return run with stops (now includes lat/lng for navigation)
-    return Results.Ok(run);
+        // Return run with stops (now includes lat/lng for navigation)
+        return Results.Ok(run);
+    });
 }).RequireAuthorization();
 
 // ── Marketplace: Start a run ──
