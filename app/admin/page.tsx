@@ -14,6 +14,7 @@ interface Funnel {
 
 interface Stats {
   users: number;
+  nonAdminUsers?: number;
   bins: number;
   scans: number;
   routes: number;
@@ -103,7 +104,7 @@ export default function AdminPage() {
   const [resetting, setResetting] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
-  const organicUsers = Math.max(0, (stats?.users ?? 1) - 1);
+  const organicUsers = stats?.nonAdminUsers ?? Math.max(0, (stats?.users ?? 1) - 1);
   const organicScans = stats?.scans ?? 0;
   const adminInviteUrl = "https://thegoodsort.org/scan?r=4ebefa46-94c4-4df8-aa45-a6dcbde28bbb";
 
@@ -158,7 +159,7 @@ export default function AdminPage() {
   }, [loadDashboard]);
 
   async function resetBaseline() {
-    if (!window.confirm("Reset database to a clean startup baseline? This clears pre-launch users, households, scans, vision logs, and funnel events, keeping only admin@thegoodsort.org.")) {
+    if (!window.confirm("Reset database to a clean startup baseline? This clears pre-launch users, households, scans, vision logs, and funnel events, keeping only hello@thegoodsort.org.")) {
       return;
     }
     setResetting(true);
@@ -312,7 +313,7 @@ export default function AdminPage() {
             </div>
           </div>
           <p className="text-[12px] text-emerald-900">
-            17 ready-to-send emails (11 organic user &amp; Container Mafia invites + 6 Containers for Change CRP, DETSI $100k grant, TOMRA, recycler &amp; street flyer emails) are staged in Outlook Drafts for <code className="font-mono">knox@tailor.au</code>.
+            Admin login codes, suburb volume ops alerts, and outbound invites run through <code className="font-mono">hello@thegoodsort.org</code>.
           </p>
         </div>
 
@@ -617,7 +618,7 @@ export default function AdminPage() {
             <RotateCcw className="w-5 h-5 text-red-600" />
             <div>
               <p className="text-[14px] font-semibold text-red-700">{resetting ? "Resetting..." : "Reset Database to Fresh Baseline"}</p>
-              <p className="text-[12px] text-slate-400">Clear pre-launch test users, scans, households, and funnel counts (keeps admin@thegoodsort.org)</p>
+              <p className="text-[12px] text-slate-400">Clear pre-launch test users, scans, households, and funnel counts (keeps hello@thegoodsort.org)</p>
             </div>
           </button>
         </div>

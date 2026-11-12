@@ -333,16 +333,27 @@ for (var i = 0; i < 10; i++)
             app.Logger.LogInformation("Database migration completed successfully");
         }
 
-        var seedAdminEmail = builder.Configuration["ADMIN_SEED_EMAIL"]?.Trim().ToLowerInvariant();
+        var seedAdminEmail = AuthService.NormalizeValidEmail(builder.Configuration["ADMIN_SEED_EMAIL"]);
         if (!string.IsNullOrWhiteSpace(seedAdminEmail))
         {
+            var alternateSeedAlias = AuthService.GetTgsAlternateAlias(seedAdminEmail);
             var seedProfile = await db.Profiles.FirstOrDefaultAsync(
                 p => p.Email == seedAdminEmail || p.Phone == seedAdminEmail);
+            if (seedProfile is null && alternateSeedAlias is not null)
+            {
+                seedProfile = await db.Profiles.FirstOrDefaultAsync(
+                    p => p.Email == alternateSeedAlias || p.Phone == alternateSeedAlias);
+            }
+
+            var desiredName = string.Equals(seedAdminEmail, "hello@thegoodsort.org", StringComparison.OrdinalIgnoreCase)
+                ? "The Good Sort"
+                : seedAdminEmail.Split('@')[0];
+
             if (seedProfile is null)
             {
                 db.Profiles.Add(new Profile
                 {
-                    Name = seedAdminEmail.Split('@')[0],
+                    Name = desiredName,
                     Email = seedAdminEmail,
                     Phone = seedAdminEmail,
                     IsAdmin = true,
@@ -350,11 +361,29 @@ for (var i = 0; i < 10; i++)
                 await db.SaveChangesAsync();
                 app.Logger.LogInformation("Seeded standalone admin profile for {Email}", seedAdminEmail);
             }
-            else if (!seedProfile.IsAdmin)
+            else
             {
-                seedProfile.IsAdmin = true;
-                await db.SaveChangesAsync();
-                app.Logger.LogInformation("Promoted standalone admin profile for {Email}", seedAdminEmail);
+                var updated = false;
+                if (!string.Equals(seedProfile.Email, seedAdminEmail, StringComparison.OrdinalIgnoreCase))
+                {
+                    seedProfile.Email = seedAdminEmail;
+                    seedProfile.Phone = seedAdminEmail;
+                    if (string.Equals(seedProfile.Name, "admin", StringComparison.OrdinalIgnoreCase))
+                    {
+                        seedProfile.Name = desiredName;
+                    }
+                    updated = true;
+                }
+                if (!seedProfile.IsAdmin)
+                {
+                    seedProfile.IsAdmin = true;
+                    updated = true;
+                }
+                if (updated)
+                {
+                    await db.SaveChangesAsync();
+                    app.Logger.LogInformation("Promoted/updated standalone admin profile for {Email}", seedAdminEmail);
+                }
             }
         }
 
@@ -2545,6 +2574,7 @@ app.MapGet("/api/admin/crp-ledger", async (GoodSortDbContext db, CashoutService 
 app.MapGet("/api/admin/stats", async (GoodSortDbContext db) =>
 {
     var users = await db.Profiles.CountAsync();
+    var nonAdminUsers = await db.Profiles.CountAsync(p => !p.IsAdmin);
     var bins = await db.Bins.CountAsync();
     var scans = await db.Scans.CountAsync();
     // db.Routes is the CollectionRoute table, which nothing ever writes to —
@@ -2577,7 +2607,7 @@ app.MapGet("/api/admin/stats", async (GoodSortDbContext db) =>
 
     return Results.Ok(new
     {
-        users, bins, scans, routes, totalContainers, totalPending, totalCleared,
+        users, nonAdminUsers, bins, scans, routes, totalContainers, totalPending, totalCleared,
         runs, runsAvailable, runsInFlight, runsSettled,
         activation = new
         {
@@ -4350,7 +4380,7 @@ app.MapPost("/api/admin/reset-baseline", async (HttpContext ctx, AdminResetBasel
         return Results.BadRequest(new { error = "Confirmation token RESET_BASELINE is required." });
 
     var callerId = ctx.GetCallerId();
-    var seedEmail = (cfg["ADMIN_SEED_EMAIL"] ?? "admin@thegoodsort.org").Trim().ToLowerInvariant();
+    var seedEmail = AuthService.NormalizeValidEmail(cfg["ADMIN_SEED_EMAIL"]) ?? "hello@thegoodsort.org";
 
     return await Atomic.RunAsync(db, async () =>
     {
@@ -4385,7 +4415,7 @@ app.MapPost("/api/admin/reset-baseline", async (HttpContext ctx, AdminResetBasel
         foreach (var p in allProfiles)
         {
             var isSeedOrCaller = (callerId.HasValue && p.Id == callerId.Value)
-                || string.Equals(p.Email, seedEmail, StringComparison.OrdinalIgnoreCase);
+                || AuthService.AreEquivalentEmails(p.Email, seedEmail);
             if (isSeedOrCaller)
             {
                 p.PendingCents = 0;

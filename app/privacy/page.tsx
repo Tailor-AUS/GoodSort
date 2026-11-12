@@ -54,7 +54,11 @@ export default function PrivacyPage() {
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">4. Your Rights</h2>
         <p className="text-slate-600 text-sm mb-4">
           Under the Australian Privacy Act 1988, you have the right to access, correct, and delete
-          your personal information. Contact us at privacy@thegoodsort.org to exercise these rights.
+          your personal information. Contact us at{" "}
+          <a href="mailto:hello@thegoodsort.org" className="text-green-700 underline">
+            hello@thegoodsort.org
+          </a>{" "}
+          to exercise these rights.
         </p>
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">5. Photo Scanning</h2>
@@ -101,7 +105,11 @@ export default function PrivacyPage() {
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">8. Contact</h2>
         <p className="text-slate-600 text-sm mb-4">
-          For privacy inquiries, contact us at privacy@thegoodsort.org or write to:
+          For privacy inquiries, contact us at{" "}
+          <a href="mailto:hello@thegoodsort.org" className="text-green-700 underline">
+            hello@thegoodsort.org
+          </a>{" "}
+          or write to:
           Tailor Intelligence Pty Ltd (ABN 13 688 827 572), trading as The Good Sort, Moorooka QLD 4105, Australia.
         </p>
       </div>

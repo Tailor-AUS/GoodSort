@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Ensure The Good Sort has its own standalone Azure OpenAI resource and
 # gpt-5-mini deployment in rg-GoodSort, wired into the api Container App with
-# Tailor Vision variables removed and admin@thegoodsort.org configured as the
+# Tailor Vision variables removed and hello@thegoodsort.org configured as the
 # standalone admin/ops address.
 #
 # Exit codes:
@@ -15,8 +15,8 @@ OAI_NAME="${3:-oai-goodsort-prod}"
 OAI_LOCATION="${4:-australiaeast}"
 OAI_DEPLOYMENT="${AZURE_OPENAI_DEPLOYMENT:-gpt-5-mini}"
 OAI_MODEL_VERSION="2025-08-07"
-ADMIN_EMAIL="${ADMIN_SEED_EMAIL:-admin@thegoodsort.org}"
-OPS_EMAIL="${OPS_ALERT_EMAIL:-admin@thegoodsort.org}"
+ADMIN_EMAIL="${ADMIN_SEED_EMAIL:-hello@thegoodsort.org}"
+OPS_EMAIL="${OPS_ALERT_EMAIL:-hello@thegoodsort.org}"
 
 if ! az cognitiveservices account show -n "$OAI_NAME" -g "$RG" -o none 2>/dev/null; then
   echo "Creating standalone Azure OpenAI account ${OAI_NAME} in ${RG} (${OAI_LOCATION})..."

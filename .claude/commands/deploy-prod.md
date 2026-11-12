@@ -41,9 +41,9 @@ Deploy changes to production.
 - `LAUNCH_BONUS_CONTAINERS` controls the double-credit launch promotion
   (defaults to 20 when unset). Set it to `0` on the Container App to switch the
   promotion off without a deploy; the homepage banner goes with it.
-- `ADMIN_SEED_EMAIL` and `OPS_ALERT_EMAIL` are both set to `knox@tailor.au` on
-  prod (verified 2026-08-30 — earlier handoffs saying otherwise are stale), so
-  a suburb crossing the threshold does reach ops.
+- `ADMIN_SEED_EMAIL` and `OPS_ALERT_EMAIL` are both set to `hello@thegoodsort.org` on
+  prod (via `scripts/ensure-openai-provisioned.sh`, cut over 2026-11-12 under `tg#612`), so
+  a suburb crossing the threshold reaches the standalone TGS Exchange inbox directly.
 - **Email deliverability.** The stack is correctly configured, contrary to
   older handoffs. `ACS_EMAIL_SENDER` is `DoNotReply@thegoodsort.org` on the
   CustomerManaged ACS domain; Domain/SPF/DKIM/DKIM2 all report `Verified`; SPF

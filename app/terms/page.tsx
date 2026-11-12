@@ -130,7 +130,11 @@ export default function TermsPage() {
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">13. Contact</h2>
         <p className="text-slate-600 text-sm mb-4">
-          For questions about these terms, contact us at legal@thegoodsort.org or write to:
+          For questions about these terms, contact us at{" "}
+          <a href="mailto:hello@thegoodsort.org" className="text-green-700 underline">
+            hello@thegoodsort.org
+          </a>{" "}
+          or write to:
           Tailor Intelligence Pty Ltd (ABN 13 688 827 572), trading as The Good Sort, Moorooka QLD 4105, Australia.
         </p>
       </div>
