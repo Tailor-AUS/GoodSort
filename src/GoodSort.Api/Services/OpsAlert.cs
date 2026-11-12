@@ -10,8 +10,8 @@ public static class OpsAlert
     {
         foreach (var raw in new[] { opsAlertEmail, adminSeedEmail })
         {
-            var email = raw?.Trim();
-            if (!string.IsNullOrWhiteSpace(email) && email.Contains('@')) return email;
+            var email = AuthService.NormalizeValidEmail(raw);
+            if (email is not null) return email;
         }
         return null;
     }

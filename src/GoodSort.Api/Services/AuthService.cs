@@ -122,10 +122,7 @@ public class AuthService
                     </div>",
             };
 
-            var deliveryEmail = string.Equals(email, "admin@thegoodsort.org", StringComparison.OrdinalIgnoreCase)
-                ? "knox@tailor.au"
-                : email;
-            var message = new EmailMessage(sender, deliveryEmail, content);
+            var message = new EmailMessage(sender, email, content);
             await client.SendAsync(Azure.WaitUntil.Started, message);
             _logger.LogInformation("OTP email sent to {Email}", email);
             return (true, null, null);
@@ -207,12 +204,19 @@ public class AuthService
             ? candidateRid
             : null;
 
-        // Find or create profile
+        // Find or create profile (hello@thegoodsort.org and admin@thegoodsort.org share one mailbox)
+        var alternateAlias = GetTgsAlternateAlias(email);
         var profile = await _db.Profiles.FirstOrDefaultAsync(p => p.Email == email || p.Phone == email);
+        if (profile == null && alternateAlias != null)
+        {
+            profile = await _db.Profiles.FirstOrDefaultAsync(p => p.Email == alternateAlias || p.Phone == alternateAlias);
+        }
         if (profile == null)
         {
             var prefix = email.Split('@')[0].Replace('.', ' ').Replace('_', ' ').Replace('-', ' ');
-            var displayName = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(prefix);
+            var displayName = string.Equals(email, "hello@thegoodsort.org", StringComparison.OrdinalIgnoreCase)
+                ? "The Good Sort"
+                : System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(prefix);
 
             var newProfileId = Guid.NewGuid();
             profile = new Profile
@@ -253,14 +257,38 @@ public class AuthService
     }
 
     /// <summary>
+    /// hello@thegoodsort.org is the primary TGS Exchange mailbox and admin@thegoodsort.org
+    /// is its alias in the same tenant (tg#609). Resolving both to one profile prevents
+    /// signing in with the alias from creating a duplicate non-admin sorter row.
+    /// </summary>
+    public static string? GetTgsAlternateAlias(string? email)
+    {
+        var normalized = NormalizeValidEmail(email);
+        if (string.Equals(normalized, "hello@thegoodsort.org", StringComparison.OrdinalIgnoreCase))
+            return "admin@thegoodsort.org";
+        if (string.Equals(normalized, "admin@thegoodsort.org", StringComparison.OrdinalIgnoreCase))
+            return "hello@thegoodsort.org";
+        return null;
+    }
+
+    public static bool AreEquivalentEmails(string? a, string? b)
+    {
+        if (string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b)) return false;
+        var left = a.Trim();
+        var right = b.Trim();
+        if (string.Equals(left, right, StringComparison.OrdinalIgnoreCase)) return true;
+        var alt = GetTgsAlternateAlias(left);
+        return alt != null && string.Equals(alt, right, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// First matching seed email becomes admin when the table has none.
     /// Set ADMIN_SEED_EMAIL on the Container App after ship; leave unset otherwise.
     /// </summary>
     public static bool ShouldPromoteSeedAdmin(bool profileIsAdmin, bool anyAdminExists, string? profileEmail, string? seedEmail)
     {
         if (profileIsAdmin || anyAdminExists) return false;
-        if (string.IsNullOrWhiteSpace(seedEmail) || string.IsNullOrWhiteSpace(profileEmail)) return false;
-        return string.Equals(profileEmail.Trim(), seedEmail.Trim(), StringComparison.OrdinalIgnoreCase);
+        return AreEquivalentEmails(profileEmail, seedEmail);
     }
 
     public string GenerateJwt(Profile profile)
