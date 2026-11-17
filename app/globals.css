@@ -24,10 +24,12 @@
 html {
   scroll-behavior: smooth;
   height: 100dvh;
+  overflow-x: clip;
 }
 
 body {
-  height: 100dvh;
+  min-height: 100dvh;
+  overflow-x: clip;
   overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
 }

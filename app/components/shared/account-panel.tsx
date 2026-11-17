@@ -35,6 +35,18 @@ export function AccountPanel({ user, open, onClose, onRefresh }: AccountPanelPro
 
   useEffect(() => {
     if (!open) return;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    const prevBodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      document.body.style.overflow = prevBodyOverflow;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
     const loadHouseholdStats = (hhId: string) => {
       Promise.all([
         fetch(apiUrl(`/api/households/${hhId}`), { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)),
@@ -82,9 +94,14 @@ export function AccountPanel({ user, open, onClose, onRefresh }: AccountPanelPro
     : user.name;
 
   return (
-    <>
-      <div className="fixed inset-0 z-50 bg-black/20 touch-none" onClick={onClose} />
-      <div className="fixed inset-y-0 right-0 z-50 w-80 max-w-[85vw] glass-strong overflow-y-auto animate-slide-in-right border-l border-white/40 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex justify-end overflow-hidden">
+      <div className="absolute inset-0 bg-black/20 touch-none" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Account"
+        className="relative z-10 h-full w-[calc(100%-2.5rem)] max-w-[22rem] shrink-0 glass-strong overflow-y-auto overflow-x-hidden overscroll-contain animate-slide-in-right border-l border-white/40 shadow-2xl"
+      >
         <div className="p-6 border-b border-slate-100/60" style={{ paddingTop: "max(1.5rem, env(safe-area-inset-top))" }}>
           <div className="flex justify-between items-start mb-6">
             <div>
@@ -251,7 +268,7 @@ export function AccountPanel({ user, open, onClose, onRefresh }: AccountPanelPro
           </button>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 

@@ -690,7 +690,7 @@ export function PostScanSetup({
                         setName(v);
                         if (!accountNameTouched) setAccountName(v);
                       }}
-                      placeholder="e.g. Knox Hart"
+                      placeholder="e.g. Alex Taylor"
                       className="w-full border border-slate-200 bg-white rounded-xl px-3.5 py-3 text-[15px] text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
                     />
                   </div>
