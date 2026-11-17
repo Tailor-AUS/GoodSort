@@ -162,10 +162,14 @@ export default function HouseholdPage() {
               dayName={hh.councilCollectionDay != null ? DAY_NAMES[hh.councilCollectionDay] : growth?.dayName}
               tone="green"
             />
-            {!nextPickup && hh.type === "residential" && (
+            {!hh.suburb && hh.type === "residential" && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex items-start gap-3">
                 <Recycle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                <p className="text-[13px] text-amber-900">Set your council collection day for pickup scheduling. Volume unlocks the run — scan builds suburb totals.</p>
+                <p className="text-[13px] text-amber-900">
+                  Add your Brisbane street address on{" "}
+                  <Link href="/onboard" className="font-semibold underline">onboarding</Link>{" "}
+                  so your scans count toward your suburb&apos;s {LIVE_VOLUME_THRESHOLD.toLocaleString()}-container volume run.
+                </p>
               </div>
             )}
 

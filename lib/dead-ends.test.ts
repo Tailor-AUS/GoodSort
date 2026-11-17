@@ -137,32 +137,32 @@ test("a failed verification says what actually went wrong", () => {
  * every waitlisted member, which on production is every member.
  */
 
-test("an unconfirmed pickup is not labelled as a collection", () => {
+test("an unconfirmed pickup never renders a council recycling-night date card", () => {
   const card = code(join("app", "components", "shared", "collection-night-card.tsx"));
 
-  // The label must be derived from `confirmed`, not hardcoded per tone.
-  assert.match(card, /function pickupLabel\(/, "the two tones must share one label rule");
-
-  const label = card.slice(card.indexOf("function pickupLabel("), card.indexOf("}", card.indexOf("function pickupLabel(")) + 1);
-  assert.match(label, /confirmed \?/, "the label has to depend on whether a run is confirmed");
+  assert.match(
+    card,
+    /if\s*\(\s*!confirmed\s*\)\s*return\s+null/,
+    "CollectionNightCard must return null whenever confirmed is not truthy — unconfirmed households follow the 1,000-container suburb pool, never council recycling night",
+  );
   assert.doesNotMatch(
-    label,
-    /We'll collect|Next pickup/,
-    "an unconfirmed date must not be labelled as a collection — it is the member's council recycling night.",
+    card,
+    /Your recycling night|We'll collect|Next pickup/i,
+    "CollectionNightCard must never render council recycling-night or unconfirmed pickup labels",
   );
 });
 
 test("the confirmed case still gives the instruction", () => {
-  // The opposite mistake: hedging the one case where a collection IS scheduled
-  // and the member genuinely needs to put containers out.
   const card = code(join("app", "components", "shared", "collection-night-card.tsx"));
-  assert.match(card, /"Bag out"/, "a confirmed pickup must still say to bag out");
+  assert.match(card, /Bag out/, "a confirmed pickup must still say to bag out");
+  assert.match(card, /Bag out your sorted containers/, "a confirmed pickup must still explain bagging out sorted containers");
 });
 
-test("the qualifying copy still explains what unlocks a run", () => {
-  const card = code(join("app", "components", "shared", "collection-night-card.tsx"));
-  assert.match(card, /volume run starts once your suburb/i);
-  assert.match(card, /Suburb volume is enough for a driver trip/i);
+test("the qualifying copy on WaitlistHome and WaitlistCard still explains what unlocks a run", () => {
+  const waitlistHome = code(join("app", "sort", "components", "waitlist-home.tsx"));
+  const waitlistCard = code(join("app", "components", "shared", "waitlist-card.tsx"));
+  assert.match(waitlistHome, /more to unlock a run/);
+  assert.match(waitlistCard, /enough scanned containers|driver trip to the refund point/i);
 });
 
 test("/sort and /runner never trap an unauthenticated visitor on Loading...", () => {
