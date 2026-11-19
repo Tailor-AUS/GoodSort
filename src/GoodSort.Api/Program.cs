@@ -2723,44 +2723,64 @@ app.MapGet("/api/admin/users", async (GoodSortDbContext db) =>
     Results.Ok(await db.Profiles.Include(p => p.Household).OrderByDescending(p => p.CreatedAt).Take(100).ToListAsync()))
     .RequireAuthorization(AuthHelpers.AdminPolicy);
 
-// ── Admin: Tomorrow's pickups + runner status ──
+// ── Admin: Tomorrow's pickups + active/pilot runner status ──
 app.MapGet("/api/admin/pickups/tomorrow", async (GoodSortDbContext db) =>
 {
     var brisbane = BrisbaneTime.Now;
     var tomorrowDow = (int)brisbane.AddDays(1).DayOfWeek;
+    var utcNow = DateTime.UtcNow;
+
+    var activeRuns = await db.Runs
+        .Include(r => r.Runner).ThenInclude(rp => rp!.Profile)
+        .Include(r => r.Stops)
+        .Where(r => RunLifecycle.HoldsBin.Contains(r.Status)
+                    && (!RunLifecycle.Unclaimed.Contains(r.Status) || r.ExpiresAt > utcNow))
+        .OrderByDescending(r => r.CreatedAt)
+        .ToListAsync();
+
+    var activeStopBinIds = activeRuns
+        .SelectMany(r => r.Stops.Select(s => s.BinId))
+        .ToHashSet();
+    var activeRunBins = activeStopBinIds.Count == 0
+        ? new List<Bin>()
+        : await db.Bins.Where(b => activeStopBinIds.Contains(b.Id)).ToListAsync();
+    var activeRunHhIds = activeRunBins
+        .Where(b => b.HouseholdId.HasValue)
+        .Select(b => b.HouseholdId!.Value)
+        .ToHashSet();
 
     var households = await db.Households
         .Include(h => h.Members)
         .Where(h => h.Type != "unit_complex"
-                    && h.CouncilCollectionDay == tomorrowDow
-                    && BinStatuses.Serviceable.Contains(h.BinStatus))
+                    && BinStatuses.Serviceable.Contains(h.BinStatus)
+                    && (h.CouncilCollectionDay == tomorrowDow || h.BinIsOut || activeRunHhIds.Contains(h.Id)))
         .ToListAsync();
 
     var hhIds = households.Select(h => h.Id).ToHashSet();
-    var bins = await db.Bins.Where(b => b.HouseholdId != null && hhIds.Contains(b.HouseholdId.Value)).ToListAsync();
-    var binIds = bins.Select(b => b.Id).ToHashSet();
-
-    var claimingRuns = await db.Runs
-        .Include(r => r.Runner).ThenInclude(rp => rp!.Profile)
-        .Include(r => r.Stops)
-        .Where(r => (r.Status == "available" || r.Status == "claimed" || r.Status == "in_progress")
-                    && r.Stops.Any(s => binIds.Contains(s.BinId)))
+    var bins = await db.Bins
+        .Where(b => (b.HouseholdId != null && hhIds.Contains(b.HouseholdId.Value)) || activeStopBinIds.Contains(b.Id))
         .ToListAsync();
+    var binById = bins.ToDictionary(b => b.Id);
+
+    var assignedRuns = activeRuns
+        .Where(r => !RunLifecycle.Unclaimed.Contains(r.Status))
+        .ToList();
 
     return Results.Ok(new
     {
         tomorrowDayOfWeek = tomorrowDow,
         totalHouseholds = households.Count,
         householdsWithBinOut = households.Count(h => h.BinIsOut),
-        runsCovering = claimingRuns.Count,
-        runsClaimed = claimingRuns.Count(r => r.Status != "available"),
-        householdsUncovered = households.Count(h => !claimingRuns.Any(r => r.Stops.Any(s => bins.Any(b => b.Id == s.BinId && b.HouseholdId == h.Id)))),
+        runsCovering = activeRuns.Count,
+        runsClaimed = assignedRuns.Count,
+        householdsUncovered = households.Count(h => !assignedRuns.Any(r =>
+            r.Stops.Any(s => binById.TryGetValue(s.BinId, out var b) && b.HouseholdId == h.Id))),
         households = households.Select(h => new {
             h.Id, h.Name, h.Address, h.PendingContainers, h.UsesDivider, h.BinIsOut, h.BinStatus,
             memberEmails = h.Members.Select(m => m.Email).Where(e => e != null),
         }),
-        runs = claimingRuns.Select(r => new {
-            r.Id, r.Status, r.AreaName, r.EstimatedContainers, r.PerContainerCents,
+        runs = activeRuns.Select(r => new {
+            r.Id, r.Status, r.AreaName, r.EstimatedContainers, r.PerContainerCents, r.EstimatedPayoutCents,
             runnerName = r.Runner != null ? r.Runner.Profile!.Name : null,
             runnerEmail = r.Runner != null ? r.Runner.Profile!.Email : null,
             stops = r.Stops.Count,
@@ -3074,7 +3094,84 @@ app.MapDelete("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, GoodSo
     var otps = await db.OtpCodes.Where(o => o.Email == profile.Email).ToListAsync();
     db.OtpCodes.RemoveRange(otps);
 
+    var soleHouseholdId = profile.HouseholdId;
+    profile.HouseholdId = null;
     db.Profiles.Remove(profile);
+
+    if (soleHouseholdId is Guid hhId)
+    {
+        var hasRemainingMembers = await db.Profiles.AnyAsync(p => p.HouseholdId == hhId && p.Id != id);
+        if (!hasRemainingMembers)
+        {
+            var hh = await db.Households.FirstOrDefaultAsync(h => h.Id == hhId);
+            if (hh is not null)
+            {
+                var orphanScans = await db.Scans.Where(s => s.HouseholdId == hhId && s.UserId != id).ToListAsync();
+                db.Scans.RemoveRange(orphanScans);
+
+                var orphanBags = await db.SortedBags.Where(b => b.HouseholdId == hhId).ToListAsync();
+                db.SortedBags.RemoveRange(orphanBags);
+
+                var orphanRouteStops = await db.RouteStops.Where(rs => rs.HouseholdId == hhId).ToListAsync();
+                db.RouteStops.RemoveRange(orphanRouteStops);
+
+                var hhBins = await db.Bins.Where(b => b.HouseholdId == hhId).ToListAsync();
+                if (hhBins.Count > 0)
+                {
+                    var hhBinIds = hhBins.Select(b => b.Id).ToHashSet();
+                    var referencingStops = await db.RunStops
+                        .Include(s => s.Run)
+                        .Where(s => hhBinIds.Contains(s.BinId))
+                        .ToListAsync();
+
+                    var removableStops = referencingStops
+                        .Where(s => RunLifecycle.Unclaimed.Contains(s.Run.Status) || s.Run.Status == "expired")
+                        .ToList();
+                    if (removableStops.Count > 0)
+                    {
+                        var touchedRunIds = removableStops.Select(s => s.RunId).Distinct().ToHashSet();
+                        db.RunStops.RemoveRange(removableStops);
+
+                        var touchedRuns = await db.Runs
+                            .Include(r => r.Stops)
+                            .Where(r => touchedRunIds.Contains(r.Id))
+                            .ToListAsync();
+                        foreach (var tr in touchedRuns)
+                        {
+                            var remainingStops = tr.Stops.Count(s => !removableStops.Contains(s));
+                            if (remainingStops == 0)
+                                db.Runs.Remove(tr);
+                        }
+                    }
+
+                    var lockedBinIds = referencingStops
+                        .Except(removableStops)
+                        .Select(s => s.BinId)
+                        .ToHashSet();
+
+                    foreach (var bin in hhBins)
+                    {
+                        if (lockedBinIds.Contains(bin.Id))
+                        {
+                            // Preserve RunStop.BinId FK on historical/settled or in-flight runs while scrubbing PII.
+                            bin.HouseholdId = null;
+                            bin.Name = "Deleted household";
+                            bin.Address = "";
+                            bin.PendingContainers = 0;
+                            bin.Status = "deleted";
+                        }
+                        else
+                        {
+                            db.Bins.Remove(bin);
+                        }
+                    }
+                }
+
+                db.Households.Remove(hh);
+            }
+        }
+    }
+
     await db.SaveChangesAsync();
     return Results.Ok(new { deleted = true });
 }).RequireAuthorization();

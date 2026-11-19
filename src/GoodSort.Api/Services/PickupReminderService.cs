@@ -49,8 +49,20 @@ public class PickupReminderService
     private async Task<int> NotifyHouseholds(int tomorrowDow, DateTime tomorrowLocal, bool forceResend)
     {
         var todayLocal = tomorrowLocal.AddDays(-1);
+        var claimedBinIds = await _db.RunStops
+            .Where(s => s.Run.Status == "claimed")
+            .Select(s => s.BinId)
+            .Distinct()
+            .ToListAsync();
+        var claimedHouseholdIds = claimedBinIds.Count == 0
+            ? new HashSet<Guid>()
+            : (await _db.Bins
+                .Where(b => b.HouseholdId != null && claimedBinIds.Contains(b.Id))
+                .Select(b => b.HouseholdId!.Value)
+                .ToListAsync()).ToHashSet();
+
         var q = _db.Households.Where(h => h.Type != "unit_complex"
-            && h.CouncilCollectionDay == tomorrowDow
+            && (h.CouncilCollectionDay == tomorrowDow || claimedHouseholdIds.Contains(h.Id))
             && BinStatuses.Serviceable.Contains(h.BinStatus));
         if (!forceResend) q = q.Where(h => h.LastPickupAt == null || h.LastPickupAt < todayLocal);
         var candidates = await q.Include(h => h.Members).ToListAsync();
@@ -135,20 +147,22 @@ public class PickupReminderService
             var email = run.Runner?.Profile?.Email;
             if (string.IsNullOrWhiteSpace(email)) continue;
 
-            var stopsHtml = string.Join("", run.Stops.Select((s, i) =>
-                $"<li>{i + 1}. {WebUtility.HtmlEncode(s.PickupInstruction ?? $"Stop at {s.Lat:F4},{s.Lng:F4}")} — est. {s.EstimatedContainers} containers</li>"));
+            var stopsHtml = string.Join("", run.Stops.OrderBy(s => s.Sequence).Select(s =>
+                $"<li>{WebUtility.HtmlEncode(s.PickupInstruction ?? $"Stop at {s.Lat:F4},{s.Lng:F4}")} — est. {s.EstimatedContainers} {(s.EstimatedContainers == 1 ? "container" : "containers")}</li>"));
 
             var runnerNameHtml = WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(run.Runner?.Profile?.Name) ? "there" : run.Runner.Profile.Name);
             var areaNameHtml = WebUtility.HtmlEncode(run.AreaName ?? "");
             var dropNameHtml = WebUtility.HtmlEncode(run.DropPoint?.Name ?? "");
             var dropAddressHtml = WebUtility.HtmlEncode(run.DropPoint?.Address ?? "");
+            var stopWord = run.Stops.Count == 1 ? "stop" : "stops";
+            var containerWord = run.EstimatedContainers == 1 ? "container" : "containers";
 
-            var subject = $"Your Good Sort run tomorrow — {run.Stops.Count} stops";
+            var subject = $"Your Good Sort run tomorrow — {run.Stops.Count} {stopWord}";
             var body = $@"
               <div style='font-family:Inter,system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px 20px;color:#0f172a'>
                 <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Tomorrow's run</h1>
                 <p style='font-size:14px;color:#64748b;margin:0 0 12px'>Hi {runnerNameHtml},</p>
-                <p style='font-size:14px;line-height:1.55'><b>{areaNameHtml}</b> — {run.Stops.Count} stops, est. {run.EstimatedContainers} containers, est. payout <b>${run.EstimatedPayoutCents / 100.0:F2}</b>.</p>
+                <p style='font-size:14px;line-height:1.55'><b>{areaNameHtml}</b> — {run.Stops.Count} {stopWord}, est. {run.EstimatedContainers} {containerWord}, est. payout <b>${run.EstimatedPayoutCents / 100.0:F2}</b>.</p>
                 <ol style='font-size:13px;line-height:1.6;color:#0f172a;padding-left:20px'>{stopsHtml}</ol>
                 <p style='font-size:13px;color:#64748b'>Drop off at: <b>{dropNameHtml}</b> — {dropAddressHtml}</p>
                 <p style='font-size:12px;color:#94a3b8;margin-top:24px'>Start in the app when you're ready to roll.</p>

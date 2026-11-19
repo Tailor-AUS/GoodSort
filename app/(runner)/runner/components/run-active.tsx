@@ -115,6 +115,15 @@ export function RunActive({
       }
       setBagScanStatus(`Verified ${res.bag.code} (${res.bag.verifiedContainers ?? res.bag.declaredContainers} cans)`);
       setManualBagCode("");
+      setManifestBags((prev) =>
+        prev.some((b) => b.id === res.bag.id || b.code.toUpperCase() === cleaned)
+          ? prev.map((b) =>
+              b.id === res.bag.id || b.code.toUpperCase() === cleaned
+                ? { ...b, ...res.bag, status: "picked_up" }
+                : b
+            )
+          : [{ ...res.bag, status: "picked_up" }, ...prev]
+      );
       setPickupCount((prev) => ({
         ...prev,
         [currentStopId]:
@@ -306,7 +315,7 @@ export function RunActive({
             <div className="space-y-1.5">
               {manifestBags.map((bag) => {
                 const sInfo = BAG_STREAMS[bag.stream] ?? BAG_STREAMS.aluminium;
-                const picked = bag.status === "picked_up";
+                const picked = bag.status === "picked_up" || bag.status === "verified";
                 return (
                   <div
                     key={bag.id}

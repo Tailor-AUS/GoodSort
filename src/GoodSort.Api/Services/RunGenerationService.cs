@@ -262,13 +262,18 @@ public class RunGenerationService : BackgroundService
             var sequence = 0;
             foreach (var bin in cluster)
             {
+                var stopAddress = bin.HouseholdId.HasValue
+                    && households.TryGetValue(bin.HouseholdId.Value, out var binHh)
+                    && !string.IsNullOrWhiteSpace(binHh.Address)
+                        ? binHh.Address
+                        : bin.Address;
                 run.Stops.Add(new RunStop
                 {
                     BinId = bin.Id,
                     Lat = bin.Lat,
                     Lng = bin.Lng,
                     EstimatedContainers = HouseholdCredit.EstimatedContainers(bin.PendingContainers),
-                    PickupInstruction = HouseholdCredit.PickupInstruction(bin.Name),
+                    PickupInstruction = HouseholdCredit.PickupInstruction(bin.Name, stopAddress),
                     Materials = new MaterialBreakdown
                     {
                         Aluminium = bin.Materials.Aluminium,
@@ -369,7 +374,7 @@ public class RunGenerationService : BackgroundService
                 Lat = bin.Lat,
                 Lng = bin.Lng,
                 EstimatedContainers = addedContainers,
-                PickupInstruction = HouseholdCredit.PickupInstruction(hh.Name),
+                PickupInstruction = HouseholdCredit.PickupInstruction(hh.Name, hh.Address),
                 Materials = new MaterialBreakdown
                 {
                     Aluminium = bin.Materials.Aluminium,

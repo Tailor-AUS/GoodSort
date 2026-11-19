@@ -27,10 +27,13 @@ public static class HouseholdCredit
         return binIsOut || pendingContainers >= 1;
     }
 
-    public static string PickupInstruction(string? binName)
+    public static string PickupInstruction(string? binName, string? address = null)
     {
         var name = string.IsNullOrWhiteSpace(binName) ? "sorted bags" : binName.Trim();
-        return $"Collect {name} on the kerb. Take eligible containers to a refund point.";
+        var addr = string.IsNullOrWhiteSpace(address) ? null : address.Trim();
+        return addr is null
+            ? $"Collect {name} on the kerb. Take eligible containers to a refund point."
+            : $"Collect {name} at {addr} — sorted bags on the kerb.";
     }
 
     /// <summary>

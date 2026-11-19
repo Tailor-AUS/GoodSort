@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Package } from "lucide-react";
+import { ArrowLeft, Package, Truck } from "lucide-react";
 import { apiUrl } from "@/lib/config";
 import { titleSuburb } from "@/lib/brisbane";
 
@@ -48,6 +48,7 @@ export default function AdminWaitlistPage() {
   const [rows, setRows] = useState<SuburbRow[]>([]);
   const [threshold, setThreshold] = useState(1000);
   const [err, setErr] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
   function token() {
@@ -111,6 +112,7 @@ export default function AdminWaitlistPage() {
     const key = `${to}-${suburb}-${day ?? "all"}`;
     setBusy(key);
     setErr(null);
+    setNotice(null);
     try {
       const qs = new URLSearchParams({ to });
       if (day != null) qs.set("day", String(day));
@@ -123,16 +125,92 @@ export default function AdminWaitlistPage() {
     }
   }
 
+  async function setHouseholdStatus(h: House, nextStatus: "collecting" | "waitlisted") {
+    const msg = nextStatus === "collecting"
+      ? `Enable pilot kerb pickup for ${h.name} (${h.address})? They will receive the collecting email.`
+      : `Return ${h.name} to waitlisted?`;
+    if (!confirm(msg)) return;
+    const key = `hh-${h.id}`;
+    setBusy(key);
+    setErr(null);
+    setNotice(null);
+    try {
+      const t = token();
+      const res = await fetch(apiUrl(`/api/admin/households/${h.id}/bin-status`), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(t ? { Authorization: `Bearer ${t}` } : {}),
+        },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const body = await res.json().catch(() => ({} as { error?: string }));
+      if (!res.ok) throw new Error(typeof body.error === "string" && body.error ? body.error : String(res.status));
+      setNotice(nextStatus === "collecting"
+        ? `${h.name} is now collecting. Click "Generate runs now" to build a pickup run.`
+        : `${h.name} returned to waitlist.`);
+      reload();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Household update failed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function generateRunsNow() {
+    setBusy("generate-runs");
+    setErr(null);
+    setNotice(null);
+    try {
+      const t = token();
+      const res = await fetch(apiUrl("/api/admin/marketplace/runs/generate"), {
+        method: "POST",
+        headers: { ...(t ? { Authorization: `Bearer ${t}` } : {}) },
+      });
+      const body = await res.json().catch(() => ({} as { error?: string; acquiredLease?: boolean; availableRuns?: number }));
+      if (!res.ok) throw new Error(typeof body.error === "string" && body.error ? body.error : String(res.status));
+      setNotice(
+        body.acquiredLease === false
+          ? "Another run-generation pass is currently in progress. Check Pickups in a few seconds."
+          : `Run generation finished (${body.availableRuns ?? 0} marketplace run${body.availableRuns === 1 ? "" : "s"} at full threshold). Open Tomorrow's pickups to assign pilot runs or send reminders.`
+      );
+      reload();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Run generation failed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="min-h-dvh bg-slate-50">
       <div className="max-w-4xl mx-auto px-6 py-6">
         <Link href="/admin" className="inline-flex items-center gap-1 text-[13px] text-slate-500 mb-4">
           <ArrowLeft className="w-4 h-4" /> Back to admin
         </Link>
-        <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-1">Bin waitlist</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
+          <h1 className="text-2xl font-display font-extrabold text-slate-900">Suburb waitlist &amp; pilot activation</h1>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={generateRunsNow}
+              disabled={busy === "generate-runs"}
+              className="text-[12px] bg-emerald-700 hover:bg-emerald-800 text-white font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <Truck className="w-3.5 h-3.5" /> {busy === "generate-runs" ? "Generating…" : "Generate runs now"}
+            </button>
+            <Link
+              href="/admin/pickups"
+              className="text-[12px] bg-slate-900 hover:bg-slate-800 text-white font-semibold px-3 py-1.5 rounded-lg"
+            >
+              Coordinate pickups →
+            </Link>
+          </div>
+        </div>
         <p className="text-[13px] text-slate-500 mb-6">
-          A volume run unlocks at about {threshold.toLocaleString()} scanned containers in a suburb — enough for one driver trip. Allocate when volume is ready.
+          A volume run unlocks automatically at about {threshold.toLocaleString()} scanned containers in a suburb, or you can enable pilot collection per household below.
         </p>
+        {notice && <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-[13px] text-emerald-800 mb-4">{notice}</div>}
         {err && <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-[13px] text-red-700 mb-4">{err}</div>}
 
         <div className="space-y-4">
@@ -236,9 +314,32 @@ export default function AdminWaitlistPage() {
                       <p className="text-[13px] font-medium text-slate-900 truncate">{h.name}</p>
                       <p className="text-[11px] text-slate-400 truncate">{h.address}</p>
                     </div>
-                    <p className="text-[11px] text-slate-500 shrink-0">
-                      {h.councilCollectionDay != null ? DAYS[h.councilCollectionDay] : "—"} · {h.binStatus}
-                    </p>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <p className="text-[11px] text-slate-500">
+                        {(h.pendingContainers ?? 0)} ctr · {h.councilCollectionDay != null ? DAYS[h.councilCollectionDay] : "—"} · {h.binStatus}
+                      </p>
+                      {s.suburb !== "UNKNOWN" && (
+                        h.binStatus === "collecting" ? (
+                          <button
+                            type="button"
+                            onClick={() => setHouseholdStatus(h, "waitlisted")}
+                            disabled={busy === `hh-${h.id}`}
+                            className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-2 py-1 rounded-md disabled:opacity-50"
+                          >
+                            {busy === `hh-${h.id}` ? "…" : "Pause"}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setHouseholdStatus(h, "collecting")}
+                            disabled={busy === `hh-${h.id}`}
+                            className="text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-2 py-1 rounded-md disabled:opacity-50"
+                          >
+                            {busy === `hh-${h.id}` ? "…" : "Enable collecting"}
+                          </button>
+                        )
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>

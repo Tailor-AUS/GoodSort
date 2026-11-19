@@ -25,7 +25,9 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T | nul
   const url = apiUrl(path);
   try {
     const token = typeof window !== "undefined" ? localStorage.getItem("goodsort_token") : null;
+    const isGet = !options?.method || options.method.toUpperCase() === "GET";
     const res = await fetch(url, {
+      ...(isGet ? { cache: "no-store" as const } : {}),
       ...options,
       headers: {
         "Content-Type": "application/json",
