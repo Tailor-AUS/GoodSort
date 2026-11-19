@@ -26,6 +26,9 @@ test("SortAnimation replaces retired wheelie-bin stick SVG with interactive 4-st
   assert.match(sortAnimSrc, /\/images\/brisbane-kerbside-hero\.webp/);
   assert.match(sortAnimSrc, /prefers-reduced-motion:\s*reduce/);
   assert.match(sortAnimSrc, /role="tablist"/);
+  assert.match(sortAnimSrc, /role="tabpanel"/);
+  assert.match(sortAnimSrc, /col-start-1\s+row-start-1/);
+  assert.match(sortAnimSrc, /media="\(min-width:\s*1024px\)"/);
 
   for (const rel of ["public/images/brisbane-kerbside-hero.webp", "public/images/how-it-works-flow.webp"]) {
     const abs = join(ROOT, rel);
