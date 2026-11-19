@@ -1,205 +1,237 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { Banknote, Camera, CheckCircle2, QrCode, Sparkles, Truck } from "lucide-react";
+
+type StageIndex = 0 | 1 | 2 | 3;
+
+const STAGES: Array<{
+  idx: StageIndex;
+  pill: string;
+  eyebrow: string;
+  headline: string;
+  detail: string;
+  badge: string;
+  badgeTone: string;
+  spotlightClass: string;
+}> = [
+  {
+    idx: 0,
+    pill: "1. Scan",
+    eyebrow: "Step 1 · Instant AI camera scan",
+    headline: "Aluminium Can 375mL → Blue bag",
+    detail: "Point your phone camera at any eligible 150mL–3L container.",
+    badge: "+10¢ pending",
+    badgeTone: "bg-violet-600 text-white",
+    spotlightClass: "left-3 top-3",
+  },
+  {
+    idx: 1,
+    pill: "2. 4 Bags",
+    eyebrow: "Step 2 · Four clean streams at home",
+    headline: "Blue · Teal · Amber · Green bags",
+    detail: "Sort into your own bags at home and tag full bags with a GSB QR code.",
+    badge: "GSB-ALU tagged",
+    badgeTone: "bg-blue-600 text-white",
+    spotlightClass: "left-1/2 -translate-x-1/2 top-3",
+  },
+  {
+    idx: 2,
+    pill: "3. Kerb Run",
+    eyebrow: "Step 3 · 1,000-container suburb run",
+    headline: "1,000 / 1,000 cans · Driver dispatched",
+    detail: "Put tagged bags by your front gate — a local runner takes them to the depot.",
+    badge: "Zero depot queue",
+    badgeTone: "bg-amber-500 text-slate-950",
+    spotlightClass: "right-3 top-3",
+  },
+  {
+    idx: 3,
+    pill: "4. Paid",
+    eyebrow: "Step 4 · Verified depot payout + Mafia cut",
+    headline: "10¢/can cleared to PayID + 1¢/can street bonus",
+    detail: "Cash out from $20 via PayID or bank transfer, plus $1 per neighbour you recruit.",
+    badge: "PayID ready",
+    badgeTone: "bg-emerald-600 text-white",
+    spotlightClass: "right-3 top-3",
+  },
+];
+
 /**
- * Pixel-art loop: scan → sort into bags → bag out → runner → refund point → 10¢ credit.
- * Sort streams animation. Respects prefers-reduced-motion.
+ * Interactive + gently auto-cycling 4-step visual showcase for How It Works:
+ * Scan on phone -> Sort into 4 home bags -> 1,000-can kerbside van pickup -> PayID + 1c Mafia.
+ * Respects prefers-reduced-motion.
  */
 export function SortAnimation() {
+  const [active, setActive] = useState<StageIndex>(0);
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    if (paused || typeof window === "undefined") return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const timer = window.setInterval(() => {
+      setActive((prev) => (((prev + 1) % 4) as StageIndex));
+    }, 3400);
+    return () => window.clearInterval(timer);
+  }, [paused]);
+
+  const stage = STAGES[active];
+
   return (
-    <div className="w-full max-w-md mx-auto select-none pointer-events-none">
-      <svg viewBox="0 0 400 140" className="w-full h-auto" aria-hidden="true">
-        <style>{`
-          @keyframes sa-car {
-            0%   { transform: translateX(420px); }
-            20%  { transform: translateX(170px); }
-            35%  { transform: translateX(170px); }
-            70%  { transform: translateX(370px); }
-            100% { transform: translateX(420px); }
-          }
-          @keyframes sa-can-to-bin {
-            0%, 60% { opacity: 0; transform: translate(0, 0); }
-            65% { opacity: 1; transform: translate(0, 0); }
-            85% { opacity: 1; transform: translate(35px, -8px); }
-            90% { opacity: 1; transform: translate(55px, 8px); }
-            100% { opacity: 0; transform: translate(55px, 8px); }
-          }
-          @keyframes sa-can-to-car {
-            0%, 21% { opacity: 0; transform: translate(0, 0); }
-            23% { opacity: 1; transform: translate(0, 0); }
-            30% { opacity: 1; transform: translate(30px, -10px); }
-            33% { opacity: 1; transform: translate(60px, 4px); }
-            35%, 100% { opacity: 0; transform: translate(60px, 4px); }
-          }
-          @keyframes sa-money {
-            0%, 72% { opacity: 0; transform: translate(0, 0); }
-            74% { opacity: 1; transform: translate(0, 0); }
-            92% { opacity: 1; transform: translate(-295px, -10px); }
-            95% { opacity: 1; transform: translate(-310px, 5px); }
-            100% { opacity: 0; transform: translate(-310px, 5px); }
-          }
-          @keyframes sa-wave {
-            0%, 45%, 100% { transform: rotate(0deg); }
-            50%, 60% { transform: rotate(-35deg); }
-          }
-          @keyframes sa-smoke {
-            0%, 100% { opacity: 0; transform: translate(0,0) scale(1); }
-            20% { opacity: 0.5; transform: translate(-2px,-3px) scale(0.8); }
-            40% { opacity: 0; transform: translate(-5px,-8px) scale(0.3); }
-          }
+    <div
+      className="w-full max-w-lg mx-auto rounded-3xl bg-white border border-slate-200/90 shadow-[0_20px_50px_-20px_rgba(15,23,42,0.16)] overflow-hidden"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
+      {/* Studio editorial scene: phone scan -> 4 colour-coded home bags -> electric pickup van */}
+      <div className="relative aspect-[16/9] w-full bg-stone-100 overflow-hidden">
+        <img
+          src="/images/how-it-works-flow.webp"
+          alt="Phone scanning an aluminium drink can beside four colour-coded sorting bags and a compact kerbside collection van in Brisbane"
+          width={1200}
+          height={675}
+          loading="lazy"
+          decoding="async"
+          className="w-full h-full object-cover"
+        />
 
-          .sa-car-group { animation: sa-car 10s linear infinite; transform-origin: center; }
-          .sa-can-bin { animation: sa-can-to-bin 10s linear infinite; transform-origin: center; }
-          .sa-can-car { animation: sa-can-to-car 10s linear infinite; transform-origin: center; }
-          .sa-money { animation: sa-money 10s linear infinite; transform-origin: center; }
-          .sa-arm { animation: sa-wave 10s linear infinite; transform-origin: 62px 62px; }
-          .sa-smoke { animation: sa-smoke 10s linear infinite; }
+        {/* Subtle bottom vignette for crisp badge contrast */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-slate-950/65 via-slate-950/20 to-transparent"
+        />
 
-          @media (prefers-reduced-motion: reduce) {
-            .sa-car-group, .sa-can-bin, .sa-can-car, .sa-money, .sa-arm, .sa-smoke {
-              animation: none;
-            }
-            .sa-car-group { transform: translateX(170px); }
-            .sa-can-bin, .sa-can-car, .sa-money { opacity: 0; }
-          }
-        `}</style>
+        {/* Floating live stage pill */}
+        <div
+          className={`absolute ${stage.spotlightClass} transition-all duration-500 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-extrabold tracking-wide shadow-lg ${stage.badgeTone}`}
+        >
+          <Sparkles className="w-3 h-3" />
+          {stage.badge}
+        </div>
 
-        {/* Sky gradient background */}
-        <defs>
-          <linearGradient id="sa-sky" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#dcfce7" />
-            <stop offset="100%" stopColor="#f0fdf4" />
-          </linearGradient>
-        </defs>
-        <rect width="400" height="120" fill="url(#sa-sky)" />
+        {/* Bottom overlay caption inside scene */}
+        <div className="absolute inset-x-3 bottom-2.5 flex items-center justify-between gap-2 text-white">
+          <div className="flex items-center gap-1.5 text-[11px] font-bold bg-slate-950/65 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/15">
+            <span className="w-2 h-2 rounded-full bg-blue-400" />
+            <span className="w-2 h-2 rounded-full bg-teal-400" />
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            <span className="ml-0.5">4 home streams · no wheelie bins</span>
+          </div>
+          <span className="text-[11px] font-extrabold bg-emerald-500/90 text-slate-950 px-2.5 py-1 rounded-full">
+            10¢ / can
+          </span>
+        </div>
+      </div>
 
-        {/* Ground */}
-        <rect x="0" y="110" width="400" height="30" fill="#86efac" />
-        <rect x="0" y="110" width="400" height="2" fill="#22c55e" />
+      {/* Interactive 4-stage selector + live product state */}
+      <div className="p-4 sm:p-5 bg-white">
+        <div className="grid grid-cols-4 gap-1.5 p-1 rounded-2xl bg-slate-100 mb-3.5" role="tablist" aria-label="How The Good Sort works">
+          {STAGES.map((s) => {
+            const isSelected = s.idx === active;
+            return (
+              <button
+                key={s.idx}
+                type="button"
+                role="tab"
+                aria-selected={isSelected}
+                onClick={() => {
+                  setActive(s.idx);
+                  setPaused(true);
+                }}
+                className={`py-2 px-1.5 rounded-xl text-[11px] font-extrabold transition-all ${
+                  isSelected
+                    ? "bg-slate-900 text-white shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                {s.pill}
+              </button>
+            );
+          })}
+        </div>
 
-        {/* Sun */}
-        <circle cx="340" cy="28" r="10" fill="#fde047" />
-        <circle cx="340" cy="28" r="6" fill="#facc15" />
+        <div className="rounded-2xl bg-slate-50 border border-slate-200/80 p-3.5 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-slate-400 mb-0.5">
+              {stage.eyebrow}
+            </p>
+            <p className="text-[14px] font-display font-extrabold text-slate-900 leading-snug">
+              {stage.headline}
+            </p>
+            <p className="text-[12px] text-slate-500 leading-relaxed mt-1">
+              {stage.detail}
+            </p>
+          </div>
+          <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-emerald-600 shrink-0 shadow-xs">
+            {active === 0 && <Camera className="w-4 h-4 text-violet-600" />}
+            {active === 1 && <QrCode className="w-4 h-4 text-blue-600" />}
+            {active === 2 && <Truck className="w-4 h-4 text-amber-600" />}
+            {active === 3 && <Banknote className="w-4 h-4 text-emerald-600" />}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-        {/* Cloud */}
-        <g fill="#fff">
-          <rect x="60" y="20" width="24" height="6" />
-          <rect x="54" y="24" width="36" height="4" />
-        </g>
+/**
+ * Sunlit Brisbane Queenslander kerbside hero showcase card for desktop viewports.
+ */
+export function HeroKerbsideCard({ suburbName }: { suburbName?: string }) {
+  const placeLabel = suburbName || "Brisbane";
 
-        {/* ─── House (left) ─── */}
-        <g>
-          {/* Roof */}
-          <polygon points="12,60 42,40 72,60" fill="#dc2626" />
-          <polygon points="14,60 42,42 70,60" fill="#ef4444" />
-          {/* Body */}
-          <rect x="18" y="60" width="48" height="50" fill="#fde68a" />
-          <rect x="18" y="60" width="48" height="50" fill="none" stroke="#b45309" strokeWidth="1.5" />
-          {/* Door */}
-          <rect x="36" y="82" width="12" height="28" fill="#7c2d12" />
-          <rect x="45" y="96" width="2" height="2" fill="#facc15" />
-          {/* Window */}
-          <rect x="24" y="68" width="8" height="8" fill="#7dd3fc" />
-          <rect x="24" y="68" width="8" height="8" fill="none" stroke="#0284c7" strokeWidth="1" />
-          <rect x="54" y="68" width="8" height="8" fill="#7dd3fc" />
-          <rect x="54" y="68" width="8" height="8" fill="none" stroke="#0284c7" strokeWidth="1" />
-        </g>
+  return (
+    <div className="relative w-full max-w-xl mx-auto">
+      <div className="relative rounded-[2rem] overflow-hidden border border-white/80 shadow-[0_28px_70px_-20px_rgba(15,23,42,0.28)] bg-slate-900">
+        <div className="aspect-[16/10] w-full overflow-hidden">
+          <img
+            src="/images/brisbane-kerbside-hero.webp"
+            alt={`Four colour-coded Good Sort bags neatly tied inside a ${placeLabel} Queenslander front gate with a collection van on the street`}
+            width={1200}
+            height={675}
+            fetchPriority="high"
+            decoding="async"
+            className="w-full h-full object-cover"
+          />
+        </div>
 
-        {/* ─── Person (drops a can — no scan) ─── */}
-        <g>
-          <circle cx="85" cy="78" r="4" fill="#fcd34d" />
-          <rect x="82" y="82" width="6" height="12" fill="#7c3aed" />
-          <rect x="82" y="94" width="2.5" height="10" fill="#5b21b6" />
-          <rect x="85.5" y="94" width="2.5" height="10" fill="#5b21b6" />
-          <rect x="80" y="84" width="2" height="8" fill="#fcd34d" />
-          <g className="sa-arm">
-            <rect x="87" y="84" width="2" height="8" fill="#fcd34d" />
-          </g>
-        </g>
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-slate-950/80 via-slate-950/35 to-transparent"
+        />
 
-        {/* ─── Can going into sorted bag ─── */}
-        <g className="sa-can-bin">
-          <rect x="91" y="78" width="4" height="8" fill="#64748b" />
-          <rect x="91" y="78" width="4" height="2" fill="#475569" />
-          <rect x="91" y="84" width="4" height="1" fill="#e2e8f0" />
-        </g>
+        {/* Top-left live scan credit chip */}
+        <div className="absolute top-4 left-4 inline-flex items-center gap-2 rounded-2xl bg-white/92 backdrop-blur-md px-3.5 py-2 shadow-lg border border-white">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <div>
+            <p className="text-[11px] font-extrabold text-slate-900 leading-none">
+              10¢ credit per container
+            </p>
+            <p className="text-[10px] font-semibold text-slate-500 mt-0.5 leading-none">
+              Scan indoors · bag out at 1,000 cans
+            </p>
+          </div>
+        </div>
 
-        {/* ─── Purple The Good Sort bin ─── */}
-        <g>
-          <rect x="142" y="80" width="22" height="30" fill="#f5f3ff" />
-          <rect x="142" y="80" width="22" height="30" fill="none" stroke="#7c3aed" strokeWidth="1.5" />
-          <rect x="140" y="76" width="26" height="5" fill="#7c3aed" />
-          <circle cx="147" cy="112" r="2.5" fill="#1e293b" />
-          <circle cx="159" cy="112" r="2.5" fill="#1e293b" />
-          <rect x="145" y="88" width="7" height="6" fill="#3b82f6" />
-          <rect x="154" y="88" width="7" height="6" fill="#14b8a6" />
-          <rect x="145" y="96" width="7" height="6" fill="#f59e0b" />
-          <rect x="154" y="96" width="7" height="6" fill="#16a34a" />
-        </g>
-
-        {/* ─── Depot (right) ─── */}
-        <g>
-          {/* Building */}
-          <rect x="318" y="70" width="52" height="40" fill="#94a3b8" />
-          <rect x="318" y="70" width="52" height="40" fill="none" stroke="#475569" strokeWidth="1.5" />
-          {/* Roof */}
-          <rect x="316" y="66" width="56" height="6" fill="#64748b" />
-          {/* Sign */}
-          <rect x="326" y="76" width="36" height="8" fill="#22c55e" />
-          <text x="344" y="82" fontSize="5" fontWeight="800" fill="white" textAnchor="middle" fontFamily="system-ui">DEPOT</text>
-          {/* Garage door */}
-          <rect x="334" y="90" width="20" height="20" fill="#334155" />
-          <rect x="334" y="90" width="20" height="2" fill="#1e293b" />
-          <rect x="334" y="96" width="20" height="1" fill="#1e293b" />
-          <rect x="334" y="101" width="20" height="1" fill="#1e293b" />
-          {/* Bin/aggregation icon */}
-          <circle cx="310" cy="104" r="4" fill="#22c55e" />
-          <text x="310" y="107" fontSize="6" fontWeight="800" fill="white" textAnchor="middle" fontFamily="system-ui">♻</text>
-        </g>
-
-        {/* ─── Runner car ─── */}
-        <g className="sa-car-group">
-          {/* Exhaust smoke */}
-          <g className="sa-smoke" style={{ transformOrigin: "-6px 104px" }}>
-            <circle cx="-6" cy="104" r="3" fill="#cbd5e1" />
-          </g>
-          {/* Body */}
-          <rect x="0" y="92" width="30" height="14" fill="#16a34a" />
-          <rect x="0" y="92" width="30" height="14" fill="none" stroke="#14532d" strokeWidth="1.5" />
-          {/* Cabin */}
-          <rect x="6" y="85" width="18" height="8" fill="#22c55e" />
-          <rect x="6" y="85" width="18" height="8" fill="none" stroke="#14532d" strokeWidth="1.5" />
-          {/* Window */}
-          <rect x="8" y="87" width="6" height="5" fill="#7dd3fc" />
-          <rect x="16" y="87" width="6" height="5" fill="#7dd3fc" />
-          {/* GS label */}
-          <rect x="10" y="96" width="10" height="6" fill="white" />
-          <text x="15" y="101" fontSize="5" fontWeight="800" fill="#16a34a" textAnchor="middle" fontFamily="system-ui">GS</text>
-          {/* Wheels */}
-          <circle cx="6" cy="108" r="3.5" fill="#1e293b" />
-          <circle cx="24" cy="108" r="3.5" fill="#1e293b" />
-          <circle cx="6" cy="108" r="1.5" fill="#64748b" />
-          <circle cx="24" cy="108" r="1.5" fill="#64748b" />
-
-          {/* Can in bin being picked up → into car */}
-          <g className="sa-can-car" style={{ transform: "translateX(-30px)" }}>
-            <rect x="0" y="82" width="4" height="8" fill="#64748b" />
-            <rect x="0" y="82" width="4" height="2" fill="#475569" />
-          </g>
-        </g>
-
-        {/* ─── Money icon flying back from depot to person ─── */}
-        <g className="sa-money">
-          <circle cx="318" cy="90" r="6" fill="#fde047" />
-          <circle cx="318" cy="90" r="6" fill="none" stroke="#a16207" strokeWidth="1" />
-          <text x="318" y="93" fontSize="8" fontWeight="800" fill="#a16207" textAnchor="middle" fontFamily="system-ui">$</text>
-        </g>
-
-        {/* Clouds background */}
-        <g fill="#ffffff" opacity="0.7">
-          <rect x="200" y="18" width="24" height="6" />
-          <rect x="194" y="22" width="36" height="4" />
-        </g>
-      </svg>
+        {/* Bottom stream legend bar */}
+        <div className="absolute inset-x-4 bottom-4 flex items-center justify-between gap-3 rounded-2xl bg-slate-950/75 backdrop-blur-md px-4 py-3 text-white border border-white/15">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-300">
+              {placeLabel} · Kerbside Bag-Out
+            </p>
+            <p className="text-[13px] font-display font-extrabold leading-snug mt-0.5">
+              Your own 4 bags at the gate — we drive the depot run
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0" aria-hidden="true">
+            <span className="px-2 py-0.5 rounded-md bg-blue-500/90 text-[10px] font-extrabold">ALU</span>
+            <span className="px-2 py-0.5 rounded-md bg-teal-500/90 text-[10px] font-extrabold">PET</span>
+            <span className="px-2 py-0.5 rounded-md bg-amber-500/90 text-slate-950 text-[10px] font-extrabold">GLS</span>
+            <span className="px-2 py-0.5 rounded-md bg-emerald-500/90 text-slate-950 text-[10px] font-extrabold">OTH</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

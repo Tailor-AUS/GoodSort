@@ -8,7 +8,7 @@ import { apiUrl, clearAuth, hasValidToken, persistWaitlistFromUrl, readDayHint, 
 import { track } from "@/lib/analytics";
 import { BCC_BIN_DAY_DATASET, LIVE_VOLUME_THRESHOLD, dayClusterStats, daySlug, findSuburb, inviteMessage, sameSuburb, streetInviteUrl, type GrowthSuburb } from "@/lib/brisbane";
 import { Logo } from "@/app/components/shared/logo";
-import { SortAnimation } from "@/app/components/shared/sort-animation";
+import { HeroKerbsideCard, SortAnimation } from "@/app/components/shared/sort-animation";
 import { InviteActions } from "@/app/components/shared/invite-actions";
 import { SuburbFinder } from "@/app/components/marketing/suburb-finder";
 import { DensityBoard } from "@/app/components/marketing/density-board";
@@ -286,9 +286,8 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
             <ArrowDown className="w-5 h-5 mx-auto" />
           </div>
           </div>
-          <div className="hidden lg:block pt-8">
-            <SortAnimation />
-            <p className="text-center text-[12px] text-slate-500 mt-3">Scan → sort into bags → bag out for a volume run.</p>
+          <div className="hidden lg:block pt-4">
+            <HeroKerbsideCard suburbName={suburbName} />
           </div>
         </div>
       </section>

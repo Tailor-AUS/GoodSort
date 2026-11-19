@@ -76,6 +76,8 @@ test("/flyer supports Moorooka, Annerley, and Tarragindi with scannable QR and a
 
   const layoutSrc = readClean("app/layout.tsx");
   const swSrc = readClean("public/sw.js");
-  assert.match(layoutSrc, /content="20261112-qa-pass21"/);
-  assert.match(swSrc, /SW_VERSION\s*=\s*"20261112-qa-pass21"/);
+  const layoutVer = layoutSrc.match(/name="app-version"\s+content="([^"]+)"/)?.[1];
+  const swVer = swSrc.match(/SW_VERSION\s*=\s*"([^"]+)"/)?.[1];
+  assert.ok(layoutVer, "Expected app-version meta tag in app/layout.tsx");
+  assert.equal(swVer, layoutVer);
 });
