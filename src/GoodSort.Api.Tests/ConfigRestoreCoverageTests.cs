@@ -37,6 +37,8 @@ public class ConfigRestoreCoverageTests
 
         // Fail-closed by design.
         ["ADMIN_BOOTSTRAP_SECRET"] = "Unset means the bootstrap endpoint returns 404. Losing it closes a door rather than opening one, and it is meant to be cleared straight after use.",
+        ["RESET_BASELINE_ENABLED"] = "Fail-closed: unset returns 404 on /api/admin/reset-baseline so production user data, balances, pending cashouts, and COEX ledgers can never be wiped.",
+        ["RUN_MIGRATIONS_ON_BOOT"] = "Fail-closed in non-Development per AGENTS.md §2 (D4): prod EF migrations run as a gated deploy step, never automatically on container boot.",
         ["ABA_PAYOUTS_ENABLED"] = "PayoutsAreOpen also requires real remitter details, so bank files stay closed. Fail-closed.",
         ["PAYID_PAYOUTS_ENABLED"] = "Defaults to closed unless explicitly set to true (or ABA payouts are already open). Fail-closed.",
         ["COEX_CRP_ACTIVE"] = "Defaults to false (pre-CCA ledger mode, without 7.68¢ handling fee) until COEX executes the Container Collection Agreement and COEX_CRP_ACTIVE=true is set. Fail-closed.",

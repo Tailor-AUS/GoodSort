@@ -48,24 +48,31 @@ public class PickupReminderService
 
     private async Task<int> NotifyHouseholds(int tomorrowDow, DateTime tomorrowLocal, bool forceResend)
     {
+        _ = tomorrowDow; // Suburb volume & claimed GoodSort runs schedule pickups — never council wheelie-bin night.
         var todayLocal = tomorrowLocal.AddDays(-1);
-        var claimedBinIds = await _db.RunStops
-            .Where(s => s.Run.Status == "claimed")
+        var todayStartUtc = DateTime.SpecifyKind(todayLocal, DateTimeKind.Utc) - Brisbane;
+
+        // Notify ONLY households whose bin is on an active claimed or in-progress GoodSort run.
+        var activeBinIds = await _db.RunStops
+            .Where(s => s.Run.Status == "claimed" || s.Run.Status == "in_progress")
             .Select(s => s.BinId)
             .Distinct()
             .ToListAsync();
-        var claimedHouseholdIds = claimedBinIds.Count == 0
-            ? new HashSet<Guid>()
-            : (await _db.Bins
-                .Where(b => b.HouseholdId != null && claimedBinIds.Contains(b.Id))
-                .Select(b => b.HouseholdId!.Value)
-                .ToListAsync()).ToHashSet();
+        if (activeBinIds.Count == 0) return 0;
 
-        var q = _db.Households.Where(h => h.Type != "unit_complex"
-            && (h.CouncilCollectionDay == tomorrowDow || claimedHouseholdIds.Contains(h.Id))
-            && BinStatuses.Serviceable.Contains(h.BinStatus));
-        if (!forceResend) q = q.Where(h => h.LastPickupAt == null || h.LastPickupAt < todayLocal);
-        var candidates = await q.Include(h => h.Members).ToListAsync();
+        var activeHouseholdIds = (await _db.Bins
+            .Where(b => b.HouseholdId != null && activeBinIds.Contains(b.Id))
+            .Select(b => b.HouseholdId!.Value)
+            .Distinct()
+            .ToListAsync()).ToHashSet();
+        if (activeHouseholdIds.Count == 0) return 0;
+
+        var candidates = await _db.Households
+            .Where(h => h.Type != "unit_complex"
+                && activeHouseholdIds.Contains(h.Id)
+                && BinStatuses.Serviceable.Contains(h.BinStatus))
+            .Include(h => h.Members)
+            .ToListAsync();
         if (candidates.Count == 0) return 0;
 
         var client = MakeEmailClient();
@@ -76,7 +83,10 @@ public class PickupReminderService
 
         foreach (var hh in candidates)
         {
-            var recipients = hh.Members.Where(m => !string.IsNullOrWhiteSpace(m.Email)).ToList();
+            var recipients = hh.Members
+                .Where(m => !string.IsNullOrWhiteSpace(m.Email)
+                    && (forceResend || m.LastNudgedAt == null || m.LastNudgedAt < todayStartUtc))
+                .ToList();
             if (recipients.Count == 0) continue;
 
             try
@@ -85,26 +95,27 @@ public class PickupReminderService
                 {
                     var helloHtml = WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(member.Name) ? "there" : member.Name);
                     var addressHtml = WebUtility.HtmlEncode(hh.Address ?? "");
-                    var subject = "Bag out tonight — The Good Sort pickup";
+                    var subject = "Bag out sorted containers — Good Sort Runner claimed your suburb run";
                     var body = $@"
                       <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
                         <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Bag out sorted containers</h1>
                         <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {helloHtml},</p>
-                        <p style='font-size:14px;line-height:1.55'>We're collecting in your suburb. Bag out eligible cans and bottles on the kerb tonight or early morning.</p>
+                        <p style='font-size:14px;line-height:1.55'>A Good Sort Runner has claimed a collection run for your suburb. Place your QR-tagged sorted bags at the kerb.</p>
                         <div style='background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px;margin:16px 0'>
                           <p style='font-size:13px;font-weight:600;color:#166534;margin:0 0 6px'>Quick checklist</p>
                           <ul style='font-size:13px;color:#166534;margin:0;padding-left:20px'>
-                            <li>Bag out sorted containers on the kerb</li>
-                            <li>Eligible cans and bottles only</li>
-                            <li>We take them to a refund point or depot</li>
+                            <li>Attach QR bag tags from /bags and place sorted bags on the kerb</li>
+                            <li>Eligible 150mL–3L cans, plastic bottles, poppers, and glass bottles (including wine &amp; spirits)</li>
+                            <li>Credits clear once the Runner drops off and the depot verifies</li>
                           </ul>
                         </div>
-                        <p style='font-size:14px;margin:12px 0'><a href='https://thegoodsort.org/household' style='color:#16a34a;font-weight:600'>Tap here once bags are on the kerb →</a></p>
+                        <p style='font-size:14px;margin:12px 0'><a href='https://thegoodsort.org/bags' style='color:#16a34a;font-weight:600'>Seal &amp; mark bags on the kerb →</a></p>
                         <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {addressHtml}</p>
                       </div>";
                     await SendEmail(client, sender, member.Email!, subject, body);
+                    member.LastNudgedAt = DateTime.UtcNow;
                 }
-                hh.LastPickupAt = todayLocal;
+                // Never overwrite hh.LastPickupAt here — LastPickupAt records true physical collection only.
                 sent++;
             }
             catch (Exception ex)
@@ -113,7 +124,7 @@ public class PickupReminderService
             }
         }
         if (sent > 0) await _db.SaveChangesAsync();
-        _log.LogInformation("Sent pickup reminders to {Count} households for {Date}", sent, tomorrowLocal.Date);
+        _log.LogInformation("Sent active-run pickup reminders to {Count} households for {Date}", sent, tomorrowLocal.Date);
         return sent;
     }
 

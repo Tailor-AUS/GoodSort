@@ -516,12 +516,23 @@ public class CashoutService
         });
     }
 
+    public const int MaxPayIdBatchRows = 250;
+
     private async Task<int> ClaimPendingPayIdInto(Guid batchId)
     {
         try
         {
-            return await _db.Set<CashoutRequest>()
+            var candidateIds = await _db.Set<CashoutRequest>()
                 .Where(c => c.Status == "pending" && c.PayoutMethod == "payid")
+                .OrderBy(c => c.CreatedAt)
+                .ThenBy(c => c.Id)
+                .Select(c => c.Id)
+                .Take(MaxPayIdBatchRows)
+                .ToListAsync();
+            if (candidateIds.Count == 0) return 0;
+
+            return await _db.Set<CashoutRequest>()
+                .Where(c => candidateIds.Contains(c.Id) && c.Status == "pending" && c.PayoutMethod == "payid")
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(c => c.Status, "processing")
                     .SetProperty(c => c.BatchId, batchId));
@@ -533,6 +544,9 @@ public class CashoutService
             {
                 var rows = await _db.Set<CashoutRequest>()
                     .Where(c => c.Status == "pending" && c.PayoutMethod == "payid")
+                    .OrderBy(c => c.CreatedAt)
+                    .ThenBy(c => c.Id)
+                    .Take(MaxPayIdBatchRows)
                     .ToListAsync();
                 foreach (var row in rows)
                 {
@@ -547,6 +561,92 @@ public class CashoutService
                 FallbackGate.Release();
             }
         }
+    }
+
+    /// <summary>
+    /// Re-emits an already-claimed PayID CSV or ABA file by BatchId without mutating status,
+    /// so a failed browser download never strands a batch in "processing".
+    /// </summary>
+    public async Task<(string Content, string ContentType)?> ReexportBatchAsync(Guid batchId)
+    {
+        var rows = await _db.Set<CashoutRequest>().AsNoTracking()
+            .Where(c => c.BatchId == batchId && (c.Status == "processing" || c.Status == "paid"))
+            .OrderBy(c => c.CreatedAt)
+            .ThenBy(c => c.Id)
+            .ToListAsync();
+        if (rows.Count == 0) return null;
+
+        if (rows.All(r => r.PayoutMethod == "payid"))
+        {
+            var dateStr = ((rows[0].ProcessedAt ?? DateTime.UtcNow) + BrisbaneTime.Offset).ToString("yyyy-MM-dd");
+            var sb = new StringBuilder();
+            sb.AppendLine("BatchId,DateAEST,PayeeName,PayIdType,PayIdValue,AmountDollars,AmountCents,Reference");
+            foreach (var cashout in rows)
+            {
+                var dollars = (cashout.AmountCents / 100m).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+                var reference = $"GOODSORT-{cashout.Id.ToString("N")[..8].ToUpperInvariant()}";
+                sb.AppendLine(string.Join(",",
+                    batchId.ToString("D"),
+                    dateStr,
+                    CsvSafeField(cashout.AccountName ?? "GOODSORT MEMBER"),
+                    CsvSafeField(cashout.PayIdType ?? ""),
+                    CsvSafeField(cashout.PayIdValue ?? "", allowLeadingPlus: true),
+                    dollars,
+                    cashout.AmountCents.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    reference));
+            }
+            return (sb.ToString(), "text/csv");
+        }
+
+        if (!PayoutsOpen()) return null;
+        var abaSb = new StringBuilder();
+        var abaDate = (rows[0].ProcessedAt ?? DateTime.UtcNow) + BrisbaneTime.Offset;
+        abaSb.AppendLine(
+            "0" +
+            "                 " +
+            "01" +
+            "WBC" +
+            "       " +
+            Pad26(_config["ABA_USER_NAME"] ?? "THE GOOD SORT") +
+            SanitizeAbaText(_config["ABA_USER_ID"]).PadRight(6).Substring(0, 6) +
+            "PAYMENTS".PadRight(12) +
+            abaDate.ToString("ddMMyy") +
+            "                                        "
+        );
+        long totalAmount = 0;
+        var recordCount = 0;
+        foreach (var cashout in rows)
+        {
+            if (string.IsNullOrEmpty(cashout.Bsb) || string.IsNullOrEmpty(cashout.AccountNumber)) continue;
+            totalAmount += cashout.AmountCents;
+            recordCount++;
+            abaSb.AppendLine(
+                "1" +
+                cashout.Bsb.Insert(3, "-") +
+                cashout.AccountNumber.PadRight(9) +
+                " " +
+                "53" +
+                cashout.AmountCents.ToString().PadLeft(10, '0') +
+                SanitizeAbaText(cashout.AccountName).PadRight(32).Substring(0, 32) +
+                "GOODSORT PAYOUT   " +
+                FormatBsb(Digits(_config["ABA_TRACE_BSB"])) +
+                Digits(_config["ABA_TRACE_ACCOUNT"]).PadRight(9).Substring(0, 9) +
+                Pad16(_config["ABA_REMITTER"] ?? "THE GOOD SORT") +
+                "00000000"
+            );
+        }
+        abaSb.AppendLine(
+            "7" +
+            "999-999" +
+            "            " +
+            totalAmount.ToString().PadLeft(10, '0') +
+            totalAmount.ToString().PadLeft(10, '0') +
+            "0000000000" +
+            new string(' ', 24) +
+            recordCount.ToString().PadLeft(6, '0') +
+            "                                        "
+        );
+        return (abaSb.ToString(), "text/plain");
     }
 
     public static string CsvSafeField(string raw, bool allowLeadingPlus = false)

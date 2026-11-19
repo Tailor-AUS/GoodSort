@@ -308,6 +308,62 @@ public class NotificationService
         return sent;
     }
 
+    /// <summary>
+    /// Emails households on a newly claimed run whose bags are not yet marked on the kerb,
+    /// so daytime runs never send a Runner to an un-notified kerb.
+    /// </summary>
+    public async Task<int> SendRunClaimedBagOutAlert(Guid runId)
+    {
+        if (MakeClient() is null) return 0;
+
+        var stopBinIds = await _db.RunStops
+            .Where(s => s.RunId == runId)
+            .Select(s => s.BinId)
+            .Distinct()
+            .ToListAsync();
+        if (stopBinIds.Count == 0) return 0;
+
+        var householdIds = await _db.Bins
+            .Where(b => b.HouseholdId != null && stopBinIds.Contains(b.Id))
+            .Select(b => b.HouseholdId!.Value)
+            .Distinct()
+            .ToListAsync();
+        if (householdIds.Count == 0) return 0;
+
+        var households = await _db.Households
+            .Include(h => h.Members)
+            .Where(h => householdIds.Contains(h.Id) && !h.BinIsOut)
+            .ToListAsync();
+        if (households.Count == 0) return 0;
+
+        var sent = 0;
+        foreach (var hh in households)
+        {
+            var placeHtml = Html(TitleSuburb(hh.Suburb));
+            var addressHtml = Html(hh.Address);
+            foreach (var member in hh.Members.Where(m => !string.IsNullOrWhiteSpace(m.Email)))
+            {
+                var helloHtml = Html(string.IsNullOrWhiteSpace(member.Name) ? "there" : member.Name);
+                var body = $@"
+                  <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
+                    <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Runner claimed your {placeHtml} pickup</h1>
+                    <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {helloHtml},</p>
+                    <p style='font-size:14px;line-height:1.55'>A Good Sort Runner has claimed your suburb run. Seal your sorted home bags, attach QR tags, and place them at the kerb at <b>{addressHtml}</b>.</p>
+                    <p style='font-size:14px;margin:20px 0'><a href='https://thegoodsort.org/bags' style='display:inline-block;background:#16a34a;color:#fff;font-weight:700;text-decoration:none;padding:12px 18px;border-radius:12px'>Open QR Bag Tags &amp; Mark on Kerb</a></p>
+                    <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {placeHtml}</p>
+                  </div>";
+                if (await Send(member.Email!, $"Runner claimed your {TitleSuburb(hh.Suburb)} pickup — bag out now", body))
+                {
+                    member.LastNudgedAt = DateTime.UtcNow;
+                    sent++;
+                }
+            }
+        }
+
+        if (sent > 0) await _db.SaveChangesAsync();
+        return sent;
+    }
+
     private async Task<bool> Send(string to, string subject, string html)
     {
         var client = MakeClient();

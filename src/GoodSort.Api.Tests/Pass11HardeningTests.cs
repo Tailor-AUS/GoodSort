@@ -124,7 +124,8 @@ public class Pass11HardeningTests : IClassFixture<OpaqueBoxHost>
         })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await runnerClient.PostAsync($"/api/marketplace/runs/{runId}/deliver", null)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await runnerClient.PostAsJsonAsync($"/api/marketplace/runs/{runId}/complete", new { depotVerifiedContainers = 120 })).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await runnerClient.PostAsync($"/api/marketplace/runs/{runId}/settle", null)).StatusCode);
+        var (adminClient, _, _) = await _host.SignInAdminAsync();
+        Assert.Equal(HttpStatusCode.OK, (await adminClient.PostAsync($"/api/marketplace/runs/{runId}/settle", null)).StatusCode);
 
         using (var scope = _host.Services.CreateScope())
         {

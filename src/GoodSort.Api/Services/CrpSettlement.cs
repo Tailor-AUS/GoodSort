@@ -125,10 +125,11 @@ public static class CrpSettlement
         var totalPayoutCents = householdPayoutCents + containerMafiaCents + runnerPayoutCents;
         var netMarginBp = grossBp - (totalPayoutCents * 100L);
 
-        // Full-scale CRP pro-forma at 10¢ household + actual Mafia (0 or 1¢) + 3¢ runner:
+        // Full-scale CRP pro-forma at 10¢ household + actual Mafia + actual runner payout
+        // (never substitute a synthetic 3¢ runner rate when actual runner payout differs):
         var proFormaPayoutCents = (safeContainers * CrpHouseholdCentsPerContainer)
                                 + containerMafiaCents
-                                + (safeContainers * CrpRunnerTargetCentsPerContainer);
+                                + Math.Max(0, runnerPayoutCents);
         var proFormaNetMarginBp = proFormaGrossBp - (proFormaPayoutCents * 100L);
 
         var safeArea = string.IsNullOrWhiteSpace(areaName) ? "Brisbane" : areaName.Trim();

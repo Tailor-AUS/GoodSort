@@ -18,12 +18,20 @@ public static class InvitePreview
     /// </param>
     public static string PublicFirstName(string? name, string fallback = "A neighbour")
     {
-        var first = (name ?? "").Trim()
+        var trimmed = (name ?? "").Trim();
+        if (trimmed.Equals("The Good Sort", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Equals("GoodSort", StringComparison.OrdinalIgnoreCase))
+            return "The Good Sort";
+
+        var first = trimmed
             .Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries)
             .FirstOrDefault() ?? "";
         if (first.Contains('@') || first.Length is < 2 or > 24) return fallback;
         if (first.Equals("New", StringComparison.OrdinalIgnoreCase)
-            || first.Equals("You", StringComparison.OrdinalIgnoreCase))
+            || first.Equals("You", StringComparison.OrdinalIgnoreCase)
+            || first.Equals("The", StringComparison.OrdinalIgnoreCase)
+            || first.Equals("Admin", StringComparison.OrdinalIgnoreCase)
+            || first.Equals("Hello", StringComparison.OrdinalIgnoreCase))
             return fallback;
         return first;
     }

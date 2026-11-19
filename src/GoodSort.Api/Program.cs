@@ -34,7 +34,7 @@ builder.Services.AddSingleton<ScanTokenService>();
 builder.Services.AddHttpClient();
 
 // Tailor Vision (TV) — api.tailor.au/api/vision/classify
-// GoodSort dogfoods Tailor Vision, billed via BAINK (baink.tailor.au)
+// GoodSort dogfoods Tailor Vision, billed via AINK
 // Open Food Facts asks callers to identify themselves. A browser cannot:
 // User-Agent is a forbidden header name in fetch, so the one lib/containers.ts
 // set was silently dropped. Server-side it actually gets sent.
@@ -282,7 +282,7 @@ builder.Services.AddAuthorization(options =>
 });
 
 // Cap request bodies. /api/scan/photo carries base64 photos — a clear
-// upper bound prevents both memory pressure and runaway BAINK spend if a
+// upper bound prevents both memory pressure and runaway AINK spend if a
 // caller tries to fuzz the vision endpoint with huge payloads.
 builder.Services.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(o =>
     o.SerializerOptions.MaxDepth = 32);
@@ -327,10 +327,15 @@ for (var i = 0; i < 10; i++)
             await db.Database.EnsureCreatedAsync();
             app.Logger.LogInformation("In-memory waitlist database ready (no SQL Server)");
         }
-        else
+        else if (app.Environment.IsDevelopment()
+                 || string.Equals(builder.Configuration["RUN_MIGRATIONS_ON_BOOT"], "true", StringComparison.OrdinalIgnoreCase))
         {
             await db.Database.MigrateAsync();
             app.Logger.LogInformation("Database migration completed successfully");
+        }
+        else
+        {
+            app.Logger.LogInformation("Skipping boot-time EF migration in non-Development environment (RUN_MIGRATIONS_ON_BOOT unset)");
         }
 
         var seedAdminEmail = AuthService.NormalizeValidEmail(builder.Configuration["ADMIN_SEED_EMAIL"]);
@@ -671,13 +676,13 @@ app.MapPost("/api/scan/photo", async (HttpContext ctx, PhotoScanRequest req, Vis
     var base64 = req.Image;
     if (base64.Contains(",")) base64 = base64.Split(',')[1];
 
-    // Hard size cap before we round-trip to Tailor Vision and burn BAINK credit.
+    // Hard size cap before we round-trip to Tailor Vision and burn AINK credit.
     // base64 inflates by ~33%, so 2_000_000 base64 chars ≈ 1.5 MB raw image.
     if (base64.Length > 2_000_000)
         return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
 
     // Cost guardrails — per-user AND global. Per-user is the critical one:
-    // without it, one client can drain the whole day's BAINK budget.
+    // without it, one client can drain the whole day's AINK budget.
     var since = DateTime.UtcNow.AddHours(-24);
     var perUserCap = int.TryParse(cfg["VISION_PER_USER_DAILY_CAP"], out var pu) ? pu : 100;
     var globalCap = int.TryParse(cfg["VISION_DAILY_CAP"], out var g) ? g : 2000;
@@ -694,7 +699,7 @@ app.MapPost("/api/scan/photo", async (HttpContext ctx, PhotoScanRequest req, Vis
     // were a check-then-act with a multi-second gap: every request in flight
     // reads the same total, every one passes, and every one makes a billed
     // call. The comment on the cap says "without it, one client can drain the
-    // whole day's BAINK budget" — which is exactly what the gap allows, one
+    // whole day's AINK budget" — which is exactly what the gap allows, one
     // burst at a time. Same shape as the money-path double-spends, against
     // spend rather than credit.
     //
@@ -977,7 +982,7 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
                 _ = material switch
                 {
                     "aluminium" => household.Materials.Aluminium++,
-                    "pet" => household.Materials.Pet++,
+                    "pet" or "pet_clear" or "pet_coloured" => household.Materials.Pet++,
                     "glass" => household.Materials.Glass++,
                     _ => household.Materials.Other++,
                 };
@@ -1233,19 +1238,61 @@ app.MapPost("/api/households", async (HttpContext ctx, HouseholdCreateRequest re
     // idempotently. (Address edits go via PATCH .../street.)
     if (!ctx.IsAdmin() && callerId is Guid nonAdminUid)
     {
-        var (resolvedHousehold, createdNew) = await StatusClaim.WithUserGateAsync(
+        var (resolvedHousehold, createdNew, duplicateBlocked) = await StatusClaim.WithUserGateAsync(
             nonAdminUid,
-            () => Atomic.RunAsync<(Household, bool)>(db, async () =>
+            () => Atomic.RunAsync<(Household, bool, bool)>(db, async () =>
             {
                 var profileSnapshot = await db.Profiles.AsNoTracking()
                     .Where(p => p.Id == nonAdminUid)
-                    .Select(p => new { p.Id, p.HouseholdId })
+                    .Select(p => new { p.Id, p.HouseholdId, p.ReferrerId })
                     .FirstOrDefaultAsync();
 
                 if (profileSnapshot?.HouseholdId is Guid existingId
                     && await db.Households.AsNoTracking().FirstOrDefaultAsync(h => h.Id == existingId) is { } existing)
                 {
-                    return (existing, false);
+                    return (existing, false, false);
+                }
+
+                // Guard physical street-address deduplication: prevent 3 Sybil accounts at one
+                // house from creating 3 Households, spoofing MinHouseholdsForRun = 3, or spawning
+                // 3 duplicate RunStops at one gate — while allowing an invited partner/housemate
+                // (whose ReferrerId is an existing member of that household) to join the same household!
+                var houseKey = household.Type != "unit_complex"
+                    ? WaitlistJoin.PhysicalHouseKey(household.Suburb, household.Address, household.Street)
+                    : null;
+                if (houseKey is not null)
+                {
+                    var canonSuburb = BinDayService.CanonicalSuburb(household.Suburb)!;
+                    var suburbPeers = await db.Households
+                        .Include(h => h.Members)
+                        .Where(h => h.Type != "unit_complex" && h.Suburb != null && h.Suburb.ToUpper() == canonSuburb)
+                        .ToListAsync();
+                    var matchingHouse = suburbPeers.FirstOrDefault(h =>
+                        string.Equals(WaitlistJoin.PhysicalHouseKey(h.Suburb, h.Address, h.Street), houseKey, StringComparison.OrdinalIgnoreCase));
+                    if (matchingHouse is not null)
+                    {
+                        var invitedByHousemate = profileSnapshot?.ReferrerId is Guid inviterId
+                            && matchingHouse.Members.Any(m => m.Id == inviterId);
+                        if (!invitedByHousemate)
+                        {
+                            return (matchingHouse, false, true);
+                        }
+
+                        var joiningMember = await db.Profiles.FindAsync(nonAdminUid);
+                        if (joiningMember is not null)
+                        {
+                            joiningMember.HouseholdId = matchingHouse.Id;
+                            // Housemates sharing one physical address cannot earn Container Mafia self-referral credits.
+                            joiningMember.ReferrerId = null;
+                            var joinOrphans = await db.Scans
+                                .Where(sc => sc.UserId == joiningMember.Id && sc.HouseholdId == null && sc.Status == "pending")
+                                .ToListAsync();
+                            var sharedBin = await db.Bins.FirstOrDefaultAsync(b => b.HouseholdId == matchingHouse.Id);
+                            ScanBackfill.AttachTo(matchingHouse, joinOrphans, sharedBin);
+                            await db.SaveChangesAsync();
+                        }
+                        return (matchingHouse, false, false);
+                    }
                 }
 
                 db.Households.Add(household);
@@ -1267,7 +1314,7 @@ app.MapPost("/api/households", async (HttpContext ctx, HouseholdCreateRequest re
                         var winner = winnerId is Guid wid
                             ? await db.Households.AsNoTracking().FirstOrDefaultAsync(h => h.Id == wid)
                             : null;
-                        return (winner ?? household, false);
+                        return (winner ?? household, false, false);
                     }
                 }
 
@@ -1296,7 +1343,28 @@ app.MapPost("/api/households", async (HttpContext ctx, HouseholdCreateRequest re
                         if (me.ReferrerId is Guid rid && rid != nonAdminUid)
                         {
                             var referrer = await db.Profiles.FindAsync(rid);
-                            if (referrer is not null) referrer.PendingCents += 100;
+                            if (referrer is not null && referrer.ReferrerId != nonAdminUid)
+                            {
+                                var refHouse = referrer.HouseholdId is Guid rhid
+                                    ? await db.Households.AsNoTracking().FirstOrDefaultAsync(h => h.Id == rhid)
+                                    : null;
+                                var refKey = refHouse is not null
+                                    ? WaitlistJoin.PhysicalHouseKey(refHouse.Suburb, refHouse.Address, refHouse.Street)
+                                    : null;
+                                if (houseKey is not null && refKey is not null
+                                    && string.Equals(houseKey, refKey, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    me.ReferrerId = null;
+                                }
+                                else
+                                {
+                                    referrer.PendingCents += 100;
+                                }
+                            }
+                            else
+                            {
+                                me.ReferrerId = null;
+                            }
                         }
 
                         var orphans = await db.Scans
@@ -1310,9 +1378,17 @@ app.MapPost("/api/households", async (HttpContext ctx, HouseholdCreateRequest re
                 }
 
                 await db.SaveChangesAsync();
-                return (household, true);
+                return (household, true, false);
             }),
             ctx.RequestAborted);
+
+        if (duplicateBlocked)
+        {
+            return Results.Conflict(new
+            {
+                error = "A household is already registered at this street address. Ask your housemate for their invite link to join the same household.",
+            });
+        }
 
         if (!createdNew)
         {
@@ -1428,6 +1504,8 @@ app.MapPatch("/api/households/{id:guid}/street", async (HttpContext ctx, Guid id
     if (!string.IsNullOrWhiteSpace(req.Address))
     {
         var trimmedAddr = req.Address.Trim();
+        if (h.Type != "unit_complex" && !WaitlistJoin.HasStreetNumber(trimmedAddr))
+            return Results.BadRequest(new { error = "Include your street number (for example, 12 Beaudesert Rd) so a Runner can find your kerb." });
         h.Address = trimmedAddr.Length > 300 ? trimmedAddr[..300] : trimmedAddr;
         var parsed = BinDayService.ParseAddress(h.Address);
         if (parsed is not null)
@@ -1647,8 +1725,7 @@ app.MapPost("/api/households/lookup-bin-day", async (BinDayLookupRequest req, Bi
     return Results.Ok(new { found = true, dayOfWeek = result.DayOfWeek, councilArea = result.CouncilArea, source = result.Source });
 }).RequireRateLimiting("bin-day-lookup");
 
-// ── Next collection night — households sort today; we tell them this date.
-// confirmed=false until we are actively collecting. ──
+// ── Next collection status — confirmed ONLY when an active GoodSort run includes this household's bin ──
 app.MapGet("/api/households/{id:guid}/next-pickup", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
     var h = await db.Households.FindAsync(id);
@@ -1657,11 +1734,29 @@ app.MapGet("/api/households/{id:guid}/next-pickup", async (HttpContext ctx, Guid
     if (h.Type == "unit_complex" || h.CouncilCollectionDay is null)
         return Results.Ok(new { nextPickup = (string?)null, confirmed = false, binStatus = h.BinStatus, reason = "Not a residential household with a council collection day set." });
 
-    var next = KerbsideNight.NextRunnerLocalDate(h.CouncilCollectionDay, DateTime.UtcNow);
-    var confirmed = BinStatuses.IsServiceable(h.BinStatus);
+    var utcNow = DateTime.UtcNow;
+    var hhBinIds = await db.Bins.AsNoTracking()
+        .Where(b => b.HouseholdId == id)
+        .Select(b => b.Id)
+        .ToListAsync();
+    var activeRun = hhBinIds.Count == 0
+        ? null
+        : await db.RunStops.AsNoTracking()
+            .Where(s => hhBinIds.Contains(s.BinId)
+                && (s.Run.Status == "claimed"
+                    || s.Run.Status == "in_progress"
+                    || s.Run.Status == "delivering"
+                    || (s.Run.Status == "available" && s.Run.ExpiresAt > utcNow)))
+            .Select(s => new { s.Run.Status, s.Run.CreatedAt })
+            .FirstOrDefaultAsync();
+
+    var confirmed = activeRun is not null;
+    var activeLocalDate = confirmed
+        ? (utcNow + BrisbaneTime.Offset).Date.ToString("yyyy-MM-dd")
+        : (string?)null;
     return Results.Ok(new
     {
-        nextPickup = next?.ToString("yyyy-MM-dd"),
+        nextPickup = activeLocalDate,
         confirmed,
         councilDay = h.CouncilCollectionDay,
         runnerDay = (h.CouncilCollectionDay.Value + 6) % 7,
@@ -1669,8 +1764,10 @@ app.MapGet("/api/households/{id:guid}/next-pickup", async (HttpContext ctx, Guid
         usesDivider = h.UsesDivider,
         binStatus = h.BinStatus,
         reason = confirmed
-            ? "Bag out your sorted containers on the kerb. We take them to a refund point or depot."
-            : "Scan eligible containers for 10¢. A volume run unlocks when your suburb hits about 1,000 scanned containers.",
+            ? "Active Good Sort run in progress for your suburb — place your QR-tagged sorted bags on the kerb."
+            : BinStatuses.IsServiceable(h.BinStatus)
+                ? "Keep sorting into your 4 home bags. We'll email you to bag out when a Runner claims your suburb run."
+                : "Scan eligible containers for 10¢. A volume run unlocks when your suburb hits about 1,000 scanned containers.",
     });
 }).RequireAuthorization();
 
@@ -2039,7 +2136,7 @@ app.MapPost("/api/scans", async (HttpContext ctx, ScanRequest req, GoodSortDbCon
         _ = material switch
         {
             "aluminium" => household.Materials.Aluminium++,
-            "pet" => household.Materials.Pet++,
+            "pet" or "pet_clear" or "pet_coloured" => household.Materials.Pet++,
             "glass" => household.Materials.Glass++,
             _ => household.Materials.Other++,
         };
@@ -2443,21 +2540,65 @@ app.MapPost("/api/cashout/payid", async (HttpContext ctx, PayIdCashoutRequestDto
 }).RequireAuthorization();
 
 // ── Admin: Generate ABA file (admin only — file contains every payee's BSB+account) ──
-app.MapGet("/api/admin/aba-export", async (CashoutService cashout) =>
+static async Task<IResult> HandleAbaExport(CashoutService cashout)
 {
     if (!cashout.PayoutsOpen()) return Results.Ok(new { message = "Payouts are not enabled. Set ABA_PAYOUTS_ENABLED plus a real remitter BSB/account/user id." });
     var aba = await cashout.GenerateAbaFile();
     if (string.IsNullOrEmpty(aba)) return Results.Ok(new { message = "No pending cashouts" });
     return Results.Text(aba, "text/plain");
-}).RequireAuthorization(AuthHelpers.AdminPolicy);
+}
+app.MapGet("/api/admin/aba-export", HandleAbaExport).RequireAuthorization(AuthHelpers.AdminPolicy);
+app.MapPost("/api/admin/aba-export", HandleAbaExport).RequireAuthorization(AuthHelpers.AdminPolicy);
 
 // ── Admin: Generate NPP PayID batch CSV (admin only — file contains payee PayIDs) ──
-app.MapGet("/api/admin/payid-export", async (CashoutService cashout) =>
+static async Task<IResult> HandlePayIdExport(CashoutService cashout)
 {
     if (!cashout.PayIdPayoutsOpen()) return Results.Ok(new { message = "PayID payouts are not enabled. Set PAYID_PAYOUTS_ENABLED=true or enable ABA payouts." });
     var csv = await cashout.GeneratePayIdCsv();
     if (string.IsNullOrEmpty(csv)) return Results.Ok(new { message = "No pending PayID cashouts" });
     return Results.Text(csv, "text/csv");
+}
+app.MapGet("/api/admin/payid-export", HandlePayIdExport).RequireAuthorization(AuthHelpers.AdminPolicy);
+app.MapPost("/api/admin/payid-export", HandlePayIdExport).RequireAuthorization(AuthHelpers.AdminPolicy);
+
+// ── Admin: Re-download an already-claimed ABA / PayID batch without re-claiming ──
+app.MapGet("/api/admin/cashouts/batch/{batchId:guid}", async (Guid batchId, CashoutService cashout) =>
+{
+    var reexported = await cashout.ReexportBatchAsync(batchId);
+    return reexported is { } r
+        ? Results.Text(r.Content, r.ContentType)
+        : Results.NotFound(new { error = "Batch not found orABA payouts closed." });
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
+
+// ── Admin: Mark a processing cashout (or whole batch) as paid ──
+app.MapPost("/api/admin/cashouts/{id:guid}/mark-paid", async (Guid id, GoodSortDbContext db) =>
+{
+    var row = await db.CashoutRequests.FindAsync(id);
+    if (row is null) return Results.NotFound();
+    if (row.Status != "processing" && row.Status != "pending")
+        return Results.BadRequest(new { error = $"Cannot mark cashout in status '{row.Status}' as paid." });
+    row.Status = "paid";
+    row.ProcessedAt ??= DateTime.UtcNow;
+    await db.SaveChangesAsync();
+    return Results.Ok(new { row.Id, row.Status, row.BatchId, row.AmountCents });
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
+
+// ── Admin: Cancel/refund a pending or processing cashout back to user's ClearedCents ──
+app.MapPost("/api/admin/cashouts/{id:guid}/refund", async (Guid id, GoodSortDbContext db) =>
+{
+    return await Atomic.RunAsync(db, async () =>
+    {
+        var row = await db.CashoutRequests.FindAsync(id);
+        if (row is null) return Results.NotFound();
+        if (row.Status != "pending" && row.Status != "processing")
+            return Results.BadRequest(new { error = $"Cannot refund cashout in status '{row.Status}'." });
+        row.Status = "cancelled";
+        var user = await db.Profiles.FindAsync(row.UserId);
+        if (user is not null)
+            user.ClearedCents += row.AmountCents;
+        await db.SaveChangesAsync();
+        return Results.Ok(new { row.Id, row.Status, refundedCents = row.AmountCents });
+    });
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
 // ── Admin: COEX 17.68¢ Secondary-Sorted CRP Settlement Ledger ──
@@ -2571,7 +2712,7 @@ app.MapGet("/api/admin/crp-ledger", async (GoodSortDbContext db, CashoutService 
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
 // ── Admin: Dashboard stats (auth required) ──
-app.MapGet("/api/admin/stats", async (GoodSortDbContext db) =>
+app.MapGet("/api/admin/stats", async (GoodSortDbContext db, IConfiguration cfg) =>
 {
     var users = await db.Profiles.CountAsync();
     var nonAdminUsers = await db.Profiles.CountAsync(p => !p.IsAdmin);
@@ -2604,11 +2745,12 @@ app.MapGet("/api/admin/stats", async (GoodSortDbContext db) =>
     var activatedUsers = await db.Profiles.CountAsync(p => p.TotalContainers > 0);
     var householdsWithAddress = await db.Households.CountAsync(h => h.Lat != 0 && h.Lng != 0);
     var runnersRegistered = await db.RunnerProfiles.CountAsync();
+    var resetBaselineEnabled = string.Equals(cfg["RESET_BASELINE_ENABLED"], "true", StringComparison.OrdinalIgnoreCase);
 
     return Results.Ok(new
     {
         users, nonAdminUsers, bins, scans, routes, totalContainers, totalPending, totalCleared,
-        runs, runsAvailable, runsInFlight, runsSettled,
+        runs, runsAvailable, runsInFlight, runsSettled, resetBaselineEnabled,
         activation = new
         {
             activatedUsers,
@@ -2628,15 +2770,15 @@ app.MapGet("/api/admin/stats", async (GoodSortDbContext db) =>
     });
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
-// ── Admin: Tailor Vision (BAINK) health ──
-// We can't query BAINK directly from here (it's the upstream billing system at
-// baink.tailor.au) but we surface enough side-channel signal to know if Tailor
+// ── Admin: Tailor Vision (AINK) health ──
+// We can't query AINK directly from here (it's the upstream billing system)
+// but we surface enough side-channel signal to know if Tailor
 // Vision is healthy and being billed:
 //   - last successful tailor call timestamp (proves end-to-end is working)
 //   - tailor success rate over the last hour and day
 //   - count of OpenAI fallbacks (each fallback = a Tailor Vision miss = we
 //     should NOT be billed for, but worth watching the ratio)
-//   - last failure with truncated error (so a 401 = revoked BAINK key is
+//   - last failure with truncated error (so a 401 = revoked AINK key is
 //     obvious without trawling logs)
 app.MapGet("/api/admin/vision/health", async (GoodSortDbContext db, IConfiguration cfg) =>
 {
@@ -2733,7 +2875,7 @@ app.MapGet("/api/admin/pickups/tomorrow", async (GoodSortDbContext db) =>
     var activeRuns = await db.Runs
         .Include(r => r.Runner).ThenInclude(rp => rp!.Profile)
         .Include(r => r.Stops)
-        .Where(r => RunLifecycle.HoldsBin.Contains(r.Status)
+        .Where(r => (RunLifecycle.HoldsBin.Contains(r.Status) || r.Status == "completed")
                     && (!RunLifecycle.Unclaimed.Contains(r.Status) || r.ExpiresAt > utcNow))
         .OrderByDescending(r => r.CreatedAt)
         .ToListAsync();
@@ -2753,7 +2895,7 @@ app.MapGet("/api/admin/pickups/tomorrow", async (GoodSortDbContext db) =>
         .Include(h => h.Members)
         .Where(h => h.Type != "unit_complex"
                     && BinStatuses.Serviceable.Contains(h.BinStatus)
-                    && (h.CouncilCollectionDay == tomorrowDow || h.BinIsOut || activeRunHhIds.Contains(h.Id)))
+                    && (h.BinIsOut || h.PendingContainers > 0 || activeRunHhIds.Contains(h.Id)))
         .ToListAsync();
 
     var hhIds = households.Select(h => h.Id).ToHashSet();
@@ -2780,12 +2922,27 @@ app.MapGet("/api/admin/pickups/tomorrow", async (GoodSortDbContext db) =>
             memberEmails = h.Members.Select(m => m.Email).Where(e => e != null),
         }),
         runs = activeRuns.Select(r => new {
-            r.Id, r.Status, r.AreaName, r.EstimatedContainers, r.PerContainerCents, r.EstimatedPayoutCents,
+            r.Id, r.Status, r.AreaName, r.EstimatedContainers, r.ActualContainers,
+            r.DepotVerifiedContainers, r.CoexDocketRef, r.PerContainerCents, r.EstimatedPayoutCents,
             runnerName = r.Runner != null ? r.Runner.Profile!.Name : null,
             runnerEmail = r.Runner != null ? r.Runner.Profile!.Email : null,
             stops = r.Stops.Count,
         }),
     });
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
+
+// ── Admin: Promote a below_threshold pilot run to "available" on the Runner marketplace ──
+app.MapPost("/api/admin/marketplace/runs/{id:guid}/publish", async (Guid id, GoodSortDbContext db) =>
+{
+    var run = await db.Runs.FindAsync(id);
+    if (run is null) return Results.NotFound();
+    if (run.Status != "below_threshold" && run.Status != "available")
+        return Results.BadRequest(new { error = $"Cannot publish run in status '{run.Status}'." });
+    run.Status = "available";
+    if (run.ExpiresAt <= DateTime.UtcNow)
+        run.ExpiresAt = DateTime.UtcNow.AddHours(18);
+    await db.SaveChangesAsync();
+    return Results.Ok(new { run.Id, run.Status, run.AreaName, run.ExpiresAt });
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
 // ── Admin: manually trigger the pickup reminder service (for dry-run testing) ──
@@ -2869,10 +3026,15 @@ app.MapPost("/api/admin/areas/{suburb}/allocate", async (string suburb, int? day
     if (day is < 0 or > 6)
         return Results.BadRequest(new { error = "Day of week must be between 0 (Sunday) and 6 (Saturday)." });
     var key = BinDayService.CanonicalSuburb(suburb)!;
-    var inSuburb = db.Households
-        .Where(h => h.Type != "unit_complex" && h.Suburb != null && h.Suburb.ToUpper() == key);
-    var containers = await inSuburb.SumAsync(h => h.PendingContainers > 0 ? h.PendingContainers : 0);
-    var households = await inSuburb.CountAsync();
+    var suburbRows = await db.Households.AsNoTracking()
+        .Where(h => h.Type != "unit_complex" && h.Suburb != null && h.Suburb.ToUpper() == key)
+        .Select(h => new { h.Id, h.Suburb, h.Address, h.Street, h.PendingContainers })
+        .ToListAsync();
+    var containers = suburbRows.Sum(h => h.PendingContainers > 0 ? h.PendingContainers : 0);
+    var households = suburbRows
+        .Select(h => WaitlistJoin.PhysicalHouseKey(h.Suburb, h.Address, h.Street) ?? h.Id.ToString("N"))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Count();
     if (!WaitlistDensity.CanPurchase(containers))
         return Results.BadRequest(new { error = $"Need {WaitlistDensity.LiveThreshold} scanned containers in the suburb. This suburb has {containers}." });
     if (!WaitlistDensity.CanDispatch(containers, households))
@@ -3026,7 +3188,31 @@ app.MapDelete("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, GoodSo
     db.Collections.RemoveRange(profile.Collections);
 
     var cashouts = await db.CashoutRequests.Where(c => c.UserId == id).ToListAsync();
+    if (cashouts.Any(c => c.Status == "processing"))
+    {
+        return Results.Conflict(new
+        {
+            error = "Cannot delete account while a bank payout batch is currently processing. Wait for your transfer to settle or ask hello@thegoodsort.org to refund the batch.",
+        });
+    }
     db.CashoutRequests.RemoveRange(cashouts);
+
+    // Reverse any un-cleared $1.00 (100¢) Container Mafia signup bonus if this sole-member
+    // household never completed a depot-settled pickup (prevents signup/delete PendingCents farming).
+    if (profile.ReferrerId is Guid signupRefId && signupRefId != id && profile.HouseholdId is Guid checkHhId)
+    {
+        var otherHhMembers = await db.Profiles.AnyAsync(p => p.HouseholdId == checkHhId && p.Id != id);
+        if (!otherHhMembers)
+        {
+            var hhBin = await db.Bins.AsNoTracking().FirstOrDefaultAsync(b => b.HouseholdId == checkHhId);
+            if (hhBin is null || hhBin.LastCollectedAt is null)
+            {
+                var signupRef = await db.Profiles.FindAsync(signupRefId);
+                if (signupRef is not null)
+                    signupRef.PendingCents = Math.Max(0, signupRef.PendingCents - 100);
+            }
+        }
+    }
 
     var referredProfiles = await db.Profiles.Where(p => p.ReferrerId == id).ToListAsync();
     foreach (var r in referredProfiles) r.ReferrerId = null;
@@ -3797,7 +3983,7 @@ app.MapPost("/api/marketplace/runs/{id:guid}/claim", async (HttpContext ctx, Gui
     {
         var alreadyHasActiveRun = await db.Runs.AsNoTracking().AnyAsync(r =>
             r.RunnerId == runner.Id
-            && (r.Status == "claimed" || r.Status == "in_progress" || r.Status == "delivering" || r.Status == "completed"));
+            && (r.Status == "claimed" || r.Status == "in_progress" || r.Status == "delivering"));
         if (alreadyHasActiveRun)
             return Results.BadRequest(new { error = "Finish or release your current active run before claiming another." });
 
@@ -3812,6 +3998,19 @@ app.MapPost("/api/marketplace/runs/{id:guid}/claim", async (HttpContext ctx, Gui
         run.RunnerId = runner.Id;
         run.Status = "claimed";
         run.ClaimedAt ??= DateTime.UtcNow;
+
+        // Notify households on this run whose bags are not yet marked on the kerb
+        var claimedRunId = run.Id;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = app.Services.CreateScope();
+                var notif = scope.ServiceProvider.GetRequiredService<NotificationService>();
+                await notif.SendRunClaimedBagOutAlert(claimedRunId);
+            }
+            catch (Exception ex) { app.Logger.LogError(ex, "Run-claimed bag-out email failed for run {RunId}", claimedRunId); }
+        });
 
         // Return run with stops and drop point (now includes lat/lng for navigation)
         return Results.Ok(run);
@@ -4131,11 +4330,15 @@ app.MapPost("/api/marketplace/runs/{id:guid}/complete", async (HttpContext ctx, 
         catch { /* empty body is allowed for backwards compatibility */ }
     }
 
-    var kerbsideSum = run.Stops.Where(s => s.Status == "picked_up").Sum(s => s.ActualContainers ?? s.EstimatedContainers);
+    var kerbsideSum = run.Stops.Where(s => s.Status == "picked_up").Sum(s => Math.Max(0, s.ActualContainers ?? s.EstimatedContainers));
     if (req?.DepotVerifiedContainers is int dvc && dvc >= 0)
     {
-        var maxRunCap = Math.Max(maxContainersPerStop * Math.Max(1, run.Stops.Count), 10000);
-        run.DepotVerifiedContainers = Math.Clamp(dvc, 0, maxRunCap);
+        // Non-admin runners cannot self-inflate DepotVerifiedContainers above kerbside/estimated volume.
+        // Only an admin verifying the depot docket can override above kerbside volume.
+        var maxCap = ctx.IsAdmin()
+            ? Math.Max(maxContainersPerStop * Math.Max(1, run.Stops.Count), 10000)
+            : Math.Max(0, Math.Max(kerbsideSum, run.EstimatedContainers));
+        run.DepotVerifiedContainers = Math.Clamp(dvc, 0, maxCap);
     }
     if (!string.IsNullOrWhiteSpace(req?.CoexDocketRef))
     {
@@ -4152,32 +4355,82 @@ app.MapPost("/api/marketplace/runs/{id:guid}/complete", async (HttpContext ctx, 
     return Results.Ok(run);
 }).RequireAuthorization();
 
-// ── Marketplace: Settle a completed run (run's runner or admin) ──
+// ── Marketplace: Settle a completed run (Admin docket verification gate ONLY) ──
 app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Guid id, GoodSortDbContext db, RunnerService runnerService, IConfiguration cfg) =>
 {
+    // Hard admin gate: runners may NEVER self-settle ClearedCents without staff docket verification.
+    if (!ctx.IsAdmin()) return Results.Forbid();
+
     var run = await db.Runs.Include(r => r.Stops).Include(r => r.DropPoint).FirstOrDefaultAsync(r => r.Id == id);
     if (run is null || run.Status != "completed") return Results.BadRequest();
-    if (!await CallerOwnsRun(ctx, run, db)) return Results.Forbid();
 
-    // Same reasoning as /api/routes/{id}/settle: claim the transition first,
-    // because everything below credits ClearedCents and moves household credit
-    // from pending to cleared. Doing that twice mints cash-out-eligible money.
-    // Claim and crediting in one transaction — see the route settle above and
-    // Atomic. GenerateRating and UpdateRunnerStats both run between the claim
-    // and the final save, so a throw in either used to strand the run: settled,
-    // nobody paid, and no way to retry.
+    CompleteRunRequest? adminDocketOverride = null;
+    if (ctx.Request.ContentLength is > 0 || (ctx.Request.ContentType?.Contains("json", StringComparison.OrdinalIgnoreCase) ?? false))
+    {
+        try { adminDocketOverride = await ctx.Request.ReadFromJsonAsync<CompleteRunRequest>(); }
+        catch { /* empty body uses run's recorded DepotVerifiedContainers */ }
+    }
+
     return await Atomic.RunAsync(db, async () =>
     {
     if (!await StatusClaim.TryClaimRun(db, run.Id, from: "completed", to: "settled"))
         return Results.BadRequest(new { error = "This run has already been settled." });
 
+    var maxAdminCap = Math.Max(maxContainersPerStop * Math.Max(1, run.Stops.Count), 10000);
+    if (adminDocketOverride?.DepotVerifiedContainers is int overrideDvc && overrideDvc >= 0)
+    {
+        run.DepotVerifiedContainers = Math.Clamp(overrideDvc, 0, maxAdminCap);
+    }
+    if (!string.IsNullOrWhiteSpace(adminDocketOverride?.CoexDocketRef))
+    {
+        var docket = adminDocketOverride.CoexDocketRef.Trim();
+        run.CoexDocketRef = docket[..Math.Min(64, docket.Length)];
+    }
+
     var crpActive = CrpSettlement.IsCrpActive(cfg);
     var householdRateCents = CrpSettlement.ActiveHouseholdRateCents(cfg);
 
-    // Calculate actual payout
-    run.ActualPayoutCents = run.ActualContainers * run.PerContainerCents;
+    var pickedUpStops = run.Stops.Where(s => s.Status == "picked_up").OrderBy(s => s.Sequence).ThenBy(s => s.Id).ToList();
+    var kerbsideSum = pickedUpStops.Sum(s => Math.Max(0, s.ActualContainers ?? s.EstimatedContainers));
+    var verifiedRunTotal = Math.Max(0, run.DepotVerifiedContainers ?? run.ActualContainers);
+
+    // Reconcile runner AND household/Mafia payouts strictly to depot-verified count:
+    // if the depot rejected contaminated/empty bags (verifiedRunTotal < kerbsideSum),
+    // scale each stop's payable container count proportionally via largest-remainder
+    // integer allocation so total paid containers across all stops never exceeds verifiedRunTotal.
+    run.ActualContainers = verifiedRunTotal;
+    run.ActualPayoutCents = verifiedRunTotal * run.PerContainerCents;
     run.Status = "settled";
     run.SettledAt ??= DateTime.UtcNow;
+
+    var payableByStopId = new Dictionary<Guid, int>(pickedUpStops.Count);
+    if (kerbsideSum <= 0 || verifiedRunTotal <= 0)
+    {
+        foreach (var s in pickedUpStops) payableByStopId[s.Id] = 0;
+    }
+    else if (verifiedRunTotal >= kerbsideSum)
+    {
+        foreach (var s in pickedUpStops)
+            payableByStopId[s.Id] = Math.Max(0, s.ActualContainers ?? s.EstimatedContainers);
+    }
+    else
+    {
+        var shares = pickedUpStops.Select(s =>
+        {
+            var raw = Math.Max(0, s.ActualContainers ?? s.EstimatedContainers);
+            var numer = (long)raw * verifiedRunTotal;
+            return new
+            {
+                s.Id,
+                Floor = (int)(numer / kerbsideSum),
+                Remainder = numer % kerbsideSum,
+            };
+        }).ToList();
+        var remainderLeft = verifiedRunTotal - shares.Sum(x => x.Floor);
+        foreach (var sh in shares) payableByStopId[sh.Id] = sh.Floor;
+        foreach (var sh in shares.OrderByDescending(x => x.Remainder).ThenBy(x => x.Id).Take(Math.Max(0, remainderLeft)))
+            payableByStopId[sh.Id]++;
+    }
 
     // Generate rating
     var rating = await runnerService.GenerateRating(run);
@@ -4193,11 +4446,6 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
             runner.Profile.ClearedCents += run.ActualPayoutCents;
     }
 
-    // For each picked-up stop: clear the bin counts AND move user/household credit
-    // from "pending" (scanned but not yet collected) to "cleared" (cashout-eligible).
-    // Mark physical QR bags scanned on this run as verified for COEX CRP audit
-    // before computing post-pickup kerb readiness so collected bags never leave
-    // hh.BinIsOut pinned true and spawn phantom empty runs.
     var runBags = await db.SortedBags.Where(b => b.RunId == run.Id).ToListAsync();
     foreach (var bag in runBags)
     {
@@ -4210,23 +4458,21 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
     var totalHouseholdPayoutCents = 0;
     var totalMafiaCents = 0;
 
-    foreach (var stop in run.Stops.Where(s => s.Status == "picked_up"))
+    foreach (var stop in pickedUpStops)
     {
         var bin = await db.Bins.FindAsync(stop.BinId);
         if (bin is null) continue;
 
-        // Capture before stamping LastCollectedAt: PickupReminderService stamps
-        // Household.LastPickupAt at 6pm the night before collection day, so bin.LastCollectedAt
-        // is the true signal that this household bin has never had a settled pickup before.
         var wasNeverCollected = bin.LastCollectedAt is null;
 
-        var count = stop.ActualContainers ?? stop.EstimatedContainers;
-        bin.PendingContainers = Math.Max(0, bin.PendingContainers - count);
+        var rawCollectedCount = Math.Max(0, stop.ActualContainers ?? stop.EstimatedContainers);
+        var payableCount = payableByStopId.GetValueOrDefault(stop.Id, 0);
+
+        bin.PendingContainers = Math.Max(0, bin.PendingContainers - rawCollectedCount);
         bin.PendingValueCents = bin.PendingContainers * householdRateCents;
         bin.LastCollectedAt = DateTime.UtcNow;
         if (bin.PendingContainers == 0) bin.Materials = new MaterialBreakdown();
 
-        // Household credit uses ActiveHouseholdRateCents (10¢ under COEX CRP, 5¢ pre-CCA).
         if (bin.HouseholdId.HasValue)
         {
             var hh = await db.Households.Include(h => h.Members).FirstOrDefaultAsync(h => h.Id == bin.HouseholdId);
@@ -4245,23 +4491,23 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
                 if (extra is not null) payees.Add(extra);
             }
             var clearedBefore = payees.Sum(m => m.ClearedCents);
-            HouseholdCredit.ApplyPickup(payees, pendingScans, count, householdRateCents);
+            HouseholdCredit.ApplyPickup(payees, pendingScans, payableCount, householdRateCents);
             var clearedAfter = payees.Sum(m => m.ClearedCents);
             totalHouseholdPayoutCents += Math.Max(0, clearedAfter - clearedBefore);
 
             var referredMember = payees.FirstOrDefault(m => m.ReferrerId.HasValue && m.ReferrerId.Value != m.Id);
-            if (referredMember?.ReferrerId is Guid referrerId && count > 0)
+            if (referredMember?.ReferrerId is Guid referrerId && payableCount > 0)
             {
                 var referrer = await db.Profiles.FindAsync(referrerId);
                 if (referrer is not null)
                 {
-                    var mafiaCommission = HouseholdCredit.ReferralCommissionForPickup(count);
+                    var mafiaCommission = HouseholdCredit.ReferralCommissionForPickup(payableCount);
                     referrer.ClearedCents += mafiaCommission;
                     totalMafiaCents += mafiaCommission;
                 }
             }
 
-            if (isFirstHouseholdPickup && count > 0)
+            if (isFirstHouseholdPickup && payableCount > 0)
             {
                 var distinctReferrerIds = hh.Members
                     .Where(m => m.ReferrerId.HasValue && m.ReferrerId.Value != m.Id)
@@ -4277,11 +4523,12 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
                     {
                         signupReferrer.PendingCents -= signupBonusToClear;
                         signupReferrer.ClearedCents += signupBonusToClear;
+                        totalMafiaCents += signupBonusToClear;
                     }
                 }
             }
 
-            hh.PendingContainers = Math.Max(0, hh.PendingContainers - count);
+            hh.PendingContainers = Math.Max(0, hh.PendingContainers - rawCollectedCount);
             hh.PendingValueCents = hh.PendingContainers * householdRateCents;
             hh.EstimatedBags = (int)Math.Ceiling(hh.PendingContainers / 150.0);
             hh.LastPickupAt = DateTime.UtcNow;
@@ -4296,7 +4543,8 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
                 hh.BinIsOutAt = null;
             }
 
-            creditedHouseholds.Add(hh);
+            if (payableCount > 0)
+                creditedHouseholds.Add(hh);
         }
     }
 
@@ -4374,7 +4622,7 @@ app.MapGet("/api/runner/active/{profileId:guid}", async (HttpContext ctx, Guid p
     var active = await db.Runs
         .Include(r => r.Stops.OrderBy(s => s.Sequence))
         .Include(r => r.DropPoint)
-        .Where(r => r.RunnerId == runner.Id && (r.Status == "claimed" || r.Status == "in_progress" || r.Status == "delivering" || r.Status == "completed"))
+        .Where(r => r.RunnerId == runner.Id && (r.Status == "claimed" || r.Status == "in_progress" || r.Status == "delivering"))
         .FirstOrDefaultAsync();
 
     return active is not null ? Results.Ok(active) : Results.NotFound();
@@ -4510,11 +4758,23 @@ app.MapPost("/api/admin/marketplace/runs/generate", async (RunGenerationService 
     return Results.Ok(new { acquiredLease, availableRuns });
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
-// ── Admin: Reset pre-launch database to clean startup baseline ──
+// ── Admin: Reset pre-launch database to clean startup baseline (fail-closed unless RESET_BASELINE_ENABLED=true) ──
 app.MapPost("/api/admin/reset-baseline", async (HttpContext ctx, AdminResetBaselineRequest req, GoodSortDbContext db, IConfiguration cfg, ILogger<Program> log) =>
 {
-    if (!string.Equals(req.Confirm, "RESET_BASELINE", StringComparison.Ordinal))
+    if (!string.Equals(cfg["RESET_BASELINE_ENABLED"], "true", StringComparison.OrdinalIgnoreCase))
+        return Results.NotFound();
+
+    var forceDev = string.Equals(req.Confirm, "RESET_BASELINE_FORCE_DEV", StringComparison.Ordinal);
+    if (!forceDev && !string.Equals(req.Confirm, "RESET_BASELINE", StringComparison.Ordinal))
         return Results.BadRequest(new { error = "Confirmation token RESET_BASELINE is required." });
+
+    if (!forceDev)
+    {
+        var hasLedgers = await db.RunSettlementLedgers.AnyAsync();
+        var hasActiveCashouts = await db.CashoutRequests.AnyAsync(c => c.Status == "pending" || c.Status == "processing");
+        if (hasLedgers || hasActiveCashouts)
+            return Results.Conflict(new { error = "Refusing reset while settled COEX ledgers or active cashouts exist." });
+    }
 
     var callerId = ctx.GetCallerId();
     var seedEmail = AuthService.NormalizeValidEmail(cfg["ADMIN_SEED_EMAIL"]) ?? "hello@thegoodsort.org";

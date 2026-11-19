@@ -198,10 +198,12 @@ public class AuthService
         otp.Used = true;
         await _db.SaveChangesAsync();
 
-        // Reject Guid.Empty so a default/blank GUID never occupies ReferrerId
-        // and blocks a subsequent legitimate neighbour referral link.
+        // Reject Guid.Empty and mutual A<->B referral cycles so two accounts cannot refer each other.
         Guid? validReferrerId = referrerId is Guid candidateRid && candidateRid != Guid.Empty
             ? candidateRid
+            : null;
+        Profile? referrerProfile = validReferrerId is Guid checkRid
+            ? await _db.Profiles.AsNoTracking().FirstOrDefaultAsync(p => p.Id == checkRid)
             : null;
 
         // Find or create profile (hello@thegoodsort.org and admin@thegoodsort.org share one mailbox)
@@ -233,10 +235,12 @@ public class AuthService
         }
         else if (validReferrerId is Guid rid
                  && rid != profile.Id
+                 && referrerProfile?.ReferrerId != profile.Id
                  && profile.HouseholdId is null
                  && (profile.ReferrerId is null || profile.ReferrerId == Guid.Empty))
         {
-            // Neighbour invite after a first OTP (no household yet) still counts.
+            // Neighbour invite after a first OTP (no household yet) still counts,
+            // provided the referrer was not already referred by this profile (no A<->B cycle).
             profile.ReferrerId = rid;
             await _db.SaveChangesAsync();
         }

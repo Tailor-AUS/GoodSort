@@ -4,8 +4,11 @@ export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   (process.env.NODE_ENV !== "production" ? "http://localhost:5113" : "");
 export const REFERRER_STORAGE_KEY = "goodsort_referrer";
+export const REFERRER_EXPIRES_KEY = "goodsort_referrer_exp";
+export const NEXT_PATH_KEY = "goodsort_next_path";
 export const DAY_HINT_KEY = "goodsort_day_hint";
 export const PLACE_HINT_KEY = "goodsort_place_hint";
+const REFERRER_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type PlaceHint = {
   address: string;
@@ -107,12 +110,47 @@ export function apiUrl(path: string): string {
   return base ? `${base}${path}` : path;
 }
 
-/** Persist ?r= / ?ref= so a neighbour invite survives the OTP hop. */
+/** Persist ?r= / ?ref= in both sessionStorage and localStorage (30d TTL) so a neighbour invite survives tabs & restarts. */
 export function persistReferrerFromUrl(): void {
   if (typeof window === "undefined") return;
   const params = new URLSearchParams(window.location.search);
   const r = asProfileId(params.get("r") || params.get("ref"));
-  if (r) sessionStorage.setItem(REFERRER_STORAGE_KEY, r);
+  if (!r) return;
+  try {
+    sessionStorage.setItem(REFERRER_STORAGE_KEY, r);
+  } catch { /* ignore */ }
+  try {
+    localStorage.setItem(REFERRER_STORAGE_KEY, r);
+    localStorage.setItem(REFERRER_EXPIRES_KEY, String(Date.now() + REFERRER_TTL_MS));
+  } catch { /* ignore */ }
+}
+
+export function sanitizeNextPath(raw: string | null | undefined): string | undefined {
+  const trimmed = raw?.trim();
+  if (!trimmed || !trimmed.startsWith("/") || trimmed.startsWith("//") || trimmed.includes("\\")) {
+    return undefined;
+  }
+  return trimmed;
+}
+
+export function persistNextPathFromUrl(): void {
+  if (typeof window === "undefined") return;
+  const next = sanitizeNextPath(new URLSearchParams(window.location.search).get("next"));
+  if (next) {
+    try { sessionStorage.setItem(NEXT_PATH_KEY, next); } catch { /* ignore */ }
+  }
+}
+
+export function consumeNextPath(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const fromUrl = sanitizeNextPath(new URLSearchParams(window.location.search).get("next"));
+  try {
+    const stored = sanitizeNextPath(sessionStorage.getItem(NEXT_PATH_KEY));
+    sessionStorage.removeItem(NEXT_PATH_KEY);
+    return fromUrl ?? stored;
+  } catch {
+    return fromUrl;
+  }
 }
 
 /** Persist ?day=friday so the same recycling night survives OTP → onboard. */
@@ -125,6 +163,7 @@ export function persistDayFromUrl(): void {
 export function persistWaitlistFromUrl(): void {
   persistReferrerFromUrl();
   persistDayFromUrl();
+  persistNextPathFromUrl();
 }
 
 export function writeDayHint(day: number): void {
@@ -147,14 +186,31 @@ export function readDayHint(): number | null {
 export function readReferrerId(): string | undefined {
   if (typeof window === "undefined") return undefined;
   const params = new URLSearchParams(window.location.search);
-  return asProfileId(params.get("r") || params.get("ref") || sessionStorage.getItem(REFERRER_STORAGE_KEY));
+  const fromUrlOrSession = asProfileId(
+    params.get("r") || params.get("ref") || sessionStorage.getItem(REFERRER_STORAGE_KEY)
+  );
+  if (fromUrlOrSession) return fromUrlOrSession;
+  try {
+    const exp = Number(localStorage.getItem(REFERRER_EXPIRES_KEY) || "0");
+    if (exp > Date.now()) {
+      return asProfileId(localStorage.getItem(REFERRER_STORAGE_KEY));
+    }
+    localStorage.removeItem(REFERRER_STORAGE_KEY);
+    localStorage.removeItem(REFERRER_EXPIRES_KEY);
+  } catch {
+    /* ignore */
+  }
+  return undefined;
 }
 
-/** After OTP: finish the street, or go sort at home. Never invent a suburb. */
-export async function waitlistContinuePath(): Promise<"/onboard" | "/sort"> {
+/** After OTP: honor ?next= if safe, send standalone admins to /admin, finish street, or go sort at home. */
+export async function waitlistContinuePath(): Promise<string> {
+  const explicitNext = consumeNextPath();
+  if (explicitNext) return explicitNext;
   if (!hasValidToken()) return "/onboard";
   const stored = readStoredProfile();
   let householdId = typeof stored.householdId === "string" && stored.householdId ? stored.householdId : undefined;
+  if (!householdId && stored.isAdmin === true) return "/admin";
   if (!householdId) {
     try {
       const me = await fetch(apiUrl("/api/profiles/me/payout"), { headers: authHeaders() })

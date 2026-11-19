@@ -40,7 +40,7 @@ public class Run
     public double EstimatedWeightKg { get; set; }
 
     // Dynamic pricing
-    public int PerContainerCents { get; set; } = 5; // 3-8c dynamic
+    public int PerContainerCents { get; set; } = 3; // 2-4c dynamic
     public int EstimatedPayoutCents { get; set; }
     public int ActualPayoutCents { get; set; }
     public int PricingTier { get; set; } = 1; // 1-5 surge level

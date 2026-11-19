@@ -1,28 +1,39 @@
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using SkiaSharp;
 
 namespace GoodSort.Api.Tests.Simulations.Harness;
 
 public static class TestImageHelper
 {
-    /// <summary>
-    /// Creates a valid base64-encoded JPEG image that SixLabors.ImageSharp can decode,
-    /// ensuring PerceptualHash.TryCompute succeeds and produces a valid dHash.
-    /// </summary>
     public static string CreateValidTestImageBase64(int width = 32, int height = 32)
     {
-        using var image = new Image<Rgba32>(width, height);
-        // Fill half image with white and half with black so dHash produces a non-zero hash
+        using var bmp = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Opaque));
         for (var y = 0; y < height; y++)
         {
             for (var x = 0; x < width; x++)
             {
-                image[x, y] = x < width / 2 ? new Rgba32(255, 255, 255) : new Rgba32(0, 0, 0);
+                bmp.SetPixel(x, y, x < width / 2 ? SKColors.White : SKColors.Black);
             }
         }
 
-        using var ms = new MemoryStream();
-        image.SaveAsJpeg(ms);
-        return Convert.ToBase64String(ms.ToArray());
+        using var img = SKImage.FromBitmap(bmp);
+        using var encoded = img.Encode(SKEncodedImageFormat.Jpeg, 90);
+        return Convert.ToBase64String(encoded.ToArray());
+    }
+
+    public static string CreateDistinctTestImageBase64(int stripeColumn)
+    {
+        using var bmp = new SKBitmap(new SKImageInfo(32, 32, SKColorType.Rgba8888, SKAlphaType.Opaque));
+        for (var y = 0; y < 32; y++)
+        {
+            for (var x = 0; x < 32; x++)
+            {
+                var isWhite = x >= stripeColumn * 6 && x < stripeColumn * 6 + 4;
+                bmp.SetPixel(x, y, isWhite ? SKColors.White : SKColors.Black);
+            }
+        }
+
+        using var img = SKImage.FromBitmap(bmp);
+        using var encoded = img.Encode(SKEncodedImageFormat.Jpeg, 90);
+        return Convert.ToBase64String(encoded.ToArray());
     }
 }

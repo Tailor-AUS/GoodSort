@@ -3,20 +3,24 @@
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { fitWithin, scanErrorMessage, QUALITY_LADDER, TARGET_BASE64_CHARS } from "@/lib/image-budget";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Camera, RotateCcw, Check, Mail, ShieldCheck, ImagePlus, X, Home } from "lucide-react";
+import { Camera, RotateCcw, Check, Mail, ShieldCheck, ImagePlus, X, Home, ScanBarcode } from "lucide-react";
 import { track } from "@/lib/analytics";
 import { apiUrl, authHeaders, persistWaitlistFromUrl, readReferrerId, hasValidToken, clearAuth } from "@/lib/config";
+import { lookupContainerAsync } from "@/lib/containers";
+import { addScanApi, flushUnsyncedScans } from "@/lib/store-api";
+import { streamGuideForMaterial } from "@/lib/marketplace";
 import { PostScanSetup } from "@/app/components/shared/post-scan-setup";
 
 interface BinInfo {
   id: string; code: string; name: string; address: string; hostedBy: string | null;
 }
 interface IdentifiedItem {
-  name: string; material: string; count: number; eligible: boolean;
+  name: string; material: string; count: number; eligible: boolean; barcode?: string;
 }
 
-/** Holds a capture across the OTP round-trip (iOS discards backgrounded tabs). */
+/** Holds a capture or barcode across the OTP round-trip (sessionStorage + localStorage fallback). */
 const PENDING_CAPTURE_KEY = "goodsort_pending_capture";
+const PENDING_BARCODE_KEY = "goodsort_pending_barcode";
 const PENDING_EMAIL_KEY = "goodsort_pending_email";
 
 type Step = "loading" | "auth" | "verify" | "camera" | "analyzing" | "results" | "error" | "done";
@@ -64,22 +68,81 @@ function ScanPageContent() {
   // out of this server-side, so the client can't fabricate eligible counts.
   const [scanToken, setScanToken] = useState<string | null>(null);
 
+  // Barcode & offline queue mode (all hooks declared above early returns)
+  const [scanMode, setScanMode] = useState<"photo" | "barcode">("photo");
+  const [manualBarcode, setManualBarcode] = useState("");
+  const [barcodeBusy, setBarcodeBusy] = useState(false);
+  const [barcodeError, setBarcodeError] = useState("");
+  const barcodeLockRef = useRef(false);
+
   function toPreviewDataUrl(rawOrDataUrl: string): string {
     return rawOrDataUrl.startsWith("data:") ? rawOrDataUrl : `data:image/jpeg;base64,${rawOrDataUrl}`;
   }
 
-  // Scanning is the first thing anyone can do. An address is only needed before
-  // we drive to someone's kerb, so it is asked for later — never before the
-  // camera. The API credits a scan with a null HouseholdId, and those
-  // containers are attached to the household when one is created.
   function openCamera() {
     track("scan_camera_opened");
     setStep("camera");
   }
 
-  // ── Init ──
+  async function processBarcode(rawCode: string) {
+    const cleaned = rawCode.replace(/\D/g, "").trim();
+    if (cleaned.length < 8 || cleaned.length > 14 || barcodeLockRef.current) {
+      if (rawCode.trim()) setBarcodeError("Enter an 8 to 14-digit container barcode (EAN / UPC).");
+      return;
+    }
+    barcodeLockRef.current = true;
+    setBarcodeBusy(true);
+    setBarcodeError("");
+    track("scan_captured");
+
+    if (!hasValidToken()) {
+      try { sessionStorage.setItem(PENDING_BARCODE_KEY, cleaned); } catch { /* ignore */ }
+      try { localStorage.setItem(PENDING_BARCODE_KEY, cleaned); } catch { /* ignore */ }
+      stopCamera();
+      setBarcodeBusy(false);
+      barcodeLockRef.current = false;
+      setStep("auth");
+      return;
+    }
+
+    try {
+      stopCamera();
+      const found = await lookupContainerAsync(cleaned);
+      const guide = streamGuideForMaterial(found.material, found.name);
+      setResults([{
+        name: `${found.name} (${guide.bagName} · GSB-${guide.codePrefix})`,
+        material: guide.stream,
+        count: 1,
+        eligible: true,
+        barcode: cleaned,
+      }]);
+      setScanToken(null);
+      setQuotedCents(10);
+      setApiError(false);
+      setAiMessage(`Barcode ${cleaned} matched — place into your ${guide.bagName} (${guide.label}).`);
+      try {
+        sessionStorage.removeItem(PENDING_BARCODE_KEY);
+        localStorage.removeItem(PENDING_BARCODE_KEY);
+      } catch { /* ignore */ }
+      setStep("results");
+    } catch {
+      setBarcodeError("Could not look up that barcode right now. Try again.");
+    } finally {
+      setBarcodeBusy(false);
+      barcodeLockRef.current = false;
+    }
+  }
+
+  // ── Init & Offline Scan Flush ──
   useEffect(() => {
     persistWaitlistFromUrl();
+    if (hasValidToken()) {
+      void flushUnsyncedScans();
+    }
+    const onOnline = () => {
+      if (hasValidToken()) void flushUnsyncedScans();
+    };
+    window.addEventListener("online", onOnline);
     try {
       const p = JSON.parse(localStorage.getItem("goodsort_profile") || "{}");
       setHasHousehold(Boolean(p?.householdId));
@@ -90,25 +153,79 @@ function ScanPageContent() {
         .then((d) => setBin(d))
         .catch(() => {});
     }
-    // A pending capture survives the trip to the mail app for the OTP code:
-    // iOS discards backgrounded tabs, so the photo is held in sessionStorage
-    // rather than in React state.
+    const pendingBarcode = sessionStorage.getItem(PENDING_BARCODE_KEY) || localStorage.getItem(PENDING_BARCODE_KEY);
     const pending = sessionStorage.getItem(PENDING_CAPTURE_KEY);
-    const pendingEmail = sessionStorage.getItem(PENDING_EMAIL_KEY);
+    const pendingEmail = sessionStorage.getItem(PENDING_EMAIL_KEY) || localStorage.getItem(PENDING_EMAIL_KEY);
+    if (pendingBarcode && hasValidToken()) {
+      void processBarcode(pendingBarcode);
+      return () => window.removeEventListener("online", onOnline);
+    }
     if (pending && hasValidToken()) {
       setCapturedImage(toPreviewDataUrl(pending));
       void analyzeImage(pending);
-      return;
+      return () => window.removeEventListener("online", onOnline);
     }
-    if (pending && pendingEmail && !hasValidToken()) {
+    if ((pending || pendingBarcode) && pendingEmail && !hasValidToken()) {
       setEmail(pendingEmail);
-      setCapturedImage(toPreviewDataUrl(pending));
+      if (pending) setCapturedImage(toPreviewDataUrl(pending));
       setStep("verify");
-      return;
+      return () => window.removeEventListener("online", onOnline);
     }
     openCamera();
+    return () => window.removeEventListener("online", onOnline);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot land
   }, [binCode]);
+
+  // Live camera barcode decoding when Barcode mode is selected
+  useEffect(() => {
+    if (step !== "camera" || scanMode !== "barcode" || !cameraReady || !videoRef.current) return;
+    let active = true;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    type NativeBarcodeDetector = {
+      detect: (source: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>>;
+    };
+    const DetectorCtor = (window as unknown as {
+      BarcodeDetector?: new (opts: { formats: string[] }) => NativeBarcodeDetector;
+    }).BarcodeDetector;
+
+    if (DetectorCtor) {
+      try {
+        const detector = new DetectorCtor({ formats: ["ean_13", "ean_8", "upc_a", "upc_e"] });
+        timer = setInterval(async () => {
+          if (!active || !videoRef.current || barcodeLockRef.current) return;
+          try {
+            const codes = await detector.detect(videoRef.current);
+            const raw = codes[0]?.rawValue;
+            if (raw && /^\d{8,14}$/.test(raw)) {
+              void processBarcode(raw);
+            }
+          } catch { /* ignore frame */ }
+        }, 350);
+      } catch { /* fall through */ }
+    } else {
+      void import("@zxing/browser").then(({ BrowserMultiFormatReader }) => {
+        if (!active || !videoRef.current) return;
+        const reader = new BrowserMultiFormatReader();
+        timer = setInterval(async () => {
+          if (!active || !videoRef.current || barcodeLockRef.current) return;
+          try {
+            const res = await reader.decodeOnceFromVideoElement(videoRef.current);
+            const raw = res?.getText();
+            if (raw && /^\d{8,14}$/.test(raw)) {
+              void processBarcode(raw);
+            }
+          } catch { /* ignore frame */ }
+        }, 700);
+      }).catch(() => {});
+    }
+
+    return () => {
+      active = false;
+      if (timer) clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- bound to live camera mode
+  }, [step, scanMode, cameraReady]);
 
   // ── Auth ──
   // Tick the resend cooldown down to zero.
@@ -135,6 +252,7 @@ function ScanPageContent() {
       }
       if (typeof data.devCode === "string" && data.devCode) setDevCode(data.devCode);
       try { sessionStorage.setItem(PENDING_EMAIL_KEY, email.trim()); } catch { /* ignore */ }
+      try { localStorage.setItem(PENDING_EMAIL_KEY, email.trim()); } catch { /* ignore */ }
       setStep("verify");
       setResendIn(30);
     } catch { setAuthError("Something went wrong"); }
@@ -165,10 +283,17 @@ function ScanPageContent() {
       localStorage.setItem("goodsort_token", data.token);
       localStorage.setItem("goodsort_profile", JSON.stringify(data.profile));
       setHasHousehold(Boolean(data.profile?.householdId));
-      document.cookie = `goodsort_token=${data.token}; path=/; max-age=${30*24*60*60}; SameSite=Lax; Secure`;
+      void flushUnsyncedScans();
       try {
         sessionStorage.removeItem(PENDING_EMAIL_KEY);
+        localStorage.removeItem(PENDING_EMAIL_KEY);
       } catch { /* ignore */ }
+      const pendingBarcode = sessionStorage.getItem(PENDING_BARCODE_KEY) || localStorage.getItem(PENDING_BARCODE_KEY);
+      if (pendingBarcode) {
+        setAuthLoading(false);
+        await processBarcode(pendingBarcode);
+        return;
+      }
       const pending = sessionStorage.getItem(PENDING_CAPTURE_KEY);
       if (pending) {
         setCapturedImage(toPreviewDataUrl(pending));
@@ -395,6 +520,27 @@ function ScanPageContent() {
     } catch { /* private mode — the per-scan event still counts */ }
   }
 
+  async function confirmBarcodeItem(first: IdentifiedItem) {
+    try {
+      const saved = await addScanApi(first.barcode!, first.name, first.material);
+      if (saved.refused) {
+        setApiError(true);
+        setAiMessage("Daily scan limit reached — try again tomorrow.");
+        setStep("results");
+        return;
+      }
+      setConfirmedCents(saved.creditedCents ?? quotedCents ?? 10);
+      trackScanCredited();
+      setStep("done");
+    } catch {
+      setConfirmedCents(10);
+      trackScanCredited();
+      setStep("done");
+    } finally {
+      setConfirming(false);
+    }
+  }
+
   // ── Confirm ──
   async function confirm() {
     if (confirming) return;
@@ -404,6 +550,11 @@ function ScanPageContent() {
       .map((r) => ({ ...r, count: Math.max(0, Math.min(100, r.count)) }));
     const total = eligible.reduce((s, r) => s + r.count, 0);
     setTotalItems(total);
+
+    if (!scanToken && eligible.length > 0 && eligible[0].barcode && !binCode) {
+      await confirmBarcodeItem(eligible[0]);
+      return;
+    }
 
     const userId = (() => { try { return JSON.parse(localStorage.getItem("goodsort_profile") || "{}").id || ""; } catch { return ""; } })();
     // Capture device location so the server can geofence the deposit against the
@@ -597,7 +748,18 @@ function ScanPageContent() {
           <h2 className="text-[17px] font-display font-extrabold text-slate-900">
             {apiError ? "Connection error" : total > 0 ? `Sort ${total} container${total !== 1 ? "s" : ""}` : "No containers found"}
           </h2>
-          {apiError && <p className="text-red-500 text-[12px] mt-1">{scanErrorMessage(apiStatus)}</p>}
+          {apiError && (
+            <div className="mt-2">
+              <p className="text-red-500 text-[12px]">{scanErrorMessage(apiStatus)}</p>
+              <button
+                type="button"
+                onClick={() => { setApiError(false); setScanMode("barcode"); setStep("camera"); }}
+                className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5"
+              >
+                <ScanBarcode className="w-3.5 h-3.5" /> Switch to Barcode / Offline Scan instead
+              </button>
+            </div>
+          )}
           {aiMessage && !apiError && <p className="text-slate-500 text-[13px] mt-1">{aiMessage}</p>}
         </div>
 
@@ -612,18 +774,24 @@ function ScanPageContent() {
 
           {eligible.length > 0 && (
             <div className="space-y-2">
-              {eligible.map((item, i) => (
-                <div key={i} className="flex items-center gap-3 p-3.5 rounded-2xl border border-slate-200">
-                  <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <Check className="w-5 h-5 text-green-600" />
+              {eligible.map((item, i) => {
+                const bagGuide = streamGuideForMaterial(item.material, item.name);
+                return (
+                  <div key={i} className="flex items-center gap-3 p-3.5 rounded-2xl border border-slate-200">
+                    <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <Check className="w-5 h-5 text-green-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[14px] text-slate-900 font-semibold">{item.name}</p>
+                      <p className="text-[12px] text-slate-500">{isBonusRate ? "Bonus sorting rate" : "10c each"} &middot; sort into your own bags today</p>
+                      <span className={`inline-flex items-center gap-1 mt-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${bagGuide.badgeBg} ${bagGuide.badgeText}`}>
+                        Put in {bagGuide.bagName} &middot; {bagGuide.shortLabel} (GSB-{bagGuide.codePrefix})
+                      </span>
+                    </div>
+                    <span className="text-[15px] font-display font-extrabold text-slate-900">&times;{item.count}</span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[14px] text-slate-900 font-semibold">{item.name}</p>
-                    <p className="text-[12px] text-slate-500">{isBonusRate ? "Bonus sorting rate" : "10c each"} &middot; sort into your own bags today</p>
-                  </div>
-                  <span className="text-[15px] font-display font-extrabold text-slate-900">&times;{item.count}</span>
-                </div>
-              ))}
+                );
+              })}
 
               <div className="mt-4 p-4 bg-green-50 rounded-2xl border border-green-100">
                 <p className="text-[12px] text-slate-700 font-medium">
@@ -666,11 +834,27 @@ function ScanPageContent() {
   // ════════════════════════════════════
   return (
     <div className="fixed inset-0 bg-black flex flex-col z-50">
-      {/* Top bar */}
-      <div className="flex-shrink-0 px-5 pb-2 bg-black" style={{ paddingTop: "calc(env(safe-area-inset-top, 16px) + 0.25rem)" }}>
-        <p className="text-[15px] text-white font-display font-bold">
+      {/* Top bar + Photo / Barcode mode toggle */}
+      <div className="flex-shrink-0 px-5 pb-2 bg-black flex items-center justify-between gap-2" style={{ paddingTop: "calc(env(safe-area-inset-top, 16px) + 0.25rem)" }}>
+        <p className="text-[15px] text-white font-display font-bold truncate">
           {bin ? bin.name : "Scan a container · 10¢"}
         </p>
+        <div role="group" aria-label="Scanner mode" className="inline-flex rounded-full bg-white/10 p-0.5 border border-white/15">
+          <button
+            type="button"
+            onClick={() => { setScanMode("photo"); setBarcodeError(""); }}
+            className={`px-3 py-1 rounded-full text-[11px] font-bold transition-colors ${scanMode === "photo" ? "bg-white text-slate-900" : "text-white/75"}`}
+          >
+            Photo AI
+          </button>
+          <button
+            type="button"
+            onClick={() => { setScanMode("barcode"); setBarcodeError(""); }}
+            className={`px-3 py-1 rounded-full text-[11px] font-bold transition-colors flex items-center gap-1 ${scanMode === "barcode" ? "bg-white text-slate-900" : "text-white/75"}`}
+          >
+            <ScanBarcode className="w-3 h-3" /> Barcode
+          </button>
+        </div>
       </div>
 
       {/* Camera feed */}
@@ -684,6 +868,36 @@ function ScanPageContent() {
           style={{ WebkitTransform: "translateZ(0)" }}
         />
         <canvas ref={canvasRef} className="hidden" />
+        {scanMode === "barcode" && (
+          <div className="absolute inset-x-4 bottom-4 bg-black/75 backdrop-blur-md border border-white/15 rounded-2xl p-3.5 text-white">
+            <p className="text-[12px] font-semibold mb-2">
+              Point camera at barcode — or type the 8–13 digit barcode (works offline):
+            </p>
+            <form
+              onSubmit={(e) => { e.preventDefault(); void processBarcode(manualBarcode); }}
+              className="flex gap-2"
+            >
+              <input
+                type="text"
+                inputMode="numeric"
+                aria-label="Container barcode number"
+                value={manualBarcode}
+                onChange={(e) => setManualBarcode(e.target.value.replace(/\D/g, ""))}
+                placeholder="e.g. 9300675024235"
+                maxLength={14}
+                className="flex-1 bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-[14px] text-white placeholder-white/40 focus:outline-none focus:border-green-400"
+              />
+              <button
+                type="submit"
+                disabled={barcodeBusy || manualBarcode.length < 8}
+                className="bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white font-bold px-4 py-2 rounded-xl text-[13px] min-h-[40px]"
+              >
+                {barcodeBusy ? "..." : "Add"}
+              </button>
+            </form>
+            {barcodeError && <p className="text-red-300 text-[11px] mt-1.5">{barcodeError}</p>}
+          </div>
+        )}
       </div>
 
       {/* Bottom controls — always visible */}

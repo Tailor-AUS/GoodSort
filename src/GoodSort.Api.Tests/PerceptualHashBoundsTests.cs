@@ -1,7 +1,6 @@
 using System.Buffers.Binary;
 using GoodSort.Api.Services;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using SkiaSharp;
 
 namespace GoodSort.Api.Tests;
 
@@ -10,14 +9,17 @@ public class PerceptualHashBoundsTests
     [Fact]
     public void Normal_image_computes_deterministic_64_bit_dhash()
     {
-        using var img = new Image<L8>(16, 16);
+        using var bmp = new SKBitmap(new SKImageInfo(16, 16, SKColorType.Rgba8888, SKAlphaType.Opaque));
         for (var y = 0; y < 16; y++)
         for (var x = 0; x < 16; x++)
-            img[x, y] = new L8((byte)(x * 15));
+        {
+            var v = (byte)(x * 15);
+            bmp.SetPixel(x, y, new SKColor(v, v, v, 255));
+        }
 
-        using var ms = new MemoryStream();
-        img.SaveAsPng(ms);
-        var b64 = "data:image/png;base64," + Convert.ToBase64String(ms.ToArray());
+        using var img = SKImage.FromBitmap(bmp);
+        using var encoded = img.Encode(SKEncodedImageFormat.Png, 100);
+        var b64 = "data:image/png;base64," + Convert.ToBase64String(encoded.ToArray());
 
         var h1 = PerceptualHash.TryCompute(b64);
         var h2 = PerceptualHash.TryCompute(b64);

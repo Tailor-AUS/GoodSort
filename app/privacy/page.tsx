@@ -63,12 +63,13 @@ export default function PrivacyPage() {
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">5. Photo Scanning</h2>
         <p className="text-slate-600 text-sm mb-4">
-          When you photograph containers, the image is sent to our Australian Azure OpenAI
-          service (Australia East) that identifies what is in it. <strong>We do not keep your photo.</strong> We keep a short
+          When you photograph containers, the image uploads via our API (currently hosted in Azure
+          East Asia) and is classified primarily by Tailor Vision (<code>api.tailor.au</code>), with our Australian
+          Azure OpenAI service (Australia East) as fallback. <strong>We do not keep your photo.</strong> We keep a short
           mathematical fingerprint of it so the same photo cannot be claimed twice,
           and — for deposits at one of our bins — the location where the scan was made,
-          so we can tell a real deposit from credit farmed remotely. You can use the
-          app without photo scanning.
+          so we can tell a real deposit from credit farmed remotely. You can also scan barcodes or use
+          the app without photo scanning.
         </p>
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">6. Location Data</h2>
@@ -97,6 +98,10 @@ export default function PrivacyPage() {
           <li>
             <strong>Route planning.</strong> When we plan a collection run we send the stop locations to
             a public routing service (OSRM), from our servers rather than your device.
+          </li>
+          <li>
+            <strong>Web fonts.</strong> Typography stylesheets and font files are loaded by your browser
+            from Google Fonts (<code>fonts.googleapis.com</code> and <code>fonts.gstatic.com</code>).
           </li>
         </ul>
         <p className="text-slate-600 text-sm mb-4">

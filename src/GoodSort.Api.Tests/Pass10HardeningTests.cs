@@ -192,10 +192,11 @@ public class Pass10HardeningTests : IClassFixture<OpaqueBoxHost>
             coexDocketRef = "DOCKET-PASS10-1",
         })).StatusCode);
 
-        var settleRes = await runnerClient.PostAsync($"/api/marketplace/runs/{runId}/settle", null);
+        var (adminClient, _, _) = await _host.SignInAdminAsync();
+        var settleRes = await adminClient.PostAsync($"/api/marketplace/runs/{runId}/settle", null);
         Assert.Equal(HttpStatusCode.OK, settleRes.StatusCode);
         var settleJson = await settleRes.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(400, settleJson.GetProperty("containerMafiaCents").GetInt32()); // 400 * 1¢ per-can ledger line
+        Assert.Equal(500, settleJson.GetProperty("containerMafiaCents").GetInt32()); // 400 * 1¢ per-can + 100¢ ($1.00) cleared signup bonus
 
         // Verify all 3 households had BinIsOut reset to false and Mafia cleared $1.00 signup + $4.00 override = $5.00 (500¢)
         using (var scope = _host.Services.CreateScope())
@@ -283,7 +284,7 @@ public class Pass10HardeningTests : IClassFixture<OpaqueBoxHost>
         })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await runnerClient.PostAsync($"/api/marketplace/runs/{secondRunId}/deliver", null)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await runnerClient.PostAsJsonAsync($"/api/marketplace/runs/{secondRunId}/complete", new { depotVerifiedContainers = 50 })).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await runnerClient.PostAsync($"/api/marketplace/runs/{secondRunId}/settle", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await adminClient.PostAsync($"/api/marketplace/runs/{secondRunId}/settle", null)).StatusCode);
 
         using (var scope = _host.Services.CreateScope())
         {
@@ -404,7 +405,8 @@ public class Pass10HardeningTests : IClassFixture<OpaqueBoxHost>
 
         Assert.Equal(HttpStatusCode.OK, (await runnerClient.PostAsync($"/api/marketplace/runs/{runId}/deliver", null)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await runnerClient.PostAsJsonAsync($"/api/marketplace/runs/{runId}/complete", new { depotVerifiedContainers = 100 })).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await runnerClient.PostAsync($"/api/marketplace/runs/{runId}/settle", null)).StatusCode);
+        var (adminClient, _, _) = await _host.SignInAdminAsync();
+        Assert.Equal(HttpStatusCode.OK, (await adminClient.PostAsync($"/api/marketplace/runs/{runId}/settle", null)).StatusCode);
 
         var hhAfter = await sorterClient.GetFromJsonAsync<JsonElement>($"/api/households/{hhId}");
         Assert.True(hhAfter.GetProperty("binIsOut").GetBoolean());

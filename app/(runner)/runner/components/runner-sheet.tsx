@@ -56,7 +56,7 @@ export function RunnerSheet({
           <p className="text-4xl font-display font-extrabold text-slate-900 mb-1 animate-ka-ching tracking-tight">
             +{formatCents(showSuccess.earned)}
           </p>
-          <p className="text-slate-500 text-[13px] mt-3">{showSuccess.containers} containers settled to your balance</p>
+          <p className="text-slate-500 text-[13px] mt-3">{showSuccess.containers} containers logged at depot — credits clear once your docket is verified</p>
         </div>
       </div>
     );

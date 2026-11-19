@@ -363,39 +363,26 @@ export function Scanner({ onClose, onScanComplete, onBatchComplete }: ScannerPro
     startCamera();
   }
 
-  // ── 8-stream sorting system ──
-  // Import would be cleaner but keeping inline to avoid build issues with existing code
+  // ── 4-stream COEX Secondary-Sorted bag system ──
   const STREAM_MAP: Record<string, { bg: string; label: string; shortLabel: string; emoji: string; section: number }> = {
-    aluminium:        { bg: "bg-blue-500",    label: "Aluminium Cans",  shortLabel: "ALU",      emoji: "🔵", section: 1 },
-    pet_clear:        { bg: "bg-sky-400",     label: "PET Clear",       shortLabel: "PET CLR",  emoji: "💧", section: 2 },
-    pet_coloured:     { bg: "bg-rose-500",    label: "PET Coloured",    shortLabel: "PET COL",  emoji: "🔴", section: 3 },
-    glass_clear:      { bg: "bg-emerald-400", label: "Glass Clear",     shortLabel: "GLS CLR",  emoji: "🟢", section: 4 },
-    glass_brown:      { bg: "bg-amber-700",   label: "Glass Brown",     shortLabel: "GLS BRN",  emoji: "🟤", section: 5 },
-    glass_green:      { bg: "bg-green-700",   label: "Glass Green",     shortLabel: "GLS GRN",  emoji: "🟩", section: 6 },
-    steel:            { bg: "bg-slate-500",   label: "Steel Cans",      shortLabel: "STEEL",    emoji: "⚪", section: 7 },
-    hdpe_lpb:         { bg: "bg-orange-400",  label: "HDPE & Cartons",  shortLabel: "HDPE/LPB", emoji: "🟠", section: 8 },
+    aluminium:    { bg: "bg-blue-500",    label: "Blue Bag · Aluminium Cans",          shortLabel: "GSB-ALU", emoji: "🔵", section: 1 },
+    pet_clear:    { bg: "bg-teal-500",    label: "Teal Bag · Clear Plastic",           shortLabel: "GSB-CLR", emoji: "💧", section: 2 },
+    pet_coloured: { bg: "bg-amber-500",   label: "Amber Bag · Coloured PET & Poppers", shortLabel: "GSB-COL", emoji: "🟠", section: 3 },
+    glass:        { bg: "bg-emerald-600", label: "Green Bag · Glass Bottles",          shortLabel: "GSB-GLS", emoji: "🟢", section: 4 },
   };
   function getStream(material: string, name: string) {
     const mat = material.toLowerCase();
     const desc = name.toLowerCase();
     if (mat === "aluminium" || mat === "aluminum") return STREAM_MAP.aluminium;
-    if (mat === "steel") return STREAM_MAP.steel;
-    if (mat === "pet") {
+    if (mat.startsWith("glass")) return STREAM_MAP.glass;
+    if (mat === "pet_coloured" || mat === "pet_colored") return STREAM_MAP.pet_coloured;
+    if (mat === "pet" || mat === "pet_clear") {
       if (desc.includes("green") || desc.includes("colour") || desc.includes("sprite") ||
-          desc.includes("fanta") || desc.includes("brown") || desc.includes("dark") || desc.includes("tinted"))
+          desc.includes("brown") || desc.includes("dark") || desc.includes("tinted"))
         return STREAM_MAP.pet_coloured;
       return STREAM_MAP.pet_clear;
     }
-    if (mat === "glass") {
-      if (desc.includes("brown") || desc.includes("amber") || desc.includes("stubby") ||
-          desc.includes("beer") || desc.includes("vb") || desc.includes("xxxx") || desc.includes("carlton"))
-        return STREAM_MAP.glass_brown;
-      if (desc.includes("green") || desc.includes("heineken"))
-        return STREAM_MAP.glass_green;
-      return STREAM_MAP.glass_clear;
-    }
-    if (mat === "hdpe" || mat === "liquid_paperboard") return STREAM_MAP.hdpe_lpb;
-    return STREAM_MAP.hdpe_lpb; // fallback
+    return STREAM_MAP.pet_coloured;
   }
 
   // ── Results Screen — photo overlay with colour-coded sorting ──

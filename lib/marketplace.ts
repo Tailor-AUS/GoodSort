@@ -233,6 +233,7 @@ export const BAG_STREAMS: Record<
   BagStream,
   {
     codePrefix: string;
+    bagName: string;
     label: string;
     shortLabel: string;
     rule: string;
@@ -243,48 +244,84 @@ export const BAG_STREAMS: Record<
 > = {
   aluminium: {
     codePrefix: "ALU",
+    bagName: "Blue Bag",
     label: "Aluminium Cans",
     shortLabel: "Aluminium",
     rule: "Empty drink cans (150mL–3L), uncrushed so barcodes stay readable.",
-    badgeBg: "bg-sky-100",
-    badgeText: "text-sky-800",
-    accentHex: "#0369a1",
+    badgeBg: "bg-blue-100",
+    badgeText: "text-blue-800",
+    accentHex: "#1d4ed8",
   },
   pet_clear: {
     codePrefix: "CLR",
+    bagName: "Teal Bag",
     label: "Clear Plastic Bottles",
     shortLabel: "Clear Plastic",
-    rule: "Clear water and soft-drink plastic bottles, empty, lids off.",
-    badgeBg: "bg-emerald-100",
-    badgeText: "text-emerald-800",
-    accentHex: "#047857",
+    rule: "Clear water and soft-drink plastic bottles (150mL–3L), empty, lids off.",
+    badgeBg: "bg-teal-100",
+    badgeText: "text-teal-800",
+    accentHex: "#0f766e",
   },
   pet_coloured: {
     codePrefix: "COL",
+    bagName: "Amber Bag",
     label: "Coloured Plastic & Poppers",
     shortLabel: "Coloured / Poppers",
-    rule: "Coloured plastic drink bottles, flavoured milk & juice poppers, empty, lids off.",
+    rule: "Coloured plastic drink bottles, flavoured milk & juice poppers (150mL–3L), empty, lids off.",
     badgeBg: "bg-amber-100",
     badgeText: "text-amber-800",
     accentHex: "#b45309",
   },
   glass: {
     codePrefix: "GLS",
+    bagName: "Green Bag",
     label: "Glass Bottles",
     shortLabel: "Glass",
-    rule: "Unbroken beer, cider & soft-drink glass bottles (no wine or spirits).",
-    badgeBg: "bg-purple-100",
-    badgeText: "text-purple-800",
-    accentHex: "#7e22ce",
+    rule: "Unbroken beer, cider, wine, spirit & soft-drink glass bottles (150mL–3L, lids off).",
+    badgeBg: "bg-emerald-100",
+    badgeText: "text-emerald-800",
+    accentHex: "#047857",
   },
 };
+
+export function streamKeyForMaterial(material: string | undefined | null, itemName?: string | null): BagStream {
+  const mat = (material ?? "").trim().toLowerCase();
+  const desc = (itemName ?? "").trim().toLowerCase();
+  if (mat === "aluminium" || mat === "aluminum" || mat === "alu" || mat === "can" || mat === "cans") {
+    return "aluminium";
+  }
+  if (mat.startsWith("glass")) {
+    return "glass";
+  }
+  if (mat === "pet_coloured" || mat === "pet_colored" || mat === "coloured_pet") {
+    return "pet_coloured";
+  }
+  if (mat === "pet" || mat === "pet_clear" || mat === "clear_pet" || mat === "plastic") {
+    if (
+      desc.includes("coloured") ||
+      desc.includes("colored") ||
+      desc.includes("tinted") ||
+      desc.includes("sprite") ||
+      desc.includes("mountain dew")
+    ) {
+      return "pet_coloured";
+    }
+    return "pet_clear";
+  }
+  return "pet_coloured";
+}
+
+export function streamGuideForMaterial(material: string | undefined | null, itemName?: string | null) {
+  const stream = streamKeyForMaterial(material, itemName);
+  return { stream, ...BAG_STREAMS[stream] };
+}
 
 export const DISCREPANCY_OPTIONS: Array<{ value: DiscrepancyCode; label: string }> = [
   { value: "none", label: "Clean sorted bag (no issues)" },
   { value: "short_count", label: "Short Count (fewer containers than declared)" },
   { value: "extra_untagged", label: "Extra Untagged Containers at Kerb" },
   { value: "mixed_streams", label: "Mixed Streams in Same Bag" },
-  { value: "crushed_or_ineligible", label: "Crushed / Wine / Milk Ineligible Items" },
+  { value: "crushed_or_ineligible", label: "Crushed / Plain Milk / Ineligible Items" },
   { value: "bag_missing", label: "Tagged Bag Missing at Kerb" },
 ];
 

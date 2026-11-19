@@ -8,8 +8,6 @@ using GoodSort.Api.Services;
 using GoodSort.Api.Tests.Simulations.Harness;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace GoodSort.Api.Tests.Simulations;
 
@@ -591,23 +589,8 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
         Assert.Equal(HttpStatusCode.Forbidden, theftAttempt.StatusCode);
     }
 
-    private static string CreateDistinctTestImage(int stripeColumn)
-    {
-        using var image = new SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32>(32, 32);
-        for (var y = 0; y < 32; y++)
-        {
-            for (var x = 0; x < 32; x++)
-            {
-                var isWhite = (x >= stripeColumn * 6 && x < stripeColumn * 6 + 4);
-                image[x, y] = isWhite
-                    ? new SixLabors.ImageSharp.PixelFormats.Rgba32(255, 255, 255)
-                    : new SixLabors.ImageSharp.PixelFormats.Rgba32(0, 0, 0);
-            }
-        }
-        using var ms = new MemoryStream();
-        image.SaveAsJpeg(ms);
-        return Convert.ToBase64String(ms.ToArray());
-    }
+    private static string CreateDistinctTestImage(int stripeColumn) =>
+        Harness.TestImageHelper.CreateDistinctTestImageBase64(stripeColumn);
 
 
 
