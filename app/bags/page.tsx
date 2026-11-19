@@ -240,7 +240,9 @@ export default function SortedBagsPage() {
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1">{info.rule}</p>
                   <p className="text-[11px] font-bold text-emerald-700 mt-1.5">
-                    {unbagged} scanned {unbagged === 1 ? "container" : "containers"} ready to bag
+                    {loading
+                      ? "Checking scanned containers…"
+                      : `${unbagged} scanned ${unbagged === 1 ? "container" : "containers"} ready to bag`}
                   </p>
                 </button>
               );
@@ -303,7 +305,7 @@ export default function SortedBagsPage() {
         <section className="space-y-3">
           <div className="print:hidden flex items-center justify-between">
             <h2 className="font-display font-bold text-base text-slate-900">
-              Your Home Bag Tags ({data?.bags.length ?? 0})
+              Your Home Bag Tags ({loading ? "…" : (data?.bags.length ?? 0)})
             </h2>
           </div>
 

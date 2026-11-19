@@ -526,7 +526,7 @@ app.MapGet("/api/bins", async (HttpContext ctx, GoodSortDbContext db) =>
         ? await db.Profiles.Where(p => p.Id == cid).Select(p => p.HouseholdId).FirstOrDefaultAsync()
         : null;
 
-    var q = db.Bins.Where(b => b.Status != "disabled");
+    var q = db.Bins.Where(b => b.Status != "disabled" && b.Status != "deleted");
     if (!ctx.IsAdmin())
         q = q.Where(b => b.HouseholdId == null || b.HouseholdId == myHouseholdId);
 
@@ -549,7 +549,7 @@ app.MapGet("/api/bins", async (HttpContext ctx, GoodSortDbContext db) =>
 app.MapGet("/api/bins/{id:guid}", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
     var b = await db.Bins.FindAsync(id);
-    if (b is null) return Results.NotFound();
+    if (b is null || b.Status == "deleted") return Results.NotFound();
     if (b.HouseholdId is Guid hid && !await CallerCanAccessHousehold(ctx, hid, db))
         return Results.Forbid();
     return Results.Ok(b);
@@ -573,7 +573,7 @@ app.MapGet("/api/bins/{id:guid}", async (HttpContext ctx, Guid id, GoodSortDbCon
 app.MapGet("/api/bins/code/{code}", async (string code, GoodSortDbContext db) =>
 {
     var b = await db.Bins.AsNoTracking().FirstOrDefaultAsync(x => x.Code == code);
-    if (b is null) return Results.NotFound();
+    if (b is null || b.Status == "deleted") return Results.NotFound();
 
     return Results.Ok(new
     {
@@ -623,7 +623,7 @@ app.MapPost("/api/bins", async (AdminCreateBinRequest req, GoodSortDbContext db)
 app.MapGet("/api/bins/{id:guid}/qr", (Guid id, GoodSortDbContext db) =>
 {
     var bin = db.Bins.Find(id);
-    if (bin is null) return Results.NotFound();
+    if (bin is null || bin.Status == "deleted") return Results.NotFound();
 
     // The label is printed and stuck on a physical bin, so it needs the code
     // and nothing else identifying. bin.Name for a household bin IS the
@@ -2723,44 +2723,64 @@ app.MapGet("/api/admin/users", async (GoodSortDbContext db) =>
     Results.Ok(await db.Profiles.Include(p => p.Household).OrderByDescending(p => p.CreatedAt).Take(100).ToListAsync()))
     .RequireAuthorization(AuthHelpers.AdminPolicy);
 
-// ── Admin: Tomorrow's pickups + runner status ──
+// ── Admin: Tomorrow's pickups + active/pilot runner status ──
 app.MapGet("/api/admin/pickups/tomorrow", async (GoodSortDbContext db) =>
 {
     var brisbane = BrisbaneTime.Now;
     var tomorrowDow = (int)brisbane.AddDays(1).DayOfWeek;
+    var utcNow = DateTime.UtcNow;
+
+    var activeRuns = await db.Runs
+        .Include(r => r.Runner).ThenInclude(rp => rp!.Profile)
+        .Include(r => r.Stops)
+        .Where(r => RunLifecycle.HoldsBin.Contains(r.Status)
+                    && (!RunLifecycle.Unclaimed.Contains(r.Status) || r.ExpiresAt > utcNow))
+        .OrderByDescending(r => r.CreatedAt)
+        .ToListAsync();
+
+    var activeStopBinIds = activeRuns
+        .SelectMany(r => r.Stops.Select(s => s.BinId))
+        .ToHashSet();
+    var activeRunBins = activeStopBinIds.Count == 0
+        ? new List<Bin>()
+        : await db.Bins.Where(b => activeStopBinIds.Contains(b.Id)).ToListAsync();
+    var activeRunHhIds = activeRunBins
+        .Where(b => b.HouseholdId.HasValue)
+        .Select(b => b.HouseholdId!.Value)
+        .ToHashSet();
 
     var households = await db.Households
         .Include(h => h.Members)
         .Where(h => h.Type != "unit_complex"
-                    && h.CouncilCollectionDay == tomorrowDow
-                    && BinStatuses.Serviceable.Contains(h.BinStatus))
+                    && BinStatuses.Serviceable.Contains(h.BinStatus)
+                    && (h.CouncilCollectionDay == tomorrowDow || h.BinIsOut || activeRunHhIds.Contains(h.Id)))
         .ToListAsync();
 
     var hhIds = households.Select(h => h.Id).ToHashSet();
-    var bins = await db.Bins.Where(b => b.HouseholdId != null && hhIds.Contains(b.HouseholdId.Value)).ToListAsync();
-    var binIds = bins.Select(b => b.Id).ToHashSet();
-
-    var claimingRuns = await db.Runs
-        .Include(r => r.Runner).ThenInclude(rp => rp!.Profile)
-        .Include(r => r.Stops)
-        .Where(r => (r.Status == "available" || r.Status == "claimed" || r.Status == "in_progress")
-                    && r.Stops.Any(s => binIds.Contains(s.BinId)))
+    var bins = await db.Bins
+        .Where(b => (b.HouseholdId != null && hhIds.Contains(b.HouseholdId.Value)) || activeStopBinIds.Contains(b.Id))
         .ToListAsync();
+    var binById = bins.ToDictionary(b => b.Id);
+
+    var assignedRuns = activeRuns
+        .Where(r => !RunLifecycle.Unclaimed.Contains(r.Status))
+        .ToList();
 
     return Results.Ok(new
     {
         tomorrowDayOfWeek = tomorrowDow,
         totalHouseholds = households.Count,
         householdsWithBinOut = households.Count(h => h.BinIsOut),
-        runsCovering = claimingRuns.Count,
-        runsClaimed = claimingRuns.Count(r => r.Status != "available"),
-        householdsUncovered = households.Count(h => !claimingRuns.Any(r => r.Stops.Any(s => bins.Any(b => b.Id == s.BinId && b.HouseholdId == h.Id)))),
+        runsCovering = activeRuns.Count,
+        runsClaimed = assignedRuns.Count,
+        householdsUncovered = households.Count(h => !assignedRuns.Any(r =>
+            r.Stops.Any(s => binById.TryGetValue(s.BinId, out var b) && b.HouseholdId == h.Id))),
         households = households.Select(h => new {
             h.Id, h.Name, h.Address, h.PendingContainers, h.UsesDivider, h.BinIsOut, h.BinStatus,
             memberEmails = h.Members.Select(m => m.Email).Where(e => e != null),
         }),
-        runs = claimingRuns.Select(r => new {
-            r.Id, r.Status, r.AreaName, r.EstimatedContainers, r.PerContainerCents,
+        runs = activeRuns.Select(r => new {
+            r.Id, r.Status, r.AreaName, r.EstimatedContainers, r.PerContainerCents, r.EstimatedPayoutCents,
             runnerName = r.Runner != null ? r.Runner.Profile!.Name : null,
             runnerEmail = r.Runner != null ? r.Runner.Profile!.Email : null,
             stops = r.Stops.Count,
@@ -2996,7 +3016,7 @@ app.MapPatch("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, Profile
 }).RequireAuthorization();
 
 // ── Profile DELETE — full account wipe (GDPR / privacy-policy right-to-erasure) ──
-app.MapDelete("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
+app.MapDelete("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, GoodSortDbContext db, IConfiguration cfg, PricingService pricing) =>
 {
     if (!ctx.IsOwnerOrAdmin(id)) return Results.Forbid();
     var profile = await db.Profiles.Include(p => p.Scans).Include(p => p.Collections).FirstOrDefaultAsync(p => p.Id == id);
@@ -3023,6 +3043,7 @@ app.MapDelete("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, GoodSo
         }
     }
 
+    var minPayoutCents = RunGenerationService.ResolveMinPayoutCents(cfg);
     var runnerProfile = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == id);
     if (runnerProfile != null)
     {
@@ -3033,9 +3054,9 @@ app.MapDelete("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, GoodSo
             r.RunnerId = null;
             if (r.Status is "claimed" or "in_progress" or "delivering")
             {
-                r.Status = "available";
                 r.ClaimedAt = null;
                 r.StartedAt = null;
+                r.LastBriefedAt = null;
                 releasedRunIds.Add(r.Id);
                 foreach (var s in r.Stops)
                 {
@@ -3047,6 +3068,22 @@ app.MapDelete("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, GoodSo
                         s.ActualContainers = null;
                         s.ScannedBagCount = 0;
                     }
+                }
+
+                if (r.ExpiresAt <= DateTime.UtcNow)
+                {
+                    r.Status = "expired";
+                }
+                else
+                {
+                    var repriced = await pricing.CalculateRate(r);
+                    r.PerContainerCents = repriced.PerContainerCents;
+                    r.EstimatedPayoutCents = repriced.EstimatedPayoutCents;
+                    r.PricingTier = repriced.PricingTier;
+                    r.LastPricedAt = DateTime.UtcNow;
+                    r.Status = repriced.EstimatedPayoutCents >= minPayoutCents
+                        ? "available"
+                        : "below_threshold";
                 }
             }
         }
@@ -3074,7 +3111,102 @@ app.MapDelete("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, GoodSo
     var otps = await db.OtpCodes.Where(o => o.Email == profile.Email).ToListAsync();
     db.OtpCodes.RemoveRange(otps);
 
+    var soleHouseholdId = profile.HouseholdId;
+    profile.HouseholdId = null;
     db.Profiles.Remove(profile);
+
+    if (soleHouseholdId is Guid hhId)
+    {
+        var hasRemainingMembers = await db.Profiles.AnyAsync(p => p.HouseholdId == hhId && p.Id != id);
+        if (!hasRemainingMembers)
+        {
+            var hh = await db.Households.FirstOrDefaultAsync(h => h.Id == hhId);
+            if (hh is not null)
+            {
+                var orphanScans = await db.Scans.Where(s => s.HouseholdId == hhId && s.UserId != id).ToListAsync();
+                db.Scans.RemoveRange(orphanScans);
+
+                var orphanBags = await db.SortedBags.Where(b => b.HouseholdId == hhId).ToListAsync();
+                db.SortedBags.RemoveRange(orphanBags);
+
+                var orphanRouteStops = await db.RouteStops.Where(rs => rs.HouseholdId == hhId).ToListAsync();
+                db.RouteStops.RemoveRange(orphanRouteStops);
+
+                var hhBins = await db.Bins.Where(b => b.HouseholdId == hhId).ToListAsync();
+                if (hhBins.Count > 0)
+                {
+                    var hhBinIds = hhBins.Select(b => b.Id).ToHashSet();
+                    var referencingStops = await db.RunStops
+                        .Include(s => s.Run)
+                        .Where(s => hhBinIds.Contains(s.BinId))
+                        .ToListAsync();
+
+                    var removableStops = referencingStops
+                        .Where(s => RunLifecycle.Unclaimed.Contains(s.Run.Status) || s.Run.Status == "expired")
+                        .ToList();
+                    if (removableStops.Count > 0)
+                    {
+                        var touchedRunIds = removableStops.Select(s => s.RunId).Distinct().ToHashSet();
+                        db.RunStops.RemoveRange(removableStops);
+
+                        var touchedRuns = await db.Runs
+                            .Include(r => r.Stops)
+                            .Where(r => touchedRunIds.Contains(r.Id))
+                            .ToListAsync();
+                        foreach (var tr in touchedRuns)
+                        {
+                            var remainingStops = tr.Stops.Count(s => !removableStops.Contains(s));
+                            if (remainingStops == 0)
+                                db.Runs.Remove(tr);
+                        }
+                    }
+
+                    var lockedStops = referencingStops
+                        .Except(removableStops)
+                        .ToList();
+                    foreach (var stop in lockedStops)
+                    {
+                        stop.PickupInstruction = "Deleted household";
+                        stop.Lat = 0;
+                        stop.Lng = 0;
+                        if (stop.Status is "pending" or "arrived")
+                            stop.Status = "skipped";
+                    }
+
+                    var lockedBinIds = lockedStops
+                        .Select(s => s.BinId)
+                        .ToHashSet();
+
+                    foreach (var bin in hhBins)
+                    {
+                        if (lockedBinIds.Contains(bin.Id))
+                        {
+                            // Preserve RunStop.BinId FK on historical/settled or in-flight runs while scrubbing all PII & coordinates.
+                            bin.HouseholdId = null;
+                            bin.Code = $"DEL-{bin.Id:N}";
+                            bin.Name = "Deleted household";
+                            bin.Address = "";
+                            bin.HostedBy = null;
+                            bin.Lat = 0;
+                            bin.Lng = 0;
+                            bin.PendingContainers = 0;
+                            bin.PendingValueCents = 0;
+                            bin.EstimatedWeightKg = 0;
+                            bin.Materials = new MaterialBreakdown();
+                            bin.Status = "deleted";
+                        }
+                        else
+                        {
+                            db.Bins.Remove(bin);
+                        }
+                    }
+                }
+
+                db.Households.Remove(hh);
+            }
+        }
+    }
+
     await db.SaveChangesAsync();
     return Results.Ok(new { deleted = true });
 }).RequireAuthorization();
@@ -3687,7 +3819,7 @@ app.MapPost("/api/marketplace/runs/{id:guid}/claim", async (HttpContext ctx, Gui
 }).RequireAuthorization();
 
 // ── Marketplace: Release a claimed run (before collection starts) ──
-app.MapPost("/api/marketplace/runs/{id:guid}/release", async (HttpContext ctx, Guid id, GoodSortDbContext db, PricingService pricing) =>
+app.MapPost("/api/marketplace/runs/{id:guid}/release", async (HttpContext ctx, Guid id, GoodSortDbContext db, PricingService pricing, IConfiguration cfg) =>
 {
     var run = await db.Runs
         .Include(r => r.Stops.OrderBy(s => s.Sequence))
@@ -3698,18 +3830,21 @@ app.MapPost("/api/marketplace/runs/{id:guid}/release", async (HttpContext ctx, G
     if (run.Status != "claimed")
         return Results.BadRequest(new { error = "Only a claimed run that has not started can be released." });
 
-    run.Status = "available";
     run.RunnerId = null;
     run.ClaimedAt = null;
     run.LastBriefedAt = null;
     if (run.ExpiresAt <= DateTime.UtcNow.AddHours(2))
         run.ExpiresAt = DateTime.UtcNow.AddHours(6);
 
+    var minPayoutCents = RunGenerationService.ResolveMinPayoutCents(cfg);
     var repriced = await pricing.CalculateRate(run);
     run.PerContainerCents = repriced.PerContainerCents;
     run.EstimatedPayoutCents = repriced.EstimatedPayoutCents;
     run.PricingTier = repriced.PricingTier;
     run.LastPricedAt = DateTime.UtcNow;
+    run.Status = repriced.EstimatedPayoutCents >= minPayoutCents
+        ? "available"
+        : "below_threshold";
 
     await db.SaveChangesAsync();
     return Results.Ok(new { released = true, id = run.Id, status = run.Status });
@@ -3739,9 +3874,11 @@ app.MapPost("/api/marketplace/runs/{runId:guid}/stops/{stopId:guid}/arrive",
     if (!await CallerOwnsRun(ctx, run, db)) return Results.Forbid();
     if (run.Status != "in_progress") return Results.BadRequest(new { error = "Run is not in progress." });
     var stop = await db.RunStops.FirstOrDefaultAsync(s => s.RunId == runId && s.Id == stopId);
-    if (stop is null || stop.Status != "pending") return Results.BadRequest();
+    if (stop is null) return Results.NotFound();
+    if (stop.Status == "arrived") return Results.Ok(stop);
+    if (stop.Status != "pending") return Results.BadRequest();
     stop.Status = "arrived";
-    stop.ArrivedAt = DateTime.UtcNow;
+    stop.ArrivedAt ??= DateTime.UtcNow;
     await db.SaveChangesAsync();
     return Results.Ok(stop);
 }).RequireAuthorization();

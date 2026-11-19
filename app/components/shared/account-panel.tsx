@@ -25,7 +25,8 @@ interface AccountPanelProps {
 
 export function AccountPanel({ user, open, onClose, onRefresh }: AccountPanelProps) {
   const [binStatus, setBinStatus] = useState<string | null>(null);
-  const [streetStats, setStreetStats] = useState<{ households: number; containers: number; needed: number; dayName: string | null } | null>(null);
+  const [streetStats, setStreetStats] = useState<{ households: number; containers: number; needed: number; dayName: string | null; live?: boolean } | null>(null);
+  const [householdMeta, setHouseholdMeta] = useState<{ suburb: string | null; binDay: number | null; building: boolean } | null>(null);
   const [savedPayout, setSavedPayout] = useState<SavedPayoutSummary | null>(null);
   const [cashedOutCents, setCashedOutCents] = useState(0);
 
@@ -50,12 +51,23 @@ export function AccountPanel({ user, open, onClose, onRefresh }: AccountPanelPro
     const loadHouseholdStats = (hhId: string) => {
       Promise.all([
         fetch(apiUrl(`/api/households/${hhId}`), { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)),
-        fetch(apiUrl("/api/growth/brisbane")).then((r) => (r.ok ? r.json() : null)),
+        fetch(apiUrl("/api/growth/brisbane"), { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)),
       ]).then(([hh, g]) => {
         if (hh?.binStatus) setBinStatus(hh.binStatus);
+        setHouseholdMeta({
+          suburb: hh?.suburb ?? null,
+          binDay: hh?.councilCollectionDay ?? null,
+          building: hh?.type === "unit_complex",
+        });
         const match = g?.suburbs?.find((s: GrowthSuburb) => sameSuburb(s.suburb, hh?.suburb));
         const cluster = streetStatsForViewer(match, hh?.councilCollectionDay, householdCountsTowardUnlock(hh));
-        setStreetStats({ households: cluster.households, containers: cluster.containers, needed: cluster.needed, dayName: cluster.dayName });
+        setStreetStats({
+          households: cluster.households,
+          containers: cluster.containers,
+          needed: cluster.needed,
+          dayName: cluster.dayName,
+          live: cluster.live,
+        });
       }).catch(() => {});
     };
 
@@ -82,7 +94,7 @@ export function AccountPanel({ user, open, onClose, onRefresh }: AccountPanelPro
         }
       })
       .catch(() => {});
-  }, [open]);
+  }, [open, user.totalContainers, user.pendingCents]);
 
   if (!open) return null;
 
@@ -201,7 +213,12 @@ export function AccountPanel({ user, open, onClose, onRefresh }: AccountPanelPro
             }}
           />
 
-          <InviteFriends user={user} recoveredHouseholdId={savedPayout?.householdId} />
+          <InviteFriends
+            user={user}
+            recoveredHouseholdId={savedPayout?.householdId}
+            parentStats={streetStats}
+            parentMeta={householdMeta}
+          />
 
           <div className="mt-4 grid grid-cols-2 gap-2">
             <Link href="/bags"
@@ -282,13 +299,26 @@ function StatCard({ icon: Icon, label, value }: { icon: React.ElementType; label
   );
 }
 
-function InviteFriends({ user: _user, recoveredHouseholdId }: { user: User; recoveredHouseholdId?: string | null }) {
+function InviteFriends({
+  user,
+  recoveredHouseholdId,
+  parentStats,
+  parentMeta,
+}: {
+  user: User;
+  recoveredHouseholdId?: string | null;
+  parentStats?: { households: number; containers: number; needed: number; dayName: string | null; live?: boolean } | null;
+  parentMeta?: { suburb: string | null; binDay: number | null; building: boolean } | null;
+}) {
   const [suburb, setSuburb] = useState<string | null>(null);
   const [binDay, setBinDay] = useState<number | null>(null);
   const [growth, setGrowth] = useState<GrowthSuburb | null>(null);
   const [building, setBuilding] = useState(false);
   const [profileId, setProfileId] = useState<string | undefined>(undefined);
-  const inviteUrl = streetInviteUrl({ suburb, day: binDay, profileId });
+  const effectiveSuburb = parentMeta?.suburb ?? suburb;
+  const effectiveBinDay = parentMeta?.binDay ?? binDay;
+  const effectiveBuilding = parentMeta?.building ?? building;
+  const inviteUrl = streetInviteUrl({ suburb: effectiveSuburb, day: effectiveBinDay, profileId });
 
   useEffect(() => {
     try {
@@ -300,7 +330,7 @@ function InviteFriends({ user: _user, recoveredHouseholdId }: { user: User; reco
       if (!hhId) return;
       Promise.all([
         fetch(apiUrl(`/api/households/${hhId}`), { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)),
-        fetch(apiUrl("/api/growth/brisbane")).then((r) => (r.ok ? r.json() : null)),
+        fetch(apiUrl("/api/growth/brisbane"), { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)),
       ])
         .then(([hh, g]) => {
           if (hh?.suburb) setSuburb(hh.suburb);
@@ -311,15 +341,17 @@ function InviteFriends({ user: _user, recoveredHouseholdId }: { user: User; reco
         })
         .catch(() => {});
     } catch { /* ignore */ }
-  }, [recoveredHouseholdId]);
+  }, [recoveredHouseholdId, user.totalContainers]);
 
-  const cluster = streetStatsForViewer(growth, binDay, !building);
-  const needed = cluster.needed;
-  const waiting = cluster.households;
-  const dayLive = cluster.live;
-  const message = inviteMessage(inviteUrl, suburb, {
-    dayName: cluster?.dayName,
-    containers: cluster.containers,
+  const fallbackCluster = streetStatsForViewer(growth, effectiveBinDay, !effectiveBuilding);
+  const containers = parentStats?.containers ?? fallbackCluster.containers;
+  const needed = parentStats?.needed ?? fallbackCluster.needed;
+  const waiting = parentStats?.households ?? fallbackCluster.households;
+  const dayLive = parentStats?.live ?? fallbackCluster.live;
+  const dayName = parentStats?.dayName ?? fallbackCluster?.dayName;
+  const message = inviteMessage(inviteUrl, effectiveSuburb, {
+    dayName,
+    containers,
     households: waiting,
     needed,
     live: dayLive,
@@ -332,15 +364,15 @@ function InviteFriends({ user: _user, recoveredHouseholdId }: { user: User; reco
         <p className="text-[13px] font-bold text-green-800">Invite the street</p>
       </div>
       <p className="text-[12px] text-green-700/70 mb-3">
-        {building
+        {effectiveBuilding
           ? (dayLive
             ? "Suburb volume can run a driver trip. Common-area pickups are phase 2 — invite more houses to scan."
-            : `${waiting} house${waiting === 1 ? "" : "s"} scanning near ${titleSuburb(suburb ?? "") || "your suburb"}. You do not count toward suburb volume. Invite a house to scan.`)
+            : `${waiting} house${waiting === 1 ? "" : "s"} scanning near ${titleSuburb(effectiveSuburb ?? "") || "your suburb"}. You do not count toward suburb volume. Invite a house to scan.`)
           : (dayLive
           ? "Enough scanned volume for a driver trip. Share so the first run is full."
-          : `${(cluster.containers ?? waiting).toLocaleString()} container${(cluster.containers ?? waiting) === 1 ? "" : "s"} scanned in ${titleSuburb(suburb ?? "") || "your suburb"}. ${needed.toLocaleString()} more for a driver trip. Every neighbour who scans gets your suburb collected sooner.`)}
+          : `${(containers ?? waiting).toLocaleString()} container${(containers ?? waiting) === 1 ? "" : "s"} scanned in ${titleSuburb(effectiveSuburb ?? "") || "your suburb"}. ${needed.toLocaleString()} more for a driver trip. Every neighbour who scans gets your suburb collected sooner.`)}
       </p>
-      {(building || canonicalSuburb(suburb) !== null) && (
+      {(effectiveBuilding || canonicalSuburb(effectiveSuburb) !== null) && (
         <InviteActions url={inviteUrl} message={message} compact />
       )}
     </div>

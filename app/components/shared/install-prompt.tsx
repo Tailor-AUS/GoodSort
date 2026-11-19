@@ -26,7 +26,7 @@ function isStandalone(): boolean {
 
 const DISMISS_KEY = "goodsort_install_dismissed";
 const DISMISS_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days
-const INSTALL_PROMPT_PATHS = ["/sort", "/runner", "/household"];
+const INSTALL_PROMPT_PATHS = ["/sort", "/household"];
 
 function canShowInstallPrompt(pathname: string) {
   return INSTALL_PROMPT_PATHS.includes(pathname);

@@ -193,7 +193,7 @@ public class Pass4HardeningTests : IClassFixture<OpaqueBoxHost>
             var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
             var depot = await db.Depots.FirstAsync();
             var settledRun = new Run { Status = "settled", RunnerId = runnerProfileId, DropPointId = depot.Id };
-            var claimedRun = new Run { Status = "claimed", RunnerId = runnerProfileId, ClaimedAt = DateTime.UtcNow, DropPointId = depot.Id };
+            var claimedRun = new Run { Status = "claimed", RunnerId = runnerProfileId, ClaimedAt = DateTime.UtcNow, ExpiresAt = DateTime.UtcNow.AddHours(6), EstimatedContainers = 1000, DropPointId = depot.Id };
             db.Runs.AddRange(settledRun, claimedRun);
             db.RunnerRatings.Add(new RunnerRating { RunId = settledRun.Id, RunnerId = runnerProfileId, Stars = 5, OverallScore = 1.0 });
             db.CashoutRequests.Add(new CashoutRequest { UserId = runnerUserId, AmountCents = 2500, PayoutMethod = "payid", PayIdType = "email", PayIdValue = "r@example.test", AccountName = "Runner", Status = "pending" });

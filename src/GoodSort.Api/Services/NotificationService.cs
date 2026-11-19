@@ -245,7 +245,7 @@ public class NotificationService
                   <p style='font-size:28px;font-weight:800;color:#166534;margin:0'>${member.ClearedCents / 100.0:F2}</p>
                   <p style='font-size:12px;color:#166534;margin:8px 0 0'>From the runner count at pickup. Cash out via PayID or bank transfer from $20.</p>
                 </div>
-                <p style='font-size:13px;line-height:1.55'>Bring bags back inside when you&apos;re ready.</p>
+                <p style='font-size:13px;line-height:1.55'>Keep scanning and sorting into fresh bags at home for your next pickup.</p>
                 <p style='font-size:12px;color:#94a3b8;margin-top:24px'>The Good Sort · {addressHtml}</p>
               </div>";
             try
