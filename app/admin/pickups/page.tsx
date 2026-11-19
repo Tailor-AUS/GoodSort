@@ -80,7 +80,11 @@ export default function AdminPickupsPage() {
         setErr(j.error || `Run generation failed (HTTP ${res.status})`);
         return;
       }
-      setTriggerResult("Run generation complete — refreshed active & pilot runs.");
+      setTriggerResult(
+        j.acquiredLease === false
+          ? "Another run-generation pass is currently in progress. Refresh in a few seconds."
+          : "Run generation complete — refreshed active & pilot runs."
+      );
       reload();
     } catch {
       setErr("Network error while generating runs.");

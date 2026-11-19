@@ -44,6 +44,7 @@ interface RunActiveProps {
   onSkip: (stopId: string) => void;
   onDeliver: () => void;
   onComplete: (depotVerifiedContainers?: number, coexDocketRef?: string) => void;
+  onRefreshRun?: () => void | Promise<void>;
 }
 
 export function RunActive({
@@ -55,8 +56,10 @@ export function RunActive({
   onSkip,
   onDeliver,
   onComplete,
+  onRefreshRun,
 }: RunActiveProps) {
   const [pickupCount, setPickupCount] = useState<Record<string, number>>({});
+  const [arrivedStopIds, setArrivedStopIds] = useState<Record<string, boolean>>({});
   const [manifestBags, setManifestBags] = useState<SortedBagDto[]>([]);
   const [manualBagCode, setManualBagCode] = useState("");
   const [bagScanStatus, setBagScanStatus] = useState<string | null>(null);
@@ -131,9 +134,10 @@ export function RunActive({
             ? res.stopVerifiedTotal
             : (prev[currentStopId] ?? 0),
       }));
-      await loadManifest(currentStopId);
+      setArrivedStopIds((prev) => ({ ...prev, [currentStopId]: true }));
+      await Promise.all([loadManifest(currentStopId), Promise.resolve(onRefreshRun?.())]);
     },
-    [currentStopId, run.id, contaminationFlag, discrepancyCode, discrepancyNote, loadManifest]
+    [currentStopId, run.id, contaminationFlag, discrepancyCode, discrepancyNote, loadManifest, onRefreshRun]
   );
 
   useEffect(() => {
@@ -239,6 +243,7 @@ export function RunActive({
   // ═══════ IN PROGRESS — Stop by stop with QR Bag Scan & Manifest ═══════
   if (run.status === "in_progress" && currentStop) {
     const count = pickupCount[currentStop.id] ?? currentStop.estimatedContainers;
+    const stopArrived = currentStop.status === "arrived" || Boolean(arrivedStopIds[currentStop.id]);
 
     return (
       <>
@@ -255,7 +260,7 @@ export function RunActive({
 
         <div className="mb-3">
           <p className="text-[12px] text-slate-400 font-semibold uppercase tracking-[0.12em]">
-            {currentStop.status === "arrived" ? "At kerbside stop" : "Next pickup"}
+            {stopArrived ? "At kerbside stop" : "Next pickup"}
           </p>
           <p className="text-xl font-display font-extrabold text-slate-900 mt-0.5">
             {currentStop.pickupInstruction || `Stop ${currentStop.sequence + 1}`}
@@ -266,7 +271,7 @@ export function RunActive({
         </div>
 
         {/* Navigate / Arrive */}
-        {currentStop.status === "pending" && (
+        {!stopArrived && (
           <div className="flex gap-2 mb-4">
             <button
               type="button"
@@ -375,8 +380,8 @@ export function RunActive({
           )}
         </div>
 
-        {/* Pickup controls (shown after arriving) */}
-        {currentStop.status === "arrived" && (
+        {/* Pickup controls (shown after arriving or scanning a kerbside bag) */}
+        {stopArrived && (
           <>
             {/* Container count adjuster */}
             <div className="glass rounded-xl p-3 border border-white/40 mb-3">

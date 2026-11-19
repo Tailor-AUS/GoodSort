@@ -90,6 +90,7 @@ export function RunnerSheet({
               onSkip={onSkip}
               onDeliver={onDeliver}
               onComplete={handleComplete}
+              onRefreshRun={onDataUpdate}
             />
           )}
 

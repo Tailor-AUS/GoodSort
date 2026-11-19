@@ -72,7 +72,7 @@ public class RunGenerationService : BackgroundService
         try
         {
             var minPayoutCents = ResolveMinPayoutCents(config);
-            await ExpireOldRuns(db);
+            await ExpireOldRuns(db, pricing, minPayoutCents);
             // Absorb flagged full-bin households into nearby existing unclaimed
             // runs BEFORE GenerateRuns; otherwise GenerateRuns turns each late
             // full-bin household into a separate 1-stop below_threshold run.
@@ -98,7 +98,7 @@ public class RunGenerationService : BackgroundService
 
     public static readonly TimeSpan StaleClaimWindow = TimeSpan.FromHours(24);
 
-    private async Task ExpireOldRuns(GoodSortDbContext db)
+    private async Task ExpireOldRuns(GoodSortDbContext db, PricingService pricing, int minPayoutCents)
     {
         var now = DateTime.UtcNow;
         var expired = await db.Runs
@@ -117,6 +117,7 @@ public class RunGenerationService : BackgroundService
         // RunLifecycle.HoldsBin.
         var staleCutoff = now - StaleClaimWindow;
         var staleClaimed = await db.Runs
+            .Include(r => r.Stops)
             .Where(r => r.Status == "claimed"
                      && (r.ClaimedAt ?? r.CreatedAt) <= staleCutoff)
             .ToListAsync();
@@ -126,7 +127,21 @@ public class RunGenerationService : BackgroundService
             run.RunnerId = null;
             run.ClaimedAt = null;
             run.LastBriefedAt = null;
-            run.Status = run.ExpiresAt > now ? "available" : "expired";
+            if (run.ExpiresAt <= now)
+            {
+                run.Status = "expired";
+            }
+            else
+            {
+                var repriced = await pricing.CalculateRate(run);
+                run.PerContainerCents = repriced.PerContainerCents;
+                run.EstimatedPayoutCents = repriced.EstimatedPayoutCents;
+                run.PricingTier = repriced.PricingTier;
+                run.LastPricedAt = now;
+                run.Status = repriced.EstimatedPayoutCents >= minPayoutCents
+                    ? "available"
+                    : "below_threshold";
+            }
             _logger.LogInformation("Reclaimed stale claimed run {RunId} -> {Status}", run.Id, run.Status);
         }
 

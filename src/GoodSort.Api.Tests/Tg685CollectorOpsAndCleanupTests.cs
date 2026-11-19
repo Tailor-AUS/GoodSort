@@ -175,9 +175,15 @@ public class Tg685CollectorOpsAndCleanupTests : IClassFixture<Tg685CollectorOpsA
             r => r.GetProperty("id").GetGuid() == runId);
         Assert.Equal("claimed", claimedRun.GetProperty("status").GetString());
 
-        // 5. Release the run so it becomes unclaimed again, then delete the sole-member sorter profile
+        // 5. Release the run -> a 1-house pilot run must return to below_threshold (NEVER public "available")
         var release = await runner.Client.PostAsync($"/api/marketplace/runs/{runId}/release", null);
         Assert.Equal(HttpStatusCode.OK, release.StatusCode);
+        var releaseJson = await release.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("below_threshold", releaseJson.GetProperty("status").GetString());
+
+        var publicRunsAfterRelease = await anonClient.GetStringAsync("/api/marketplace/runs?lat=-27.5295&lng=153.0315&radiusKm=15");
+        Assert.Equal("[]", publicRunsAfterRelease.Trim());
+        Assert.DoesNotContain("Northview Outlook", publicRunsAfterRelease, StringComparison.OrdinalIgnoreCase);
 
         var deleteRes = await sorter.Client.DeleteAsync($"/api/profiles/{sorter.ProfileId}");
         Assert.Equal(HttpStatusCode.OK, deleteRes.StatusCode);
@@ -230,6 +236,17 @@ public class Tg685CollectorOpsAndCleanupTests : IClassFixture<Tg685CollectorOpsA
             putOnKerb = true,
         });
         Assert.Equal(HttpStatusCode.Created, bag.StatusCode);
+        var bagCode = (await bag.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()!;
+
+        string originalBinCode;
+        Guid originalBinId;
+        using (var preScope = _host.Services.CreateScope())
+        {
+            var preDb = preScope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
+            var hhBin = await preDb.Bins.SingleAsync(b => b.HouseholdId == hhId);
+            originalBinId = hhBin.Id;
+            originalBinCode = hhBin.Code;
+        }
 
         await admin.Client.PostAsJsonAsync($"/api/admin/households/{hhId}/bin-status", new { status = "collecting" });
         await admin.Client.PostAsync("/api/admin/marketplace/runs/generate", null);
@@ -255,6 +272,18 @@ public class Tg685CollectorOpsAndCleanupTests : IClassFixture<Tg685CollectorOpsA
         var stopId = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("stops")[0].GetProperty("id").GetGuid();
 
         await runner.Client.PostAsync($"/api/marketplace/runs/{runId}/start", null);
+
+        // Scan bag BEFORE calling /arrive -> /arrive must still succeed idempotently (200 OK, never 400 deadlock)
+        var scanBag = await runner.Client.PostAsJsonAsync($"/api/marketplace/runs/{runId}/stops/{stopId}/scan-bag", new
+        {
+            bagCode,
+            verifiedContainers = 1,
+        });
+        Assert.Equal(HttpStatusCode.OK, scanBag.StatusCode);
+
+        var arriveAfterScan = await runner.Client.PostAsync($"/api/marketplace/runs/{runId}/stops/{stopId}/arrive", null);
+        Assert.Equal(HttpStatusCode.OK, arriveAfterScan.StatusCode);
+
         await runner.Client.PostAsJsonAsync($"/api/marketplace/runs/{runId}/stops/{stopId}/pickup", new { actualContainers = 1 });
         await runner.Client.PostAsync($"/api/marketplace/runs/{runId}/deliver", null);
         await runner.Client.PostAsJsonAsync($"/api/marketplace/runs/{runId}/complete", new { depotVerifiedContainers = 1, coexDocketRef = "DOC-TG685" });
@@ -265,14 +294,32 @@ public class Tg685CollectorOpsAndCleanupTests : IClassFixture<Tg685CollectorOpsA
         var del = await sorter.Client.DeleteAsync($"/api/profiles/{sorter.ProfileId}");
         Assert.Equal(HttpStatusCode.OK, del.StatusCode);
 
+        // Deleted household bin must NOT appear on /api/bins, /api/bins/{id}, /api/bins/code/{code}, or /api/bins/{id}/qr,
+        // and runner's historical run history must NOT retain street address or coordinates!
+        var bystander = await SignUp("bystander@tg685.test");
+        var visibleBins = await bystander.Client.GetFromJsonAsync<JsonElement>("/api/bins");
+        Assert.DoesNotContain(visibleBins.EnumerateArray(), b => b.GetProperty("id").GetGuid() == originalBinId);
+        Assert.Equal(HttpStatusCode.NotFound, (await bystander.Client.GetAsync($"/api/bins/{originalBinId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await bystander.Client.GetAsync($"/api/bins/code/{originalBinCode}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await bystander.Client.GetAsync($"/api/bins/{originalBinId}/qr")).StatusCode);
+
+        var runnerHistoryRaw = await runner.Client.GetStringAsync($"/api/runner/runs/{runner.ProfileId}");
+        Assert.DoesNotContain("Windmill Street", runnerHistoryRaw, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Tarragindi Test House", runnerHistoryRaw, StringComparison.OrdinalIgnoreCase);
+
         using var scope = _host.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
         Assert.Null(await db.Households.FindAsync(hhId));
         Assert.True(await db.RunSettlementLedgers.AnyAsync(l => l.RunId == runId));
         var stop = await db.RunStops.SingleAsync(s => s.Id == stopId);
+        Assert.Equal("Deleted household", stop.PickupInstruction);
+        Assert.Equal(0, stop.Lat);
+        Assert.Equal(0, stop.Lng);
         var scrubbedBin = await db.Bins.SingleAsync(b => b.Id == stop.BinId);
         Assert.Null(scrubbedBin.HouseholdId);
         Assert.Equal("deleted", scrubbedBin.Status);
         Assert.Equal("", scrubbedBin.Address);
+        Assert.Equal(0, scrubbedBin.Lat);
+        Assert.Equal(0, scrubbedBin.Lng);
     }
 }
