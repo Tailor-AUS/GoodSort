@@ -18,6 +18,39 @@ if (useMemory)
     builder.Services.AddDbContext<GoodSortDbContext>(o => o.UseInMemoryDatabase("goodsort-dev"));
 else
     builder.AddSqlServerDbContext<GoodSortDbContext>("goodsortdb");
+
+// Gated deploy-step EF migration mode (AGENTS.md §2 D4): executes BEFORE JWT_SECRET,
+// Kestrel, or background IHostedServices are registered so the Container Apps migration
+// job only requires ConnectionStrings__goodsortdb and exits 0 cleanly on completion.
+var migrateOnly = args.Any(a => string.Equals(a, "--migrate-only", StringComparison.OrdinalIgnoreCase))
+    || string.Equals(builder.Configuration["GOODSORT_MIGRATE_ONLY"], "true", StringComparison.OrdinalIgnoreCase);
+if (migrateOnly)
+{
+    await using var migrateApp = builder.Build();
+    for (var attempt = 1; ; attempt++)
+    {
+        try
+        {
+            using var migrateScope = migrateApp.Services.CreateScope();
+            var migrateDb = migrateScope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
+            if (migrateDb.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                await migrateDb.Database.EnsureCreatedAsync();
+            }
+            else
+            {
+                await migrateDb.Database.MigrateAsync();
+            }
+            migrateApp.Logger.LogInformation("Gated EF database migration completed successfully.");
+            return;
+        }
+        catch (Exception ex) when (attempt < 10)
+        {
+            migrateApp.Logger.LogWarning(ex, "Gated EF migration attempt {Attempt}/10 failed; retrying in 3s...", attempt);
+            await Task.Delay(TimeSpan.FromSeconds(3));
+        }
+    }
+}
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<VisionService>();
 builder.Services.AddScoped<CashoutService>();
@@ -293,37 +326,6 @@ builder.WebHost.ConfigureKestrel(k =>
 });
 
 var app = builder.Build();
-
-// Gated deploy-step EF migration mode (AGENTS.md §2 D4): runs pending database
-// migrations and exits 0 before Kestrel or background loops start.
-var migrateOnly = args.Any(a => string.Equals(a, "--migrate-only", StringComparison.OrdinalIgnoreCase))
-    || string.Equals(builder.Configuration["GOODSORT_MIGRATE_ONLY"], "true", StringComparison.OrdinalIgnoreCase);
-if (migrateOnly)
-{
-    for (var attempt = 1; ; attempt++)
-    {
-        try
-        {
-            using var migrateScope = app.Services.CreateScope();
-            var migrateDb = migrateScope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
-            if (migrateDb.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                await migrateDb.Database.EnsureCreatedAsync();
-            }
-            else
-            {
-                await migrateDb.Database.MigrateAsync();
-            }
-            app.Logger.LogInformation("Gated EF database migration completed successfully.");
-            return;
-        }
-        catch (Exception ex) when (attempt < 10)
-        {
-            app.Logger.LogWarning(ex, "Gated EF migration attempt {Attempt}/10 failed; retrying in 3s...", attempt);
-            await Task.Delay(TimeSpan.FromSeconds(3));
-        }
-    }
-}
 
 // Upper bound on self-reported containers per pickup stop. Runner pickup counts
 // are self-reported and flow straight into cash-out-eligible ClearedCents at
@@ -889,8 +891,10 @@ app.MapPost("/api/scan/photo/preview", async (PhotoScanPreviewRequest req, Visio
     var normalizedContainers = (result.Containers ?? [])
         .Select(VisionService.NormalizeContainer)
         .ToList();
+    var altPreviewEmail = AuthService.GetTgsAlternateAlias(ticket.Email);
     var existingProfile = await db.Profiles.AsNoTracking()
-        .FirstOrDefaultAsync(p => p.Email == ticket.Email || p.Phone == ticket.Email);
+        .FirstOrDefaultAsync(p => p.Email == ticket.Email || p.Phone == ticket.Email
+            || (altPreviewEmail != null && (p.Email == altPreviewEmail || p.Phone == altPreviewEmail)));
     var eligibleCount = normalizedContainers.Where(c => c.Eligible).Sum(c => c.Count);
     var totalItems = eligibleCount;
     var totalCents = LaunchBonus.TotalCents(
@@ -951,7 +955,7 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
         var callerForToken = await db.Profiles.AsNoTracking().FirstOrDefaultAsync(p => p.Id == userId.Value);
         if (callerForToken is null
             || string.IsNullOrWhiteSpace(payload.Email)
-            || !string.Equals(callerForToken.Email, payload.Email, StringComparison.OrdinalIgnoreCase))
+            || !AuthService.AreEquivalentEmails(callerForToken.Email, payload.Email))
         {
             return Results.Forbid();
         }

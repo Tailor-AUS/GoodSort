@@ -138,9 +138,10 @@ jobs:
                 --server acrnyjfw2pdfsrie.azurecr.io \
                 --username "$ACR_USER" \
                 --password "$ACR_PASS" >/dev/null
+              az containerapp job secret set -n "$JOB" -g "$RG" \
+                --secrets "sql-cs=$SQL_CS" >/dev/null
               az containerapp job update -n "$JOB" -g "$RG" \
                 --image "$IMAGE" \
-                --secrets "sql-cs=$SQL_CS" \
                 --set-env-vars "ConnectionStrings__goodsortdb=secretref:sql-cs" "ASPNETCORE_ENVIRONMENT=Production" "GOODSORT_MIGRATE_ONLY=true" >/dev/null
             else
               az containerapp job create -n "$JOB" -g "$RG" \

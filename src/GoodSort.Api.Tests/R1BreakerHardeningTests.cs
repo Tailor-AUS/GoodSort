@@ -638,5 +638,24 @@ public class R1BreakerHardeningTests : IClassFixture<R1BreakerHardeningTests.R1H
         authedParallel.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", parallelJwt);
         var ownConfirm = await authedParallel.PostAsJsonAsync("/api/scan/photo/confirm", new { scanToken = emailBoundScanToken });
         Assert.Equal(HttpStatusCode.OK, ownConfirm.StatusCode);
+
+        // 7. F-19: TGS mailbox alias (admin@thegoodsort.org -> hello@thegoodsort.org) can confirm its pre-scan token
+        var aliasSend = await anon.PostAsJsonAsync("/api/auth/send-otp", new { email = "admin@thegoodsort.org" });
+        Assert.Equal(HttpStatusCode.OK, aliasSend.StatusCode);
+        var aliasSendJson = await aliasSend.Content.ReadFromJsonAsync<JsonElement>();
+        var aliasPreToken = aliasSendJson.GetProperty("preScanToken").GetString()!;
+        var aliasCode = aliasSendJson.GetProperty("devCode").GetString()!;
+
+        var aliasPreview = await anon.PostAsJsonAsync("/api/scan/photo/preview", new { image = "AAAA", preScanToken = aliasPreToken });
+        Assert.Equal(HttpStatusCode.OK, aliasPreview.StatusCode);
+        var aliasScanToken = (await aliasPreview.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("scanToken").GetString()!;
+
+        var aliasVerify = await anon.PostAsJsonAsync("/api/auth/verify-otp", new { email = "admin@thegoodsort.org", code = aliasCode });
+        Assert.Equal(HttpStatusCode.OK, aliasVerify.StatusCode);
+        var aliasJwt = (await aliasVerify.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
+        var aliasClient = _host.CreateClient();
+        aliasClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", aliasJwt);
+        var aliasConfirm = await aliasClient.PostAsJsonAsync("/api/scan/photo/confirm", new { scanToken = aliasScanToken });
+        Assert.Equal(HttpStatusCode.OK, aliasConfirm.StatusCode);
     }
 }
