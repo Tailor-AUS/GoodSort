@@ -294,6 +294,37 @@ builder.WebHost.ConfigureKestrel(k =>
 
 var app = builder.Build();
 
+// Gated deploy-step EF migration mode (AGENTS.md §2 D4): runs pending database
+// migrations and exits 0 before Kestrel or background loops start.
+var migrateOnly = args.Any(a => string.Equals(a, "--migrate-only", StringComparison.OrdinalIgnoreCase))
+    || string.Equals(builder.Configuration["GOODSORT_MIGRATE_ONLY"], "true", StringComparison.OrdinalIgnoreCase);
+if (migrateOnly)
+{
+    for (var attempt = 1; ; attempt++)
+    {
+        try
+        {
+            using var migrateScope = app.Services.CreateScope();
+            var migrateDb = migrateScope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
+            if (migrateDb.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                await migrateDb.Database.EnsureCreatedAsync();
+            }
+            else
+            {
+                await migrateDb.Database.MigrateAsync();
+            }
+            app.Logger.LogInformation("Gated EF database migration completed successfully.");
+            return;
+        }
+        catch (Exception ex) when (attempt < 10)
+        {
+            app.Logger.LogWarning(ex, "Gated EF migration attempt {Attempt}/10 failed; retrying in 3s...", attempt);
+            await Task.Delay(TimeSpan.FromSeconds(3));
+        }
+    }
+}
+
 // Upper bound on self-reported containers per pickup stop. Runner pickup counts
 // are self-reported and flow straight into cash-out-eligible ClearedCents at
 // settle time, so an unbounded value is a direct self-credit fraud vector
@@ -493,13 +524,14 @@ app.MapPost("/api/admin/bootstrap", async (HttpContext ctx, AdminBootstrapReques
 });
 
 // ── Auth (Azure Communication Services Email OTP) ──
-app.MapPost("/api/auth/send-otp", async (SendOtpRequest req, AuthService auth) =>
+app.MapPost("/api/auth/send-otp", async (SendOtpRequest req, AuthService auth, ScanTokenService tokens) =>
 {
     var email = AuthService.NormalizeValidEmail(req?.Email);
     if (email is null) return Results.BadRequest(new { error = "Invalid email" });
     var (success, error, devCode) = await auth.SendOtp(email);
     if (!success) return Results.BadRequest(new { error = error ?? "Failed to send code" });
-    return Results.Ok(new { sent = true, devCode = app.Environment.IsDevelopment() ? devCode : null });
+    var preScanToken = tokens.IssuePreScanTicket(email, TimeSpan.FromMinutes(AuthService.OtpValidMinutes));
+    return Results.Ok(new { sent = true, preScanToken, devCode = app.Environment.IsDevelopment() ? devCode : null });
 }).RequireRateLimiting("auth-otp");
 
 app.MapPost("/api/auth/verify-otp", async (VerifyOtpRequest req, AuthService auth) =>
@@ -790,11 +822,117 @@ app.MapPost("/api/scan/photo", async (HttpContext ctx, PhotoScanRequest req, Vis
     });
 }).RequireAuthorization();
 
+// Pre-auth parallel photo classification: runs Vision while the user checks email
+// for their 6-digit OTP so results appear in 0ms right after verify-otp. Guarded by
+// a single-use HMAC preScanToken issued by /api/auth/send-otp (already IP + 5/hr/email
+// rate-limited), global VISION_DAILY_CAP, and atomic Jti spend in UsedScanTokens.
+// Credits nothing until authenticated /api/scan/photo/confirm verifies the OTP email.
+app.MapPost("/api/scan/photo/preview", async (PhotoScanPreviewRequest req, VisionService vision,
+    GoodSortDbContext db, IConfiguration cfg, ScanTokenService tokens) =>
+{
+    var ticket = tokens.VerifyPreScanTicket(req?.PreScanToken);
+    if (ticket is null) return Results.Unauthorized();
+
+    if (string.IsNullOrEmpty(req?.Image))
+        return Results.BadRequest(new { error = "No image provided" });
+
+    var base64 = req.Image;
+    if (base64.Contains(",")) base64 = base64.Split(',')[1];
+    if (base64.Length > 2_000_000)
+        return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+
+    var since = DateTime.UtcNow.AddHours(-24);
+    var globalCap = int.TryParse(cfg["VISION_DAILY_CAP"], out var g) ? g : 2000;
+    var globalCallsToday = await db.VisionCalls.CountAsync(v => v.CreatedAt >= since);
+    if (globalCallsToday >= globalCap) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+
+    // Spend ticket.Jti atomically before invoking Vision so each OTP yields at most 1 AI call.
+    if (await db.UsedScanTokens.AnyAsync(t => t.Jti == ticket.Jti))
+        return Results.Conflict(new { error = "Pre-scan ticket already used." });
+    try
+    {
+        db.UsedScanTokens.Add(new UsedScanToken { Jti = ticket.Jti, UserId = Guid.Empty });
+        await db.SaveChangesAsync();
+    }
+    catch (DbUpdateException)
+    {
+        return Results.Conflict(new { error = "Pre-scan ticket already used." });
+    }
+
+    var reservation = new VisionCall
+    {
+        Provider = VisionReservation.Provider,
+        Success = false,
+        UserId = null,
+    };
+    db.VisionCalls.Add(reservation);
+    await db.SaveChangesAsync();
+
+    VisionResult result;
+    try
+    {
+        result = await vision.IdentifyContainers(base64, userId: null);
+    }
+    finally
+    {
+        try
+        {
+            db.VisionCalls.Remove(reservation);
+            await db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogWarning(ex, "Could not release pre-scan vision reservation {Id}", reservation.Id);
+        }
+    }
+
+    var normalizedContainers = (result.Containers ?? [])
+        .Select(VisionService.NormalizeContainer)
+        .ToList();
+    var existingProfile = await db.Profiles.AsNoTracking()
+        .FirstOrDefaultAsync(p => p.Email == ticket.Email || p.Phone == ticket.Email);
+    var eligibleCount = normalizedContainers.Where(c => c.Eligible).Sum(c => c.Count);
+    var totalItems = eligibleCount;
+    var totalCents = LaunchBonus.TotalCents(
+        existingProfile?.TotalContainers ?? 0, eligibleCount, LaunchBonus.CapFrom(cfg));
+
+    Bin? depositBin = string.IsNullOrEmpty(req.BinCode)
+        ? null
+        : await db.Bins.FirstOrDefaultAsync(b => b.Code == req.BinCode);
+    var photoHash = PerceptualHash.TryCompute(base64);
+
+    var scanToken = tokens.Issue(new ScanTokenPayload
+    {
+        Uid = Guid.Empty,
+        Email = ticket.Email,
+        Items = normalizedContainers.Select(c => new ScanTokenItem
+        {
+            Name = c.Name, Material = c.Material, Count = c.Count, Eligible = c.Eligible,
+        }).ToList(),
+        BinCode = depositBin?.Code,
+        BinLat = depositBin?.Lat,
+        BinLng = depositBin?.Lng,
+        PhotoHash = photoHash.HasValue ? PerceptualHash.ToHex(photoHash.Value) : null,
+    }, TimeSpan.FromMinutes(AuthService.OtpValidMinutes));
+
+    return Results.Ok(new
+    {
+        containers = normalizedContainers,
+        totalItems,
+        totalCents,
+        message = result.Message,
+        scanToken,
+        summary = totalItems > 0
+            ? $"{totalItems} container{(totalItems != 1 ? "s" : "")} found — ${totalCents / 100.0:F2} pending"
+            : result.Message,
+    });
+}).RequireRateLimiting("auth-otp");
+
 // Confirm photo scan — creates scan records + credits the user.
 // MUST use server-side items from the signed scanToken; otherwise a client
 // can post {items: [{eligible: true, count: 99999, ...}]} and grant itself
-// unlimited credit. The token also pins userId, so cross-user spoofing is
-// blocked even if /confirm is hit with the wrong token.
+// unlimited credit. The token also pins userId (or OTP email for parallel pre-scan),
+// so cross-user spoofing is blocked even if /confirm is hit with the wrong token.
 app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmRequest req,
     GoodSortDbContext db, ScanTokenService tokens, IConfiguration cfg, NotificationService notif,
     ILogger<Program> log) =>
@@ -804,7 +942,20 @@ app.MapPost("/api/scan/photo/confirm", async (HttpContext ctx, PhotoConfirmReque
 
     var payload = tokens.Verify(req.ScanToken);
     if (payload is null) return Results.BadRequest(new { error = "Invalid or expired scan token. Re-take the photo." });
-    if (payload.Uid != userId.Value) return Results.Forbid();
+    if (payload.Uid != Guid.Empty)
+    {
+        if (payload.Uid != userId.Value) return Results.Forbid();
+    }
+    else
+    {
+        var callerForToken = await db.Profiles.AsNoTracking().FirstOrDefaultAsync(p => p.Id == userId.Value);
+        if (callerForToken is null
+            || string.IsNullOrWhiteSpace(payload.Email)
+            || !string.Equals(callerForToken.Email, payload.Email, StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.Forbid();
+        }
+    }
 
     if (req.Lat is double reqLat && (!double.IsFinite(reqLat) || reqLat is < -90 or > 90))
         return Results.BadRequest(new { error = "Valid latitude between -90 and 90 is required." });
@@ -1426,7 +1577,23 @@ app.MapPost("/api/households", async (HttpContext ctx, HouseholdCreateRequest re
                     if (me.ReferrerId is Guid rid && rid != uid && me.HouseholdId is null)
                     {
                         var referrer = await db.Profiles.FindAsync(rid);
-                        if (referrer is not null) referrer.PendingCents += 100;
+                        var houseKey = WaitlistJoin.PhysicalHouseKey(household.Suburb, household.Address, household.Street);
+                        var refHouse = referrer?.HouseholdId is Guid rhid
+                            ? await db.Households.AsNoTracking().FirstOrDefaultAsync(h => h.Id == rhid)
+                            : null;
+                        var refKey = refHouse is not null
+                            ? WaitlistJoin.PhysicalHouseKey(refHouse.Suburb, refHouse.Address, refHouse.Street)
+                            : null;
+                        var sameHouse = houseKey is not null && refKey is not null
+                            && string.Equals(houseKey, refKey, StringComparison.OrdinalIgnoreCase);
+                        if (referrer is not null && referrer.ReferrerId != uid && !sameHouse)
+                        {
+                            referrer.PendingCents += 100;
+                        }
+                        else
+                        {
+                            me.ReferrerId = null;
+                        }
                     }
                     var isFirstHousehold = me.HouseholdId is null;
                     me.HouseholdId ??= household.Id;
@@ -1871,7 +2038,25 @@ app.MapPost("/api/waitlist/unit-complex", async (HttpContext ctx, UnitComplexWai
                         if (caller.ReferrerId is Guid rid && rid != nonAdminUnitUid)
                         {
                             var referrer = await db.Profiles.FindAsync(rid);
-                            if (referrer is not null) referrer.PendingCents += 100;
+                            var unitKey = WaitlistJoin.PhysicalHouseKey(placeholder.Suburb, placeholder.Address, placeholder.Street);
+                            var refHouse = referrer?.HouseholdId is Guid rhid
+                                ? await db.Households.AsNoTracking().FirstOrDefaultAsync(h => h.Id == rhid)
+                                : null;
+                            var refKey = refHouse is not null
+                                ? WaitlistJoin.PhysicalHouseKey(refHouse.Suburb, refHouse.Address, refHouse.Street)
+                                : null;
+                            var sameBuilding = refHouse is not null && (
+                                (unitKey is not null && refKey is not null && string.Equals(unitKey, refKey, StringComparison.OrdinalIgnoreCase))
+                                || (string.Equals((refHouse.Address ?? "").Trim(), (placeholder.Address ?? "").Trim(), StringComparison.OrdinalIgnoreCase)
+                                    && string.Equals((refHouse.Suburb ?? "").Trim(), (placeholder.Suburb ?? "").Trim(), StringComparison.OrdinalIgnoreCase)));
+                            if (referrer is not null && referrer.ReferrerId != nonAdminUnitUid && !sameBuilding)
+                            {
+                                referrer.PendingCents += 100;
+                            }
+                            else
+                            {
+                                caller.ReferrerId = null;
+                            }
                         }
                         var orphans = await db.Scans
                             .Where(sc => sc.UserId == caller.Id && sc.HouseholdId == null && sc.Status == "pending")
@@ -1898,7 +2083,25 @@ app.MapPost("/api/waitlist/unit-complex", async (HttpContext ctx, UnitComplexWai
             if (caller.ReferrerId is Guid rid && rid != callerUid && caller.HouseholdId is null)
             {
                 var referrer = await db.Profiles.FindAsync(rid);
-                if (referrer is not null) referrer.PendingCents += 100;
+                var unitKey = WaitlistJoin.PhysicalHouseKey(placeholder.Suburb, placeholder.Address, placeholder.Street);
+                var refHouse = referrer?.HouseholdId is Guid rhid
+                    ? await db.Households.AsNoTracking().FirstOrDefaultAsync(h => h.Id == rhid)
+                    : null;
+                var refKey = refHouse is not null
+                    ? WaitlistJoin.PhysicalHouseKey(refHouse.Suburb, refHouse.Address, refHouse.Street)
+                    : null;
+                var sameBuilding = refHouse is not null && (
+                    (unitKey is not null && refKey is not null && string.Equals(unitKey, refKey, StringComparison.OrdinalIgnoreCase))
+                    || (string.Equals((refHouse.Address ?? "").Trim(), (placeholder.Address ?? "").Trim(), StringComparison.OrdinalIgnoreCase)
+                        && string.Equals((refHouse.Suburb ?? "").Trim(), (placeholder.Suburb ?? "").Trim(), StringComparison.OrdinalIgnoreCase)));
+                if (referrer is not null && referrer.ReferrerId != callerUid && !sameBuilding)
+                {
+                    referrer.PendingCents += 100;
+                }
+                else
+                {
+                    caller.ReferrerId = null;
+                }
             }
             var isFirstHousehold = caller.HouseholdId is null;
             caller.HouseholdId ??= placeholder.Id;
@@ -2191,13 +2394,24 @@ app.MapGet("/api/scans", async (HttpContext ctx, Guid userId, int? limit, GoodSo
         .OrderByDescending(s => s.CreatedAt).Take(safeLimit).ToListAsync());
 }).RequireAuthorization();
 
-// ── Routes ──
+// ── Routes (legacy pre-marketplace compatibility; disabled in non-Development unless LEGACY_ROUTES_ENABLED=true) ──
+var legacyRoutes = app.MapGroup("");
+legacyRoutes.AddEndpointFilter(async (efiCtx, next) =>
+{
+    if (!app.Environment.IsDevelopment()
+        && !string.Equals(app.Configuration["LEGACY_ROUTES_ENABLED"], "true", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.NotFound();
+    }
+    return await next(efiCtx);
+});
+
 // RouteStop carries HouseholdName, the full street Address and exact Lat/Lng
 // for every collection — and, with a pickup time attached, that is a schedule
 // of which houses have bags at the kerb and when. This was anonymous. It
 // returned nothing only because no run has been generated yet; the first real
 // collection would have published every participating address to the internet.
-app.MapGet("/api/routes", async (HttpContext ctx, string? status, GoodSortDbContext db) =>
+legacyRoutes.MapGet("/api/routes", async (HttpContext ctx, string? status, GoodSortDbContext db) =>
 {
     var callerId = ctx.GetCallerId();
     if (callerId is null) return Results.Unauthorized();
@@ -2208,7 +2422,7 @@ app.MapGet("/api/routes", async (HttpContext ctx, string? status, GoodSortDbCont
 }).RequireAuthorization();
 
 // Same payload as the list above, for one route. Restricted to the route's driver or admin.
-app.MapGet("/api/routes/{id:guid}", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
+legacyRoutes.MapGet("/api/routes/{id:guid}", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
     var callerId = ctx.GetCallerId();
     if (callerId is null) return Results.Unauthorized();
@@ -2219,7 +2433,7 @@ app.MapGet("/api/routes/{id:guid}", async (HttpContext ctx, Guid id, GoodSortDbC
     return Results.Ok(r);
 }).RequireAuthorization();
 
-app.MapPost("/api/routes/{id:guid}/claim", async (HttpContext ctx, Guid id, ClaimRequest req, GoodSortDbContext db) =>
+legacyRoutes.MapPost("/api/routes/{id:guid}/claim", async (HttpContext ctx, Guid id, ClaimRequest req, GoodSortDbContext db) =>
 {
     // Body DriverId is ignored — the claimer is the authenticated caller.
     // Trusting the body would let anyone assign a route to another user.
@@ -2246,7 +2460,7 @@ app.MapPost("/api/routes/{id:guid}/claim", async (HttpContext ctx, Guid id, Clai
     });
 }).RequireAuthorization();
 
-app.MapPost("/api/routes/{id:guid}/start", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
+legacyRoutes.MapPost("/api/routes/{id:guid}/start", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
 {
     var route = await db.Routes
         .Include(r => r.Stops.OrderBy(s => s.Sequence))
@@ -2259,7 +2473,7 @@ app.MapPost("/api/routes/{id:guid}/start", async (HttpContext ctx, Guid id, Good
     return Results.Ok(route);
 }).RequireAuthorization();
 
-app.MapPost("/api/routes/{routeId:guid}/stops/{stopId:guid}/pickup",
+legacyRoutes.MapPost("/api/routes/{routeId:guid}/stops/{stopId:guid}/pickup",
     async (HttpContext ctx, Guid routeId, Guid stopId, PickupRequest req, GoodSortDbContext db) =>
 {
     var route = await db.Routes
@@ -2277,7 +2491,7 @@ app.MapPost("/api/routes/{routeId:guid}/stops/{stopId:guid}/pickup",
     return Results.Ok(route);
 }).RequireAuthorization();
 
-app.MapPost("/api/routes/{routeId:guid}/stops/{stopId:guid}/skip",
+legacyRoutes.MapPost("/api/routes/{routeId:guid}/stops/{stopId:guid}/skip",
     async (HttpContext ctx, Guid routeId, Guid stopId, GoodSortDbContext db) =>
 {
     var route = await db.Routes
@@ -2294,7 +2508,7 @@ app.MapPost("/api/routes/{routeId:guid}/stops/{stopId:guid}/skip",
     return Results.Ok(route);
 }).RequireAuthorization();
 
-app.MapPost("/api/routes/{id:guid}/settle", async (HttpContext ctx, Guid id, GoodSortDbContext db, IConfiguration cfg) =>
+legacyRoutes.MapPost("/api/routes/{id:guid}/settle", async (HttpContext ctx, Guid id, GoodSortDbContext db, IConfiguration cfg) =>
 {
     var route = await db.Routes.Include(r => r.Stops).Include(r => r.Depot)
         .FirstOrDefaultAsync(r => r.Id == id);
@@ -2438,7 +2652,7 @@ app.MapGet("/api/depots", async (GoodSortDbContext db) =>
     Results.Ok(await db.Depots.ToListAsync()));
 
 // ── Route Optimization (OSRM trip service — open source, no API key) ──
-app.MapPost("/api/routes/{id:guid}/optimize", async (HttpContext ctx, Guid id, GoodSortDbContext db, IConfiguration config, IHttpClientFactory httpFactory) =>
+legacyRoutes.MapPost("/api/routes/{id:guid}/optimize", async (HttpContext ctx, Guid id, GoodSortDbContext db, IConfiguration config, IHttpClientFactory httpFactory) =>
 {
     var route = await db.Routes.Include(r => r.Stops).Include(r => r.Depot).FirstOrDefaultAsync(r => r.Id == id);
     if (route is null) return Results.NotFound();
@@ -2539,7 +2753,29 @@ app.MapPost("/api/cashout/payid", async (HttpContext ctx, PayIdCashoutRequestDto
     return success ? Results.Ok(new { success = true }) : Results.BadRequest(new { error });
 }).RequireAuthorization();
 
-// ── Admin: Generate ABA file (admin only — file contains every payee's BSB+account) ──
+// ── Member: Cancel own pending cashout request back to ClearedCents (enables clean account deletion) ──
+app.MapPost("/api/cashout/{id:guid}/cancel", async (HttpContext ctx, Guid id, GoodSortDbContext db) =>
+{
+    var callerId = ctx.GetCallerId();
+    if (callerId is null) return Results.Unauthorized();
+    var existing = await db.CashoutRequests.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id);
+    if (existing is null) return Results.NotFound();
+    if (existing.UserId != callerId.Value && !ctx.IsAdmin()) return Results.Forbid();
+
+    return await Atomic.RunAsync(db, async () =>
+    {
+        if (!await StatusClaim.TryCancelCashout(db, id, allowProcessing: false))
+            return Results.BadRequest(new { error = "Only pending cashout requests can be cancelled." });
+
+        var user = await db.Profiles.FindAsync(existing.UserId);
+        if (user is not null)
+            user.ClearedCents += existing.AmountCents;
+        await db.SaveChangesAsync();
+        return Results.Ok(new { id = existing.Id, status = "cancelled", refundedCents = existing.AmountCents });
+    });
+}).RequireAuthorization();
+
+// ── Admin: Generate ABA file (POST only — mutates pending -> processing and contains payee BSB+account) ──
 static async Task<IResult> HandleAbaExport(CashoutService cashout)
 {
     if (!cashout.PayoutsOpen()) return Results.Ok(new { message = "Payouts are not enabled. Set ABA_PAYOUTS_ENABLED plus a real remitter BSB/account/user id." });
@@ -2547,10 +2783,9 @@ static async Task<IResult> HandleAbaExport(CashoutService cashout)
     if (string.IsNullOrEmpty(aba)) return Results.Ok(new { message = "No pending cashouts" });
     return Results.Text(aba, "text/plain");
 }
-app.MapGet("/api/admin/aba-export", HandleAbaExport).RequireAuthorization(AuthHelpers.AdminPolicy);
 app.MapPost("/api/admin/aba-export", HandleAbaExport).RequireAuthorization(AuthHelpers.AdminPolicy);
 
-// ── Admin: Generate NPP PayID batch CSV (admin only — file contains payee PayIDs) ──
+// ── Admin: Generate NPP PayID batch CSV (POST only — mutates pending -> processing and contains payee PayIDs) ──
 static async Task<IResult> HandlePayIdExport(CashoutService cashout)
 {
     if (!cashout.PayIdPayoutsOpen()) return Results.Ok(new { message = "PayID payouts are not enabled. Set PAYID_PAYOUTS_ENABLED=true or enable ABA payouts." });
@@ -2558,7 +2793,6 @@ static async Task<IResult> HandlePayIdExport(CashoutService cashout)
     if (string.IsNullOrEmpty(csv)) return Results.Ok(new { message = "No pending PayID cashouts" });
     return Results.Text(csv, "text/csv");
 }
-app.MapGet("/api/admin/payid-export", HandlePayIdExport).RequireAuthorization(AuthHelpers.AdminPolicy);
 app.MapPost("/api/admin/payid-export", HandlePayIdExport).RequireAuthorization(AuthHelpers.AdminPolicy);
 
 // ── Admin: Re-download an already-claimed ABA / PayID batch without re-claiming ──
@@ -2586,18 +2820,19 @@ app.MapPost("/api/admin/cashouts/{id:guid}/mark-paid", async (Guid id, GoodSortD
 // ── Admin: Cancel/refund a pending or processing cashout back to user's ClearedCents ──
 app.MapPost("/api/admin/cashouts/{id:guid}/refund", async (Guid id, GoodSortDbContext db) =>
 {
+    var existing = await db.CashoutRequests.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id);
+    if (existing is null) return Results.NotFound();
+
     return await Atomic.RunAsync(db, async () =>
     {
-        var row = await db.CashoutRequests.FindAsync(id);
-        if (row is null) return Results.NotFound();
-        if (row.Status != "pending" && row.Status != "processing")
-            return Results.BadRequest(new { error = $"Cannot refund cashout in status '{row.Status}'." });
-        row.Status = "cancelled";
-        var user = await db.Profiles.FindAsync(row.UserId);
+        if (!await StatusClaim.TryCancelCashout(db, id, allowProcessing: true))
+            return Results.BadRequest(new { error = $"Cannot refund cashout in status '{existing.Status}'." });
+
+        var user = await db.Profiles.FindAsync(existing.UserId);
         if (user is not null)
-            user.ClearedCents += row.AmountCents;
+            user.ClearedCents += existing.AmountCents;
         await db.SaveChangesAsync();
-        return Results.Ok(new { row.Id, row.Status, refundedCents = row.AmountCents });
+        return Results.Ok(new { id = existing.Id, status = "cancelled", refundedCents = existing.AmountCents });
     });
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
@@ -3171,6 +3406,10 @@ app.MapPatch("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, Profile
             if (occupiedByAnother)
                 return Results.Forbid();
         }
+        // Attaching a household via PATCH never grants the $1.00 signup referral bonus,
+        // so clear any un-awarded ReferrerId to prevent DELETE from subtracting 100¢ later.
+        if (profile.HouseholdId is null)
+            profile.ReferrerId = null;
         profile.HouseholdId = targetHhId;
     }
     await db.SaveChangesAsync();
@@ -3184,17 +3423,17 @@ app.MapDelete("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, GoodSo
     var profile = await db.Profiles.Include(p => p.Scans).Include(p => p.Collections).FirstOrDefaultAsync(p => p.Id == id);
     if (profile is null) return Results.NotFound();
 
-    db.Scans.RemoveRange(profile.Scans);
-    db.Collections.RemoveRange(profile.Collections);
-
     var cashouts = await db.CashoutRequests.Where(c => c.UserId == id).ToListAsync();
-    if (cashouts.Any(c => c.Status == "processing"))
+    if (cashouts.Any(c => c.Status == "pending" || c.Status == "processing"))
     {
         return Results.Conflict(new
         {
-            error = "Cannot delete account while a bank payout batch is currently processing. Wait for your transfer to settle or ask hello@thegoodsort.org to refund the batch.",
+            error = "Cannot delete account while a payout request is pending or processing. Cancel any pending payout first or wait for your bank transfer to settle.",
         });
     }
+
+    db.Scans.RemoveRange(profile.Scans);
+    db.Collections.RemoveRange(profile.Collections);
     db.CashoutRequests.RemoveRange(cashouts);
 
     // Reverse any un-cleared $1.00 (100¢) Container Mafia signup bonus if this sole-member
@@ -3204,8 +3443,10 @@ app.MapDelete("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, GoodSo
         var otherHhMembers = await db.Profiles.AnyAsync(p => p.HouseholdId == checkHhId && p.Id != id);
         if (!otherHhMembers)
         {
+            var checkHh = await db.Households.AsNoTracking().FirstOrDefaultAsync(h => h.Id == checkHhId);
             var hhBin = await db.Bins.AsNoTracking().FirstOrDefaultAsync(b => b.HouseholdId == checkHhId);
-            if (hhBin is null || hhBin.LastCollectedAt is null)
+            var neverCollected = hhBin is not null ? hhBin.LastCollectedAt is null : checkHh?.LastPickupAt is null;
+            if (neverCollected)
             {
                 var signupRef = await db.Profiles.FindAsync(signupRefId);
                 if (signupRef is not null)
@@ -4752,10 +4993,11 @@ app.MapGet("/api/admin/marketplace/runs", async (string? status, GoodSortDbConte
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
 // ── Admin: Trigger marketplace run generation immediately (coordinates via SingletonLease) ──
-app.MapPost("/api/admin/marketplace/runs/generate", async (RunGenerationService runGen, CancellationToken ct) =>
+app.MapPost("/api/admin/marketplace/runs/generate", async (RunGenerationService runGen, GoodSortDbContext db, CancellationToken ct) =>
 {
-    var (acquiredLease, availableRuns) = await runGen.TriggerNowAsync(ct);
-    return Results.Ok(new { acquiredLease, availableRuns });
+    var (acquiredLease, availableRuns) = await runGen.TriggerNowAsync(ct, forcePilotCollecting: true);
+    var pilotRuns = await db.Runs.CountAsync(r => r.Status == "below_threshold", ct);
+    return Results.Ok(new { acquiredLease, availableRuns, pilotRuns });
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
 // ── Admin: Reset pre-launch database to clean startup baseline (fail-closed unless RESET_BASELINE_ENABLED=true) ──
@@ -4898,6 +5140,7 @@ record UpdateSortedBagStatusRequest(string Status);
 record RunnerScanBagRequest(string BagCode, int? VerifiedContainers = null, bool? ContaminationFlag = null, string? DiscrepancyCode = null, string? DiscrepancyNote = null);
 record CompleteRunRequest(int? DepotVerifiedContainers = null, string? CoexDocketRef = null);
 record PhotoScanRequest(string Image, string? BinCode = null);
+record PhotoScanPreviewRequest(string Image, string PreScanToken, string? BinCode = null);
 record PhotoConfirmRequest(string ScanToken, Guid? UserId = null, List<PhotoConfirmItem>? Items = null, string? BinCode = null, double? Lat = null, double? Lng = null);
 record PhotoConfirmItem(string Name, string Material, int Count, bool Eligible);
 record SendOtpRequest(string? Email = null);

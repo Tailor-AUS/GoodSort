@@ -75,6 +75,18 @@ function ScanPageContent() {
   const [barcodeError, setBarcodeError] = useState("");
   const barcodeLockRef = useRef(false);
 
+  // Parallel pre-auth AI classification: kicks off while the user fetches their 6-digit OTP
+  type PreScanPayload = {
+    containers: IdentifiedItem[];
+    message: string;
+    scanToken: string | null;
+    totalCents: number | null;
+  };
+  const preScanPromiseRef = useRef<Promise<PreScanPayload | null> | null>(null);
+  const preScanResultRef = useRef<PreScanPayload | null>(null);
+  const preScanEmailRef = useRef<string | null>(null);
+  const [preScanStatus, setPreScanStatus] = useState<"idle" | "running" | "ready" | "failed">("idle");
+
   function toPreviewDataUrl(rawOrDataUrl: string): string {
     return rawOrDataUrl.startsWith("data:") ? rawOrDataUrl : `data:image/jpeg;base64,${rawOrDataUrl}`;
   }
@@ -244,15 +256,48 @@ function ScanPageContent() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim() }),
       });
-      const data = await res.json().catch(() => ({} as { error?: string; devCode?: string }));
+      const data = await res.json().catch(() => ({} as { error?: string; devCode?: string; preScanToken?: string }));
       if (!res.ok) {
         setAuthError(typeof data.error === "string" && data.error ? data.error : "Failed to send code");
         setAuthLoading(false);
         return;
       }
       if (typeof data.devCode === "string" && data.devCode) setDevCode(data.devCode);
-      try { sessionStorage.setItem(PENDING_EMAIL_KEY, email.trim()); } catch { /* ignore */ }
-      try { localStorage.setItem(PENDING_EMAIL_KEY, email.trim()); } catch { /* ignore */ }
+      const trimmedEmail = email.trim().toLowerCase();
+      try { sessionStorage.setItem(PENDING_EMAIL_KEY, trimmedEmail); } catch { /* ignore */ }
+      try { localStorage.setItem(PENDING_EMAIL_KEY, trimmedEmail); } catch { /* ignore */ }
+
+      // Kick off AI photo analysis in parallel while the user fetches their 6-digit OTP email.
+      const pendingCapture = sessionStorage.getItem(PENDING_CAPTURE_KEY);
+      if (pendingCapture && typeof data.preScanToken === "string" && data.preScanToken) {
+        preScanResultRef.current = null;
+        preScanEmailRef.current = trimmedEmail;
+        setPreScanStatus("running");
+        const ticket = data.preScanToken;
+        preScanPromiseRef.current = fetch(apiUrl("/api/scan/photo/preview"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: pendingCapture, preScanToken: ticket, binCode }),
+        })
+          .then(async (r) => {
+            if (!r.ok) return null;
+            const json = await r.json();
+            const parsed: PreScanPayload = {
+              containers: json.containers || [],
+              message: json.message || "",
+              scanToken: json.scanToken || null,
+              totalCents: typeof json.totalCents === "number" ? json.totalCents : null,
+            };
+            preScanResultRef.current = parsed;
+            setPreScanStatus("ready");
+            return parsed;
+          })
+          .catch(() => {
+            setPreScanStatus("failed");
+            return null;
+          });
+      }
+
       setStep("verify");
       setResendIn(30);
     } catch { setAuthError("Something went wrong"); }
@@ -298,6 +343,32 @@ function ScanPageContent() {
       if (pending) {
         setCapturedImage(toPreviewDataUrl(pending));
         setAuthLoading(false);
+        const trimmedEmail = email.trim().toLowerCase();
+        if (preScanEmailRef.current === trimmedEmail && (preScanResultRef.current || preScanPromiseRef.current)) {
+          let preData = preScanResultRef.current;
+          if (!preData && preScanPromiseRef.current) {
+            setStep("analyzing");
+            preData = await preScanPromiseRef.current;
+          }
+          preScanPromiseRef.current = null;
+          preScanResultRef.current = null;
+          preScanEmailRef.current = null;
+          setPreScanStatus("idle");
+          if (preData) {
+            setResults(preData.containers);
+            setAiMessage(preData.message);
+            setScanToken(preData.scanToken);
+            setQuotedCents(preData.totalCents);
+            setApiError(false);
+            setApiStatus(null);
+            try {
+              sessionStorage.removeItem(PENDING_CAPTURE_KEY);
+              sessionStorage.removeItem(PENDING_EMAIL_KEY);
+            } catch { /* ignore */ }
+            setStep("results");
+            return;
+          }
+        }
         await analyzeImage(pending);
         return;
       }
@@ -636,7 +707,19 @@ function ScanPageContent() {
     <Center>
       <IconBubble><ShieldCheck className="w-7 h-7 text-green-600" /></IconBubble>
       <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">Check your email</h1>
-      <p className="text-slate-400 text-[13px] mb-6">Code sent to {email}. The code is in the subject line — check spam too. It expires in 15 minutes, and your photo is held while you fetch it.</p>
+      <p className="text-slate-400 text-[13px] mb-4">Code sent to {email}. The code is in the subject line — check spam too. It expires in 15 minutes.</p>
+      {preScanStatus === "running" && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3.5 py-2 text-[12px] font-medium text-emerald-800 mb-4 text-center flex items-center justify-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          Identifying your container in the background while you grab your code…
+        </div>
+      )}
+      {preScanStatus === "ready" && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-emerald-800 mb-4 text-center flex items-center justify-center gap-1.5">
+          <Check className="w-3.5 h-3.5 text-emerald-600" />
+          Container identified — enter your code to reveal &amp; claim instantly.
+        </div>
+      )}
       {devCode && (
         <p className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-mono text-amber-800 mb-3 text-center">
           Dev code: <strong>{devCode}</strong>
@@ -671,6 +754,10 @@ function ScanPageContent() {
             setAuthError("");
             setDevCode("");
             setResendIn(0);
+            preScanPromiseRef.current = null;
+            preScanResultRef.current = null;
+            preScanEmailRef.current = null;
+            setPreScanStatus("idle");
             try { sessionStorage.removeItem(PENDING_EMAIL_KEY); } catch { /* ignore */ }
             setStep("auth");
           }}
@@ -751,13 +838,15 @@ function ScanPageContent() {
           {apiError && (
             <div className="mt-2">
               <p className="text-red-500 text-[12px]">{scanErrorMessage(apiStatus)}</p>
-              <button
-                type="button"
-                onClick={() => { setApiError(false); setScanMode("barcode"); setStep("camera"); }}
-                className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5"
-              >
-                <ScanBarcode className="w-3.5 h-3.5" /> Switch to Barcode / Offline Scan instead
-              </button>
+              {!bin && (
+                <button
+                  type="button"
+                  onClick={() => { setApiError(false); setScanMode("barcode"); setStep("camera"); }}
+                  className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5"
+                >
+                  <ScanBarcode className="w-3.5 h-3.5" /> Switch to Barcode / Offline Scan instead
+                </button>
+              )}
             </div>
           )}
           {aiMessage && !apiError && <p className="text-slate-500 text-[13px] mt-1">{aiMessage}</p>}
@@ -839,22 +928,24 @@ function ScanPageContent() {
         <p className="text-[15px] text-white font-display font-bold truncate">
           {bin ? bin.name : "Scan a container · 10¢"}
         </p>
-        <div role="group" aria-label="Scanner mode" className="inline-flex rounded-full bg-white/10 p-0.5 border border-white/15">
-          <button
-            type="button"
-            onClick={() => { setScanMode("photo"); setBarcodeError(""); }}
-            className={`px-3 py-1 rounded-full text-[11px] font-bold transition-colors ${scanMode === "photo" ? "bg-white text-slate-900" : "text-white/75"}`}
-          >
-            Photo AI
-          </button>
-          <button
-            type="button"
-            onClick={() => { setScanMode("barcode"); setBarcodeError(""); }}
-            className={`px-3 py-1 rounded-full text-[11px] font-bold transition-colors flex items-center gap-1 ${scanMode === "barcode" ? "bg-white text-slate-900" : "text-white/75"}`}
-          >
-            <ScanBarcode className="w-3 h-3" /> Barcode
-          </button>
-        </div>
+        {!bin && (
+          <div role="group" aria-label="Scanner mode" className="inline-flex rounded-full bg-white/10 p-0.5 border border-white/15">
+            <button
+              type="button"
+              onClick={() => { setScanMode("photo"); setBarcodeError(""); }}
+              className={`px-3 py-1 rounded-full text-[11px] font-bold transition-colors ${scanMode === "photo" ? "bg-white text-slate-900" : "text-white/75"}`}
+            >
+              Photo AI
+            </button>
+            <button
+              type="button"
+              onClick={() => { setScanMode("barcode"); setBarcodeError(""); }}
+              className={`px-3 py-1 rounded-full text-[11px] font-bold transition-colors flex items-center gap-1 ${scanMode === "barcode" ? "bg-white text-slate-900" : "text-white/75"}`}
+            >
+              <ScanBarcode className="w-3 h-3" /> Barcode
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Camera feed */}

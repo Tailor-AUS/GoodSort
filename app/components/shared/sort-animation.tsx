@@ -117,11 +117,11 @@ export function SortAnimation() {
         }
       }}
     >
-      {/* Studio editorial scene: phone scan -> 4 colour-coded home bags -> electric pickup van */}
+      {/* Apple Keynote studio editorial scene — unobstructed hero frame */}
       <div className="relative aspect-[16/9] w-full bg-stone-100 overflow-hidden">
         <img
           src="/images/how-it-works-flow.webp"
-          alt="Phone scanning an aluminium drink can beside four colour-coded sorting bags and a compact kerbside collection van in Brisbane"
+          alt="Smartphone scanning a brushed aluminium drink can beside four structured architectural sorting totes in cobalt blue, mineral teal, warm amber, and eucalyptus green"
           width={1200}
           height={675}
           loading="lazy"
@@ -129,33 +129,27 @@ export function SortAnimation() {
           className="w-full h-full object-cover"
         />
 
-        {/* Subtle bottom vignette for crisp badge contrast */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-slate-950/70 via-slate-950/25 to-transparent"
-        />
-
-        {/* Floating live stage pill */}
+        {/* Floating live stage pill — pinned to open negative space at top */}
         <div
           className={`absolute ${stage.spotlightClass} transition-all duration-500 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-extrabold tracking-wide shadow-lg ${stage.badgeTone}`}
         >
           <Sparkles className="w-3 h-3" />
           {stage.badge}
         </div>
+      </div>
 
-        {/* Bottom overlay caption inside scene */}
-        <div className="absolute inset-x-3 bottom-2.5 flex items-center justify-between gap-2 text-white">
-          <div className="flex items-center gap-1.5 text-[11px] font-bold bg-slate-950/75 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/15">
-            <span className="w-2 h-2 rounded-full bg-blue-400" />
-            <span className="w-2 h-2 rounded-full bg-teal-400" />
-            <span className="w-2 h-2 rounded-full bg-amber-400" />
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            <span className="ml-0.5">4 home streams · no wheelie bins</span>
-          </div>
-          <span className="text-[11px] font-extrabold bg-emerald-400 text-slate-950 px-2.5 py-1 rounded-full">
-            10¢ / can
-          </span>
+      {/* Clean stream strip beneath the photograph so 100% of the totes remain visible */}
+      <div className="px-4 sm:px-5 py-2.5 bg-slate-50/90 border-b border-slate-200/70 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700">
+          <span className="w-2 h-2 rounded-full bg-blue-600" />
+          <span className="w-2 h-2 rounded-full bg-teal-500" />
+          <span className="w-2 h-2 rounded-full bg-amber-500" />
+          <span className="w-2 h-2 rounded-full bg-emerald-700" />
+          <span className="ml-0.5">4 home streams · no wheelie bins</span>
         </div>
+        <span className="text-[11px] font-extrabold bg-emerald-100 text-emerald-900 px-2.5 py-0.5 rounded-full">
+          10¢ / can
+        </span>
       </div>
 
       {/* Interactive 4-stage selector + zero-CLS stacked tabpanels */}
@@ -239,54 +233,49 @@ export function HeroKerbsideCard({ suburbName }: { suburbName?: string }) {
 
   return (
     <div className="relative w-full max-w-xl mx-auto">
-      <div className="relative rounded-[2rem] overflow-hidden border border-white/80 shadow-[0_28px_70px_-20px_rgba(15,23,42,0.28)] bg-slate-900">
-        <div className="aspect-[16/10] w-full overflow-hidden">
+      <div className="relative rounded-[2rem] overflow-hidden border border-slate-200/80 shadow-[0_28px_70px_-20px_rgba(15,23,42,0.22)] bg-white">
+        <div className="relative aspect-[16/10] w-full overflow-hidden bg-stone-100">
           <picture>
             <source media="(min-width: 1024px)" srcSet="/images/brisbane-kerbside-hero.webp" type="image/webp" />
             <img
               src="data:image/gif;base64,R0lGODlhAQABAAAAACw="
-              alt={`Four colour-coded Good Sort bags neatly tied inside a ${placeLabel} Queenslander front gate with a collection van on the street`}
+              alt={`Four structured matte architectural sorting totes lined up neatly on a sunlit ${placeLabel} front path with a minimalist white electric van on the street behind`}
               width={1200}
               height={675}
               decoding="async"
               className="w-full h-full object-cover"
             />
           </picture>
-        </div>
 
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-slate-950/80 via-slate-950/35 to-transparent"
-        />
-
-        {/* Top-left live scan credit chip */}
-        <div className="absolute top-4 left-4 inline-flex items-center gap-2 rounded-2xl bg-white/95 backdrop-blur-md px-3.5 py-2 shadow-lg border border-white">
-          <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
-          <div>
-            <p className="text-[11px] font-extrabold text-slate-900 leading-none">
-              10¢ credit per container
-            </p>
-            <p className="text-[10px] font-semibold text-slate-600 mt-0.5 leading-none">
-              Scan indoors · bag out at 1,000 cans
-            </p>
+          {/* Subtle top-left Apple glassmorphic pill in open foliage/fence corner */}
+          <div className="absolute top-4 left-4 inline-flex items-center gap-2 rounded-2xl bg-white/92 backdrop-blur-md px-3.5 py-2 shadow-lg border border-white">
+            <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+            <div>
+              <p className="text-[11px] font-extrabold text-slate-900 leading-none">
+                10¢ credit per container
+              </p>
+              <p className="text-[10px] font-semibold text-slate-600 mt-0.5 leading-none">
+                Scan indoors · bag out at 1,000 cans
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Bottom stream legend bar */}
-        <div className="absolute inset-x-4 bottom-4 flex items-center justify-between gap-3 rounded-2xl bg-slate-950/80 backdrop-blur-md px-4 py-3 text-white border border-white/15">
+        {/* Clean editorial caption bar below the photo — 0% obstruction on the 4 totes */}
+        <div className="flex items-center justify-between gap-3 bg-slate-950 px-5 py-3.5 text-white">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-300">
               {placeLabel} · Kerbside Bag-Out
             </p>
             <p className="text-[13px] font-display font-extrabold leading-snug mt-0.5">
-              Your own 4 bags at the gate — we drive the depot run
+              Your own 4 streams at the gate — we drive the depot run
             </p>
           </div>
           <div className="flex items-center gap-1.5 shrink-0" aria-hidden="true">
-            <span className="px-2 py-0.5 rounded-md bg-blue-400 text-slate-950 text-[10px] font-extrabold">ALU</span>
-            <span className="px-2 py-0.5 rounded-md bg-teal-300 text-slate-950 text-[10px] font-extrabold">PET</span>
-            <span className="px-2 py-0.5 rounded-md bg-amber-400 text-slate-950 text-[10px] font-extrabold">GLS</span>
-            <span className="px-2 py-0.5 rounded-md bg-emerald-400 text-slate-950 text-[10px] font-extrabold">OTH</span>
+            <span className="px-2 py-0.5 rounded-md bg-blue-500 text-white text-[10px] font-extrabold">ALU</span>
+            <span className="px-2 py-0.5 rounded-md bg-teal-400 text-slate-950 text-[10px] font-extrabold">CLR</span>
+            <span className="px-2 py-0.5 rounded-md bg-amber-400 text-slate-950 text-[10px] font-extrabold">COL</span>
+            <span className="px-2 py-0.5 rounded-md bg-emerald-500 text-slate-950 text-[10px] font-extrabold">GLS</span>
           </div>
         </div>
       </div>

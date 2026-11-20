@@ -66,6 +66,7 @@ public class EndpointAuthPostureTests : IClassFixture<EndpointAuthPostureTests.H
 
         ["/api/auth/send-otp"] = "Signing in is what produces a token; it cannot require one.",
         ["/api/auth/verify-otp"] = "Same — this is where the token is issued.",
+        ["/api/scan/photo/preview"] = "Pre-auth parallel photo classification while the user checks email for their OTP. Requires a single-use HMAC preScanToken issued by /api/auth/send-otp (IP + 5/hr/email rate-limited), spends ticket Jti once in UsedScanTokens, enforces global VISION_DAILY_CAP, and binds the returned scanToken strictly to the OTP email (0c credited until authenticated /confirm).",
         ["/api/admin/bootstrap"] = "First-admin seeding: there is no admin yet to authenticate as. Not open — it 404s unless ADMIN_BOOTSTRAP_SECRET is configured, and then requires a matching X-Bootstrap-Secret header compared with FixedTimeEquals. Currently unset in production, so the route does not exist there. Pinned separately by Admin_bootstrap_is_secret_gated_not_open.",
 
         ["/api/growth/brisbane"] = "The public suburb board. The marketing page reads it before anyone has an account.",

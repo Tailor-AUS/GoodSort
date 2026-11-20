@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import maplibregl, { Map as MLMap, Marker as MLMarker, LngLatBounds } from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
+import type { Map as MLMap, Marker as MLMarker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import Link from "next/link";
 import { ArrowLeft, MapPin, Users } from "lucide-react";
@@ -96,22 +97,25 @@ export default function AdminUsersPage() {
   useEffect(() => {
     if (!mapDiv.current || (users.length === 0 && bins.length === 0)) return;
     if (!mapRef.current) {
-      mapRef.current = new maplibregl.Map({
+      const createdMap = new maplibregl.Map({
         container: mapDiv.current,
         style: MAP_STYLE_URL,
         center: BRISBANE,
         zoom: 11,
         attributionControl: { compact: true },
       });
-      mapRef.current.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+      createdMap.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+      mapRef.current = createdMap;
     }
     const map = mapRef.current;
+    if (!map) return;
 
     function render() {
+      if (!map) return;
       // Clear previous markers
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
-      const bounds = new LngLatBounds();
+      const bounds = new maplibregl.LngLatBounds();
 
       // Bin markers
       bins.forEach((b) => {

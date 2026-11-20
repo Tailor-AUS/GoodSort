@@ -93,6 +93,52 @@ public class ScanTokenService
         return parsed;
     }
 
+    private static readonly byte[] PreScanDomain = Encoding.UTF8.GetBytes("prescan:");
+
+    public string IssuePreScanTicket(string email, TimeSpan ttl)
+    {
+        var payload = new PreScanTicketPayload
+        {
+            Email = email.Trim().ToLowerInvariant(),
+            Exp = DateTimeOffset.UtcNow.Add(ttl).ToUnixTimeSeconds(),
+        };
+        var json = JsonSerializer.SerializeToUtf8Bytes(payload);
+        var toSign = new byte[PreScanDomain.Length + json.Length];
+        Buffer.BlockCopy(PreScanDomain, 0, toSign, 0, PreScanDomain.Length);
+        Buffer.BlockCopy(json, 0, toSign, PreScanDomain.Length, json.Length);
+        var sig = HMACSHA256.HashData(_key, toSign);
+        return $"{Base64Url(json)}.{Base64Url(sig)}";
+    }
+
+    public PreScanTicketPayload? VerifyPreScanTicket(string? ticket)
+    {
+        if (string.IsNullOrEmpty(ticket)) return null;
+        var parts = ticket.Split('.');
+        if (parts.Length != 2) return null;
+
+        byte[] payload, sig;
+        try
+        {
+            payload = FromBase64Url(parts[0]);
+            sig = FromBase64Url(parts[1]);
+        }
+        catch { return null; }
+
+        var toSign = new byte[PreScanDomain.Length + payload.Length];
+        Buffer.BlockCopy(PreScanDomain, 0, toSign, 0, PreScanDomain.Length);
+        Buffer.BlockCopy(payload, 0, toSign, PreScanDomain.Length, payload.Length);
+        var expected = HMACSHA256.HashData(_key, toSign);
+        if (!CryptographicOperations.FixedTimeEquals(sig, expected)) return null;
+
+        PreScanTicketPayload? parsed;
+        try { parsed = JsonSerializer.Deserialize<PreScanTicketPayload>(payload); }
+        catch { return null; }
+        if (parsed is null || string.IsNullOrWhiteSpace(parsed.Email)) return null;
+
+        if (DateTimeOffset.FromUnixTimeSeconds(parsed.Exp) < DateTimeOffset.UtcNow) return null;
+        return parsed;
+    }
+
     private static string Base64Url(byte[] bytes) =>
         Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
@@ -119,6 +165,11 @@ public class ScanTokenPayload
     public Guid Jti { get; set; } = Guid.NewGuid();
 
     public Guid Uid { get; set; }
+    /// <summary>
+    /// Normalized email bound to a pre-auth parallel vision scan (Uid == Guid.Empty).
+    /// /confirm verifies the authenticated caller's profile email matches before crediting.
+    /// </summary>
+    public string? Email { get; set; }
     public List<ScanTokenItem> Items { get; set; } = [];
     public long Exp { get; set; }
 
@@ -135,6 +186,13 @@ public class ScanTokenPayload
     // client can't swap the image between /photo and /confirm. /confirm uses it
     // to reject replays of a recently-accepted deposit photo.
     public string? PhotoHash { get; set; }
+}
+
+public class PreScanTicketPayload
+{
+    public Guid Jti { get; set; } = Guid.NewGuid();
+    public string Email { get; set; } = "";
+    public long Exp { get; set; }
 }
 
 public class ScanTokenItem

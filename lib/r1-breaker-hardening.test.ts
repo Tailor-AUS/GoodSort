@@ -2,7 +2,16 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { extractLeadingStreetNumber, formatPhotonAddress, hasStreetNumber } from "./photon.ts";
+import {
+  expandRoadAbbreviations,
+  extractBareHouseNumber,
+  extractLeadingStreetNumber,
+  extractTypedBrisbaneSuburb,
+  formatPhotonAddress,
+  geocodeAddress,
+  hasStreetNumber,
+  stripLeadingStreetNumber,
+} from "./photon.ts";
 import { BAG_STREAMS, DISCREPANCY_OPTIONS, streamGuideForMaterial } from "./marketplace.ts";
 import { sanitizeNextPath } from "./config.ts";
 
@@ -90,5 +99,92 @@ describe("Revision R1 — TGS Breaker Hardening (F-01..F-16)", () => {
 
     const accountPanel = read("app/components/shared/account-panel.tsx");
     assert.match(accountPanel, /isStandaloneRunner/);
+  });
+
+  it("R2 F-03: geocodeAddress resolves unmapped house numbers, unit prefixes, road abbreviations, and ranks typed suburb above wrong-suburb housenumber hits", async () => {
+    assert.equal(extractBareHouseNumber("Unit 2, 18 Cracknell Rd Tarragindi"), "18");
+    assert.equal(stripLeadingStreetNumber("Unit 2, 18 Cracknell Rd Tarragindi"), "Cracknell Rd Tarragindi");
+    assert.equal(expandRoadAbbreviations("Ekibin Rd East Annerley"), "Ekibin Road East Annerley");
+    assert.equal(extractTypedBrisbaneSuburb("12 Hamilton Rd Moorooka"), "Moorooka");
+    assert.equal(extractTypedBrisbaneSuburb("12 Beaudesert Rd Moorooka"), "Moorooka");
+
+    const origFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async (input: string | URL | Request) => {
+        const u = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+        const q = u.searchParams.get("q") ?? "";
+        let features: unknown[] = [];
+
+        if (q === "18 Cracknell Rd Tarragindi") {
+          features = []; // Photon lacks house node 18
+        } else if (q === "Cracknell Road Tarragindi") {
+          features = [
+            {
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [153.0461, -27.5262] },
+              properties: { name: "Cracknell Road", district: "Tarragindi", city: "Brisbane", state: "Queensland", postcode: "4121", countrycode: "AU" },
+            },
+          ];
+        } else if (q === "45 Ekibin Rd East Annerley") {
+          features = [];
+        } else if (q === "Ekibin Road East Annerley") {
+          // Simulate Photon returning an unrelated POI on Ipswich Road — must be rejected by street-stem check!
+          features = [
+            {
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [153.0312, -27.5127] },
+              properties: { name: "Ekibin News", street: "Ipswich Road", district: "Annerley", city: "Brisbane", state: "Queensland", postcode: "4103", countrycode: "AU" },
+            },
+          ];
+        } else if (q === "Ekibin Road Annerley") {
+          features = [
+            {
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [153.0385, -27.5155] },
+              properties: { name: "Ekibin Road East", district: "Annerley", city: "Brisbane", state: "Queensland", postcode: "4103", countrycode: "AU" },
+            },
+          ];
+        } else if (q === "12 Beaudesert Rd Moorooka") {
+          features = [
+            {
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [153.0281, -27.5581] },
+              properties: { housenumber: "12", street: "Beaudesert Road", district: "Salisbury", city: "Brisbane", state: "Queensland", postcode: "4107", countrycode: "AU" },
+            },
+          ];
+        } else if (q === "Beaudesert Road Moorooka") {
+          features = [
+            {
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [153.0215, -27.5365] },
+              properties: { name: "Beaudesert Road", district: "Moorooka", city: "Brisbane", state: "Queensland", postcode: "4105", countrycode: "AU" },
+            },
+          ];
+        }
+
+        return new Response(JSON.stringify({ features }), { status: 200, headers: { "Content-Type": "application/json" } });
+      };
+
+      const unitHit = await geocodeAddress("Unit 2, 18 Cracknell Rd Tarragindi");
+      assert.ok(unitHit);
+      assert.equal(unitHit.address, "2/18 Cracknell Road, Tarragindi QLD 4121");
+      assert.equal(unitHit.suburb, "Tarragindi");
+
+      const ekibinHit = await geocodeAddress("45 Ekibin Rd East Annerley");
+      assert.ok(ekibinHit);
+      assert.equal(ekibinHit.address, "45 Ekibin Road East, Annerley QLD 4103");
+      assert.equal(ekibinHit.suburb, "Annerley");
+
+      const beaudesertHit = await geocodeAddress("12 Beaudesert Rd Moorooka");
+      assert.ok(beaudesertHit);
+      assert.equal(beaudesertHit.address, "12 Beaudesert Road, Moorooka QLD 4105");
+      assert.equal(beaudesertHit.suburb, "Moorooka");
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+
+    const scanSrc = read("app/scan/page.tsx");
+    assert.match(scanSrc, /\/api\/scan\/photo\/preview/);
+    assert.match(scanSrc, /preScanToken/);
   });
 });

@@ -251,15 +251,34 @@ public class R1BreakerHardeningTests : IClassFixture<R1BreakerHardeningTests.R1H
         var remJson = await remRes.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(0, remJson.GetProperty("households").GetInt32());
 
-        // Trigger RunGenerationService -> BinIsOut is false and Tarragindi has <1,000 cans, so 0 premature runs spawn!
+        // Background automatic RunGenerationService pass (forcePilotCollecting = false):
+        // BinIsOut is false and Tarragindi has <1,000 cans, so 0 premature background runs spawn (F-02).
+        using (var bgScope = _host.Services.CreateScope())
+        {
+            var runGen = bgScope.ServiceProvider.GetRequiredService<RunGenerationService>();
+            await runGen.TriggerNowAsync(CancellationToken.None, forcePilotCollecting: false);
+        }
+        using (var checkScope = _host.Services.CreateScope())
+        {
+            var db = checkScope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
+            var hh = await db.Households.AsNoTracking().FirstAsync(h => h.Id == hhId);
+            Assert.Null(hh.LastPickupAt);
+            var tarragindiBin = await db.Bins.AsNoTracking().FirstAsync(b => b.HouseholdId == hhId);
+            Assert.False(await db.RunStops.AnyAsync(s => s.BinId == tarragindiBin.Id));
+        }
+
+        // F-18: Explicit admin "Generate runs now" (POST /api/admin/marketplace/runs/generate) DOES create a
+        // below_threshold pilot run for pilot "collecting" households so Launch Pack §3.2 works end-to-end!
         var genRes = await admin.Client.PostAsync("/api/admin/marketplace/runs/generate", null);
         Assert.Equal(HttpStatusCode.OK, genRes.StatusCode);
+        var genJson = await genRes.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(genJson.GetProperty("pilotRuns").GetInt32() >= 1);
         using var scope = _host.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
-        var hh = await db.Households.AsNoTracking().FirstAsync(h => h.Id == hhId);
-        Assert.Null(hh.LastPickupAt);
-        var tarragindiBin = await db.Bins.AsNoTracking().FirstAsync(b => b.HouseholdId == hhId);
-        Assert.False(await db.RunStops.AnyAsync(s => s.BinId == tarragindiBin.Id));
+        var dbAfter = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
+        var binAfter = await dbAfter.Bins.AsNoTracking().FirstAsync(b => b.HouseholdId == hhId);
+        var pilotStop = await dbAfter.RunStops.Include(s => s.Run).FirstOrDefaultAsync(s => s.BinId == binAfter.Id);
+        Assert.NotNull(pilotStop);
+        Assert.Equal("below_threshold", pilotStop!.Run.Status);
     }
 
     [Fact]
@@ -446,5 +465,178 @@ public class R1BreakerHardeningTests : IClassFixture<R1BreakerHardeningTests.R1H
         var earnerAfterRefund = await earner.Client.GetFromJsonAsync<JsonElement>($"/api/profiles/{earner.ProfileId}");
         Assert.Equal(2500, earnerAfterRefund.GetProperty("clearedCents").GetInt32());
         Assert.Equal(HttpStatusCode.OK, (await earner.Client.DeleteAsync($"/api/profiles/{earner.ProfileId}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task R2_F09_F10_F15_F17_Shared_household_proportional_split_patch_bonus_guard_pending_cashout_cancel_and_prod_routes_404()
+    {
+        var admin = await SignUp("hello@thegoodsort.org");
+
+        // 1. F-09 (a): Multi-member household proportional ClearedCents allocation on pickup
+        var m1 = new Profile { Id = Guid.NewGuid(), Name = "Mate One", CreatedAt = DateTime.UtcNow.AddDays(-2), PendingCents = 100 };
+        var m2 = new Profile { Id = Guid.NewGuid(), Name = "Mate Two", CreatedAt = DateTime.UtcNow.AddDays(-1), PendingCents = 300 };
+        var scans = new List<Scan>();
+        for (var i = 0; i < 10; i++) scans.Add(new Scan { UserId = m1.Id, RefundCents = 10, Status = "pending" });
+        for (var i = 0; i < 30; i++) scans.Add(new Scan { UserId = m2.Id, RefundCents = 10, Status = "pending" });
+
+        var totalCredit = HouseholdCredit.ApplyPickup(new[] { m2, m1 }, scans, pickupCount: 40, centsPerContainer: 10);
+        Assert.Equal(400, totalCredit);
+        Assert.Equal(100, m1.ClearedCents);
+        Assert.Equal(300, m2.ClearedCents);
+        Assert.Equal(0, m1.PendingCents);
+        Assert.Equal(0, m2.PendingCents);
+
+        // 2. F-09 (b): Attaching household via PATCH /api/profiles/{id} never steals 100¢ from referrer's scan balance on DELETE
+        var referrer = await SignUp("ref-r2@r2.test");
+        Assert.Equal(HttpStatusCode.OK, (await referrer.Client.PostAsJsonAsync("/api/scans", new
+        {
+            userId = referrer.ProfileId,
+            barcode = "9300675024235",
+            containerName = "Coca-Cola 375ml Can",
+            material = "aluminium",
+        })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await referrer.Client.PostAsJsonAsync("/api/scans", new
+        {
+            userId = referrer.ProfileId,
+            barcode = "9300675024242",
+            containerName = "Sprite 375ml Can",
+            material = "aluminium",
+        })).StatusCode);
+
+        var patchedUser = await SignUp("patched-r2@r2.test", referrerId: referrer.ProfileId);
+        Guid standaloneHhId;
+        using (var scope = _host.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
+            var hh = new Household { Name = "Standalone", Address = "55 Tarragindi Rd, Tarragindi QLD 4121", Suburb = "TARRAGINDI", Street = "TARRAGINDI ROAD", Lat = -27.52, Lng = 153.04 };
+            db.Households.Add(hh);
+            await db.SaveChangesAsync();
+            standaloneHhId = hh.Id;
+        }
+        Assert.Equal(HttpStatusCode.OK, (await patchedUser.Client.PatchAsJsonAsync($"/api/profiles/{patchedUser.ProfileId}", new { householdId = standaloneHhId })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await patchedUser.Client.DeleteAsync($"/api/profiles/{patchedUser.ProfileId}")).StatusCode);
+
+        var refAfterPatchDel = await referrer.Client.GetFromJsonAsync<JsonElement>($"/api/profiles/{referrer.ProfileId}");
+        Assert.Equal(20, refAfterPatchDel.GetProperty("pendingCents").GetInt32()); // Kept 100% of own 20¢ scan balance!
+
+        // 3. F-09 (c): Same-building /api/waitlist/unit-complex does not award self/same-building bonus
+        Assert.Equal(HttpStatusCode.OK, (await referrer.Client.PostAsJsonAsync("/api/waitlist/unit-complex", new
+        {
+            buildingName = "Ipswich Towers",
+            address = "100 Ipswich Road, Annerley QLD 4103",
+            suburb = "ANNERLEY",
+            lat = -27.51,
+            lng = 153.03,
+        })).StatusCode);
+        var buildingMate = await SignUp("building-mate@r2.test", referrerId: referrer.ProfileId);
+        Assert.Equal(HttpStatusCode.OK, (await buildingMate.Client.PostAsJsonAsync("/api/waitlist/unit-complex", new
+        {
+            buildingName = "Ipswich Towers",
+            address = "100 Ipswich Road, Annerley QLD 4103",
+            suburb = "ANNERLEY",
+            lat = -27.51,
+            lng = 153.03,
+        })).StatusCode);
+        var refAfterSameBuilding = await referrer.Client.GetFromJsonAsync<JsonElement>($"/api/profiles/{referrer.ProfileId}");
+        Assert.Equal(20, refAfterSameBuilding.GetProperty("pendingCents").GetInt32()); // Still 20¢, no +100¢ same-building bonus!
+
+        // 4. F-10: GET export routes rejected (POST-only), "pending" cashout blocks DELETE with 409, and /api/cashout/{id}/cancel refunds & unblocks DELETE
+        var getPayIdExport = await admin.Client.GetAsync("/api/admin/payid-export");
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, getPayIdExport.StatusCode);
+        var getAbaExport = await admin.Client.GetAsync("/api/admin/aba-export");
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, getAbaExport.StatusCode);
+
+        var pendingEarner = await SignUp("pending-earner@r2.test");
+        using (var scope = _host.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
+            var p = await db.Profiles.FindAsync(pendingEarner.ProfileId);
+            p!.ClearedCents = 2200;
+            await db.SaveChangesAsync();
+        }
+        Assert.Equal(HttpStatusCode.OK, (await pendingEarner.Client.PostAsJsonAsync("/api/cashout/payid", new
+        {
+            amountCents = 2200,
+            payIdType = "email",
+            payIdValue = "pending-earner@r2.test",
+            accountName = "PENDING EARNER",
+        })).StatusCode);
+
+        // Deleting account while cashout is "pending" MUST block with 409 Conflict instead of wiping unpaid transfer!
+        Assert.Equal(HttpStatusCode.Conflict, (await pendingEarner.Client.DeleteAsync($"/api/profiles/{pendingEarner.ProfileId}")).StatusCode);
+
+        Guid pendingCashoutId;
+        using (var scope = _host.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
+            pendingCashoutId = (await db.CashoutRequests.SingleAsync(c => c.UserId == pendingEarner.ProfileId)).Id;
+        }
+        Assert.Equal(HttpStatusCode.OK, (await pendingEarner.Client.PostAsync($"/api/cashout/{pendingCashoutId}/cancel", null)).StatusCode);
+        var restoredProfile = await pendingEarner.Client.GetFromJsonAsync<JsonElement>($"/api/profiles/{pendingEarner.ProfileId}");
+        Assert.Equal(2200, restoredProfile.GetProperty("clearedCents").GetInt32());
+        Assert.Equal(HttpStatusCode.OK, (await pendingEarner.Client.DeleteAsync($"/api/profiles/{pendingEarner.ProfileId}")).StatusCode);
+
+        // 5. F-15: In Production environment (LEGACY_ROUTES_ENABLED unset), /api/routes returns 404 NotFound
+        await using var prodFactory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+        {
+            b.UseEnvironment(Environments.Production);
+            b.UseSetting("ConnectionStrings:goodsortdb", string.Empty);
+            b.UseSetting("JWT_SECRET", "prod-test-signing-key-at-least-32-characters-long-012345");
+            b.ConfigureServices(services =>
+            {
+                foreach (var d in services.Where(s => s.ServiceType.FullName?.Contains("GoodSortDbContext") == true).ToList())
+                    services.Remove(d);
+                services.AddDbContext<GoodSortDbContext>(o => o.UseInMemoryDatabase($"r2-prod-{Guid.NewGuid():N}"));
+                services.RemoveAll<IHostedService>();
+            });
+        });
+        using var prodScope = prodFactory.Services.CreateScope();
+        var prodAuth = prodScope.ServiceProvider.GetRequiredService<AuthService>();
+        var prodToken = prodAuth.GenerateJwt(new Profile { Id = Guid.NewGuid(), Email = "prod@r2.test", IsAdmin = true });
+        var prodClient = prodFactory.CreateClient();
+        prodClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", prodToken);
+        var prodRoutesRes = await prodClient.GetAsync("/api/routes");
+        Assert.Equal(HttpStatusCode.NotFound, prodRoutesRes.StatusCode);
+
+        // 6. Parallel Pre-Auth AI Scan: /api/auth/send-otp returns single-use HMAC preScanToken;
+        // /api/scan/photo/preview spends ticket Jti once (rejects missing/replayed tickets) and
+        // binds scanToken strictly to the OTP email (wrong user gets 403, matching user passes).
+        var anon = _host.CreateClient();
+        var otpEmail = "parallel-scan@r2.test";
+        var otpSend = await anon.PostAsJsonAsync("/api/auth/send-otp", new { email = otpEmail });
+        Assert.Equal(HttpStatusCode.OK, otpSend.StatusCode);
+        var otpSendJson = await otpSend.Content.ReadFromJsonAsync<JsonElement>();
+        var preScanToken = otpSendJson.GetProperty("preScanToken").GetString();
+        var otpCode = otpSendJson.GetProperty("devCode").GetString()!;
+        Assert.False(string.IsNullOrWhiteSpace(preScanToken));
+
+        // Invalid / missing preScanToken is rejected with 401
+        var badPreview = await anon.PostAsJsonAsync("/api/scan/photo/preview", new { image = "AAAA", preScanToken = "forged.sig" });
+        Assert.Equal(HttpStatusCode.Unauthorized, badPreview.StatusCode);
+
+        // First call with valid preScanToken succeeds and returns an email-bound scanToken
+        var previewOk = await anon.PostAsJsonAsync("/api/scan/photo/preview", new { image = "AAAA", preScanToken });
+        Assert.Equal(HttpStatusCode.OK, previewOk.StatusCode);
+        var previewJson = await previewOk.Content.ReadFromJsonAsync<JsonElement>();
+        var emailBoundScanToken = previewJson.GetProperty("scanToken").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(emailBoundScanToken));
+
+        // Replaying the same preScanToken is blocked with 409 Conflict (max 1 Vision call per OTP!)
+        var replayPreview = await anon.PostAsJsonAsync("/api/scan/photo/preview", new { image = "AAAA", preScanToken });
+        Assert.Equal(HttpStatusCode.Conflict, replayPreview.StatusCode);
+
+        // Another user cannot confirm an email-bound scanToken issued for parallel-scan@r2.test
+        var otherUser = await SignUp("thief-scan@r2.test");
+        var stolenConfirm = await otherUser.Client.PostAsJsonAsync("/api/scan/photo/confirm", new { scanToken = emailBoundScanToken });
+        Assert.Equal(HttpStatusCode.Forbidden, stolenConfirm.StatusCode);
+
+        // Matching OTP-verified user passes ownership check on /api/scan/photo/confirm (token verified)
+        var verifyParallel = await anon.PostAsJsonAsync("/api/auth/verify-otp", new { email = otpEmail, code = otpCode });
+        Assert.Equal(HttpStatusCode.OK, verifyParallel.StatusCode);
+        var parallelJwt = (await verifyParallel.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
+        var authedParallel = _host.CreateClient();
+        authedParallel.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", parallelJwt);
+        var ownConfirm = await authedParallel.PostAsJsonAsync("/api/scan/photo/confirm", new { scanToken = emailBoundScanToken });
+        Assert.Equal(HttpStatusCode.OK, ownConfirm.StatusCode);
     }
 }

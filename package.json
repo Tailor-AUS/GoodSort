@@ -13,8 +13,8 @@
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
     "lucide-react": "^1.7.0",
-    "maplibre-gl": "^4.7.1",
-    "next": "16.2.9",
+    "maplibre-gl": "^6.19.0",
+    "next": "^16.4.6",
     "qrcode": "^1.5.4",
     "react": "19.2.4",
     "react-dom": "19.2.4"
@@ -29,6 +29,6 @@
     "typescript": "^5"
   },
   "overrides": {
-    "postcss": "8.5.10"
+    "postcss": ">=8.5.23"
   }
 }

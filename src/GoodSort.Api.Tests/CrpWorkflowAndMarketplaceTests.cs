@@ -351,7 +351,7 @@ public class CrpWorkflowAndMarketplaceTests : IClassFixture<CrpWorkflowAndMarket
         Assert.Equal(1, ledgerJson.GetProperty("totals").GetProperty("settledRuns").GetInt32());
         Assert.Equal(1, ledgerJson.GetProperty("payouts").GetProperty("pendingPayIdCount").GetInt32());
 
-        var csvRes = await admin.Client.GetAsync("/api/admin/payid-export");
+        var csvRes = await admin.Client.PostAsync("/api/admin/payid-export", null);
         Assert.Equal(HttpStatusCode.OK, csvRes.StatusCode);
         var csvText = await csvRes.Content.ReadAsStringAsync();
         Assert.Contains("SORTER HOUSEHOLD,email,sorter@crp.test,25.00,2500", csvText);

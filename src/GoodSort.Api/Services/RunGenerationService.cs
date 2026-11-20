@@ -46,22 +46,15 @@ public class RunGenerationService : BackgroundService
         }
     }
 
-    public async Task<(bool AcquiredLease, int AvailableRuns)> TriggerNowAsync(CancellationToken ct = default)
+    public async Task<(bool AcquiredLease, int AvailableRuns)> TriggerNowAsync(
+        CancellationToken ct = default,
+        bool forcePilotCollecting = false)
     {
         using var scope = _services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
         var pricing = scope.ServiceProvider.GetRequiredService<PricingService>();
         var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
 
-        // One replica only. This service runs inside every container
-        // instance and the app scales to ten, so without the lease ten
-        // copies generate runs over the same bins at once — several
-        // drivers paid to collect the same containers, and vans sent to
-        // kerbs another driver already emptied.
-        //
-        // TTL is twice the interval so a pass is never interrupted
-        // mid-flight, and a crashed holder blocks the next pass by at
-        // most an hour rather than forever.
         if (!await SingletonLease.TryAcquire(db, LeaseName, TimeSpan.FromMinutes(60), ct: ct))
         {
             _logger.LogDebug("Another replica holds {Lease}; skipping this pass", LeaseName);
@@ -73,11 +66,8 @@ public class RunGenerationService : BackgroundService
         {
             var minPayoutCents = ResolveMinPayoutCents(config);
             await ExpireOldRuns(db, pricing, minPayoutCents);
-            // Absorb flagged full-bin households into nearby existing unclaimed
-            // runs BEFORE GenerateRuns; otherwise GenerateRuns turns each late
-            // full-bin household into a separate 1-stop below_threshold run.
             await AbsorbFullBinHouseholds(db, pricing, minPayoutCents);
-            await GenerateRuns(db, pricing, minPayoutCents);
+            await GenerateRuns(db, pricing, minPayoutCents, forcePilotCollecting);
 
             if ((DateTime.UtcNow - _lastRepriceAt).TotalMinutes >= 30)
             {
@@ -159,7 +149,11 @@ public class RunGenerationService : BackgroundService
             ? mp
             : DefaultMinPayoutCents;
 
-    private async Task GenerateRuns(GoodSortDbContext db, PricingService pricing, int minPayoutCents)
+    private async Task GenerateRuns(
+        GoodSortDbContext db,
+        PricingService pricing,
+        int minPayoutCents,
+        bool forcePilotCollecting = false)
     {
         // Find all bins with pending containers NOT already in an active run
         var activeBinIds = await db.RunStops
@@ -211,6 +205,7 @@ public class RunGenerationService : BackgroundService
                 if (!households.TryGetValue(b.HouseholdId.Value, out var hh)) return false;
                 if (!BinStatuses.IsServiceable(hh.BinStatus)) return false;
                 if (hh.BinIsOut) return true;
+                if (forcePilotCollecting) return b.PendingContainers >= 1 || hh.PendingContainers >= 1;
                 var canonSuburb = BinDayService.CanonicalSuburb(hh.Suburb);
                 return b.PendingContainers >= 1 && canonSuburb is not null && dispatchableSuburbs.Contains(canonSuburb);
             })

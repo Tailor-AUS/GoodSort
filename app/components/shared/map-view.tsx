@@ -4,7 +4,8 @@ import {
   createContext, useContext, useRef, useEffect, useState, useCallback,
   Component, type ReactNode,
 } from "react";
-import maplibregl, { Map as MLMap, Marker as MLMarker } from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
+import type { Map as MLMap, Marker as MLMarker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { AlertTriangle } from "lucide-react";
 import type { SortBin, Route, Depot } from "@/lib/store";
@@ -72,7 +73,7 @@ function MapProvider({ children, onMapTap }: { children: ReactNode; onMapTap?: (
     });
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     m.on("click", () => tapRef.current?.());
-    m.on("error", (e) => {
+    m.on("error", (e: { error?: { message?: string } }) => {
       // OpenFreeMap or network issue. Surface a generic failure code.
       const message = (e?.error?.message ?? "").toLowerCase();
       if (message.includes("failed to fetch") || message.includes("network")) {
