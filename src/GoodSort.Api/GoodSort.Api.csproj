@@ -23,10 +23,10 @@
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.6" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.6" />
-    <!-- Pinned to the 2.x line on purpose: 2.1.x is Apache-2.0 and fully
-         managed (no native deps, no Dockerfile change). ImageSharp 3.x moved to
-         the paid Six Labors Split License. Used only for perceptual hashing. -->
-    <PackageReference Include="SixLabors.ImageSharp" Version="2.1.11" />
+    <!-- SkiaSharp 4.153.1 (MIT license, 0 NuGet CVEs, 0 commercial Split License encumbrance)
+         replaces SixLabors.ImageSharp 2.1.11 for perceptual dHash header/pixel decoding. -->
+    <PackageReference Include="SkiaSharp" Version="4.153.1" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.153.1" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.17.0" />
   </ItemGroup>
 

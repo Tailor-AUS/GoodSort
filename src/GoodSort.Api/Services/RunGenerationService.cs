@@ -46,22 +46,15 @@ public class RunGenerationService : BackgroundService
         }
     }
 
-    public async Task<(bool AcquiredLease, int AvailableRuns)> TriggerNowAsync(CancellationToken ct = default)
+    public async Task<(bool AcquiredLease, int AvailableRuns)> TriggerNowAsync(
+        CancellationToken ct = default,
+        bool forcePilotCollecting = false)
     {
         using var scope = _services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
         var pricing = scope.ServiceProvider.GetRequiredService<PricingService>();
         var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
 
-        // One replica only. This service runs inside every container
-        // instance and the app scales to ten, so without the lease ten
-        // copies generate runs over the same bins at once — several
-        // drivers paid to collect the same containers, and vans sent to
-        // kerbs another driver already emptied.
-        //
-        // TTL is twice the interval so a pass is never interrupted
-        // mid-flight, and a crashed holder blocks the next pass by at
-        // most an hour rather than forever.
         if (!await SingletonLease.TryAcquire(db, LeaseName, TimeSpan.FromMinutes(60), ct: ct))
         {
             _logger.LogDebug("Another replica holds {Lease}; skipping this pass", LeaseName);
@@ -73,11 +66,8 @@ public class RunGenerationService : BackgroundService
         {
             var minPayoutCents = ResolveMinPayoutCents(config);
             await ExpireOldRuns(db, pricing, minPayoutCents);
-            // Absorb flagged full-bin households into nearby existing unclaimed
-            // runs BEFORE GenerateRuns; otherwise GenerateRuns turns each late
-            // full-bin household into a separate 1-stop below_threshold run.
             await AbsorbFullBinHouseholds(db, pricing, minPayoutCents);
-            await GenerateRuns(db, pricing, minPayoutCents);
+            await GenerateRuns(db, pricing, minPayoutCents, forcePilotCollecting);
 
             if ((DateTime.UtcNow - _lastRepriceAt).TotalMinutes >= 30)
             {
@@ -159,7 +149,11 @@ public class RunGenerationService : BackgroundService
             ? mp
             : DefaultMinPayoutCents;
 
-    private async Task GenerateRuns(GoodSortDbContext db, PricingService pricing, int minPayoutCents)
+    private async Task GenerateRuns(
+        GoodSortDbContext db,
+        PricingService pricing,
+        int minPayoutCents,
+        bool forcePilotCollecting = false)
     {
         // Find all bins with pending containers NOT already in an active run
         var activeBinIds = await db.RunStops
@@ -182,13 +176,38 @@ public class RunGenerationService : BackgroundService
         var households = await db.Households
             .Where(h => householdIds.Contains(h.Id))
             .ToDictionaryAsync(h => h.Id);
-        var utc = DateTime.UtcNow;
+
+        // Suburb-level readiness: households that have NOT explicitly placed bags on the kerb
+        // (BinIsOut == false) are only bundled into a new run once their suburb pool reaches
+        // WaitlistDensity.LiveThreshold (1,000 containers) across >= MinHouseholdsForRun (3)
+        // distinct physical street addresses. Households with BinIsOut == true are ready now.
+        var allSuburbRows = await db.Households.AsNoTracking()
+            .Where(h => h.Type != "unit_complex" && h.Suburb != null)
+            .Select(h => new { h.Id, h.Suburb, h.Address, h.Street, h.PendingContainers })
+            .ToListAsync();
+        var dispatchableSuburbs = allSuburbRows
+            .Select(r => new
+            {
+                Suburb = BinDayService.CanonicalSuburb(r.Suburb),
+                HouseKey = WaitlistJoin.PhysicalHouseKey(r.Suburb, r.Address, r.Street) ?? r.Id.ToString("N"),
+                Containers = Math.Max(0, r.PendingContainers),
+            })
+            .Where(r => r.Suburb is not null)
+            .GroupBy(r => r.Suburb!)
+            .Where(g => WaitlistDensity.CanDispatch(g.Sum(x => x.Containers), g.Select(x => x.HouseKey).Distinct().Count()))
+            .Select(g => g.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         var readyBins = candidates
             .Where(b =>
             {
                 if (b.HouseholdId is null) return b.PendingContainers >= 1;
                 if (!households.TryGetValue(b.HouseholdId.Value, out var hh)) return false;
-                return KerbsideNight.HouseholdBinIsReady(hh.BinStatus, hh.BinIsOut, b.PendingContainers);
+                if (!BinStatuses.IsServiceable(hh.BinStatus)) return false;
+                if (hh.BinIsOut) return true;
+                if (forcePilotCollecting) return b.PendingContainers >= 1 || hh.PendingContainers >= 1;
+                var canonSuburb = BinDayService.CanonicalSuburb(hh.Suburb);
+                return b.PendingContainers >= 1 && canonSuburb is not null && dispatchableSuburbs.Contains(canonSuburb);
             })
             .OrderByDescending(b => HouseholdCredit.EstimatedContainers(b.PendingContainers))
             .ToList();
@@ -227,8 +246,23 @@ public class RunGenerationService : BackgroundService
             clusters.Add((cluster, ExtractSuburb(cluster[0].Address)));
         }
 
-        foreach (var (cluster, areaName) in clusters)
+        foreach (var (rawCluster, areaName) in clusters)
         {
+            // Deduplicate stops by physical street address so duplicate accounts at one house
+            // never dispatch a Runner to 3 identical stops at the same gate.
+            var seenHouseKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var cluster = new List<Bin>();
+            foreach (var bin in rawCluster)
+            {
+                if (bin.HouseholdId.HasValue && households.TryGetValue(bin.HouseholdId.Value, out var hhForKey))
+                {
+                    var key = WaitlistJoin.PhysicalHouseKey(hhForKey.Suburb, hhForKey.Address, hhForKey.Street);
+                    if (key is not null && !seenHouseKeys.Add(key)) continue;
+                }
+                cluster.Add(bin);
+            }
+            if (cluster.Count == 0) continue;
+
             var totalContainers = cluster.Sum(b => HouseholdCredit.EstimatedContainers(b.PendingContainers));
             var centroidLat = cluster.Average(b => b.Lat);
             var centroidLng = cluster.Average(b => b.Lng);

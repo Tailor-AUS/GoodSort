@@ -123,14 +123,14 @@ public class Pass7HardeningTests : IClassFixture<OpaqueBoxHost>
                 AreaName = "MOOROOKA",
                 CentroidLat = -27.5359,
                 CentroidLng = 153.0249,
-                EstimatedContainers = 400,
-                PerContainerCents = 4,
-                EstimatedPayoutCents = 1600,
+                EstimatedContainers = 1000,
+                PerContainerCents = 3,
+                EstimatedPayoutCents = 3000,
                 Status = "available",
                 ExpiresAt = DateTime.UtcNow.AddHours(6),
             };
-            var s1 = new RunStop { RunId = run.Id, BinId = bin.Id, Lat = hh.Lat, Lng = hh.Lng, EstimatedContainers = 200, Sequence = 1 };
-            var s2 = new RunStop { RunId = run.Id, BinId = bin.Id, Lat = hh.Lat, Lng = hh.Lng, EstimatedContainers = 200, Sequence = 2 };
+            var s1 = new RunStop { RunId = run.Id, BinId = bin.Id, Lat = hh.Lat, Lng = hh.Lng, EstimatedContainers = 500, Sequence = 1 };
+            var s2 = new RunStop { RunId = run.Id, BinId = bin.Id, Lat = hh.Lat, Lng = hh.Lng, EstimatedContainers = 500, Sequence = 2 };
             run.Stops.Add(s1);
             run.Stops.Add(s2);
             db.Depots.Add(depot);

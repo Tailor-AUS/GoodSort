@@ -12,8 +12,6 @@ using GoodSort.Api.Tests.Simulations.Harness;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace GoodSort.Api.Tests.Simulations;
 
@@ -99,23 +97,8 @@ public class R3EdgeCaseSimulationTests : IDisposable
         return tokens.Issue(payload, ttl ?? TimeSpan.FromMinutes(10));
     }
 
-    private static string CreateDistinctTestImage(int stripeColumn)
-    {
-        using var image = new Image<Rgba32>(32, 32);
-        for (var y = 0; y < 32; y++)
-        {
-            for (var x = 0; x < 32; x++)
-            {
-                var isWhite = (x >= stripeColumn * 6 && x < stripeColumn * 6 + 4);
-                image[x, y] = isWhite
-                    ? new Rgba32(255, 255, 255)
-                    : new Rgba32(0, 0, 0);
-            }
-        }
-        using var ms = new MemoryStream();
-        image.SaveAsJpeg(ms);
-        return Convert.ToBase64String(ms.ToArray());
-    }
+    private static string CreateDistinctTestImage(int stripeColumn) =>
+        Harness.TestImageHelper.CreateDistinctTestImageBase64(stripeColumn);
 
     private async Task<StepDbSnapshot> CaptureSnapshotAsync(string stepName, string description, string email, Guid? profileId = null, Guid? householdId = null)
     {
@@ -1018,7 +1001,7 @@ public class R3EdgeCaseSimulationTests : IDisposable
 
         var chloeHhRes = await client.PostAsJsonAsync("/api/households", new
         {
-            name = "Chloe Residence", address = MoorookaAddress, suburb = "MOOROOKA", street = "Vendale Ave",
+            name = "Chloe Residence", address = "34 Vendale Avenue, Moorooka QLD 4105", suburb = "MOOROOKA", street = "Vendale Ave",
             lat = MoorookaLat, lng = MoorookaLng, type = "residential", councilCollectionDay = 3, accessConsent = true
         });
         var chloeHhId = (await chloeHhRes.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();

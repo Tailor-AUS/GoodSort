@@ -2,18 +2,15 @@
 // Falls back to localStorage store when API is unavailable
 
 import { apiUrl, readStoredProfileId } from "./config.ts";
-import type { User, Household, Route, Depot, ScanRecord, CollectionRecord, SortBin } from "./store.ts";
+import type { User, Household, Depot, ScanRecord, CollectionRecord, SortBin } from "./store.ts";
 import {
   getUser as getLocalUser,
   getOrCreateDefaultUser as getLocalDefault,
   getHouseholds as getLocalHouseholds,
   saveHouseholds as saveLocalHouseholds,
-  getRoutes as getLocalRoutes,
   getDepots as getLocalDepots,
   addScan as addLocalScan,
   removeScan as removeLocalScan,
-  getPendingRoutes as getLocalPendingRoutes,
-  getActiveRoute as getLocalActiveRoute,
   saveUser as saveLocalUser,
   getUnsyncedScans,
   markScanUnsynced,
@@ -330,60 +327,6 @@ export async function addScanApi(
   }
 
   return { user: localUser, creditedCents, bonusRemaining, refused: false };
-}
-
-// ── Routes ──
-
-export async function getRoutesApi(): Promise<Route[]> {
-  const routes = await apiFetch<Route[]>("/api/routes");
-  return routes || getLocalRoutes();
-}
-
-export async function getPendingRoutesApi(): Promise<Route[]> {
-  const routes = await apiFetch<Route[]>("/api/routes?status=pending");
-  return routes || getLocalPendingRoutes();
-}
-
-export async function getActiveRouteApi(): Promise<Route | null> {
-  const routes = await apiFetch<Route[]>("/api/routes?status=claimed") || [];
-  if (routes.length > 0) return routes[0];
-
-  const inProgress = await apiFetch<Route[]>("/api/routes?status=in_progress") || [];
-  if (inProgress.length > 0) return inProgress[0];
-
-  const atDepot = await apiFetch<Route[]>("/api/routes?status=at_depot") || [];
-  if (atDepot.length > 0) return atDepot[0];
-
-  return getLocalActiveRoute();
-}
-
-export async function claimRouteApi(routeId: string): Promise<void> {
-  const userId = getStoredUserId();
-  if (userId) {
-    await apiFetch(`/api/routes/${routeId}/claim`, {
-      method: "POST",
-      body: JSON.stringify({ driverId: userId }),
-    });
-  }
-}
-
-export async function startRouteApi(routeId: string): Promise<void> {
-  await apiFetch(`/api/routes/${routeId}/start`, { method: "POST" });
-}
-
-export async function pickupStopApi(routeId: string, stopId: string, actualCount: number): Promise<void> {
-  await apiFetch(`/api/routes/${routeId}/stops/${stopId}/pickup`, {
-    method: "POST",
-    body: JSON.stringify({ actualCount }),
-  });
-}
-
-export async function skipStopApi(routeId: string, stopId: string): Promise<void> {
-  await apiFetch(`/api/routes/${routeId}/stops/${stopId}/skip`, { method: "POST" });
-}
-
-export async function settleRouteApi(routeId: string): Promise<{ driverPayout: number; totalCollected: number } | null> {
-  return apiFetch(`/api/routes/${routeId}/settle`, { method: "POST" });
 }
 
 // ── Depots ──

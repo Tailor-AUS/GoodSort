@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import maplibregl, { Map as MLMap, Marker as MLMarker, LngLatBounds } from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
+import type { Map as MLMap, Marker as MLMarker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import Link from "next/link";
 import { ArrowLeft, MapPin, Users } from "lucide-react";
@@ -43,14 +44,24 @@ interface Bin {
 const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 const BRISBANE: [number, number] = [153.021, -27.482]; // [lng, lat]
 
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] ?? c));
+function createPopupDom(lines: Array<{ text: string; bold?: boolean; color?: string }>): HTMLDivElement {
+  const root = document.createElement("div");
+  root.style.cssText = "font-family:system-ui;font-size:13px";
+  lines.forEach((line, idx) => {
+    if (idx > 0) root.appendChild(document.createElement("br"));
+    const span = document.createElement(line.bold ? "b" : "span");
+    if (line.color) span.style.color = line.color;
+    span.textContent = line.text;
+    root.appendChild(span);
+  });
+  return root;
 }
 
 function binMarkerEl(count: number): HTMLDivElement {
   const el = document.createElement("div");
   el.style.cssText = "line-height:0;cursor:pointer";
-  el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><circle cx="16" cy="16" r="14" fill="#16a34a" stroke="#fff" stroke-width="2"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-size="11" font-weight="700">${count}</text></svg>`;
+  const safeCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+  el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><circle cx="16" cy="16" r="14" fill="#16a34a" stroke="#fff" stroke-width="2"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-size="11" font-weight="700">${safeCount}</text></svg>`;
   return el;
 }
 
@@ -86,30 +97,37 @@ export default function AdminUsersPage() {
   useEffect(() => {
     if (!mapDiv.current || (users.length === 0 && bins.length === 0)) return;
     if (!mapRef.current) {
-      mapRef.current = new maplibregl.Map({
+      const createdMap = new maplibregl.Map({
         container: mapDiv.current,
         style: MAP_STYLE_URL,
         center: BRISBANE,
         zoom: 11,
         attributionControl: { compact: true },
       });
-      mapRef.current.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+      createdMap.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+      mapRef.current = createdMap;
     }
     const map = mapRef.current;
+    if (!map) return;
 
     function render() {
+      if (!map) return;
       // Clear previous markers
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
-      const bounds = new LngLatBounds();
+      const bounds = new maplibregl.LngLatBounds();
 
       // Bin markers
       bins.forEach((b) => {
         if (!Number.isFinite(b.lat) || !Number.isFinite(b.lng) || (!b.lat && !b.lng)) return;
-        const popupHtml = `<div style="font-family:system-ui;font-size:13px"><b>${escapeHtml(b.code)} — ${escapeHtml(b.name)}</b><br/><span style="color:#666">${escapeHtml(b.address)}</span><br/><b style="color:#16a34a">${b.pendingContainers}</b> containers pending</div>`;
+        const popupEl = createPopupDom([
+          { text: `${b.code} — ${b.name}`, bold: true },
+          { text: b.address, color: "#666" },
+          { text: `${b.pendingContainers} containers pending`, bold: true, color: "#16a34a" },
+        ]);
         const marker = new maplibregl.Marker({ element: binMarkerEl(b.pendingContainers), anchor: "center" })
           .setLngLat([b.lng, b.lat])
-          .setPopup(new maplibregl.Popup({ offset: 16 }).setHTML(popupHtml))
+          .setPopup(new maplibregl.Popup({ offset: 16 }).setDOMContent(popupEl))
           .addTo(map);
         markersRef.current.push(marker);
         bounds.extend([b.lng, b.lat]);
@@ -125,11 +143,15 @@ export default function AdminUsersPage() {
       });
       households.forEach(({ h, emails }) => {
         if (!Number.isFinite(h.lat) || !Number.isFinite(h.lng) || (!h.lat && !h.lng)) return;
-        const emailList = emails.map(escapeHtml).join("<br/>");
-        const popupHtml = `<div style="font-family:system-ui;font-size:13px"><b>${escapeHtml(h.name || "Household")}</b><br/><span style="color:#666">${escapeHtml(h.address)}</span><br/>${emailList}<br/><b style="color:#2563eb">${h.pendingContainers}</b> containers pending</div>`;
+        const popupEl = createPopupDom([
+          { text: h.name || "Household", bold: true },
+          { text: h.address, color: "#666" },
+          ...emails.map((em) => ({ text: em })),
+          { text: `${h.pendingContainers} containers pending`, bold: true, color: "#2563eb" },
+        ]);
         const marker = new maplibregl.Marker({ element: householdMarkerEl(), anchor: "center" })
           .setLngLat([h.lng, h.lat])
-          .setPopup(new maplibregl.Popup({ offset: 12 }).setHTML(popupHtml))
+          .setPopup(new maplibregl.Popup({ offset: 12 }).setDOMContent(popupEl))
           .addTo(map);
         markersRef.current.push(marker);
         bounds.extend([h.lng, h.lat]);

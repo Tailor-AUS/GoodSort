@@ -193,6 +193,10 @@ export default function OnboardPage() {
       ? { "Content-Type": "application/json", Authorization: `Bearer ${override.tokenOverride}` }
       : authHeaders();
     if (!addr || la == null || ln == null) { setError("Pick your address."); return; }
+    if (!addr.trim() || !/^\s*(?:(?:unit|apt|apartment|flat|lot|shop|villa|townhouse|level|lvl|suite|u)\s*[a-z0-9]+\s*[\/,\s-]+\s*)?\d+[a-z]?(?:\s*[\/-]\s*\d+[a-z]?)?\s+[a-z]/i.test(addr)) {
+      setError("Include your street number (e.g. 12 Beaudesert Rd) so our Runner can find your kerb.");
+      return;
+    }
     if (!accessConsent) { setError("Tick the box so we can tell you when to bag out."); return; }
     const hasEnteredPayout = payoutMethod === "payid" ? Boolean(payIdValue.trim()) : Boolean(bsb.trim() || accountNumber.trim());
     if (hasEnteredPayout) {
@@ -451,7 +455,6 @@ export default function OnboardPage() {
       }
       localStorage.setItem("goodsort_token", data.token);
       localStorage.setItem("goodsort_profile", JSON.stringify(data.profile));
-      document.cookie = `goodsort_token=${data.token}; path=/; max-age=${30 * 24 * 60 * 60}; SameSite=Lax; Secure`;
       track("otp_verified");
       if (type === "unit_complex") {
         await handleUnitWaitlist(pendingSubmit?.lat, pendingSubmit?.lng, data.token);

@@ -5,7 +5,7 @@ import { Check, MapPin, Wallet } from "lucide-react";
 import { apiUrl, authHeaders, clearAuth, hasValidToken, readStoredProfile } from "@/lib/config";
 import { canonicalSuburb, residentialNeedsStreet, titleSuburb } from "@/lib/brisbane";
 import { track } from "@/lib/analytics";
-import { AddressAutocomplete, geocodeAddress } from "@/app/components/shared/address-autocomplete";
+import { AddressAutocomplete, geocodeAddress, hasStreetNumber } from "@/app/components/shared/address-autocomplete";
 
 export type PayoutMethodChoice = "payid" | "aba";
 export type PayIdTypeChoice = "email" | "phone" | "abn";
@@ -441,6 +441,10 @@ export function PostScanSetup({
       }
       if (!address.trim()) {
         setError("Enter your Brisbane home address so we know where to collect your cans.");
+        return;
+      }
+      if (!hasStreetNumber(address)) {
+        setError("Include your street number (e.g. 12 Beaudesert Rd) so our Runner can find your kerb.");
         return;
       }
       if (!accessConsent) {

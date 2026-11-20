@@ -7,8 +7,6 @@ using GoodSort.Api.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace GoodSort.Api.Tests.Simulations.Harness;
 
@@ -85,23 +83,8 @@ public static class SimulationTestHarness
     /// <summary>
     /// Generates a valid test image encoded as base64 JPEG.
     /// </summary>
-    public static string CreateDistinctTestImage(int stripeColumn)
-    {
-        using var image = new Image<Rgba32>(32, 32);
-        for (var y = 0; y < 32; y++)
-        {
-            for (var x = 0; x < 32; x++)
-            {
-                var isWhite = (x >= stripeColumn * 6 && x < stripeColumn * 6 + 4);
-                image[x, y] = isWhite
-                    ? new Rgba32(255, 255, 255)
-                    : new Rgba32(0, 0, 0);
-            }
-        }
-        using var ms = new MemoryStream();
-        image.SaveAsJpeg(ms);
-        return Convert.ToBase64String(ms.ToArray());
-    }
+    public static string CreateDistinctTestImage(int stripeColumn) =>
+        TestImageHelper.CreateDistinctTestImageBase64(stripeColumn);
 
     /// <summary>
     /// Captures a database state snapshot for auditing state transitions across journey steps.

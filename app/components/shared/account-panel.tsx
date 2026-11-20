@@ -98,8 +98,10 @@ export function AccountPanel({ user, open, onClose, onRefresh }: AccountPanelPro
 
   if (!open) return null;
 
-  const waiting = !isCollecting(binStatus);
   const effectiveClearedCents = Math.max(0, user.clearedCents - cashedOutCents);
+  const isStandaloneRunner =
+    binStatus === null && (user.role === "driver" || user.role === "both" || effectiveClearedCents > 0);
+  const waiting = !isStandaloneRunner && !isCollecting(binStatus);
   // Show email when name is default "New User" or "You"
   const displayName = (user.name === "New User" || user.name === "You")
     ? (() => { try { const p = JSON.parse(localStorage.getItem("goodsort_profile") || "{}"); return p.phone || p.email || user.name; } catch { return user.name; } })()

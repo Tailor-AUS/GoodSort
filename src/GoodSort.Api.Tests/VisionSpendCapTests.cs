@@ -14,7 +14,7 @@ namespace GoodSort.Api.Tests;
 /// the caps a check-then-act with a multi-second gap: every concurrent request
 /// reads the same total, every one passes, and every one gets billed. The
 /// endpoint's own comment says "without it, one client can drain the whole
-/// day's BAINK budget", which is what the gap allows, one burst at a time.
+/// day's AINK budget", which is what the gap allows, one burst at a time.
 ///
 /// The fix is a reservation row taken before the call and released after. These
 /// tests pin the property that makes it work — a reservation is counted — and

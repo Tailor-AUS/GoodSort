@@ -12,10 +12,10 @@ import { InviteActions } from "@/app/components/shared/invite-actions";
 import type { HouseholdStatus } from "./sorter-sheet";
 
 const STREAMS = [
-  { label: "Cans", hint: "Aluminium", color: "bg-blue-500" },
-  { label: "PET", hint: "Clear plastic bottles", color: "bg-teal-500" },
-  { label: "Glass", hint: "Bottles", color: "bg-amber-500" },
-  { label: "Other", hint: "Everything else", color: "bg-green-500" },
+  { label: "Cans", hint: "Aluminium (GSB-ALU)", color: "bg-blue-500" },
+  { label: "Clear PET", hint: "Clear plastic (GSB-CLR)", color: "bg-teal-500" },
+  { label: "Coloured / Poppers", hint: "Coloured PET & cartons (GSB-COL)", color: "bg-amber-500" },
+  { label: "Glass", hint: "Bottles incl. wine & spirits (GSB-GLS)", color: "bg-emerald-600" },
 ];
 
 export function WaitlistHome({

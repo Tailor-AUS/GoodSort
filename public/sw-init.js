@@ -1,6 +1,8 @@
 // Register once. Check for a new SW on focus, not every 30s.
-// One reload path only — a 30s update + triple reload hung local Next.
+// Only reload on controllerchange when a previous SW already controlled the page
+// (never force-reload a cold visitor's first session).
 if ("serviceWorker" in navigator) {
+  var hadController = Boolean(navigator.serviceWorker.controller);
   navigator.serviceWorker.register("/sw.js").then(function (reg) {
     function check() { reg.update().catch(function () {}); }
     check();
@@ -12,7 +14,7 @@ if ("serviceWorker" in navigator) {
 
   var refreshing = false;
   navigator.serviceWorker.addEventListener("controllerchange", function () {
-    if (refreshing) return;
+    if (!hadController || refreshing) return;
     refreshing = true;
     window.location.reload();
   });

@@ -137,7 +137,6 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
       }
       localStorage.setItem("goodsort_token", data.token);
       localStorage.setItem("goodsort_profile", JSON.stringify(data.profile));
-      document.cookie = `goodsort_token=${data.token}; path=/; max-age=${30*24*60*60}; SameSite=Lax; Secure`;
       track("otp_verified", { suburb: place });
       router.push(await waitlistContinuePath());
     } catch { setError("Verification failed"); }

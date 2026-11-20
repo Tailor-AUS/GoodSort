@@ -287,7 +287,7 @@ public class Tg685CollectorOpsAndCleanupTests : IClassFixture<Tg685CollectorOpsA
         await runner.Client.PostAsJsonAsync($"/api/marketplace/runs/{runId}/stops/{stopId}/pickup", new { actualContainers = 1 });
         await runner.Client.PostAsync($"/api/marketplace/runs/{runId}/deliver", null);
         await runner.Client.PostAsJsonAsync($"/api/marketplace/runs/{runId}/complete", new { depotVerifiedContainers = 1, coexDocketRef = "DOC-TG685" });
-        var settle = await runner.Client.PostAsync($"/api/marketplace/runs/{runId}/settle", null);
+        var settle = await admin.Client.PostAsync($"/api/marketplace/runs/{runId}/settle", null);
         Assert.Equal(HttpStatusCode.OK, settle.StatusCode);
 
         // Now delete the sole-member sorter profile

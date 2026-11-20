@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Users, Package, Truck, DollarSign, Download, MapPin, RotateCcw, Copy, Check, Printer } from "lucide-react";
-import { apiUrl } from "@/lib/config";
+import { apiUrl, readStoredProfileId } from "@/lib/config";
 import { titleSuburb } from "@/lib/brisbane";
 
 interface Funnel {
@@ -22,6 +22,7 @@ interface Stats {
   runsAvailable: number;
   runsInFlight: number;
   runsSettled: number;
+  resetBaselineEnabled?: boolean;
   totalContainers: number;
   totalPending: number;
   totalCleared: number;
@@ -103,10 +104,14 @@ export default function AdminPage() {
   const [stalledHouseholds, setStalledHouseholds] = useState(0);
   const [resetting, setResetting] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [adminProfileId, setAdminProfileId] = useState<string | undefined>(undefined);
+  const [cashouts, setCashouts] = useState<Array<{ id: string; status: string; payoutMethod?: string | null; amountCents: number; accountName?: string | null; batchId?: string | null }>>([]);
 
   const organicUsers = stats?.nonAdminUsers ?? Math.max(0, (stats?.users ?? 1) - 1);
   const organicScans = stats?.scans ?? 0;
-  const adminInviteUrl = "https://thegoodsort.org/scan?r=4ebefa46-94c4-4df8-aa45-a6dcbde28bbb";
+  const adminInviteUrl = adminProfileId
+    ? `https://thegoodsort.org/scan?r=${adminProfileId}`
+    : "https://thegoodsort.org/scan";
 
   function copyAdminInvite() {
     navigator.clipboard?.writeText(adminInviteUrl).catch(() => {});
@@ -134,6 +139,10 @@ export default function AdminPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (d) setCrpLedger(d); })
       .catch(() => {});
+    fetch(apiUrl("/api/admin/cashouts"), { headers })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (Array.isArray(d)) setCashouts(d); })
+      .catch(() => {});
     fetch(apiUrl("/api/admin/waitlist"), { headers })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
@@ -155,6 +164,7 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
+    setAdminProfileId(readStoredProfileId());
     loadDashboard();
   }, [loadDashboard]);
 
@@ -189,7 +199,7 @@ export default function AdminPage() {
   async function exportAba() {
     const token = localStorage.getItem("goodsort_token");
     const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
-    const res = await fetch(apiUrl("/api/admin/aba-export"), { headers });
+    const res = await fetch(apiUrl("/api/admin/aba-export"), { method: "POST", headers });
     const contentType = res.headers.get("content-type") || "";
     if (!res.ok) {
       const data = contentType.includes("application/json")
@@ -221,7 +231,7 @@ export default function AdminPage() {
   async function exportPayIdCsv() {
     const token = localStorage.getItem("goodsort_token");
     const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
-    const res = await fetch(apiUrl("/api/admin/payid-export"), { headers });
+    const res = await fetch(apiUrl("/api/admin/payid-export"), { method: "POST", headers });
     const contentType = res.headers.get("content-type") || "";
     if (!res.ok) {
       const data = contentType.includes("application/json")
@@ -535,8 +545,10 @@ export default function AdminPage() {
                           {(entry.containerMafiaCents / 100).toFixed(2)} / $
                           {(entry.runnerPayoutCents / 100).toFixed(2)}
                         </td>
-                        <td className="py-2 text-right font-bold text-violet-700">
-                          +${entry.proFormaCrpNetMarginDollars.toFixed(2)}
+                        <td className={`py-2 text-right font-bold ${entry.proFormaCrpNetMarginDollars < 0 ? "text-red-600" : "text-violet-700"}`}>
+                          {entry.proFormaCrpNetMarginDollars < 0
+                            ? `-$${Math.abs(entry.proFormaCrpNetMarginDollars).toFixed(2)}`
+                            : `+$${entry.proFormaCrpNetMarginDollars.toFixed(2)}`}
                         </td>
                       </tr>
                     ))}
@@ -613,14 +625,88 @@ export default function AdminPage() {
               <p className="text-[12px] text-slate-400">Download instant PayID (Email / Phone / ABN) batch CSV for pending cashouts</p>
             </div>
           </button>
-          <button type="button" onClick={resetBaseline} disabled={resetting}
-            className="flex items-center gap-3 w-full bg-white rounded-xl p-4 border border-red-200 hover:border-red-400 disabled:opacity-50 transition-colors text-left">
-            <RotateCcw className="w-5 h-5 text-red-600" />
-            <div>
-              <p className="text-[14px] font-semibold text-red-700">{resetting ? "Resetting..." : "Reset Database to Fresh Baseline"}</p>
-              <p className="text-[12px] text-slate-400">Clear pre-launch test users, scans, households, and funnel counts (keeps hello@thegoodsort.org)</p>
+          {cashouts.some((c) => c.status === "processing") && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
+              <p className="text-[13px] font-bold text-amber-950">Processing Cash-Out Batches ({cashouts.filter((c) => c.status === "processing").length})</p>
+              <div className="divide-y divide-amber-200/60">
+                {cashouts.filter((c) => c.status === "processing").map((c) => (
+                  <div key={c.id} className="py-2 flex flex-wrap items-center justify-between gap-2 text-[12px]">
+                    <span className="text-amber-950 font-medium">
+                      {c.accountName || "Member"} · ${(c.amountCents / 100).toFixed(2)} ({c.payoutMethod || "aba"})
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {c.batchId && (() => {
+                        const batchId = c.batchId;
+                        return (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const token = localStorage.getItem("goodsort_token");
+                              const res = await fetch(apiUrl(`/api/admin/cashouts/batch/${batchId}`), {
+                                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                              });
+                              if (!res.ok) { alert("Could not re-download batch."); return; }
+                              const text = await res.text();
+                              const isCsv = (res.headers.get("content-type") || "").includes("csv");
+                              const blob = new Blob([text], { type: isCsv ? "text/csv" : "text/plain" });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement("a");
+                              a.href = url;
+                              a.download = `goodsort-batch-${batchId.slice(0, 8)}.${isCsv ? "csv" : "aba"}`;
+                              a.click();
+                              setTimeout(() => URL.revokeObjectURL(url), 1000);
+                            }}
+                            className="bg-white border border-amber-300 text-amber-900 font-semibold px-2 py-1 rounded"
+                          >
+                            Re-download
+                          </button>
+                        );
+                      })()}
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const token = localStorage.getItem("goodsort_token");
+                          await fetch(apiUrl(`/api/admin/cashouts/${c.id}/mark-paid`), {
+                            method: "POST",
+                            headers: token ? { Authorization: `Bearer ${token}` } : {},
+                          });
+                          loadDashboard();
+                        }}
+                        className="bg-emerald-700 text-white font-semibold px-2 py-1 rounded"
+                      >
+                        Mark Paid
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!window.confirm("Cancel this transfer and refund ClearedCents back to the member?")) return;
+                          const token = localStorage.getItem("goodsort_token");
+                          await fetch(apiUrl(`/api/admin/cashouts/${c.id}/refund`), {
+                            method: "POST",
+                            headers: token ? { Authorization: `Bearer ${token}` } : {},
+                          });
+                          loadDashboard();
+                        }}
+                        className="bg-red-600 text-white font-semibold px-2 py-1 rounded"
+                      >
+                        Refund
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </button>
+          )}
+          {stats?.resetBaselineEnabled === true && (
+            <button type="button" onClick={resetBaseline} disabled={resetting}
+              className="flex items-center gap-3 w-full bg-white rounded-xl p-4 border border-red-200 hover:border-red-400 disabled:opacity-50 transition-colors text-left">
+              <RotateCcw className="w-5 h-5 text-red-600" />
+              <div>
+                <p className="text-[14px] font-semibold text-red-700">{resetting ? "Resetting..." : "Reset Database to Fresh Baseline"}</p>
+                <p className="text-[12px] text-slate-400">Clear pre-launch test users, scans, households, and funnel counts (keeps hello@thegoodsort.org)</p>
+              </div>
+            </button>
+          )}
         </div>
       </div>
     </div>

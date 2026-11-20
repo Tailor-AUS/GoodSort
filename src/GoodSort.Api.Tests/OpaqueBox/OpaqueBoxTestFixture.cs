@@ -64,6 +64,20 @@ public class OpaqueBoxHost : WebApplicationFactory<Program>
         return (client, token, profileId);
     }
 
+    public async Task<(HttpClient Client, string Token, Guid ProfileId)> SignInAdminAsync(string? email = null)
+    {
+        var targetEmail = email ?? $"opaque-admin-{Guid.NewGuid():N}@example.test";
+        var (_, _, profileId) = await SignInMemberAsync(targetEmail);
+        using (var scope = Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
+            var profile = await db.Profiles.FindAsync(profileId);
+            profile!.IsAdmin = true;
+            await db.SaveChangesAsync();
+        }
+        return await SignInMemberAsync(targetEmail);
+    }
+
     public string MintScanToken(
         Guid userId,
         List<ScanTokenItem>? items = null,

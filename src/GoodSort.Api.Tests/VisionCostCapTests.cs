@@ -17,7 +17,7 @@ namespace GoodSort.Api.Tests;
 /// <summary>
 /// The spend guardrails on /api/scan/photo.
 ///
-/// Every photo scan is a paid inference call — Tailor Vision billed via BAINK,
+/// Every photo scan is a paid inference call — Tailor Vision billed via AINK,
 /// or Azure OpenAI on the fallback. The endpoint is authenticated but that is
 /// no protection at all here: signing up costs nothing, so one account looping
 /// this endpoint is one account spending the day's budget. The per-user cap is

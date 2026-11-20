@@ -10,7 +10,7 @@ import type { MarketplaceRun, RunDetail, RunnerEarnings, LeaderboardEntry, Discr
 import {
   getRunnerProfile, getAvailableRuns, getActiveRun,
   claimRun, startRun, releaseRun, arriveAtStop, pickupStop, skipStop,
-  deliverRun, completeRun, settleRun, getRunnerEarnings, getLeaderboard,
+  deliverRun, completeRun, getRunnerEarnings, getLeaderboard,
   sendHeartbeat,
 } from "@/lib/marketplace-api";
 import { MapView } from "@/app/components/shared/map-view";
@@ -218,19 +218,14 @@ export default function RunnerApp() {
         return null;
       }
       current = completed;
-      setActiveRun(completed);
     }
 
-    const settled = await settleRun(current.id);
-    if (!settled) {
-      setActionError("Drop-off recorded, but settlement did not finish. Tap Confirm again to settle your payout.");
-      return null;
-    }
-
+    const recordedContainers = current.depotVerifiedContainers ?? current.actualContainers ?? current.estimatedContainers;
+    const estEarned = recordedContainers * current.perContainerCents;
     setActionError(null);
     setActiveRun(null);
     await refreshData();
-    return { earned: settled.actualPayoutCents, containers: settled.actualContainers };
+    return { earned: estEarned, containers: recordedContainers };
   }, [activeRun, refreshData]);
 
   if (loading) {

@@ -25,9 +25,11 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - name: Install and Build
+      - name: Install, Verify, and Build
         run: |
           npm ci
+          npm run type-check
+          npm test
           npm run build
         env:
           NEXT_PUBLIC_API_URL: https://api.livelyfield-64227152.eastasia.azurecontainerapps.io

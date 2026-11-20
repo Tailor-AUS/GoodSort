@@ -147,7 +147,8 @@ public class VisionService
     public static string MapMaterial(string? tvMaterial) => (tvMaterial ?? "").Trim().ToLowerInvariant() switch
     {
         "aluminium" or "aluminum" or "can" or "cans" or "alu" => "aluminium",
-        "pet" or "pet_clear" or "pet_coloured" or "pet_colored" or "plastic" => "pet",
+        "pet_coloured" or "pet_colored" or "coloured_pet" or "colored_pet" => "pet_coloured",
+        "pet" or "pet_clear" or "clear_pet" or "plastic" => "pet",
         "glass" or "glass_clear" or "glass_brown" or "glass_green" => "glass",
         "steel" => "steel",
         "hdpe" => "hdpe",

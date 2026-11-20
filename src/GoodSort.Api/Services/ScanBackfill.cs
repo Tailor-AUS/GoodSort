@@ -40,7 +40,7 @@ public static class ScanBackfill
             _ = scan.Material switch
             {
                 "aluminium" => household.Materials.Aluminium++,
-                "pet" => household.Materials.Pet++,
+                "pet" or "pet_clear" or "pet_coloured" => household.Materials.Pet++,
                 "glass" => household.Materials.Glass++,
                 _ => household.Materials.Other++,
             };

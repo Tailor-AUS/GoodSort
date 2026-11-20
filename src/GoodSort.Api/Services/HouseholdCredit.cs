@@ -53,26 +53,52 @@ public static class HouseholdCredit
         int centsPerContainer = CentsPerContainer)
     {
         var rateUpgrade = Math.Max(0, centsPerContainer - CentsPerContainer);
-        var bonusCleared = 0;
+        var memberScanCounts = new Dictionary<Guid, int>();
         foreach (var scan in pendingScans)
         {
             scan.Status = "settled";
             var user = members.FirstOrDefault(m => m.Id == scan.UserId);
             if (user is null) continue;
             user.PendingCents = Math.Max(0, user.PendingCents - scan.RefundCents);
+            memberScanCounts[user.Id] = memberScanCounts.GetValueOrDefault(user.Id) + 1;
 
             var bonus = Math.Max(0, LaunchBonus.BonusPortionOf(scan.RefundCents) - rateUpgrade);
             if (bonus > 0)
             {
                 user.ClearedCents += bonus;
-                bonusCleared += bonus;
             }
         }
 
         var credit = ClearedCentsForPickup(pickupCount, centsPerContainer);
-        var owner = members.FirstOrDefault();
-        if (owner is not null && credit > 0)
-            owner.ClearedCents += credit;
+        if (credit <= 0 || members.Count == 0) return credit;
+
+        var orderedMembers = members.OrderBy(m => m.CreatedAt).ThenBy(m => m.Id).ToList();
+        var totalMemberScans = memberScanCounts.Values.Sum();
+        if (orderedMembers.Count == 1 || totalMemberScans <= 0)
+        {
+            orderedMembers[0].ClearedCents += credit;
+            return credit;
+        }
+
+        // Multi-member household: split ClearedCents proportionally by each member's settled scans
+        // via largest-remainder integer allocation so housemates keep their exact scanned share.
+        var activeScanners = orderedMembers.Where(m => memberScanCounts.GetValueOrDefault(m.Id) > 0).ToList();
+        var shares = activeScanners.Select(m =>
+        {
+            var scans = memberScanCounts[m.Id];
+            var numer = (long)credit * scans;
+            return new
+            {
+                Member = m,
+                Floor = (int)(numer / totalMemberScans),
+                Remainder = numer % totalMemberScans,
+            };
+        }).ToList();
+        var remainderLeft = credit - shares.Sum(s => s.Floor);
+        foreach (var sh in shares) sh.Member.ClearedCents += sh.Floor;
+        foreach (var sh in shares.OrderByDescending(s => s.Remainder).ThenBy(s => s.Member.CreatedAt).ThenBy(s => s.Member.Id).Take(Math.Max(0, remainderLeft)))
+            sh.Member.ClearedCents += 1;
+
         return credit;
     }
 }

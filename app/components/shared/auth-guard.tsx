@@ -39,7 +39,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     // returning users whose 30-day JWT lapsed). Reject expired tokens too.
     if (!hasValidToken()) {
       clearAuth();
-      router.replace("/");
+      const target = pathname.startsWith("/admin")
+        ? `/login?next=${encodeURIComponent(pathname)}`
+        : "/";
+      router.replace(target);
       return;
     }
 

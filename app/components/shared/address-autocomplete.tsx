@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useId } from "react";
 import {
   formatPhotonAddress,
   geocodeAddress,
+  hasStreetNumber,
   PHOTON_TIMEOUT_MS,
   searchPhoton,
   suburbFromPhoton,
@@ -11,7 +12,7 @@ import {
   type PhotonFeature,
 } from "@/lib/photon";
 
-export { geocodeAddress, PHOTON_TIMEOUT_MS, suburbFromPhoton, type AddressSelection };
+export { geocodeAddress, hasStreetNumber, PHOTON_TIMEOUT_MS, suburbFromPhoton, type AddressSelection };
 
 interface AddressAutocompleteProps {
   id?: string;
@@ -63,7 +64,7 @@ export function AddressAutocomplete({ id, ariaLabel, value, onChange, onSelect, 
 
   function pick(f: PhotonFeature) {
     const sel: AddressSelection = {
-      address: formatPhotonAddress(f.properties),
+      address: formatPhotonAddress(f.properties, value),
       lng: f.geometry.coordinates[0],
       lat: f.geometry.coordinates[1],
       suburb: suburbFromPhoton(f.properties),
@@ -112,7 +113,7 @@ export function AddressAutocomplete({ id, ariaLabel, value, onChange, onSelect, 
       {isExpanded && (
         <ul id={listboxId} role="listbox" className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 max-h-72 overflow-y-auto">
           {results.map((f, i) => {
-            const text = formatPhotonAddress(f.properties);
+            const text = formatPhotonAddress(f.properties, value);
             return (
               <li
                 id={`${listboxId}-opt-${i}`}

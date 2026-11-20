@@ -66,11 +66,14 @@ public class BinCounterTests : IClassFixture<BinCounterTests.Host>
         return client;
     }
 
+    private static int _nextHouseNo = 10;
+
     private static async Task Join(HttpClient client, string suburb = "MOOROOKA")
     {
+        var houseNo = System.Threading.Interlocked.Increment(ref _nextHouseNo);
         var res = await client.PostAsJsonAsync("/api/households", new
         {
-            name = "Test House", address = $"12 Test St, {suburb} QLD 4105", suburb,
+            name = "Test House", address = $"{houseNo} Test St, {suburb} QLD 4105", suburb,
             street = "TEST ST", lat = -27.53, lng = 153.02, type = "residential",
             councilCollectionDay = 3, councilArea = "BCC", accessConsent = true,
         });

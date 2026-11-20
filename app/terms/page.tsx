@@ -43,10 +43,11 @@ export default function TermsPage() {
         <p className="text-slate-600 text-sm mb-4">
           Sorters earn Sorting Credits at the rate displayed in the app (currently 10 cents per eligible
           container scanned and sorted at home,
-          subject to physical collection and depot verification). When you invite a neighbour using your
-          referral link, you also earn a $1.00 signup bonus once their household registers and scans a
-          container, plus a 1-cent Sorter Network Commission on every eligible container collected from
-          households you referred when their pickup run settles. Scanning records a pending credit; it does not
+          subject to physical collection and depot verification). When you invite a neighbour at a separate residential address using your
+          referral link, a $1.00 pending signup bonus is recorded when their household registers and clears
+          alongside a 1-cent Sorter Network Commission on every depot-verified container collected from
+          households you referred when their pickup run settles (if a referred account is deleted before a
+          settled pickup, the pending signup bonus is reversed). Scanning records a pending credit; it does not
           itself create a scheme refund. Runner Credits are earned at rates displayed in the Runner app.
           We reserve the right to adjust credit and commission rates at any time. Rate changes will be reflected in the
           app and apply to future collections only.

@@ -185,6 +185,43 @@ public static class StatusClaim
         }
     }
 
+    /// <summary>
+    /// Atomically transitions a cashout request from <c>pending</c> (or <c>processing</c>
+    /// when <paramref name="allowProcessing"/> is true) to <c>cancelled</c> so concurrent
+    /// cancel/refund taps can never refund <c>AmountCents</c> into <c>ClearedCents</c> twice.
+    /// </summary>
+    public static async Task<bool> TryCancelCashout(GoodSortDbContext db, Guid id, bool allowProcessing)
+    {
+        var cancelledAt = DateTime.UtcNow;
+        try
+        {
+            var rows = allowProcessing
+                ? await db.CashoutRequests
+                    .Where(c => c.Id == id && (c.Status == "pending" || c.Status == "processing"))
+                    .ExecuteUpdateAsync(s => s
+                        .SetProperty(c => c.Status, "cancelled")
+                        .SetProperty(c => c.ProcessedAt, cancelledAt))
+                : await db.CashoutRequests
+                    .Where(c => c.Id == id && c.Status == "pending")
+                    .ExecuteUpdateAsync(s => s
+                        .SetProperty(c => c.Status, "cancelled")
+                        .SetProperty(c => c.ProcessedAt, cancelledAt));
+            return rows > 0;
+        }
+        catch (InvalidOperationException)
+        {
+            return await FallbackClaim(db, async () =>
+            {
+                var row = await db.CashoutRequests.FirstOrDefaultAsync(c =>
+                    c.Id == id && (c.Status == "pending" || (allowProcessing && c.Status == "processing")));
+                if (row is null) return false;
+                row.Status = "cancelled";
+                row.ProcessedAt = cancelledAt;
+                return true;
+            });
+        }
+    }
+
     private static readonly SemaphoreSlim[] UserStripes =
         Enumerable.Range(0, 64).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
 

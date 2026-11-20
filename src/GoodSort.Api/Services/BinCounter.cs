@@ -51,7 +51,9 @@ public static class BinCounter
         switch (material)
         {
             case "aluminium": materials.Aluminium += count; break;
-            case "pet": materials.Pet += count; break;
+            case "pet":
+            case "pet_clear":
+            case "pet_coloured": materials.Pet += count; break;
             case "glass": materials.Glass += count; break;
             default: materials.Other += count; break;
         }

@@ -4,10 +4,10 @@ public class PricingConfig
 {
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    // Per-container rate bounds (cents)
-    public int FloorCents { get; set; } = 3;
-    public int CeilingCents { get; set; } = 8;
-    public int BaseCents { get; set; } = 5;
+    // Per-container rate bounds (cents) — aligned to 3¢ target (2¢–4¢) so 10¢ sorter + 1¢ Mafia + 2¢–4¢ runner stays profitable under 17.68¢ COEX CRP
+    public int FloorCents { get; set; } = 2;
+    public int CeilingCents { get; set; } = 4;
+    public int BaseCents { get; set; } = 3;
 
     // Factor weights (must sum to ~1.0)
     public double DistanceEfficiencyWeight { get; set; } = 0.20;  // containers/km
@@ -26,8 +26,8 @@ public class PricingConfig
     // Level bonuses (cents added on top)
     public int BronzeBonus { get; set; }
     public int SilverBonus { get; set; }
-    public int GoldBonus { get; set; } = 1;
-    public int PlatinumBonus { get; set; } = 2;
+    public int GoldBonus { get; set; }
+    public int PlatinumBonus { get; set; } = 1;
 
     // Scrap reference prices (cents/kg)
     public int AluminiumSpotCents { get; set; } = 120; // ~$1.20/kg

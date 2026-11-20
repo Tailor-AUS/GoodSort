@@ -14,7 +14,7 @@ interface TomorrowPickups {
   runsClaimed: number;
   householdsUncovered: number;
   households: Array<{ id: string; name: string; address: string; pendingContainers: number; usesDivider: boolean; binIsOut: boolean; memberEmails: string[] }>;
-  runs: Array<{ id: string; status: string; areaName: string; estimatedContainers: number; perContainerCents: number; estimatedPayoutCents?: number; runnerName: string | null; runnerEmail: string | null; stops: number }>;
+  runs: Array<{ id: string; status: string; areaName: string; estimatedContainers: number; actualContainers?: number; depotVerifiedContainers?: number | null; coexDocketRef?: string | null; perContainerCents: number; estimatedPayoutCents?: number; runnerName: string | null; runnerEmail: string | null; stops: number }>;
 }
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -25,6 +25,10 @@ export default function AdminPickupsPage() {
   const [triggering, setTriggering] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [claimingRunId, setClaimingRunId] = useState<string | null>(null);
+  const [publishingRunId, setPublishingRunId] = useState<string | null>(null);
+  const [settlingRunId, setSettlingRunId] = useState<string | null>(null);
+  const [docketCounts, setDocketCounts] = useState<Record<string, string>>({});
+  const [docketRefs, setDocketRefs] = useState<Record<string, string>>({});
   const [triggerResult, setTriggerResult] = useState<string | null>(null);
 
   function reload() {
@@ -100,13 +104,76 @@ export default function AdminPickupsPage() {
     try {
       const claimed = await claimRun(runId);
       if (!claimed) {
-        setErr("Could not claim run. Register this account as a Runner at /runner/signup first (or finish any active run).");
+        setErr("Could not claim run. Register this account as a Runner at /runner/signup first, or click Publish to marketplace so a recruited Runner can claim it.");
         return;
       }
       setTriggerResult(`Claimed run for ${claimed.areaName}. Open /runner to collect or click Trigger reminders now.`);
       reload();
     } finally {
       setClaimingRunId(null);
+    }
+  }
+
+  async function handlePublishRun(runId: string) {
+    const token = localStorage.getItem("goodsort_token");
+    setPublishingRunId(runId);
+    setTriggerResult(null);
+    setErr(null);
+    try {
+      const res = await fetch(apiUrl(`/api/admin/marketplace/runs/${runId}/publish`), {
+        method: "POST",
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErr(j.error || `Publish failed (HTTP ${res.status})`);
+        return;
+      }
+      setTriggerResult("Published pilot run to the Runner marketplace (/runner).");
+      reload();
+    } catch {
+      setErr("Network error while publishing run.");
+    } finally {
+      setPublishingRunId(null);
+    }
+  }
+
+  async function handleSettleRun(r: TomorrowPickups["runs"][number]) {
+    const token = localStorage.getItem("goodsort_token");
+    const defaultCount = r.depotVerifiedContainers ?? r.actualContainers ?? r.estimatedContainers;
+    const rawCount = docketCounts[r.id] ?? String(defaultCount);
+    const parsedCount = Number.parseInt(rawCount, 10);
+    if (!Number.isFinite(parsedCount) || parsedCount < 0) {
+      setErr("Enter a valid non-negative depot verified container count.");
+      return;
+    }
+    const docket = (docketRefs[r.id] ?? r.coexDocketRef ?? "").trim();
+    setSettlingRunId(r.id);
+    setTriggerResult(null);
+    setErr(null);
+    try {
+      const res = await fetch(apiUrl(`/api/marketplace/runs/${r.id}/settle`), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          depotVerifiedContainers: parsedCount,
+          coexDocketRef: docket || undefined,
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErr(j.error || `Settle failed (HTTP ${res.status})`);
+        return;
+      }
+      setTriggerResult(`Settled ${r.areaName}: ${j.actualContainers} verified containers · $${((j.actualPayoutCents ?? 0) / 100).toFixed(2)} Runner · $${((j.householdPayoutCents ?? 0) / 100).toFixed(2)} Households.`);
+      reload();
+    } catch {
+      setErr("Network error while settling run.");
+    } finally {
+      setSettlingRunId(null);
     }
   }
 
@@ -163,33 +230,74 @@ export default function AdminPickupsPage() {
                     const payoutCents = r.estimatedPayoutCents ?? (r.perContainerCents * r.estimatedContainers);
                     const unclaimed = r.status === "available" || r.status === "below_threshold";
                     return (
-                      <div key={r.id} className="px-4 py-3 flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-[13px] font-medium text-slate-900">{r.areaName} · {r.stops} stop{r.stops === 1 ? "" : "s"} · ~{r.estimatedContainers} ctr</p>
-                          <p className="text-[11px] text-slate-400">
-                            {r.runnerName ? `Claimed by ${r.runnerName} (${r.runnerEmail})` : "Unclaimed"} · ${(payoutCents / 100).toFixed(2)} est. payout
-                          </p>
+                      <div key={r.id} className="px-4 py-3 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-[13px] font-medium text-slate-900">{r.areaName} · {r.stops} stop{r.stops === 1 ? "" : "s"} · ~{r.estimatedContainers} ctr</p>
+                            <p className="text-[11px] text-slate-400">
+                              {r.runnerName ? `Claimed by ${r.runnerName} (${r.runnerEmail})` : "Unclaimed"} · ${(payoutCents / 100).toFixed(2)} est. payout
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {r.status === "below_threshold" && (
+                              <button
+                                type="button"
+                                onClick={() => handlePublishRun(r.id)}
+                                disabled={publishingRunId === r.id}
+                                className="text-[11px] bg-violet-600 hover:bg-violet-700 text-white font-semibold px-2.5 py-1 rounded-lg disabled:opacity-50"
+                              >
+                                {publishingRunId === r.id ? "Publishing…" : "Publish to marketplace"}
+                              </button>
+                            )}
+                            {unclaimed ? (
+                              <button
+                                type="button"
+                                onClick={() => handleClaimRun(r.id)}
+                                disabled={claimingRunId === r.id}
+                                className="text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-2.5 py-1 rounded-lg disabled:opacity-50"
+                              >
+                                {claimingRunId === r.id ? "Claiming…" : "Claim run"}
+                              </button>
+                            ) : r.status !== "completed" ? (
+                              <Link
+                                href="/runner"
+                                className="text-[11px] bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold px-2.5 py-1 rounded-lg"
+                              >
+                                Open in Runner →
+                              </Link>
+                            ) : null}
+                            <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 ${r.status === "claimed" ? "bg-blue-100 text-blue-700" : r.status === "in_progress" || r.status === "delivering" ? "bg-green-100 text-green-700" : r.status === "completed" ? "bg-emerald-100 text-emerald-800" : r.status === "below_threshold" ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-700"}`}>{r.status}</span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {unclaimed ? (
+                        {r.status === "completed" && (
+                          <div className="bg-emerald-50/70 border border-emerald-200 rounded-lg p-2.5 flex flex-wrap items-center gap-2">
+                            <span className="text-[11px] font-semibold text-emerald-900">Verify depot docket:</span>
+                            <input
+                              type="number"
+                              min={0}
+                              aria-label="Depot verified container count"
+                              value={docketCounts[r.id] ?? String(r.depotVerifiedContainers ?? r.actualContainers ?? r.estimatedContainers)}
+                              onChange={(e) => setDocketCounts((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                              className="w-24 border border-emerald-300 rounded px-2 py-1 text-[12px] bg-white text-slate-900"
+                            />
+                            <input
+                              type="text"
+                              aria-label="COEX docket reference"
+                              placeholder="Docket ref (e.g. COEX-101)"
+                              value={docketRefs[r.id] ?? (r.coexDocketRef ?? "")}
+                              onChange={(e) => setDocketRefs((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                              className="flex-1 min-w-[140px] border border-emerald-300 rounded px-2 py-1 text-[12px] bg-white text-slate-900"
+                            />
                             <button
                               type="button"
-                              onClick={() => handleClaimRun(r.id)}
-                              disabled={claimingRunId === r.id}
-                              className="text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-2.5 py-1 rounded-lg disabled:opacity-50"
+                              onClick={() => handleSettleRun(r)}
+                              disabled={settlingRunId === r.id}
+                              className="text-[11px] bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3 py-1.5 rounded-lg disabled:opacity-50"
                             >
-                              {claimingRunId === r.id ? "Claiming…" : "Claim run"}
+                              {settlingRunId === r.id ? "Settling…" : "Verify & Settle"}
                             </button>
-                          ) : (
-                            <Link
-                              href="/runner"
-                              className="text-[11px] bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold px-2.5 py-1 rounded-lg"
-                            >
-                              Open in Runner →
-                            </Link>
-                          )}
-                          <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 ${r.status === "claimed" ? "bg-blue-100 text-blue-700" : r.status === "in_progress" || r.status === "delivering" ? "bg-green-100 text-green-700" : r.status === "below_threshold" ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-700"}`}>{r.status}</span>
-                        </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
