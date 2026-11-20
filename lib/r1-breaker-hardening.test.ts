@@ -66,10 +66,20 @@ describe("Revision R1 — TGS Breaker Hardening (F-01..F-16)", () => {
     const swa = JSON.parse(read("public/staticwebapp.config.json")) as {
       routes: Array<{ route: string; headers?: Record<string, string> }>;
     };
-    for (const expectedRoute of ["/opengraph-image", "/twitter-image", "/brisbane/*/opengraph-image"]) {
+    for (const expectedRoute of [
+      "/opengraph-image",
+      "/twitter-image",
+      "/brisbane/moorooka/opengraph-image",
+      "/brisbane/annerley/opengraph-image",
+      "/brisbane/tarragindi/opengraph-image",
+    ]) {
       const match = swa.routes.find((r) => r.route === expectedRoute);
       assert.ok(match, `Missing SWA route header for ${expectedRoute}`);
       assert.equal(match.headers?.["Content-Type"], "image/png");
+    }
+    // Azure SWA rejects mid-path wildcards like /brisbane/*/opengraph-image; wildcards must only trail.
+    for (const r of swa.routes) {
+      assert.doesNotMatch(r.route, /\*[^.]*\/|\*[^.]+$/);
     }
   });
 

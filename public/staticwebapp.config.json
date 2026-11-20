@@ -35,14 +35,42 @@
       }
     },
     {
-      "route": "/brisbane/*/opengraph-image",
+      "route": "/brisbane/moorooka/opengraph-image",
       "headers": {
         "Content-Type": "image/png",
         "Cache-Control": "public, max-age=3600"
       }
     },
     {
-      "route": "/brisbane/*/card",
+      "route": "/brisbane/annerley/opengraph-image",
+      "headers": {
+        "Content-Type": "image/png",
+        "Cache-Control": "public, max-age=3600"
+      }
+    },
+    {
+      "route": "/brisbane/tarragindi/opengraph-image",
+      "headers": {
+        "Content-Type": "image/png",
+        "Cache-Control": "public, max-age=3600"
+      }
+    },
+    {
+      "route": "/brisbane/moorooka/card",
+      "headers": {
+        "Content-Type": "image/png",
+        "Cache-Control": "public, max-age=3600"
+      }
+    },
+    {
+      "route": "/brisbane/annerley/card",
+      "headers": {
+        "Content-Type": "image/png",
+        "Cache-Control": "public, max-age=3600"
+      }
+    },
+    {
+      "route": "/brisbane/tarragindi/card",
       "headers": {
         "Content-Type": "image/png",
         "Cache-Control": "public, max-age=3600"
