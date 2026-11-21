@@ -130,14 +130,17 @@ jobs:
               exit 1
             fi
 
-            ACR_USER=$(az acr credential show -n acrnyjfw2pdfsrie --query username -o tsv)
-            ACR_PASS=$(az acr credential show -n acrnyjfw2pdfsrie --query "passwords[0].value" -o tsv)
+            ACR_IDENTITY=$(az containerapp show -n "$APP" -g "$RG" --query "properties.configuration.registries[0].identity" -o tsv)
+            if [ -z "$ACR_IDENTITY" ] || [ "$ACR_IDENTITY" = "None" ]; then
+              echo "::error title=Missing ACR Managed Identity::Could not resolve ACR pull identity from $APP. Refusing to deploy."
+              exit 1
+            fi
 
             if az containerapp job show -n "$JOB" -g "$RG" >/dev/null 2>&1; then
+              az containerapp job identity assign -n "$JOB" -g "$RG" --user-assigned "$ACR_IDENTITY" >/dev/null
               az containerapp job registry set -n "$JOB" -g "$RG" \
                 --server acrnyjfw2pdfsrie.azurecr.io \
-                --username "$ACR_USER" \
-                --password "$ACR_PASS" >/dev/null
+                --identity "$ACR_IDENTITY" >/dev/null
               az containerapp job secret set -n "$JOB" -g "$RG" \
                 --secrets "sql-cs=$SQL_CS" >/dev/null
               az containerapp job update -n "$JOB" -g "$RG" \
@@ -152,9 +155,9 @@ jobs:
                 --replica-completion-count 1 \
                 --parallelism 1 \
                 --image "$IMAGE" \
+                --mi-user-assigned "$ACR_IDENTITY" \
                 --registry-server acrnyjfw2pdfsrie.azurecr.io \
-                --registry-username "$ACR_USER" \
-                --registry-password "$ACR_PASS" \
+                --registry-identity "$ACR_IDENTITY" \
                 --cpu 0.5 --memory 1.0Gi \
                 --secrets "sql-cs=$SQL_CS" \
                 --env-vars "ConnectionStrings__goodsortdb=secretref:sql-cs" "ASPNETCORE_ENVIRONMENT=Production" "GOODSORT_MIGRATE_ONLY=true" >/dev/null
