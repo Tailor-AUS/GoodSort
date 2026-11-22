@@ -58,25 +58,23 @@ describe("Revision R1 — TGS Breaker Hardening (F-01..F-16)", () => {
     assert.ok(DISCREPANCY_OPTIONS.every((o) => !/wine/i.test(o.label)));
   });
 
-  it("F-07 & F-11: sw-init.js never reloads first-visit sessions and staticwebapp.config.json serves image/png for OpenGraph routes", () => {
+  it("F-07 & F-11: sw-init.js never reloads first-visit sessions and OpenGraph uses a real <300KB .jpg asset (never extensionless octet-stream)", () => {
     const swInit = read("public/sw-init.js");
     assert.match(swInit, /var hadController = Boolean\(navigator\.serviceWorker\.controller\)/);
     assert.match(swInit, /if \(!hadController \|\| refreshing\) return;/);
 
+    const seoSrc = read("app/seo.ts");
+    assert.match(seoSrc, /url:\s*"\/images\/og-thegoodsort\.jpg"/);
+    assert.match(read("app/brisbane/[suburb]/page.tsx"), /SOCIAL_IMAGE/);
+
+    const ogBytes = fs.readFileSync(path.join(ROOT, "public/images/og-thegoodsort.jpg"));
+    assert.equal(ogBytes[0], 0xff);
+    assert.equal(ogBytes[1], 0xd8);
+    assert.ok(ogBytes.length > 10_000 && ogBytes.length < 300_000, `OG JPEG size ${ogBytes.length} must stay under WhatsApp 300KB cap`);
+
     const swa = JSON.parse(read("public/staticwebapp.config.json")) as {
       routes: Array<{ route: string; headers?: Record<string, string> }>;
     };
-    for (const expectedRoute of [
-      "/opengraph-image",
-      "/twitter-image",
-      "/brisbane/moorooka/opengraph-image",
-      "/brisbane/annerley/opengraph-image",
-      "/brisbane/tarragindi/opengraph-image",
-    ]) {
-      const match = swa.routes.find((r) => r.route === expectedRoute);
-      assert.ok(match, `Missing SWA route header for ${expectedRoute}`);
-      assert.equal(match.headers?.["Content-Type"], "image/png");
-    }
     // Azure SWA rejects mid-path wildcards like /brisbane/*/opengraph-image; wildcards must only trail.
     for (const r of swa.routes) {
       assert.doesNotMatch(r.route, /\*[^.]*\/|\*[^.]+$/);

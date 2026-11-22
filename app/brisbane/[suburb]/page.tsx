@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { BRISBANE_SUBURBS, LIVE_VOLUME_THRESHOLD } from "@/lib/brisbane";
 import { MarketingHome } from "@/app/components/marketing/marketing-home";
-import { SITE_URL } from "@/app/seo";
+import { SITE_URL, SOCIAL_IMAGE } from "@/app/seo";
 
 export function generateStaticParams() {
   return BRISBANE_SUBURBS.map((s) => ({ suburb: s.slug }));
@@ -28,11 +28,13 @@ export async function generateMetadata({
       siteName: "The Good Sort",
       locale: "en_AU",
       type: "website",
+      images: [SOCIAL_IMAGE],
     },
     twitter: {
       card: "summary_large_image",
       title: `${found.name} | The Good Sort`,
       description,
+      images: [SOCIAL_IMAGE],
     },
   };
 }
