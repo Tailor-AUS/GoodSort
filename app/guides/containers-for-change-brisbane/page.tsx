@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { LIVE_VOLUME_THRESHOLD, wedgeSuburbs } from "@/lib/brisbane";
 import { Logo } from "@/app/components/shared/logo";
-import { SITE_URL } from "@/app/seo";
+import { SITE_URL, SOCIAL_IMAGE } from "@/app/seo";
 
 const PATH = "/guides/containers-for-change-brisbane";
 const TITLE = "Containers for Change in Brisbane";
@@ -20,6 +20,13 @@ export const metadata: Metadata = {
     siteName: "The Good Sort",
     locale: "en_AU",
     type: "article",
+    images: [SOCIAL_IMAGE],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${TITLE} | The Good Sort`,
+    description: DESCRIPTION,
+    images: [SOCIAL_IMAGE],
   },
 };
 
