@@ -60,7 +60,15 @@ public class DeployHookParityTests
         // remaining implementation cannot quietly undo it.
         var sh = File.ReadAllText(FindRepoFile(Path.Combine("infra", "restore-secrets.sh")));
 
-        foreach (var secret in new[] { "JWT_SECRET", "ACS_CONNECTION_STRING", "AZURE_OPENAI_KEY" })
+        foreach (var secret in new[]
+        {
+            "JWT_SECRET",
+            "ConnectionStrings__goodsortdb",
+            "ACS_CONNECTION_STRING",
+            "AZURE_OPENAI_KEY",
+            "TAILOR_VISION_API_KEY",
+            "PACT_VISION_API_KEY",
+        })
         {
             Assert.True(
                 sh.Contains($"{secret}=secretref:", StringComparison.Ordinal),

@@ -94,7 +94,14 @@ builder.Services.AddHttpClient("TailorVision", client =>
     client.BaseAddress = new Uri(url);
     if (!string.IsNullOrEmpty(key))
         client.DefaultRequestHeaders.Add("X-Api-Key", key);
-    client.Timeout = TimeSpan.FromSeconds(8); // Fast fail — fallback to Azure OpenAI if Tailor Vision is slow
+    client.Timeout = TimeSpan.FromSeconds(8); // Fast fail — fallback to PACT/Azure OpenAI if Tailor Vision is slow
+});
+
+builder.Services.AddHttpClient(VisionService.PactHttpClientName, client =>
+{
+    // Per-call timeout is enforced in VisionService via VISION_TIMEOUT_SECONDS
+    // and a linked CancellationTokenSource; keep a 65s ceiling on the client.
+    client.Timeout = TimeSpan.FromSeconds(65);
 });
 
 // JSON serialization — handle circular references (Run ↔ RunnerProfile)
@@ -2970,13 +2977,14 @@ app.MapGet("/api/admin/stats", async (GoodSortDbContext db, IConfiguration cfg) 
     var totalPending = await db.Profiles.SumAsync(p => p.PendingCents);
     var totalCleared = await db.Profiles.SumAsync(p => p.ClearedCents);
 
-    // Vision API call counter — for Tailor Vision cost tracking
+    // Vision API call counter — for Vision cost and route telemetry
     var since30d = DateTime.UtcNow.AddDays(-30);
     var since7d = DateTime.UtcNow.AddDays(-7);
     var visionTotal = await db.VisionCalls.CountAsync();
     var visionLast30d = await db.VisionCalls.CountAsync(v => v.CreatedAt >= since30d);
     var visionLast7d = await db.VisionCalls.CountAsync(v => v.CreatedAt >= since7d);
     var visionTailor = await db.VisionCalls.CountAsync(v => v.Provider == "tailor" && v.Success);
+    var visionPact = await db.VisionCalls.CountAsync(v => v.Provider == "pact" && v.Success);
     var visionOpenAi = await db.VisionCalls.CountAsync(v => v.Provider == "openai" && v.Success);
     var visionFailed = await db.VisionCalls.CountAsync(v => !v.Success);
 
@@ -3003,22 +3011,14 @@ app.MapGet("/api/admin/stats", async (GoodSortDbContext db, IConfiguration cfg) 
             last30d = visionLast30d,
             last7d = visionLast7d,
             tailor = visionTailor,
+            pact = visionPact,
             openai = visionOpenAi,
             failed = visionFailed,
         },
     });
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
-// ── Admin: Tailor Vision (AINK) health ──
-// We can't query AINK directly from here (it's the upstream billing system)
-// but we surface enough side-channel signal to know if Tailor
-// Vision is healthy and being billed:
-//   - last successful tailor call timestamp (proves end-to-end is working)
-//   - tailor success rate over the last hour and day
-//   - count of OpenAI fallbacks (each fallback = a Tailor Vision miss = we
-//     should NOT be billed for, but worth watching the ratio)
-//   - last failure with truncated error (so a 401 = revoked AINK key is
-//     obvious without trawling logs)
+// ── Admin: Vision provider health & latency telemetry ──
 app.MapGet("/api/admin/vision/health", async (GoodSortDbContext db, IConfiguration cfg) =>
 {
     var sinceHour = DateTime.UtcNow.AddHours(-1);
@@ -3031,19 +3031,19 @@ app.MapGet("/api/admin/vision/health", async (GoodSortDbContext db, IConfigurati
         .ToListAsync();
 
     var lastTailorOk = await db.VisionCalls
-        .Where(v => (v.Provider == "tailor" || v.Provider == "openai") && v.Success)
+        .Where(v => (v.Provider == "tailor" || v.Provider == "pact" || v.Provider == "openai") && v.Success)
         .OrderByDescending(v => v.CreatedAt)
         .Select(v => (DateTime?)v.CreatedAt)
         .FirstOrDefaultAsync();
 
     var lastTailorFail = await db.VisionCalls
-        .Where(v => (v.Provider == "tailor" || v.Provider == "openai") && !v.Success)
+        .Where(v => (v.Provider == "tailor" || v.Provider == "pact" || v.Provider == "openai") && !v.Success)
         .OrderByDescending(v => v.CreatedAt)
         .Select(v => new { v.CreatedAt, v.ErrorSummary })
         .FirstOrDefaultAsync();
 
     var tailorOkDurations = hourCalls
-        .Where(v => (v.Provider == "tailor" || v.Provider == "openai") && v.Success)
+        .Where(v => (v.Provider == "tailor" || v.Provider == "pact" || v.Provider == "openai") && v.Success)
         .Select(v => v.DurationMs)
         .ToList();
     var avgDurationMs = tailorOkDurations.Count > 0
@@ -3055,20 +3055,30 @@ app.MapGet("/api/admin/vision/health", async (GoodSortDbContext db, IConfigurati
 
     var tailorOk24h = Cnt("tailor", true);
     var tailorFail24h = Cnt("tailor", false);
+    var pactOk24h = Cnt("pact", true);
+    var pactFail24h = Cnt("pact", false);
     var openaiOk24h = Cnt("openai", true);
+    var openaiFail24h = Cnt("openai", false);
     var sovrgnOk24h = Cnt("sovrgn", true);
     // Denominator covers ALL provider attempts in last 24h to avoid NaN when
     // every call failed.
-    var totalAttempts24h = tailorOk24h + tailorFail24h + openaiOk24h + sovrgnOk24h;
+    var totalAttempts24h = tailorOk24h + tailorFail24h + pactOk24h + pactFail24h + openaiOk24h + openaiFail24h + sovrgnOk24h;
     var fallbackPct24h = totalAttempts24h > 0
         ? Math.Round(100.0 * (openaiOk24h + sovrgnOk24h) / totalAttempts24h, 1)
         : 0;
 
+    var pactConfigured = VisionService.IsPactConfigured(cfg);
+    var openAiConfigured = !string.IsNullOrEmpty(cfg["AZURE_OPENAI_ENDPOINT"]) && !string.IsNullOrEmpty(cfg["AZURE_OPENAI_KEY"]);
     var keyConfigured = !string.IsNullOrEmpty(cfg["TAILOR_VISION_API_KEY"])
-        || (!string.IsNullOrEmpty(cfg["AZURE_OPENAI_ENDPOINT"]) && !string.IsNullOrEmpty(cfg["AZURE_OPENAI_KEY"]));
+        || pactConfigured
+        || openAiConfigured;
 
-    // Coarse health verdict: green if we've had a tailor success in the last hour,
-    // amber if the key is configured but no recent success, red if no key.
+    var azureOpenAiDeployment = string.IsNullOrWhiteSpace(cfg["AZURE_OPENAI_DEPLOYMENT"])
+        ? VisionDefaults.OpenAiDeployment
+        : cfg["AZURE_OPENAI_DEPLOYMENT"]!.Trim();
+
+    // Coarse health verdict: green if we've had a vision success in the last hour,
+    // amber if a provider is configured but no recent success, red if none configured.
     var verdict = !keyConfigured
         ? "red:no-key"
         : (lastTailorOk.HasValue && lastTailorOk.Value >= sinceHour)
@@ -3079,13 +3089,19 @@ app.MapGet("/api/admin/vision/health", async (GoodSortDbContext db, IConfigurati
     {
         verdict,
         keyConfigured,
+        pactConfigured,
+        azureOpenAiDeployment,
+        imageDetail = VisionService.ResolveImageDetail(cfg["VISION_IMAGE_DETAIL"]),
         lastTailorSuccess = lastTailorOk,
         lastTailorFailure = lastTailorFail,
         last24h = new
         {
             tailorOk = tailorOk24h,
             tailorFailed = tailorFail24h,
+            pactOk = pactOk24h,
+            pactFailed = pactFail24h,
             openaiFallback = openaiOk24h,
+            openaiFailed = openaiFail24h,
             sovrgnFallback = sovrgnOk24h,
             fallbackPct = fallbackPct24h,
         },
@@ -3094,6 +3110,10 @@ app.MapGet("/api/admin/vision/health", async (GoodSortDbContext db, IConfigurati
             calls = hourCalls.Count,
             tailorSuccess = hourCalls.Count(v => v.Provider == "tailor" && v.Success),
             tailorFailure = hourCalls.Count(v => v.Provider == "tailor" && !v.Success),
+            pactSuccess = hourCalls.Count(v => v.Provider == "pact" && v.Success),
+            pactFailure = hourCalls.Count(v => v.Provider == "pact" && !v.Success),
+            openaiSuccess = hourCalls.Count(v => v.Provider == "openai" && v.Success),
+            openaiFailure = hourCalls.Count(v => v.Provider == "openai" && !v.Success),
             avgTailorDurationMs = avgDurationMs,
         },
     });

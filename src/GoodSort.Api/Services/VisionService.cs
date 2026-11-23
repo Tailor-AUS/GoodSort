@@ -1,5 +1,6 @@
 using System.ClientModel;
 using System.Diagnostics;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -13,6 +14,8 @@ namespace GoodSort.Api.Services;
 
 public class VisionService
 {
+    public const string PactHttpClientName = "PactVision";
+
     private readonly IConfiguration _config;
     private readonly ILogger<VisionService> _logger;
     private readonly IHttpClientFactory _httpFactory;
@@ -28,8 +31,11 @@ public class VisionService
 
     public async Task<VisionResult> IdentifyContainers(string base64Image, Guid? userId = null)
     {
-        // Tailor Vision (TV) takes priority; LLM fallback routes via Sovrgn
-        // when configured, then Azure OpenAI.
+        // Priority:
+        //   1. Tailor Vision API (TAILOR_VISION_API_KEY) if configured
+        //   2. PACT / Sovrgn OpenAI-compatible vision gateway (PACT_VISION_URL + PACT_VISION_API_KEY)
+        //      — fail-closed when unset or malformed, falls back to Azure OpenAI on error/timeout
+        //   3. Standalone Azure OpenAI (AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_KEY + AZURE_OPENAI_DEPLOYMENT)
         var tvApiKey = _config["TAILOR_VISION_API_KEY"] ?? "";
 
         if (!string.IsNullOrEmpty(tvApiKey))
@@ -175,7 +181,7 @@ public class VisionService
         return c;
     }
 
-    // ── LLM fallback: Sovrgn (preferred) → Azure OpenAI ───────────────────
+    // ── LLM fallback: PACT/Sovrgn gateway (opt-in, fail-closed) → Azure OpenAI ──
 
     private static readonly string ContainerPrompt = @"You are a fun, friendly container recycling identification system for the QLD Container Refund Scheme (Containers for Change), called The Good Sort.
 
@@ -226,15 +232,338 @@ No containers (blurry):
 {""containers"":[],""message"":""Bit blurry — try getting closer with the camera steady. I'll sort it once I can see it!""}
 ";
 
+    private static readonly HashSet<string> NonReasoningFastModels = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "gpt-4.1",
+        "gpt-4.1-mini",
+        "gpt-4.1-nano",
+        "gpt-4o",
+        "gpt-4o-mini",
+        "tailor-brain",
+        "au-inregion-gpt-41-mini",
+        "au-inregion-gpt-4o",
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+    };
+
+    /// <summary>
+    /// True when <paramref name="model"/> is a known non-reasoning vision model
+    /// where a tight output token ceiling and low temperature are safe and speed up
+    /// inference. Reasoning models (gpt-5*, o1/o3/o4) and capability aliases that
+    /// may resolve to reasoning models (e.g. tailor-fast) return false so we never
+    /// send an unsupported temperature or starve reasoning tokens.
+    /// </summary>
+    public static bool IsNonReasoningFastModel(string? model) =>
+        !string.IsNullOrWhiteSpace(model) && NonReasoningFastModels.Contains(model.Trim());
+
+    /// <summary>
+    /// Validates and normalizes <c>PACT_VISION_URL</c> into an OpenAI-compatible
+    /// <c>/v1/chat/completions</c> URI. Returns null (fail-closed) when missing,
+    /// non-HTTP(S), or carrying embedded credentials.
+    /// </summary>
+    public static Uri? BuildPactChatCompletionsUri(string? rawUrl)
+    {
+        if (string.IsNullOrWhiteSpace(rawUrl))
+            return null;
+
+        if (!Uri.TryCreate(rawUrl.Trim(), UriKind.Absolute, out var baseUri))
+            return null;
+
+        if (baseUri.Scheme != Uri.UriSchemeHttps && baseUri.Scheme != Uri.UriSchemeHttp)
+            return null;
+
+        if (string.IsNullOrWhiteSpace(baseUri.Host) || !string.IsNullOrEmpty(baseUri.UserInfo))
+            return null;
+
+        var trimmed = baseUri.GetLeftPart(UriPartial.Path).TrimEnd('/');
+        if (trimmed.EndsWith("/chat/completions", StringComparison.OrdinalIgnoreCase))
+            return new Uri(trimmed);
+        if (trimmed.EndsWith("/v1", StringComparison.OrdinalIgnoreCase))
+            return new Uri($"{trimmed}/chat/completions");
+
+        return new Uri($"{trimmed}/v1/chat/completions");
+    }
+
+    public static bool IsPactConfigured(IConfiguration config) =>
+        !string.IsNullOrWhiteSpace(config["PACT_VISION_API_KEY"])
+        && BuildPactChatCompletionsUri(config["PACT_VISION_URL"]) is not null;
+
+    public static string ResolveImageDetail(string? configured) =>
+        (configured ?? "").Trim().ToLowerInvariant() switch
+        {
+            "low" => "low",
+            "high" => "high",
+            "auto" => "auto",
+            _ => VisionDefaults.ImageDetail,
+        };
+
+    public static ChatImageDetailLevel ResolveAzureImageDetail(string? configured) =>
+        ResolveImageDetail(configured) switch
+        {
+            "high" => ChatImageDetailLevel.High,
+            "auto" => ChatImageDetailLevel.Auto,
+            _ => ChatImageDetailLevel.Low,
+        };
+
+    public static TimeSpan ResolveTimeout(IConfiguration config)
+    {
+        var seconds = int.TryParse(config["VISION_TIMEOUT_SECONDS"], out var parsed)
+            ? parsed
+            : VisionDefaults.TimeoutSeconds;
+        return TimeSpan.FromSeconds(Math.Clamp(seconds, 3, 60));
+    }
+
+    public static ChatCompletionOptions BuildAzureChatOptions(string deploymentName)
+    {
+        var options = new ChatCompletionOptions
+        {
+            ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat(),
+        };
+
+        if (IsNonReasoningFastModel(deploymentName))
+        {
+            options.MaxOutputTokenCount = VisionDefaults.NonReasoningMaxOutputTokens;
+            options.Temperature = 0.2f;
+        }
+
+        return options;
+    }
+
+    public static string BuildPactChatPayload(string model, string base64Image, string imageDetail)
+    {
+        var dataUri = NormalizeImageDataUri(base64Image);
+        using var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("model", model);
+
+            writer.WritePropertyName("messages");
+            writer.WriteStartArray();
+            writer.WriteStartObject();
+            writer.WriteString("role", "user");
+            writer.WritePropertyName("content");
+            writer.WriteStartArray();
+
+            writer.WriteStartObject();
+            writer.WriteString("type", "text");
+            writer.WriteString("text", ContainerPrompt);
+            writer.WriteEndObject();
+
+            writer.WriteStartObject();
+            writer.WriteString("type", "image_url");
+            writer.WritePropertyName("image_url");
+            writer.WriteStartObject();
+            writer.WriteString("url", dataUri);
+            writer.WriteString("detail", ResolveImageDetail(imageDetail));
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+            writer.WriteEndArray();
+
+            writer.WritePropertyName("response_format");
+            writer.WriteStartObject();
+            writer.WriteString("type", "json_object");
+            writer.WriteEndObject();
+
+            if (IsNonReasoningFastModel(model))
+            {
+                writer.WriteNumber("temperature", 0.2);
+                writer.WriteNumber("max_tokens", VisionDefaults.NonReasoningMaxOutputTokens);
+            }
+
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(buffer.ToArray());
+    }
+
+    public static string? ExtractOpenAiCompletionText(string responseJson)
+    {
+        if (string.IsNullOrWhiteSpace(responseJson))
+            return null;
+
+        using var doc = JsonDocument.Parse(responseJson);
+        if (!doc.RootElement.TryGetProperty("choices", out var choices)
+            || choices.ValueKind != JsonValueKind.Array
+            || choices.GetArrayLength() == 0)
+        {
+            return null;
+        }
+
+        var first = choices[0];
+        if (!first.TryGetProperty("message", out var message)
+            || message.ValueKind != JsonValueKind.Object
+            || !message.TryGetProperty("content", out var content))
+        {
+            return null;
+        }
+
+        if (content.ValueKind == JsonValueKind.String)
+            return content.GetString();
+
+        if (content.ValueKind == JsonValueKind.Array)
+        {
+            var sb = new StringBuilder();
+            foreach (var part in content.EnumerateArray())
+            {
+                if (part.ValueKind == JsonValueKind.Object
+                    && part.TryGetProperty("text", out var text)
+                    && text.ValueKind == JsonValueKind.String)
+                {
+                    if (sb.Length > 0) sb.Append('\n');
+                    sb.Append(text.GetString());
+                }
+            }
+            return sb.Length > 0 ? sb.ToString() : null;
+        }
+
+        return null;
+    }
+
+    private static string NormalizeImageDataUri(string base64Image)
+    {
+        var trimmed = (base64Image ?? "").Trim();
+        var mime = "image/jpeg";
+        var raw = trimmed;
+        if (trimmed.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+        {
+            var comma = trimmed.IndexOf(',');
+            if (comma > 5)
+            {
+                var header = trimmed[5..comma];
+                var semi = header.IndexOf(';');
+                var parsedMime = (semi > 0 ? header[..semi] : header).Trim().ToLowerInvariant();
+                if (parsedMime is "image/jpeg" or "image/png" or "image/webp")
+                    mime = parsedMime;
+                raw = trimmed[(comma + 1)..];
+            }
+        }
+        // Validate base64 cleanly so malformed input never leaves our boundary.
+        _ = Convert.FromBase64String(raw);
+        return $"data:{mime};base64,{raw}";
+    }
+
     private async Task<VisionResult> IdentifyViaLlmFallback(string base64Image, Guid? userId)
     {
-        // Direct Sovrgn consumers were revoked (TailorAU/tailor-app#5223).
-        // A leftover SOVRGN_API_KEY must not be sent at api.sovrgn.ai.
+        // Legacy direct Sovrgn consumer keys were revoked (TailorAU/tailor-app#5223).
+        // A leftover SOVRGN_API_KEY must never be sent or promoted to PACT_VISION_API_KEY.
         if (!string.IsNullOrEmpty(_config["SOVRGN_API_KEY"]))
         {
-            _logger.LogWarning("SOVRGN_API_KEY is set but The Good Sort is not a Sovrgn consumer — using Azure OpenAI");
+            _logger.LogWarning("SOVRGN_API_KEY is set but revoked (TailorAU/tailor-app#5223) — ignoring legacy key");
         }
+
+        // Opt-in PACT / Sovrgn OpenAI-compatible vision router (fail-closed when unset/invalid).
+        var pactApiKey = (_config["PACT_VISION_API_KEY"] ?? "").Trim();
+        var pactRawUrl = _config["PACT_VISION_URL"];
+        if (!string.IsNullOrEmpty(pactApiKey))
+        {
+            var pactUri = BuildPactChatCompletionsUri(pactRawUrl);
+            if (pactUri is null)
+            {
+                _logger.LogWarning("PACT_VISION_API_KEY is set but PACT_VISION_URL is missing or invalid — fail-closed, falling back to Azure OpenAI");
+            }
+            else
+            {
+                var pactModel = string.IsNullOrWhiteSpace(_config["PACT_VISION_MODEL"])
+                    ? VisionDefaults.PactModel
+                    : _config["PACT_VISION_MODEL"]!.Trim();
+                var pactResult = await IdentifyViaPactGateway(pactUri, pactApiKey, pactModel, base64Image, userId);
+                if (pactResult is not null)
+                    return pactResult;
+
+                _logger.LogInformation("PACT vision gateway failed — falling back to standalone Azure OpenAI");
+            }
+        }
+
         return await IdentifyViaAzureOpenAI(base64Image, userId);
+    }
+
+    private async Task<VisionResult?> IdentifyViaPactGateway(
+        Uri endpointUri,
+        string apiKey,
+        string model,
+        string base64Image,
+        Guid? userId)
+    {
+        var sw = Stopwatch.StartNew();
+        var timeout = ResolveTimeout(_config);
+        var imageDetail = ResolveImageDetail(_config["VISION_IMAGE_DETAIL"]);
+        try
+        {
+            var payload = BuildPactChatPayload(model, base64Image, imageDetail);
+            var client = _httpFactory.CreateClient(PactHttpClientName);
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, endpointUri)
+            {
+                Content = new StringContent(payload, Encoding.UTF8, "application/json"),
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+            request.Headers.TryAddWithoutValidation("X-Sovrgn-Tenant", "goodsort");
+
+            using var cts = new CancellationTokenSource(timeout);
+            _logger.LogInformation("Calling PACT vision gateway ({Host}, model={Model}, detail={Detail}, timeout={TimeoutSec}s)",
+                endpointUri.Host, model, imageDetail, (int)timeout.TotalSeconds);
+
+            using var response = await client.SendAsync(request, cts.Token);
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(cts.Token);
+                _logger.LogWarning("PACT vision gateway returned HTTP {Status} in {ElapsedMs}ms: {Body}",
+                    (int)response.StatusCode, sw.ElapsedMilliseconds, Truncate(errorBody, 200));
+                await LogCall("pact", success: false, containerCount: 0, sw.ElapsedMilliseconds, userId,
+                    errorSummary: $"HTTP {(int)response.StatusCode}: {errorBody}");
+                return null;
+            }
+
+            var responseJson = await response.Content.ReadAsStringAsync(cts.Token);
+            var servedModel = response.Headers.TryGetValues("X-Sovrgn-Model", out var mVals) ? mVals.FirstOrDefault() : null;
+            var servedRegion = response.Headers.TryGetValues("X-Sovrgn-Region", out var rVals) ? rVals.FirstOrDefault() : null;
+            var servedProcessing = response.Headers.TryGetValues("X-Sovrgn-Processing", out var pVals) ? pVals.FirstOrDefault() : null;
+
+            var text = ExtractOpenAiCompletionText(responseJson);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                _logger.LogWarning("PACT vision gateway returned empty content in {ElapsedMs}ms (servedModel={ServedModel})",
+                    sw.ElapsedMilliseconds, servedModel ?? model);
+                await LogCall("pact", success: false, containerCount: 0, sw.ElapsedMilliseconds, userId,
+                    errorSummary: "Empty completion content");
+                return null;
+            }
+
+            var parsed = ParseChatVisionJson(text);
+            if (parsed is null)
+            {
+                await LogCall("pact", success: false, containerCount: 0, sw.ElapsedMilliseconds, userId,
+                    errorSummary: "Unparseable completion JSON");
+                return null;
+            }
+
+            _logger.LogInformation(
+                "PACT vision identified {Count} container types in {ElapsedMs}ms (servedModel={ServedModel}, region={Region}, processing={Processing})",
+                parsed.Containers.Count, sw.ElapsedMilliseconds,
+                servedModel ?? model, servedRegion ?? "unknown", servedProcessing ?? "unknown");
+            await LogCall("pact", success: true, containerCount: parsed.Containers.Sum(c => c.Count), sw.ElapsedMilliseconds, userId);
+            return parsed;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("PACT vision gateway timed out after {TimeoutSec}s ({ElapsedMs}ms)",
+                (int)timeout.TotalSeconds, sw.ElapsedMilliseconds);
+            await LogCall("pact", success: false, containerCount: 0, sw.ElapsedMilliseconds, userId,
+                errorSummary: $"Timeout after {(int)timeout.TotalSeconds}s");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "PACT vision gateway call failed in {ElapsedMs}ms", sw.ElapsedMilliseconds);
+            await LogCall("pact", success: false, containerCount: 0, sw.ElapsedMilliseconds, userId,
+                errorSummary: ex.Message);
+            return null;
+        }
     }
 
     private async Task<VisionResult> IdentifyViaAzureOpenAI(string base64Image, Guid? userId)
@@ -252,29 +581,38 @@ No containers (blurry):
         // through to "Something went wrong analysing that photo", with the
         // cause buried in an Azure OpenAI 404. A fallback should name something
         // that exists.
-        var deploymentName = _config["AZURE_OPENAI_DEPLOYMENT"] ?? VisionDefaults.OpenAiDeployment;
+        var deploymentName = string.IsNullOrWhiteSpace(_config["AZURE_OPENAI_DEPLOYMENT"])
+            ? VisionDefaults.OpenAiDeployment
+            : _config["AZURE_OPENAI_DEPLOYMENT"]!.Trim();
 
         if (string.IsNullOrWhiteSpace(apiKey)
             || !Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri)
             || (endpointUri.Scheme != Uri.UriSchemeHttps && endpointUri.Scheme != Uri.UriSchemeHttp))
         {
-            _logger.LogError("No valid vision API configured (neither Tailor Vision nor valid Azure OpenAI endpoint/key)");
+            _logger.LogError("No valid vision API configured (neither Tailor Vision, PACT gateway, nor valid Azure OpenAI endpoint/key)");
             await LogCall("none", success: false, containerCount: 0, 0, userId,
                 errorSummary: "No vision provider configured");
             return new VisionResult { Message = "Photo scan is temporarily unavailable. Please try again later." };
         }
 
         var client = new AzureOpenAIClient(endpointUri, new ApiKeyCredential(apiKey));
-        var result = await RunChatVision(client.GetChatClient(deploymentName), "openai", base64Image, userId);
+        var result = await RunChatVision(client.GetChatClient(deploymentName), "openai", deploymentName, base64Image, userId);
         return result ?? new VisionResult { Message = "Something went wrong analysing that photo. Give it another go!" };
     }
 
     // Shared chat-vision path for OpenAI-compatible providers (Azure OpenAI).
     // Returns null on failure; the failure is logged to VisionCalls under the
     // given provider name.
-    private async Task<VisionResult?> RunChatVision(ChatClient chatClient, string provider, string base64Image, Guid? userId)
+    private async Task<VisionResult?> RunChatVision(
+        ChatClient chatClient,
+        string provider,
+        string deploymentName,
+        string base64Image,
+        Guid? userId)
     {
         var sw = Stopwatch.StartNew();
+        var timeout = ResolveTimeout(_config);
+        var detail = ResolveAzureImageDetail(_config["VISION_IMAGE_DETAIL"]);
         try
         {
             // Defensively strip any data-URI prefix (the Tailor path does this too)
@@ -282,7 +620,8 @@ No containers (blurry):
             var rawBase64 = base64Image.Contains(',') ? base64Image.Split(',')[1] : base64Image;
             var imageContent = ChatMessageContentPart.CreateImagePart(
                 BinaryData.FromBytes(Convert.FromBase64String(rawBase64)),
-                "image/jpeg"
+                "image/jpeg",
+                detail
             );
             var promptPart = ChatMessageContentPart.CreateTextPart(ContainerPrompt);
 
@@ -291,8 +630,12 @@ No containers (blurry):
                 new UserChatMessage(promptPart, imageContent)
             };
 
-            _logger.LogInformation("Calling {Provider} chat vision (fallback path)", provider);
-            var response = await chatClient.CompleteChatAsync(messages);
+            var options = BuildAzureChatOptions(deploymentName);
+            using var cts = new CancellationTokenSource(timeout);
+
+            _logger.LogInformation("Calling {Provider} chat vision (deployment={Deployment}, detail={Detail}, timeout={TimeoutSec}s)",
+                provider, deploymentName, detail, (int)timeout.TotalSeconds);
+            var response = await chatClient.CompleteChatAsync(messages, options, cts.Token);
             if (response.Value.Content.Count == 0 || string.IsNullOrWhiteSpace(response.Value.Content[0].Text))
             {
                 await LogCall(provider, success: true, containerCount: 0, sw.ElapsedMilliseconds, userId);
@@ -305,8 +648,8 @@ No containers (blurry):
             var parsed = ParseChatVisionJson(response.Value.Content[0].Text);
             if (parsed != null)
             {
-                _logger.LogInformation("{Provider} identified {Count} container types, message: {Message}",
-                    provider, parsed.Containers.Count, parsed.Message);
+                _logger.LogInformation("{Provider} ({Deployment}) identified {Count} container types in {ElapsedMs}ms, message: {Message}",
+                    provider, deploymentName, parsed.Containers.Count, sw.ElapsedMilliseconds, parsed.Message);
                 await LogCall(provider, success: true, containerCount: parsed.Containers.Sum(c => c.Count), sw.ElapsedMilliseconds, userId);
                 return parsed;
             }
@@ -318,9 +661,18 @@ No containers (blurry):
                 Message = "No containers spotted — try pointing the camera at a can or bottle!",
             };
         }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("{Provider} ({Deployment}) chat vision timed out after {TimeoutSec}s ({ElapsedMs}ms)",
+                provider, deploymentName, (int)timeout.TotalSeconds, sw.ElapsedMilliseconds);
+            await LogCall(provider, success: false, containerCount: 0, sw.ElapsedMilliseconds, userId,
+                errorSummary: $"Timeout after {(int)timeout.TotalSeconds}s");
+            return null;
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "{Provider} chat vision call failed", provider);
+            _logger.LogError(ex, "{Provider} ({Deployment}) chat vision call failed in {ElapsedMs}ms",
+                provider, deploymentName, sw.ElapsedMilliseconds);
             await LogCall(provider, success: false, containerCount: 0, sw.ElapsedMilliseconds, userId,
                 errorSummary: ex.Message);
             return null;

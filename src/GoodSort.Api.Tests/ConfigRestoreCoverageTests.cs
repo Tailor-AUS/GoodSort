@@ -62,6 +62,8 @@ public class ConfigRestoreCoverageTests
         ["LAUNCH_BONUS_CONTAINERS"] = "Falls back to LaunchBonus.DefaultCapContainers, which is the intended cap.",
         ["VISION_DAILY_CAP"] = "Defaults to 2000 - the intended global spend cap.",
         ["VISION_PER_USER_DAILY_CAP"] = "Defaults to 100 - the intended per-member cap.",
+        ["VISION_IMAGE_DETAIL"] = "Defaults to 'low' (single low-res tile, matching tailor-app VisionClassificationService) - safe and faster default.",
+        ["VISION_TIMEOUT_SECONDS"] = "Defaults to 15s (clamped 3..60s) - bounds slow upstream calls cleanly.",
         ["SCAN_DAILY_CAP"] = "Defaults to 2000, the documented faucet limit.",
         ["SCAN_RATE_PER_MINUTE"] = "Defaults to 60, the documented faucet limit.",
         ["OTP_IP_RATE_PER_MINUTE"] = "Defaults to 30/min per IP on /api/auth/send-otp, blunting scripted ACS exhaustion.",
