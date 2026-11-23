@@ -13,13 +13,17 @@
 set -euo pipefail
 
 STRICT=0
-if [ "${1:-}" = "--strict" ]; then
-  STRICT=1
-  shift
-fi
+POSITIONAL=()
+for arg in "$@"; do
+  if [ "$arg" = "--strict" ]; then
+    STRICT=1
+  else
+    POSITIONAL+=("$arg")
+  fi
+done
 
-RG="${1:-rg-GoodSort}"
-APP="${2:-api}"
+RG="${POSITIONAL[0]:-rg-GoodSort}"
+APP="${POSITIONAL[1]:-api}"
 
 SENSITIVE_KEYS=(
   JWT_SECRET
