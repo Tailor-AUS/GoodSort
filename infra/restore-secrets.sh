@@ -5,27 +5,38 @@
 # Values are read from the azd environment (.azure/<env>/.env), which is
 # gitignored. Set them with:
 #   azd env set JWT_SECRET "..."
-#   azd env set TAILOR_VISION_API_KEY "..."
-#   azd env set TAILOR_VISION_API_URL "..."
 #   azd env set ACS_CONNECTION_STRING "..."
 #   azd env set ACS_EMAIL_SENDER "..."
 #   azd env set AZURE_OPENAI_ENDPOINT "..."
 #   azd env set AZURE_OPENAI_KEY "..."
 #   azd env set AZURE_OPENAI_DEPLOYMENT "..."
 #   azd env set GOODSORTDB_CONNECTION_STRING "..."
+# Optional vision routes (fail-closed when unset):
+#   azd env set TAILOR_VISION_API_KEY "..."
+#   azd env set TAILOR_VISION_API_URL "..."
+#   azd env set PACT_VISION_API_KEY "..."
+#   azd env set PACT_VISION_URL "https://api.sovrgn.ai/v1"
+#   azd env set PACT_VISION_MODEL "tailor-fast"
 
 set -euo pipefail
 
-# gpt-5-mini is the deployment in oai-goodsort-prod verified to work
-# for vision classification.
+# gpt-5-mini is the baseline deployment in oai-goodsort-prod verified to work
+# for vision classification (override via AZURE_OPENAI_DEPLOYMENT once a faster
+# non-reasoning deployment such as gpt-4.1-mini is provisioned).
 AZURE_OPENAI_DEPLOYMENT="${AZURE_OPENAI_DEPLOYMENT:-gpt-5-mini}"
 TAILOR_VISION_API_KEY="${TAILOR_VISION_API_KEY:-}"
 TAILOR_VISION_API_URL="${TAILOR_VISION_API_URL:-}"
+PACT_VISION_API_KEY="${PACT_VISION_API_KEY:-}"
+PACT_VISION_URL="${PACT_VISION_URL:-}"
+PACT_VISION_MODEL="${PACT_VISION_MODEL:-tailor-fast}"
 
 REQUIRED=(JWT_SECRET
           ACS_CONNECTION_STRING ACS_EMAIL_SENDER
           AZURE_OPENAI_ENDPOINT AZURE_OPENAI_KEY AZURE_OPENAI_DEPLOYMENT
           GOODSORTDB_CONNECTION_STRING)
+
+OPTIONAL=(TAILOR_VISION_API_KEY TAILOR_VISION_API_URL
+          PACT_VISION_API_KEY PACT_VISION_URL PACT_VISION_MODEL)
 
 missing=()
 for k in "${REQUIRED[@]}"; do
@@ -55,7 +66,7 @@ fi
 #
 # None of that surfaces as an error. The deploy succeeds and the app starts.
 BAD_ESCAPES=()
-for k in "${REQUIRED[@]}"; do
+for k in "${REQUIRED[@]}" "${OPTIONAL[@]}"; do
   v="${!k:-}"
   case "$v" in
     *"\r"|*"\n"|*"\t"|*"\!"*) BAD_ESCAPES+=("$k") ;;
@@ -97,24 +108,64 @@ esac
 
 # Credentials go in Container App secrets, not plaintext env vars. They were
 # plaintext until 2026-08-31, which meant anyone with read access on the app
-# could read the database connection string, the JWT signing key and two API
-# keys straight out of `az containerapp show`.
+# could read the database connection string, the JWT signing key and API keys
+# straight out of `az containerapp show`.
+#
+# Optional secrets (Tailor Vision, PACT Vision) are registered ONLY when
+# non-empty because Azure Container Apps rejects empty secret values.
+SECRET_ARGS=(
+  "jwt-secret=$JWT_SECRET"
+  "acs-connection-string=$ACS_CONNECTION_STRING"
+  "azure-openai-key=$AZURE_OPENAI_KEY"
+  "goodsortdb-connection-string=$GOODSORTDB_CONNECTION_STRING"
+)
+
+ENV_ARGS=(
+  "JWT_SECRET=secretref:jwt-secret"
+  "ACS_CONNECTION_STRING=secretref:acs-connection-string"
+  "ACS_EMAIL_SENDER=$ACS_EMAIL_SENDER"
+  "AZURE_OPENAI_ENDPOINT=$AZURE_OPENAI_ENDPOINT"
+  "AZURE_OPENAI_KEY=secretref:azure-openai-key"
+  "AZURE_OPENAI_DEPLOYMENT=$AZURE_OPENAI_DEPLOYMENT"
+  "ConnectionStrings__goodsortdb=secretref:goodsortdb-connection-string"
+)
+
+if [ -n "$TAILOR_VISION_API_KEY" ]; then
+  SECRET_ARGS+=("tailor-vision-api-key=$TAILOR_VISION_API_KEY")
+  ENV_ARGS+=("TAILOR_VISION_API_KEY=secretref:tailor-vision-api-key")
+  if [ -n "$TAILOR_VISION_API_URL" ]; then
+    ENV_ARGS+=("TAILOR_VISION_API_URL=$TAILOR_VISION_API_URL")
+  fi
+fi
+
+if [ -n "$PACT_VISION_API_KEY" ] && [ -n "$PACT_VISION_URL" ]; then
+  SECRET_ARGS+=("pact-vision-api-key=$PACT_VISION_API_KEY")
+  ENV_ARGS+=(
+    "PACT_VISION_API_KEY=secretref:pact-vision-api-key"
+    "PACT_VISION_URL=$PACT_VISION_URL"
+    "PACT_VISION_MODEL=$PACT_VISION_MODEL"
+  )
+fi
+
 echo "Storing credentials as Container App secrets..."
-az containerapp secret set -n "$APP" -g "$RG" --secrets     "jwt-secret=$JWT_SECRET"     "tailor-vision-api-key=$TAILOR_VISION_API_KEY"     "acs-connection-string=$ACS_CONNECTION_STRING"     "azure-openai-key=$AZURE_OPENAI_KEY"     "goodsortdb-connection-string=$GOODSORTDB_CONNECTION_STRING"   --output none
+az containerapp secret set -n "$APP" -g "$RG" --secrets "${SECRET_ARGS[@]}" --output none
 
 echo "Restoring env vars on $APP in $RG..."
-az containerapp update -n "$APP" -g "$RG"   --set-env-vars     "JWT_SECRET=secretref:jwt-secret"     "TAILOR_VISION_API_KEY=secretref:tailor-vision-api-key"     "TAILOR_VISION_API_URL=$TAILOR_VISION_API_URL"     "ACS_CONNECTION_STRING=secretref:acs-connection-string"     "ACS_EMAIL_SENDER=$ACS_EMAIL_SENDER"     "AZURE_OPENAI_ENDPOINT=$AZURE_OPENAI_ENDPOINT"     "AZURE_OPENAI_KEY=secretref:azure-openai-key"     "AZURE_OPENAI_DEPLOYMENT=$AZURE_OPENAI_DEPLOYMENT"     "ConnectionStrings__goodsortdb=secretref:goodsortdb-connection-string"   --output none
+az containerapp update -n "$APP" -g "$RG" --set-env-vars "${ENV_ARGS[@]}" --output none
 
 echo "Env vars restored."
 
-# Direct Sovrgn consumers were revoked (TailorAU/tailor-app#5223). Strip any
-# leftover SOVRGN_* so the next azd deploy cannot re-inject a dead bearer.
+# Direct legacy Sovrgn consumers were revoked (TailorAU/tailor-app#5223). Strip
+# any leftover SOVRGN_* so the next azd deploy cannot re-inject a dead bearer.
 az containerapp update -n "$APP" -g "$RG" \
   --remove-env-vars SOVRGN_API_KEY SOVRGN_API_URL SOVRGN_MODEL \
   --output none || true
 if [ -n "${SOVRGN_API_KEY:-}" ]; then
   echo "WARNING: SOVRGN_API_KEY is set in azd env but will not be restored (revoked)."
 fi
+
+# Verify no sensitive env var reverted to plaintext.
+bash "$(dirname "$0")/../scripts/check-secretref-hygiene.sh" --strict "$RG" "$APP"
 
 # thegoodsort.org must stay linked to goodsort-comm or every OTP fails with
 # DomainNotLinked. One implementation, shared with both workflows — this used

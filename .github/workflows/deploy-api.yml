@@ -11,6 +11,7 @@ on:
       - 'Dockerfile'
       - '.github/workflows/deploy-api.yml'
       - 'scripts/ensure-openai-provisioned.sh'
+      - 'scripts/check-secretref-hygiene.sh'
 
 jobs:
   deploy:
@@ -120,6 +121,9 @@ jobs:
               SQL_CS=$(az containerapp secret show -n "$APP" -g "$RG" --secret-name "$SECRET_REF" --query value -o tsv 2>/dev/null || true)
             fi
             if [ -z "$SQL_CS" ]; then
+              SQL_CS=$(az containerapp secret show -n "$APP" -g "$RG" --secret-name goodsortdb-connection-string --query value -o tsv 2>/dev/null || true)
+            fi
+            if [ -z "$SQL_CS" ]; then
               SQL_CS=$(az containerapp secret show -n "$APP" -g "$RG" --secret-name connectionstrings--goodsortdb --query value -o tsv 2>/dev/null || true)
             fi
             if [ -z "$SQL_CS" ]; then
@@ -129,6 +133,7 @@ jobs:
               echo "::error title=Missing SQL connection string::Could not resolve ConnectionStrings__goodsortdb for gated EF migration. Refusing to deploy."
               exit 1
             fi
+            echo "::add-mask::$SQL_CS"
 
             ACR_IDENTITY=$(az containerapp show -n "$APP" -g "$RG" --query "properties.configuration.registries[0].identity" -o tsv)
             if [ -z "$ACR_IDENTITY" ] || [ "$ACR_IDENTITY" = "None" ]; then
@@ -185,9 +190,24 @@ jobs:
 
       - name: Ensure standalone Azure OpenAI is provisioned and wired
         uses: azure/cli@v2
+        env:
+          AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_DEPLOYMENT }}
+          AZURE_OPENAI_SKU: ${{ vars.AZURE_OPENAI_SKU }}
         with:
           inlineScript: |
             bash scripts/ensure-openai-provisioned.sh "${{ secrets.AZURE_RESOURCE_GROUP }}" "${{ secrets.AZURE_CONTAINER_APP_NAME }}" oai-goodsort-prod australiaeast
+
+      - name: Check Container App secretRef hygiene
+        uses: azure/cli@v2
+        env:
+          REQUIRE_SECRETREF_STRICT: ${{ vars.REQUIRE_SECRETREF_STRICT }}
+        with:
+          inlineScript: |
+            if [ "${REQUIRE_SECRETREF_STRICT:-false}" = "true" ]; then
+              bash scripts/check-secretref-hygiene.sh --strict "${{ secrets.AZURE_RESOURCE_GROUP }}" "${{ secrets.AZURE_CONTAINER_APP_NAME }}"
+            else
+              bash scripts/check-secretref-hygiene.sh "${{ secrets.AZURE_RESOURCE_GROUP }}" "${{ secrets.AZURE_CONTAINER_APP_NAME }}"
+            fi
 
       # thegoodsort.org must stay linked to goodsort-comm or every OTP fails
       # with DomainNotLinked. Cheap to check on the way past.
