@@ -16,6 +16,9 @@ export interface SorterTier {
   ringFrom: string;
   ringTo: string;
   badgeClass: string;
+  headerGradient: string;
+  pillClass: string;
+  medallionGradient: string;
 }
 
 export const SORTER_TIERS: readonly SorterTier[] = [
@@ -25,10 +28,13 @@ export const SORTER_TIERS: readonly SorterTier[] = [
     minContainers: 0,
     nextTierLabel: "Silver",
     nextTierMin: 50,
-    accentHex: "#d97706",
-    ringFrom: "#f59e0b",
-    ringTo: "#b45309",
-    badgeClass: "bg-amber-500/20 text-amber-200 border-amber-400/35",
+    accentHex: "#b88655",
+    ringFrom: "#d9a066",
+    ringTo: "#9c6738",
+    badgeClass: "bg-amber-500/15 text-amber-800 border-amber-400/35",
+    headerGradient: "from-[#c9a27b] via-[#e2ccb4] to-[#f4f5f7]",
+    pillClass: "bg-[#b8895a] text-slate-950",
+    medallionGradient: "from-[#d4a97d] to-[#9b6c3e]",
   },
   {
     id: "silver",
@@ -36,10 +42,13 @@ export const SORTER_TIERS: readonly SorterTier[] = [
     minContainers: 50,
     nextTierLabel: "Gold",
     nextTierMin: 250,
-    accentHex: "#cbd5e1",
-    ringFrom: "#f8fafc",
-    ringTo: "#94a3b8",
-    badgeClass: "bg-slate-200/20 text-slate-100 border-slate-300/40",
+    accentHex: "#94a3b8",
+    ringFrom: "#e2e8f0",
+    ringTo: "#64748b",
+    badgeClass: "bg-slate-200/70 text-slate-800 border-slate-300",
+    headerGradient: "from-[#b8c2cf] via-[#dce2ea] to-[#f4f5f7]",
+    pillClass: "bg-[#aeb8c4] text-slate-950",
+    medallionGradient: "from-[#d7dfe9] to-[#8a96a6]",
   },
   {
     id: "gold",
@@ -47,10 +56,13 @@ export const SORTER_TIERS: readonly SorterTier[] = [
     minContainers: 250,
     nextTierLabel: "Platinum",
     nextTierMin: 1000,
-    accentHex: "#facc15",
-    ringFrom: "#fde047",
-    ringTo: "#ca8a04",
-    badgeClass: "bg-yellow-400/20 text-yellow-200 border-yellow-300/45",
+    accentHex: "#c6a866",
+    ringFrom: "#e5cb85",
+    ringTo: "#a8873c",
+    badgeClass: "bg-amber-200/60 text-amber-950 border-amber-400/50",
+    headerGradient: "from-[#c7ae72] via-[#e2d3ae] to-[#f4f5f7]",
+    pillClass: "bg-[#c5ac72] text-slate-950",
+    medallionGradient: "from-[#dec68b] to-[#a78947]",
   },
   {
     id: "platinum",
@@ -58,10 +70,13 @@ export const SORTER_TIERS: readonly SorterTier[] = [
     minContainers: 1000,
     nextTierLabel: null,
     nextTierMin: null,
-    accentHex: "#38bdf8",
-    ringFrom: "#7dd3fc",
-    ringTo: "#e2e8f0",
-    badgeClass: "bg-sky-400/20 text-sky-100 border-sky-300/45",
+    accentHex: "#475569",
+    ringFrom: "#94a3b8",
+    ringTo: "#1e293b",
+    badgeClass: "bg-slate-800 text-white border-slate-700",
+    headerGradient: "from-[#7c8a9e] via-[#c3ccd8] to-[#f4f5f7]",
+    pillClass: "bg-[#334155] text-white",
+    medallionGradient: "from-[#94a3b8] to-[#334155]",
   },
 ] as const;
 

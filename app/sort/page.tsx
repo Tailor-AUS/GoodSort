@@ -199,16 +199,14 @@ export default function SorterApp() {
 
   if (onWaitlist) {
     return (
-      <div className="min-h-dvh relative bg-white">
-        <div className="fixed z-30" style={{ top: "calc(env(safe-area-inset-top, 16px) + 0.5rem)", left: "1rem" }}>
-          <AccountButton onClick={() => setShowAccount(true)} />
-        </div>
+      <div className="min-h-dvh relative bg-[#f4f5f7]">
         <WaitlistHome
           user={user}
           household={household}
           nextPickup={nextPickup}
           pickupConfirmed={pickupConfirmed}
           onScanPress={() => router.push("/scan")}
+          onOpenAccount={() => setShowAccount(true)}
         />
         <AccountPanel user={user} open={showAccount} onRefresh={refreshData} onClose={() => { setShowAccount(false); refreshData(); }} />
       </div>

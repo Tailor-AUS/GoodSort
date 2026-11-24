@@ -76,4 +76,13 @@ test("Apple Liquid Glass icon suite is present and replaces legacy bin-lid and G
     manifest.icons.some((i) => i.src === "/icon-512-maskable.png" && i.purpose === "maskable"),
     "manifest.json must wire /icon-512-maskable.png as maskable icon",
   );
+
+  // MapLibre GL 6.x worker must be served from public/maplibre-gl-worker.js
+  const workerPath = path.join(repoRoot, "public", "maplibre-gl-worker.js");
+  assert.ok(fs.existsSync(workerPath), "Missing public/maplibre-gl-worker.js");
+  assert.ok(fs.statSync(workerPath).size > 100_000, "public/maplibre-gl-worker.js looks truncated");
+  for (const rel of ["app/components/shared/map-view.tsx", "app/admin/users/page.tsx"]) {
+    const src = fs.readFileSync(path.join(repoRoot, rel), "utf8");
+    assert.match(src, /setWorkerUrl\("\/maplibre-gl-worker\.js"\)/, `${rel} must pin setWorkerUrl("/maplibre-gl-worker.js")`);
+  }
 });

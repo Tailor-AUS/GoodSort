@@ -64,6 +64,12 @@ function MapProvider({ children, onMapTap }: { children: ReactNode; onMapTap?: (
 
   useEffect(() => {
     if (!divRef.current || mapRef.current) return;
+    // MapLibre GL 6.x resolves ./maplibre-gl-worker.mjs relative to import.meta.url,
+    // which breaks under Next.js static export / Azure SWA (404 HTML MIME error).
+    // Serve the self-contained worker from /maplibre-gl-worker.js instead.
+    if (typeof maplibregl.setWorkerUrl === "function") {
+      maplibregl.setWorkerUrl("/maplibre-gl-worker.js");
+    }
     const m = new maplibregl.Map({
       container: divRef.current,
       style: MAP_STYLE_URL,
