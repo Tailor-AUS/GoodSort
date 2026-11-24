@@ -252,7 +252,7 @@ export default function MarketplacePage() {
           <Logo size="sm" />
         </div>
         <p className="text-[11px] text-slate-400 max-w-lg mx-auto">
-          Not a live city-wide pickup. Sorting credits are a private reward, not the 10¢ Containers for Change refund.
+          Not a live city-wide pickup. Sorting credits are a private reward, not the 10¢ Containers for Change refund. We are not claiming approval as a Containers for Change refund point.
         </p>
         <div className="flex justify-center gap-4 mt-2">
           <Link href="/" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">

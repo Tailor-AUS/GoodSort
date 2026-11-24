@@ -123,4 +123,11 @@ test("/scan post-scan CTA says Back to dashboard, MemberStatusCard stays honest,
     const cleaned = fs.readFileSync(file, "utf8").replace(/\bcontainerMafiaCents\b/g, "");
     assert.doesNotMatch(cleaned, /\bmafia\b/i, `Visible Mafia copy remained in ${path.relative(repoRoot, file)}`);
   }
+
+  // Native 5-tab floating Liquid Glass app shell present on /sort
+  const home = fs.readFileSync(path.join(repoRoot, "app", "sort", "components", "waitlist-home.tsx"), "utf8");
+  assert.match(home, /aria-label="Main app navigation"/);
+  assert.match(home, /Sort and explore/);
+  assert.match(home, /Pickups/);
+  assert.match(home, /Profile/);
 });

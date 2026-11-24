@@ -191,7 +191,7 @@ export default function FlyerPage() {
               <p className="text-xs font-bold uppercase tracking-wider text-emerald-400 mb-1">
                 Scan QR code or open in Safari / Chrome · takes 15 seconds
               </p>
-              <p className="text-xl sm:text-2xl font-display font-extrabold tracking-tight break-all">
+              <p className="text-xl sm:text-2xl font-display font-extrabold tracking-tight break-words">
                 {displayPath}
               </p>
               <p className="text-xs text-slate-300 mt-1">

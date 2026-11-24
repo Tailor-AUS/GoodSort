@@ -97,6 +97,9 @@ export default function AdminUsersPage() {
   useEffect(() => {
     if (!mapDiv.current || (users.length === 0 && bins.length === 0)) return;
     if (!mapRef.current) {
+      if (typeof maplibregl.setWorkerUrl === "function") {
+        maplibregl.setWorkerUrl("/maplibre-gl-worker.js");
+      }
       const createdMap = new maplibregl.Map({
         container: mapDiv.current,
         style: MAP_STYLE_URL,
