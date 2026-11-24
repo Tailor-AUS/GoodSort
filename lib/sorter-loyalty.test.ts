@@ -96,11 +96,11 @@ test("buildSorterLoyaltySummary computes points, 4 streams, progress ring, and m
   assert.equal(summary.milestones.find((m) => m.id === "first_can")?.earned, true);
   assert.equal(summary.milestones.find((m) => m.id === "ten_club")?.earned, true);
   assert.equal(summary.milestones.find((m) => m.id === "four_streams")?.earned, true);
-  assert.equal(summary.milestones.find((m) => m.id === "mafia_captain")?.earned, true);
+  assert.equal(summary.milestones.find((m) => m.id === "street_captain")?.earned, true);
   assert.equal(summary.milestones.find((m) => m.id === "silver_status")?.earned, false);
 });
 
-test("/scan post-scan CTA says Back to dashboard and MemberStatusCard keeps points-swap claims honest", () => {
+test("/scan post-scan CTA says Back to dashboard, MemberStatusCard stays honest, and zero visible Mafia copy remains in app/", () => {
   const postScan = fs.readFileSync(path.join(repoRoot, "app", "components", "shared", "post-scan-setup.tsx"), "utf8");
   assert.match(postScan, /Back to dashboard/);
   assert.doesNotMatch(postScan, /Back to my suburb/);
@@ -109,6 +109,18 @@ test("/scan post-scan CTA says Back to dashboard and MemberStatusCard keeps poin
   assert.match(card, /Frequent Sorter/);
   assert.match(card, /Good Sort Points/);
   assert.match(card, /Points Swap/);
-  // Never claim unauthorised Qantas trademark/partnership live before a signed partner agreement
+  // Never claim unauthorised airline trademark/partnership live before a signed partner agreement
   assert.doesNotMatch(card, /\bQantas\b/i);
+
+  // Zero user-facing "Mafia" copy anywhere under app/ (only internal API DTO property containerMafiaCents allowed)
+  const walk = (dir: string): string[] =>
+    fs.readdirSync(dir, { withFileTypes: true }).flatMap((ent) => {
+      const full = path.join(dir, ent.name);
+      return ent.isDirectory() ? walk(full) : ent.name.endsWith(".tsx") ? [full] : [];
+    });
+
+  for (const file of walk(path.join(repoRoot, "app"))) {
+    const cleaned = fs.readFileSync(file, "utf8").replace(/\bcontainerMafiaCents\b/g, "");
+    assert.doesNotMatch(cleaned, /\bmafia\b/i, `Visible Mafia copy remained in ${path.relative(repoRoot, file)}`);
+  }
 });

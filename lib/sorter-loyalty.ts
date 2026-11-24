@@ -238,7 +238,7 @@ export function buildSorterLoyaltySummary(
     { id: "ten_club", label: "10 Club", targetText: "10 cans", earned: totalContainers >= 10 },
     { id: "silver_status", label: "Silver Sorter", targetText: "50 cans", earned: totalContainers >= 50 },
     { id: "four_streams", label: "Stream Pro", targetText: "3+ streams", earned: distinctStreams >= 3 },
-    { id: "mafia_captain", label: "Mafia Captain", targetText: "1 neighbour", earned: sortersCount >= 1 },
+    { id: "street_captain", label: "Street Captain", targetText: "1 neighbour", earned: sortersCount >= 1 },
     { id: "gold_status", label: "Gold Sorter", targetText: "250 cans", earned: totalContainers >= 250 },
   ];
 

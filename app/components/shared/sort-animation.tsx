@@ -48,9 +48,9 @@ const STAGES: Array<{
   {
     idx: 3,
     pill: "4. Paid",
-    eyebrow: "Step 4 · Verified depot payout + Mafia cut",
+    eyebrow: "Step 4 · Verified depot payout + referral bonus",
     headline: "10¢/can cleared to PayID + 1¢/can street bonus",
-    detail: "Cash out from $20 via PayID or bank transfer, plus $1 per neighbour you recruit.",
+    detail: "Cash out from $20 via PayID or bank transfer, plus $1 per neighbour you invite.",
     badge: "PayID ready",
     badgeTone: "bg-emerald-700 text-white",
     spotlightClass: "right-3 top-3",
@@ -59,7 +59,7 @@ const STAGES: Array<{
 
 /**
  * Interactive + gently auto-cycling 4-step visual showcase for How It Works:
- * Scan on phone -> Sort into 4 home bags -> 1,000-can kerbside van pickup -> PayID + 1c Mafia.
+ * Scan on phone -> Sort into 4 home bags -> 1,000-can kerbside van pickup -> PayID + 1c referral bonus.
  * Respects prefers-reduced-motion, full WAI-ARIA tablist/tabpanel semantics, and zero CLS.
  */
 export function SortAnimation() {
