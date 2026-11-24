@@ -206,7 +206,7 @@ export function MemberStatusCard({ user, suburbLabel, network }: MemberStatusCar
           <div className="rounded-xl bg-white/[0.06] px-2.5 py-2 border border-white/10">
             <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
               <Users className="w-3 h-3 text-sky-400" />
-              Mafia
+              Network
             </div>
             <p className="text-[14px] font-display font-extrabold text-white mt-0.5 tabular-nums">
               {network && network.totalNetworkCents > 0

@@ -196,14 +196,14 @@ export function WaitlistHome({
         {!live && !pickupConfirmed && (building || canonicalSuburb(suburb) !== null) && (
           <div className="mb-5">
             <p className="text-[15px] font-display font-extrabold text-slate-900 mb-1">
-              {building ? "Invite a house to scan · earn 1¢/can" : "Build your Container Mafia · earn 1¢/can"}
+              {building ? "Invite a house to scan · earn 1¢/can" : "Grow your neighbour network · earn 1¢/can"}
             </p>
             <p className="text-[12px] text-slate-500 mb-3">
-              Earn $1 when a neighbour joins your suburb plus a 1¢ cut on every container they sort. Their scans also unlock your suburb&apos;s {LIVE_VOLUME_THRESHOLD}-container run faster.
+              Earn $1 when a neighbour joins your suburb plus a 1¢ bonus on every container they sort. Their scans also unlock your suburb&apos;s {LIVE_VOLUME_THRESHOLD}-container run faster.
             </p>
             {network && network.sortersCount > 0 && (
               <div className="mb-3 rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2 text-[12px] font-semibold text-emerald-900">
-                Your Container Mafia: {network.sortersCount} sorter{network.sortersCount === 1 ? "" : "s"} · {network.referredContainers} container{network.referredContainers === 1 ? "" : "s"} · +{formatCredit(network.totalNetworkCents)}
+                Your neighbour network: {network.sortersCount} sorter{network.sortersCount === 1 ? "" : "s"} · {network.referredContainers} container{network.referredContainers === 1 ? "" : "s"} · +{formatCredit(network.totalNetworkCents)}
               </div>
             )}
             <InviteActions url={inviteUrl} message={message} />
