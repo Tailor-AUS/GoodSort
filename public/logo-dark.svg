@@ -1,14 +1,43 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 62" fill="none">
-  <!-- The Good Sort — 3A Dark: Yellow lid, dark body, 4 CDS squares -->
-  <!-- Lid -->
-  <rect x="0" y="0" width="58" height="10" rx="6" fill="#eab308"/>
-  <!-- Body (dark fill, slate border) -->
-  <rect x="3" y="12" width="52" height="42" rx="7" fill="#1e293b" stroke="#334155" stroke-width="2"/>
-  <!-- 4 CDS stream squares -->
-  <rect x="9" y="17" width="19" height="15" rx="3" fill="#3b82f6"/>
-  <rect x="31" y="17" width="19" height="15" rx="3" fill="#14b8a6"/>
-  <rect x="9" y="35" width="19" height="15" rx="3" fill="#f59e0b"/>
-  <rect x="31" y="35" width="19" height="15" rx="3" fill="#16a34a"/>
-  <!-- Wordmark (white) -->
-  <text x="76" y="44" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif" font-size="38" font-weight="800" letter-spacing="-2" fill="white">the good sort</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 64" fill="none">
+  <!-- The Good Sort — Apple Liquid Glass Horizontal Lockup (Dark) -->
+  <defs>
+    <linearGradient id="glassBody" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#c3c8d0"/>
+      <stop offset="55%" stop-color="#9ca3af"/>
+      <stop offset="100%" stop-color="#7c838f"/>
+    </linearGradient>
+    <linearGradient id="glassRim" x1="10" y1="6" x2="54" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.96"/>
+      <stop offset="50%" stop-color="#e2e8f0" stop-opacity="0.65"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.88"/>
+    </linearGradient>
+    <radialGradient id="orbBlue" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </radialGradient>
+    <radialGradient id="orbTeal" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#2dd4bf"/>
+      <stop offset="100%" stop-color="#0d9488"/>
+    </radialGradient>
+    <radialGradient id="orbAmber" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </radialGradient>
+    <radialGradient id="orbGreen" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#4ade80"/>
+      <stop offset="100%" stop-color="#15803d"/>
+    </radialGradient>
+  </defs>
+  <rect x="3" y="3" width="58" height="58" rx="15" fill="url(#glassBody)" stroke="url(#glassRim)" stroke-width="1.6"/>
+  <circle cx="20.5" cy="20.5" r="10.2" fill="url(#orbBlue)" stroke="#ffffff" stroke-opacity="0.45" stroke-width="0.9"/>
+  <rect x="17.5" y="15.4" width="6" height="10.2" rx="1.4" fill="#ffffff"/>
+  <rect x="19" y="13.8" width="3" height="1.1" rx="0.5" fill="#ffffff"/>
+  <circle cx="43.5" cy="20.5" r="10.2" fill="url(#orbTeal)" stroke="#ffffff" stroke-opacity="0.45" stroke-width="0.9"/>
+  <rect x="42.1" y="13.5" width="2.8" height="2" rx="0.6" fill="#ffffff"/>
+  <rect x="40.8" y="16.2" width="5.4" height="10.2" rx="1.8" fill="#ffffff"/>
+  <circle cx="20.5" cy="43.5" r="10.2" fill="url(#orbAmber)" stroke="#ffffff" stroke-opacity="0.45" stroke-width="0.9"/>
+  <path d="M19.3 36.2h2.4v2.6c0 .9 1.5 1.8 1.5 3.6v5.2c0 1.2-.8 2.1-2 2.1h-1.4c-1.2 0-2-.9-2-2.1v-5.2c0-1.8 1.5-2.7 1.5-3.6v-2.6Z" fill="#ffffff"/>
+  <circle cx="43.5" cy="43.5" r="10.2" fill="url(#orbGreen)" stroke="#ffffff" stroke-opacity="0.45" stroke-width="0.9"/>
+  <path d="M42.3 36h2.4v4.3c0 .9 1.5 1.6 1.5 3.1v4.7c0 1-.8 1.7-1.7 1.7h-2c-.9 0-1.7-.7-1.7-1.7v-4.7c0-1.5 1.5-2.2 1.5-3.1V36Z" fill="#ffffff"/>
+  <text x="76" y="45" font-family="'Plus Jakarta Sans', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif" font-size="38" font-weight="800" letter-spacing="-0.8" fill="#ffffff">the good sort</text>
 </svg>

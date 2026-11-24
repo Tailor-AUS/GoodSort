@@ -38,3 +38,42 @@ test("service worker ignores non-GET, cross-origin API/tile requests, and /sw.js
   assert.match(sw, /url\.origin\s*!==\s*self\.location\.origin/);
   assert.match(sw, /url\.pathname\s*===\s*"\/sw\.js"/);
 });
+
+test("Apple Liquid Glass icon suite is present and replaces legacy bin-lid and G-SORT marks", () => {
+  const requiredAssets = [
+    ["public", "images", "tgs-glass-icon.webp"],
+    ["public", "images", "tgs-glass-icon.png"],
+    ["public", "icon-192.png"],
+    ["public", "icon-512.png"],
+    ["public", "icon-512-maskable.png"],
+    ["public", "apple-touch-icon.png"],
+    ["public", "favicon-16x16.png"],
+    ["public", "favicon-32x32.png"],
+    ["app", "favicon.ico"],
+  ];
+
+  for (const parts of requiredAssets) {
+    const filePath = path.join(repoRoot, ...parts);
+    assert.ok(fs.existsSync(filePath), `Missing required icon asset: ${parts.join("/")}`);
+    const bytes = fs.readFileSync(filePath);
+    assert.ok(bytes.length > 500, `Icon asset looks empty/corrupt: ${parts.join("/")}`);
+  }
+
+  const logoSrc = fs.readFileSync(path.join(repoRoot, "app", "components", "shared", "logo.tsx"), "utf8");
+  assert.match(logoSrc, /\/images\/tgs-glass-icon\.webp/);
+  assert.doesNotMatch(logoSrc, /Purple lid|#7c3aed|#eab308/i);
+
+  for (const svgName of ["favicon.svg", "icon.svg", "logo-icon.svg", "logo.svg", "logo-dark.svg"]) {
+    const svg = fs.readFileSync(path.join(repoRoot, "public", svgName), "utf8");
+    assert.match(svg, /^<svg[\s>]/);
+    assert.doesNotMatch(svg, /#eab308|>SORT</i, `Legacy artwork remained in public/${svgName}`);
+  }
+
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, "public", "manifest.json"), "utf8"),
+  ) as { icons: Array<{ src: string; purpose?: string }> };
+  assert.ok(
+    manifest.icons.some((i) => i.src === "/icon-512-maskable.png" && i.purpose === "maskable"),
+    "manifest.json must wire /icon-512-maskable.png as maskable icon",
+  );
+});

@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * The Good Sort logo — purple TGS bin, 4 CDS stream squares.
- *   Blue (#3b82f6)  = Aluminium
- *   Teal (#14b8a6)  = PET plastic
- *   Amber (#f59e0b) = Glass
- *   Green (#16a34a) = Other (HDPE, cartons)
+ * The Good Sort logo — Apple Liquid Glass squircle housing four luminous
+ * CDS stream orbs:
+ *   Blue  (#2563eb / #3b82f6) = Aluminium cans
+ *   Teal  (#0d9488 / #14b8a6) = PET plastic bottles
+ *   Amber (#d97706 / #f59e0b) = Soft-drink / flavoured bottles
+ *   Green (#15803d / #22c55e) = Glass bottles
  */
 
 interface LogoProps {
@@ -17,53 +18,33 @@ interface LogoProps {
 
 export function Logo({ size = "md", showText = true, dark = false, className = "" }: LogoProps) {
   const sizes = {
-    sm: { icon: 32, gap: 8, text: "text-[20px]", lid: { w: 30, h: 5, rx: 3 }, body: { x: 1.5, w: 27, h: 22, rx: 4, pad: 3, sq: 9.5, sqh: 8, gap: 2 } },
-    md: { icon: 44, gap: 12, text: "text-[28px]", lid: { w: 42, h: 7, rx: 4 }, body: { x: 2, w: 38, h: 30, rx: 5, pad: 4, sq: 14, sqh: 11, gap: 2 } },
-    lg: { icon: 56, gap: 16, text: "text-[36px]", lid: { w: 54, h: 9, rx: 5 }, body: { x: 2.5, w: 49, h: 38, rx: 6, pad: 5, sq: 18, sqh: 13, gap: 3 } },
+    sm: { icon: 34, gap: 9, text: "text-[20px]" },
+    md: { icon: 46, gap: 12, text: "text-[28px]" },
+    lg: { icon: 58, gap: 14, text: "text-[34px] sm:text-[36px]" },
   };
 
   const s = sizes[size];
-  const bodyY = s.lid.h + 2;
-  const sqStartX = s.body.x + s.body.pad;
-  const sqStartY = bodyY + s.body.pad;
-  const sqCol2X = sqStartX + s.body.sq + s.body.gap;
-  const sqRow2Y = sqStartY + s.body.sqh + s.body.gap;
 
   return (
-    <div className={`flex items-center ${className}`} style={{ gap: s.gap }}>
-      <svg
+    <div className={`inline-flex items-center ${className}`} style={{ gap: s.gap }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/images/tgs-glass-icon.webp"
+        alt={showText ? "" : "The Good Sort"}
+        aria-hidden={showText ? true : undefined}
         width={s.icon}
         height={s.icon}
-        viewBox={`0 0 ${s.icon} ${s.icon}`}
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        {/* Purple lid */}
-        <rect x={(s.icon - s.lid.w) / 2} y={1} width={s.lid.w} height={s.lid.h} rx={s.lid.rx} fill="#7c3aed" />
-        {/* Lilac body with purple border */}
-        <rect
-          x={s.body.x + (s.icon - s.lid.w) / 2}
-          y={bodyY}
-          width={s.body.w}
-          height={s.body.h}
-          rx={s.body.rx}
-          fill={dark ? "#1e293b" : "#f5f3ff"}
-          stroke={dark ? "#334155" : "#c4b5fd"}
-          strokeWidth={1.5}
-        />
-        {/* Aluminium — blue */}
-        <rect x={sqStartX + (s.icon - s.lid.w) / 2} y={sqStartY} width={s.body.sq} height={s.body.sqh} rx={2.5} fill="#3b82f6" />
-        {/* PET — teal */}
-        <rect x={sqCol2X + (s.icon - s.lid.w) / 2} y={sqStartY} width={s.body.sq} height={s.body.sqh} rx={2.5} fill="#14b8a6" />
-        {/* Glass — amber */}
-        <rect x={sqStartX + (s.icon - s.lid.w) / 2} y={sqRow2Y} width={s.body.sq} height={s.body.sqh} rx={2.5} fill="#f59e0b" />
-        {/* Other — green */}
-        <rect x={sqCol2X + (s.icon - s.lid.w) / 2} y={sqRow2Y} width={s.body.sq} height={s.body.sqh} rx={2.5} fill="#16a34a" />
-      </svg>
+        decoding="async"
+        className={`shrink-0 select-none object-contain ${
+          dark
+            ? "drop-shadow-[0_4px_12px_rgba(0,0,0,0.45)]"
+            : "drop-shadow-[0_4px_10px_rgba(15,23,42,0.14)]"
+        }`}
+        style={{ width: s.icon, height: s.icon }}
+      />
       {showText && (
         <span
-          className={`font-display font-extrabold ${s.text} ${dark ? "text-white" : "text-slate-900"}`}
-          style={{ letterSpacing: 0 }}
+          className={`font-display font-extrabold leading-none tracking-[-0.02em] ${s.text} ${dark ? "text-white" : "text-slate-900"}`}
         >
           the good sort
         </span>
