@@ -902,7 +902,7 @@ export function PostScanSetup({
               }}
               className="w-full py-3 text-slate-500 font-semibold text-[13px] hover:text-slate-700 transition-colors"
             >
-              Back to my suburb
+              Back to dashboard
             </button>
           </div>
         )}

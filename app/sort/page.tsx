@@ -204,6 +204,7 @@ export default function SorterApp() {
           <AccountButton onClick={() => setShowAccount(true)} />
         </div>
         <WaitlistHome
+          user={user}
           household={household}
           nextPickup={nextPickup}
           pickupConfirmed={pickupConfirmed}
