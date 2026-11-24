@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using GoodSort.Api.Data;
 using GoodSort.Api.Data.Entities;
+using GoodSort.Api.Endpoints;
 using GoodSort.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http;
@@ -3460,6 +3461,20 @@ app.MapDelete("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, GoodSo
     db.Collections.RemoveRange(profile.Collections);
     db.CashoutRequests.RemoveRange(cashouts);
 
+    // Clean up any anonymous building syndicate memberships before removing the profile (FK is NoAction on SQL Server)
+    var syndicateMemberships = await db.BuildingSyndicateMembers
+        .Where(m => m.ProfileId == id)
+        .ToListAsync();
+    if (syndicateMemberships.Count > 0)
+    {
+        var memberIds = syndicateMemberships.Select(m => m.Id).ToHashSet();
+        var memberMsgs = await db.BuildingSyndicateMessages
+            .Where(m => m.MemberId.HasValue && memberIds.Contains(m.MemberId.Value))
+            .ToListAsync();
+        foreach (var msg in memberMsgs) msg.MemberId = null;
+        db.BuildingSyndicateMembers.RemoveRange(syndicateMemberships);
+    }
+
     // Reverse any un-cleared $1.00 (100¢) Container Mafia signup bonus if this sole-member
     // household never completed a depot-settled pickup (prevents signup/delete PendingCents farming).
     if (profile.ReferrerId is Guid signupRefId && signupRefId != id && profile.HouseholdId is Guid checkHhId)
@@ -5065,6 +5080,9 @@ app.MapPost("/api/admin/reset-baseline", async (HttpContext ctx, AdminResetBasel
         db.GrowthEvents.RemoveRange(await db.GrowthEvents.ToListAsync());
         db.OtpCodes.RemoveRange(await db.OtpCodes.ToListAsync());
         db.Bins.RemoveRange(await db.Bins.ToListAsync());
+        db.BuildingSyndicateMessages.RemoveRange(await db.BuildingSyndicateMessages.ToListAsync());
+        db.BuildingSyndicateMembers.RemoveRange(await db.BuildingSyndicateMembers.ToListAsync());
+        db.BuildingSyndicates.RemoveRange(await db.BuildingSyndicates.ToListAsync());
 
         var allProfiles = await db.Profiles.ToListAsync();
         foreach (var p in allProfiles)
@@ -5116,6 +5134,8 @@ app.MapPost("/api/admin/reset-baseline", async (HttpContext ctx, AdminResetBasel
         });
     });
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
+
+app.MapBuildingSyndicateEndpoints();
 
 app.Run();
 

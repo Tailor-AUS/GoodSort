@@ -86,6 +86,182 @@ namespace GoodSort.Api.Migrations
                     b.ToTable("Bins");
                 });
 
+            modelBuilder.Entity("GoodSort.Api.Data.Entities.BuildingSyndicate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BuildingKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("BuildingKind")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("DropSpot")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime?>("OfficialApprovedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("PickupRequestedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PickupRequestedByHandle")
+                        .HasMaxLength(48)
+                        .HasColumnType("nvarchar(48)");
+
+                    b.Property<string>("PickupStatus")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<string>("PickupWindow")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<string>("Suburb")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BuildingKey")
+                        .IsUnique();
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("Suburb");
+
+                    b.ToTable("BuildingSyndicates");
+                });
+
+            modelBuilder.Entity("GoodSort.Api.Data.Entities.BuildingSyndicateMember", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AnonHandle")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("nvarchar(48)");
+
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("ProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("ReadyToPool")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<Guid>("SyndicateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("VotedDropSpot")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("VotedPickupWindow")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProfileId");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("SyndicateId", "ProfileId")
+                        .IsUnique();
+
+                    b.ToTable("BuildingSyndicateMembers");
+                });
+
+            modelBuilder.Entity("GoodSort.Api.Data.Entities.BuildingSyndicateMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AnonHandle")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("nvarchar(48)");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("FlagCount")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("Flagged")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("Hidden")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<Guid?>("MemberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SyndicateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Flagged");
+
+                    b.HasIndex("SyndicateId", "CreatedAt");
+
+                    b.ToTable("BuildingSyndicateMessages");
+                });
+
             modelBuilder.Entity("GoodSort.Api.Data.Entities.Collection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1435,6 +1611,36 @@ namespace GoodSort.Api.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("GoodSort.Api.Data.Entities.BuildingSyndicateMember", b =>
+                {
+                    b.HasOne("GoodSort.Api.Data.Entities.Profile", "Profile")
+                        .WithMany()
+                        .HasForeignKey("ProfileId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GoodSort.Api.Data.Entities.BuildingSyndicate", "Syndicate")
+                        .WithMany("Members")
+                        .HasForeignKey("SyndicateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Profile");
+
+                    b.Navigation("Syndicate");
+                });
+
+            modelBuilder.Entity("GoodSort.Api.Data.Entities.BuildingSyndicateMessage", b =>
+                {
+                    b.HasOne("GoodSort.Api.Data.Entities.BuildingSyndicate", "Syndicate")
+                        .WithMany("Messages")
+                        .HasForeignKey("SyndicateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Syndicate");
+                });
+
             modelBuilder.Entity("GoodSort.Api.Data.Entities.Collection", b =>
                 {
                     b.HasOne("GoodSort.Api.Data.Entities.CollectionRoute", "Route")
@@ -1744,6 +1950,13 @@ namespace GoodSort.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("GoodSort.Api.Data.Entities.BuildingSyndicate", b =>
+                {
+                    b.Navigation("Members");
+
+                    b.Navigation("Messages");
                 });
 
             modelBuilder.Entity("GoodSort.Api.Data.Entities.CollectionRoute", b =>

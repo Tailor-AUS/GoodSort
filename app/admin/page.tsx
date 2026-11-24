@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Users, Package, Truck, DollarSign, Download, MapPin, RotateCcw, Copy, Check, Printer } from "lucide-react";
+import { Users, Package, Truck, DollarSign, Download, MapPin, RotateCcw, Copy, Check, Printer, Building2 } from "lucide-react";
 import { apiUrl, readStoredProfileId } from "@/lib/config";
 import { titleSuburb } from "@/lib/brisbane";
 
@@ -583,6 +583,14 @@ export default function AdminPage() {
             <div>
               <p className="text-[14px] font-semibold text-slate-900">Users & Map</p>
               <p className="text-[12px] text-slate-400">See all users, their households, and bin locations on a map</p>
+            </div>
+          </Link>
+          <Link href="/admin/syndicates"
+            className="flex items-center gap-3 w-full bg-white rounded-xl p-4 border border-slate-200 hover:border-emerald-300 transition-colors text-left">
+            <Building2 className="w-5 h-5 text-emerald-600" />
+            <div>
+              <p className="text-[14px] font-semibold text-slate-900">Building Syndicates</p>
+              <p className="text-[12px] text-slate-400">Promote detected offices &amp; apartment blocks to Official Syndicates, schedule pickups &amp; moderate anonymous channels</p>
             </div>
           </Link>
           <Link href="/admin/waitlist"

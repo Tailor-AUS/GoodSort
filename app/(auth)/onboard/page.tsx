@@ -9,6 +9,7 @@ import { canonicalSuburb, inviteMessage, streetInviteUrl, residentialNeedsStreet
 import { AddressAutocomplete, geocodeAddress } from "@/app/components/shared/address-autocomplete";
 import { InviteActions } from "@/app/components/shared/invite-actions";
 import { PayoutFields, validateClientPayout, type PayIdTypeChoice, type PayoutMethodChoice } from "@/app/components/shared/post-scan-setup";
+import { looksLikeMultiUnitOrCommercialAddress } from "@/lib/syndicate-api";
 
 type Step = "place" | "auth" | "verify" | "unit_waitlist";
 type PendingPlaceSubmit = {
@@ -629,6 +630,17 @@ export default function OnboardPage() {
           />
           {lat != null && lng != null && (
             <p className="text-[11px] text-slate-500 mt-1.5">Address confirmed. Change it if this is the wrong house.</p>
+          )}
+          {looksLikeMultiUnitOrCommercialAddress(address).detected && (
+            <div className="mt-2 rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2 text-[11px] text-emerald-900">
+              <strong>
+                {looksLikeMultiUnitOrCommercialAddress(address).kind === "commercial"
+                  ? "Commercial building detected"
+                  : "Multi-unit building detected"}
+                :
+              </strong>{" "}
+              after setup you can request to join your building&apos;s anonymous collection syndicate (your name &amp; unit stay private).
+            </div>
           )}
         </div>
       </div>

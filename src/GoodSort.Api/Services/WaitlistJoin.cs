@@ -10,7 +10,7 @@ namespace GoodSort.Api.Services;
 public static partial class WaitlistJoin
 {
     [GeneratedRegex(
-        @"^\s*(?:(?:unit|apt|apartment|flat|lot|shop|villa|townhouse|level|lvl|suite|u)\s*[a-z0-9]+\s*[\/,\s-]+\s*)?(?<num>\d+[a-z]?(?:\s*[\/-]\s*\d+[a-z]?)?)\s+(?<rest>[a-z][a-z0-9\s'.-]{1,})",
+        @"^\s*(?:(?:unit|apt|apartment|flat|lot|shop|villa|townhouse|level|lvl|suite|u)\s*(?<unit>[a-z0-9]+)\s*[\/,\s-]+\s*)?(?<num>\d+[a-z]?(?:\s*[\/-]\s*\d+[a-z]?)?)\s+(?<rest>[a-z][a-z0-9\s'.-]{1,})",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex LeadingStreetAddressRegex();
 
@@ -20,6 +20,9 @@ public static partial class WaitlistJoin
     /// <summary>
     /// Canonical physical house key (SUBURB|NUMBER|STREET) so multiple accounts at the
     /// same street number cannot spoof MinHouseholdsForRun = 3 or self-farm Container Mafia.
+    /// Preserves unit/suite/level numbers as UNIT/NUMBER so distinct units in the same
+    /// apartment block or commercial tower can each sign up while still deduplicating
+    /// identical units (e.g. "Unit 12, 45 Ekibin Rd" == "12/45 Ekibin Rd").
     /// </summary>
     public static string? PhysicalHouseKey(string? suburb, string? address, string? explicitStreet = null)
     {
@@ -28,8 +31,11 @@ public static partial class WaitlistJoin
         var m = LeadingStreetAddressRegex().Match(address);
         if (!m.Success) return null;
 
-        var rawNum = Regex.Replace(m.Groups["num"].Value, @"\s+", "").ToUpperInvariant();
-        // If unit/lot slash format like "2/14", keep "2/14" distinct for duplexes, or normalize whitespace
+        var baseNum = Regex.Replace(m.Groups["num"].Value, @"\s+", "").ToUpperInvariant();
+        var unitVal = m.Groups["unit"].Success ? m.Groups["unit"].Value.Trim().ToUpperInvariant() : "";
+        var rawNum = !string.IsNullOrEmpty(unitVal) && !baseNum.Contains('/')
+            ? $"{unitVal}/{baseNum}"
+            : baseNum;
         var parsed = BinDayService.ParseAddress(address);
         var streetPart = !string.IsNullOrWhiteSpace(parsed?.Street)
             ? parsed!.Street
