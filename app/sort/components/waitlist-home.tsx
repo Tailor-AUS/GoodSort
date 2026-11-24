@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Award,
+  Building2,
   Check,
   ChevronRight,
   Copy,
@@ -19,6 +20,7 @@ import {
   ScanBarcode,
   Settings,
   Share2,
+  ShieldCheck,
   Sparkles,
   Truck,
   User as UserIcon,
@@ -41,10 +43,12 @@ import { WaitlistCard } from "@/app/components/shared/waitlist-card";
 import { CollectionNightCard } from "@/app/components/shared/collection-night-card";
 import { InviteActions } from "@/app/components/shared/invite-actions";
 import { MemberStatusCard } from "./member-status-card";
+import { BuildingSyndicatePanel } from "./building-syndicate-panel";
+import { fetchMySyndicate, type MySyndicateResponse } from "@/lib/syndicate-api";
 import type { HouseholdStatus } from "./sorter-sheet";
 
 type AppTab = "home" | "pickups" | "points" | "profile";
-type PickupsFilter = "upcoming" | "bags" | "suburb";
+type PickupsFilter = "upcoming" | "building" | "bags" | "suburb";
 type PointsFilter = "earn" | "rewards";
 
 const STREAMS = [
@@ -122,6 +126,16 @@ export function WaitlistHome({
   const [profileId, setProfileId] = useState<string | undefined>(undefined);
   const [network, setNetwork] = useState<{ sortersCount: number; referredContainers: number; totalNetworkCents: number } | null>(null);
   const [hasPayoutDetails, setHasPayoutDetails] = useState<boolean | null>(null);
+  const [syndicateData, setSyndicateData] = useState<MySyndicateResponse | null>(null);
+  const [syndicateLoading, setSyndicateLoading] = useState(false);
+
+  function refreshSyndicate() {
+    setSyndicateLoading(true);
+    fetchMySyndicate()
+      .then((d) => { if (d) setSyndicateData(d); })
+      .catch(() => {})
+      .finally(() => setSyndicateLoading(false));
+  }
 
   useEffect(() => {
     setFirstName(resolveFirstName(user));
@@ -136,6 +150,7 @@ export function WaitlistHome({
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => { if (d && typeof d.hasPayoutDetails === "boolean") setHasPayoutDetails(d.hasPayoutDetails); })
         .catch(() => {});
+      refreshSyndicate();
     }
   }, [user]);
 
@@ -325,6 +340,55 @@ export function WaitlistHome({
               </button>
             </div>
 
+            {/* Anonymous Building Syndicate Notification / Quick Entry Card */}
+            {syndicateData?.eligible && syndicateData.syndicate && syndicateData.myMembership && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPickupsFilter("building");
+                  setActiveTab("pickups");
+                }}
+                className="w-full text-left mb-6 rounded-2xl bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.06)] border border-emerald-100 flex items-center justify-between gap-3 active:scale-[0.99] transition-transform"
+              >
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
+                    <Building2 className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p className="text-[14px] font-display font-bold text-slate-900 truncate">
+                        {syndicateData.myMembership.status === "approved"
+                          ? syndicateData.syndicate.channelName
+                          : syndicateData.myMembership.status === "pending"
+                            ? `Pending · ${syndicateData.syndicate.displayName}`
+                            : "Building syndicate detected"}
+                      </p>
+                      {syndicateData.syndicate.status === "official" && (
+                        <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                          <ShieldCheck className="w-3 h-3" /> Official
+                        </span>
+                      )}
+                      {syndicateData.myMembership.canApprovePending && syndicateData.syndicate.pendingRequestsCount > 0 && (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                          {syndicateData.syndicate.pendingRequestsCount} to approve
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[12px] text-slate-500 mt-0.5 truncate">
+                      {syndicateData.myMembership.status === "approved"
+                        ? `${syndicateData.syndicate.totalContainers.toLocaleString()} cans (${formatCents(syndicateData.syndicate.potCents)}) · ${syndicateData.syndicate.approvedMembersCount} anonymous`
+                        : syndicateData.myMembership.status === "pending"
+                          ? "Join request sent — waiting for captain or admin approval"
+                          : syndicateData.syndicate.otherSortersCount > 0
+                            ? `${syndicateData.syndicate.otherSortersCount} other sorter${syndicateData.syndicate.otherSortersCount === 1 ? "" : "s"} at ${syndicateData.syndicate.displayName} — tap to request to join`
+                            : `Start ${syndicateData.syndicate.displayName}'s anonymous building pool`}
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+              </button>
+            )}
+
             {/* Editorial Suburb Run Section (mirrors Flight deals photo card) */}
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-[17px] font-display font-bold text-slate-900">
@@ -412,10 +476,11 @@ export function WaitlistHome({
             </h1>
 
             {/* Segmented Filter Pills */}
-            <div className="flex items-center gap-2 mb-6">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 mb-5">
               {(
                 [
                   { id: "upcoming", label: "Upcoming", icon: <Truck className="w-3.5 h-3.5" /> },
+                  { id: "building", label: "Building", icon: <Building2 className="w-3.5 h-3.5" /> },
                   { id: "bags", label: "My Bags", icon: <Package className="w-3.5 h-3.5" /> },
                   { id: "suburb", label: "Suburb", icon: <Users className="w-3.5 h-3.5" /> },
                 ] as const
@@ -426,7 +491,7 @@ export function WaitlistHome({
                     key={pill.id}
                     type="button"
                     onClick={() => setPickupsFilter(pill.id)}
-                    className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-semibold transition-all ${
+                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-semibold transition-all ${
                       selected
                         ? "bg-slate-900 text-white shadow-sm"
                         : "bg-white text-slate-800 shadow-[0_1px_6px_rgba(15,23,42,0.05)]"
@@ -438,6 +503,15 @@ export function WaitlistHome({
                 );
               })}
             </div>
+
+            {pickupsFilter === "building" && (
+              <BuildingSyndicatePanel
+                data={syndicateData}
+                loading={syndicateLoading}
+                onUpdate={setSyndicateData}
+                onRefresh={refreshSyndicate}
+              />
+            )}
 
             {pickupsFilter === "upcoming" && (
               <>

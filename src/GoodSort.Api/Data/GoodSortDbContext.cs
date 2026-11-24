@@ -28,6 +28,9 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
     public DbSet<SingletonLeaseRow> SingletonLeases => Set<SingletonLeaseRow>();
     public DbSet<SortedBag> SortedBags => Set<SortedBag>();
     public DbSet<RunSettlementLedger> RunSettlementLedgers => Set<RunSettlementLedger>();
+    public DbSet<BuildingSyndicate> BuildingSyndicates => Set<BuildingSyndicate>();
+    public DbSet<BuildingSyndicateMember> BuildingSyndicateMembers => Set<BuildingSyndicateMember>();
+    public DbSet<BuildingSyndicateMessage> BuildingSyndicateMessages => Set<BuildingSyndicateMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -316,6 +319,62 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
             e.Property(c => c.PayIdType).HasMaxLength(16);
             e.Property(c => c.PayIdValue).HasMaxLength(128);
             e.HasIndex(c => new { c.Status, c.PayoutMethod });
+        });
+
+        // BuildingSyndicate — anonymous office/residential building pools & channels
+        modelBuilder.Entity<BuildingSyndicate>(e =>
+        {
+            e.Property(s => s.BuildingKey).HasMaxLength(200);
+            e.Property(s => s.DisplayName).HasMaxLength(160);
+            e.Property(s => s.Suburb).HasMaxLength(80);
+            e.Property(s => s.BuildingKind).HasMaxLength(24);
+            e.Property(s => s.Status).HasMaxLength(24);
+            e.Property(s => s.PickupStatus).HasMaxLength(24);
+            e.Property(s => s.DropSpot).HasMaxLength(32);
+            e.Property(s => s.PickupWindow).HasMaxLength(32);
+            e.Property(s => s.PickupRequestedByHandle).HasMaxLength(48);
+
+            e.HasIndex(s => s.BuildingKey).IsUnique();
+            e.HasIndex(s => s.Suburb);
+            e.HasIndex(s => s.Status);
+        });
+
+        modelBuilder.Entity<BuildingSyndicateMember>(e =>
+        {
+            e.HasOne(m => m.Syndicate)
+                .WithMany(s => s.Members)
+                .HasForeignKey(m => m.SyndicateId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(m => m.Profile)
+                .WithMany()
+                .HasForeignKey(m => m.ProfileId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            e.Property(m => m.AnonHandle).HasMaxLength(48);
+            e.Property(m => m.Role).HasMaxLength(24);
+            e.Property(m => m.Status).HasMaxLength(24);
+            e.Property(m => m.VotedDropSpot).HasMaxLength(32);
+            e.Property(m => m.VotedPickupWindow).HasMaxLength(32);
+
+            e.HasIndex(m => new { m.SyndicateId, m.ProfileId }).IsUnique();
+            e.HasIndex(m => m.ProfileId);
+            e.HasIndex(m => m.Status);
+        });
+
+        modelBuilder.Entity<BuildingSyndicateMessage>(e =>
+        {
+            e.HasOne(m => m.Syndicate)
+                .WithMany(s => s.Messages)
+                .HasForeignKey(m => m.SyndicateId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.Property(m => m.AnonHandle).HasMaxLength(48);
+            e.Property(m => m.Kind).HasMaxLength(16);
+            e.Property(m => m.Body).HasMaxLength(320);
+
+            e.HasIndex(m => new { m.SyndicateId, m.CreatedAt });
+            e.HasIndex(m => m.Flagged);
         });
 
         // Seed default pricing config (static CreatedAt)
