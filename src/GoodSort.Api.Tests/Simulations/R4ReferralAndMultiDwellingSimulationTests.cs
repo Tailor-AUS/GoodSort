@@ -21,9 +21,10 @@ namespace GoodSort.Api.Tests.Simulations;
 ///    - User B completes first container scan anonymously and verifies OTP with ReferrerId.
 ///    - Zero referral credit is awarded at OTP verification or initial scan confirm.
 ///    - User B completes residential address onboarding (Moorooka).
-///    - Server triggers referral credit: User A receives exactly .00 (100¢) pending credit.
+///    - Server awards non-cash Good Sort Points only: User A stays at 0¢ pending cash
+///      and receives +100 network signup points + 1 point per container via /api/profiles/{id}/network.
 ///    - User B's initial orphan scan is backfilled into their household bin (GS-H...).
-///    - Duplicate referral prevention: User B registering another household does not credit User A again.
+///    - Duplicate referral prevention: User B registering another household does not double-count points or award cash.
 ///    - Self-referral prevention: A user referring themselves receives zero referral bonus.
 ///
 /// 2. Multi-Dwelling / Unit Complex Onboarding:
@@ -32,7 +33,7 @@ namespace GoodSort.Api.Tests.Simulations;
 ///    - Invariant: Initial orphan scan is backfilled directly into the complex record.
 ///    - Invariant: Cluster density (/api/growth/brisbane) strictly isolates unit complexes
 ///      from the 1,000-container residential volume run trigger.
-///    - Invariant: Referral credit (.00) is awarded to referrer upon unit complex registration.
+///    - Invariant: Referrer earns +100 non-cash Good Sort Points (0¢ cash) upon unit complex registration.
 /// </summary>
 public class R4ReferralAndMultiDwellingSimulationTests : IDisposable
 {
@@ -58,7 +59,7 @@ public class R4ReferralAndMultiDwellingSimulationTests : IDisposable
     }
 
     [Fact]
-    public async Task R4_ReferralLoop_UserA_Invites_UserB_FirstScanAndOnboarding_AwardsOneDollarCredit()
+    public async Task R4_ReferralLoop_UserA_Invites_UserB_FirstScanAndOnboarding_AwardsNetworkPointsNoCash()
     {
         // ══════════════════════════════════════════════════════════════════════
         // STEP 1: Establish Referrer (User A — Marcus)
@@ -191,14 +192,14 @@ public class R4ReferralAndMultiDwellingSimulationTests : IDisposable
         var householdBId = hhJsonB.GetProperty("id").GetGuid();
 
         // ══════════════════════════════════════════════════════════════════════
-        // STEP 5: Assert Referral Credit (.00 / 100¢) Awarded to User A
+        // STEP 5: Assert Points-Only Referral Reward (+100 PTS + 1 PT/can, 0¢ Cash)
         // ══════════════════════════════════════════════════════════════════════
         await _host.WithDbContextAsync(async db =>
         {
-            // CRITICAL INVARIANT: User A received exactly 100¢ (.00) pending referral credit!
+            // CRITICAL INVARIANT: Zero cash signup bonus — referrals earn non-cash points only.
             var pA = await db.Profiles.FindAsync(userAId);
             Assert.NotNull(pA);
-            Assert.Equal(100, pA.PendingCents);
+            Assert.Equal(0, pA.PendingCents);
 
             // User B's orphan scan was backfilled into householdB
             var orphanCount = await db.Scans.CountAsync(s => s.UserId == userBId && s.HouseholdId == null);
@@ -213,17 +214,29 @@ public class R4ReferralAndMultiDwellingSimulationTests : IDisposable
             Assert.Equal(10, hhB.PendingValueCents);
         });
 
-        // Verify via API GET /api/profiles/{userAId}
+        // Verify via API GET /api/profiles/{userAId} and /network
         var getProfileARes = await _client.GetAsync($"/api/profiles/{userAId}");
         Assert.Equal(HttpStatusCode.OK, getProfileARes.StatusCode);
         var getProfileAJson = await getProfileARes.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(100, getProfileAJson.GetProperty("pendingCents").GetInt32());
+        Assert.Equal(0, getProfileAJson.GetProperty("pendingCents").GetInt32());
+
+        var getNetworkARes = await _client.GetAsync($"/api/profiles/{userAId}/network");
+        Assert.Equal(HttpStatusCode.OK, getNetworkARes.StatusCode);
+        var getNetworkAJson = await getNetworkARes.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(1, getNetworkAJson.GetProperty("sortersCount").GetInt32());
+        Assert.Equal(1, getNetworkAJson.GetProperty("referredContainers").GetInt32());
+        Assert.Equal(0, getNetworkAJson.GetProperty("signupBonusCents").GetInt32());
+        Assert.Equal(0, getNetworkAJson.GetProperty("containerCommissionCents").GetInt32());
+        Assert.Equal(0, getNetworkAJson.GetProperty("totalNetworkCents").GetInt32());
+        Assert.Equal(100, getNetworkAJson.GetProperty("signupBonusPoints").GetInt32());
+        Assert.Equal(1, getNetworkAJson.GetProperty("containerBonusPoints").GetInt32());
+        Assert.Equal(101, getNetworkAJson.GetProperty("totalNetworkPoints").GetInt32());
 
         // ══════════════════════════════════════════════════════════════════════
-        // STEP 6: Anti-Fraud Verification — No Duplicate Referral Credit
+        // STEP 6: Anti-Fraud Verification — No Duplicate Referral Reward
         // ══════════════════════════════════════════════════════════════════════
         // If User B registers another household or triggers household creation again,
-        // caller.HouseholdId is now NOT null, so User A must NOT receive double credit.
+        // User A still earns 0¢ cash and exactly 100 signup points for that neighbour.
         var hhResB2 = await clientB.PostAsJsonAsync("/api/households", new
         {
             name = "Sarah's Second Address",
@@ -242,8 +255,14 @@ public class R4ReferralAndMultiDwellingSimulationTests : IDisposable
         await _host.WithDbContextAsync(async db =>
         {
             var pA = await db.Profiles.FindAsync(userAId);
-            Assert.Equal(100, pA!.PendingCents); // Still exactly 100¢, not 200¢!
+            Assert.Equal(0, pA!.PendingCents);
         });
+
+        var getNetworkARes2 = await _client.GetAsync($"/api/profiles/{userAId}/network");
+        Assert.Equal(HttpStatusCode.OK, getNetworkARes2.StatusCode);
+        var getNetworkAJson2 = await getNetworkARes2.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(100, getNetworkAJson2.GetProperty("signupBonusPoints").GetInt32());
+        Assert.Equal(0, getNetworkAJson2.GetProperty("totalNetworkCents").GetInt32());
 
         clientB.Dispose();
     }
@@ -354,11 +373,21 @@ public class R4ReferralAndMultiDwellingSimulationTests : IDisposable
             var attachedScan = await db.Scans.SingleAsync(s => s.UserId == userCId);
             Assert.Equal(complexHouseholdId, attachedScan.HouseholdId);
 
-            // CRITICAL INVARIANT 3: Referrer User A receives .00 (100¢) pending referral credit
+            // CRITICAL INVARIANT 3: Referrer User A earns 0¢ cash signup bonus (points-only referrals)
             var pA = await db.Profiles.FindAsync(userAId);
             Assert.NotNull(pA);
-            Assert.Equal(100, pA.PendingCents);
+            Assert.Equal(0, pA.PendingCents);
         });
+
+        // Verify referrer earns +100 signup points + 1 container point via /network (0¢ cash)
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", userAToken);
+        var unitNetworkRes = await _client.GetAsync($"/api/profiles/{userAId}/network");
+        Assert.Equal(HttpStatusCode.OK, unitNetworkRes.StatusCode);
+        var unitNetworkJson = await unitNetworkRes.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(0, unitNetworkJson.GetProperty("totalNetworkCents").GetInt32());
+        Assert.Equal(100, unitNetworkJson.GetProperty("signupBonusPoints").GetInt32());
+        Assert.Equal(1, unitNetworkJson.GetProperty("containerBonusPoints").GetInt32());
+        Assert.Equal(101, unitNetworkJson.GetProperty("totalNetworkPoints").GetInt32());
 
         // ══════════════════════════════════════════════════════════════════════
         // STEP 5: Assert Waitlist Cluster Density Isolation
@@ -475,14 +504,14 @@ public class R4ReferralAndMultiDwellingSimulationTests : IDisposable
         await client.PostAsJsonAsync("/api/scan/photo/confirm", new { scanToken = tokenScanB, lat = MoorookaLat, lng = MoorookaLng });
         snapshots.Add(await SnapAsync("Step 3", "User B Confirms First Scan (Orphan Scan Created)", inviteeEmail, userBId));
 
-        // Step 4: User B Household Created -> Awards $1.00 to User A
+        // Step 4: User B Household Created -> Awards +100 non-cash Network Points (0¢ cash) to User A
         var hhB = await client.PostAsJsonAsync("/api/households", new
         {
             name = "Sarah Residence", address = "48 Hamilton Rd, Moorooka QLD 4105", suburb = "MOOROOKA", street = "Hamilton Rd",
             lat = MoorookaLat, lng = MoorookaLng, type = "residential", councilCollectionDay = 2, accessConsent = true
         });
         var hhBId = (await hhB.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
-        snapshots.Add(await SnapAsync("Step 4", "User B Household Created (User A Awarded $1.00)", inviteeEmail, userBId, hhBId));
+        snapshots.Add(await SnapAsync("Step 4", "User B Household Created (User A Awarded +100 Network Points, 0¢ Cash)", inviteeEmail, userBId, hhBId));
 
         // Step 5: Unit Complex Apartment Resident Alex
         client.DefaultRequestHeaders.Authorization = null;

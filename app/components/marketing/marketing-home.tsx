@@ -310,7 +310,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
           </p>
           <div className="grid grid-cols-3 gap-3 max-w-xs mx-auto">
             <MiniStat value="10¢" label="your credit" />
-            <MiniStat value="+1¢" label="street bonus" />
+            <MiniStat value="+100" label="invite pts" />
             <MiniStat value="scan" label="the habit" />
           </div>
         </div>
@@ -336,9 +336,9 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
               body={`At about ${LIVE_VOLUME_THRESHOLD} containers in your suburb, we drive. Bag out; we do the depot run.`}
               tag="One driver trip" tagColor="bg-amber-100 text-amber-700" />
             <StepRow icon={<Banknote className="w-5 h-5" />} color="from-emerald-400 to-emerald-600" num={4}
-              title="Get paid — plus 1¢/can from neighbours you invite"
-              body="Credits clear after the depot verifies. Share your link to grow your neighbour network: earn $1 when they join plus 1¢ bonus on every container they sort."
-              tag="10¢ credit + 1¢ neighbour referral bonus" tagColor="bg-emerald-100 text-emerald-700" />
+              title="Get paid 10¢/can — plus Good Sort Points for invites"
+              body="Credits clear after the depot verifies. Share your link to grow your neighbour network and earn 100 Good Sort Points when a neighbour joins plus 1 bonus point on every container they sort."
+              tag="10¢ credit + Good Sort Points" tagColor="bg-emerald-100 text-emerald-700" />
           </div>
         </div>
       </section>

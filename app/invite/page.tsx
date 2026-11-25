@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Users, ChevronRight } from "lucide-react";
 import { apiUrl, authHeaders, clearAuth, hasValidToken, readStoredProfile, readStoredProfileId } from "@/lib/config";
-import { formatCredit } from "@/lib/credit";
 import { inviteMessage, residentialNeedsStreet, sameSuburb, streetInviteUrl, streetStatsForViewer, titleSuburb, type GrowthSuburb } from "@/lib/brisbane";
 import { Logo } from "@/app/components/shared/logo";
 import { InviteActions } from "@/app/components/shared/invite-actions";
@@ -17,7 +16,7 @@ export default function InvitePage() {
   const [growth, setGrowth] = useState<GrowthSuburb | null>(null);
   const [building, setBuilding] = useState(false);
   const [profileId, setProfileId] = useState<string | undefined>(undefined);
-  const [network, setNetwork] = useState<{ sortersCount: number; referredContainers: number; totalNetworkCents: number } | null>(null);
+  const [network, setNetwork] = useState<{ sortersCount: number; referredContainers: number; totalNetworkPoints?: number } | null>(null);
   const inviteUrl = streetInviteUrl({ suburb, day: binDay, profileId });
 
   useEffect(() => {
@@ -115,11 +114,11 @@ export default function InvitePage() {
         </div>
         {network && (
           <div className="mb-4 rounded-xl bg-emerald-50 border border-emerald-200 px-3.5 py-2.5 text-center text-[12px] font-semibold text-emerald-900">
-            Your neighbour network: {network.sortersCount} sorter{network.sortersCount === 1 ? "" : "s"} · {network.referredContainers} container{network.referredContainers === 1 ? "" : "s"} · +{formatCredit(network.totalNetworkCents)}
+            Your neighbour network: {network.sortersCount} sorter{network.sortersCount === 1 ? "" : "s"} · {network.referredContainers} container{network.referredContainers === 1 ? "" : "s"} · +{(network.totalNetworkPoints ?? network.sortersCount * 100 + network.referredContainers).toLocaleString()} PTS
           </div>
         )}
         <p className="text-[12px] text-slate-400 text-center mb-3">
-          Grow your neighbour network: earn $1 when a neighbour joins plus a 1¢ bonus on every container they sort. Send this to three neighbours to build suburb volume.
+          Grow your neighbour network: earn 100 Good Sort Points when a neighbour joins plus 1 bonus point on every container they sort. Send this to three neighbours to build suburb volume.
         </p>
         <Link
           href="/flyer"

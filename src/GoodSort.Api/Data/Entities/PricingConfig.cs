@@ -4,7 +4,7 @@ public class PricingConfig
 {
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    // Per-container rate bounds (cents) — aligned to 3¢ target (2¢–4¢) so 10¢ sorter + 1¢ Mafia + 2¢–4¢ runner stays profitable under 17.68¢ COEX CRP
+    // Per-container rate bounds (cents) — aligned to 3¢ target (2¢–4¢) so 10¢ sorter + 0¢ points-only referral + 2¢–4¢ runner stays profitable under 17.68¢ COEX CRP
     public int FloorCents { get; set; } = 2;
     public int CeilingCents { get; set; } = 4;
     public int BaseCents { get; set; } = 3;

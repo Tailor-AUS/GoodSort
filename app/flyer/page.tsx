@@ -129,7 +129,7 @@ export default function FlyerPage() {
             DON&apos;T THROW 10¢ CANS IN THE RUBBISH.
           </h2>
           <p className="text-sm md:text-base font-bold text-slate-900 mb-4">
-            This house gets paid to sort cans &amp; bottles at home with The Good Sort. Join our street&apos;s 1,000-container pickup run — and earn $1/house + 1¢/can when you grow your neighbour network:
+            This house gets paid to sort cans &amp; bottles at home with The Good Sort. Join our street&apos;s 1,000-container pickup run — and earn bonus Good Sort Points when neighbours join:
           </p>
           <div className="rounded-2xl bg-slate-950 text-white px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
@@ -179,9 +179,9 @@ export default function FlyerPage() {
             </div>
             <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-4">
               <p className="text-xs font-extrabold uppercase tracking-wider text-emerald-800 mb-1">3. Neighbour Network</p>
-              <p className="text-lg font-extrabold text-emerald-950 mb-1">$1 + 1¢/can</p>
+              <p className="text-lg font-extrabold text-emerald-950 mb-1">+100 PTS &amp; 1 PT/can</p>
               <p className="text-xs text-emerald-900">
-                Invite neighbours on your street: earn $1 when they join plus a 1¢ bonus on every container they sort.
+                Invite neighbours on your street: earn 100 Good Sort Points when they join plus 1 bonus point on every container they sort.
               </p>
             </div>
           </div>
@@ -213,7 +213,7 @@ export default function FlyerPage() {
           </div>
 
           <p className="text-[11px] text-slate-500 mt-6 leading-normal">
-            Sorting credits (10¢ per eligible container, plus 1¢/container neighbour referral bonus) are a private reward paid by The Good Sort after physical collection and depot verification. Operated by Tailor Intelligence Pty Ltd (ABN 13 688 827 572) t/a The Good Sort · thegoodsort.org
+            Sorting credits (10¢ per eligible container) are a private reward paid by The Good Sort after physical collection and depot verification. Neighbour referrals earn non-cash Good Sort Points only. Operated by Tailor Intelligence Pty Ltd (ABN 13 688 827 572) t/a The Good Sort · thegoodsort.org
           </p>
         </div>
       </div>

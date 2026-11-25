@@ -9,7 +9,11 @@ namespace GoodSort.Api.Services;
 public static class HouseholdCredit
 {
     public const int CentsPerContainer = 10;
-    public const int ReferralCommissionCentsPerContainer = 1;
+    // Neighbour referrals earn Good Sort Points only (0¢ cash override, 0¢ signup bonus)
+    // so unit economics preserve +4.68¢/can margin under COEX CRP and zero cash burn pre-CCA.
+    public const int ReferralCommissionCentsPerContainer = 0;
+    public const int ReferralSignupBonusPoints = 100;
+    public const int ReferralPointsPerContainer = 1;
     public const int DefaultUnscannedEstimate = 20;
 
     public static int ClearedCentsForPickup(int containerCount, int centsPerContainer = CentsPerContainer) =>
@@ -17,6 +21,10 @@ public static class HouseholdCredit
 
     public static int ReferralCommissionForPickup(int containerCount) =>
         containerCount > 0 ? containerCount * ReferralCommissionCentsPerContainer : 0;
+
+    public static int ReferralPointsForNetwork(int activeHouseholds, int referredContainers) =>
+        Math.Max(0, activeHouseholds) * ReferralSignupBonusPoints
+        + Math.Max(0, referredContainers) * ReferralPointsPerContainer;
 
     public static int EstimatedContainers(int pendingContainers) =>
         pendingContainers > 0 ? pendingContainers : DefaultUnscannedEstimate;

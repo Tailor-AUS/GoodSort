@@ -48,9 +48,9 @@ const STAGES: Array<{
   {
     idx: 3,
     pill: "4. Paid",
-    eyebrow: "Step 4 · Verified depot payout + referral bonus",
-    headline: "10¢/can cleared to PayID + 1¢/can street bonus",
-    detail: "Cash out from $20 via PayID or bank transfer, plus $1 per neighbour you invite.",
+    eyebrow: "Step 4 · Verified depot payout + Good Sort Points",
+    headline: "10¢/can cleared to PayID + bonus Good Sort Points",
+    detail: "Cash out from $20 via PayID or bank transfer, plus 100 bonus points when a neighbour joins.",
     badge: "PayID ready",
     badgeTone: "bg-emerald-700 text-white",
     spotlightClass: "right-3 top-3",

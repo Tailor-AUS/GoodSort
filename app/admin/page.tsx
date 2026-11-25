@@ -311,7 +311,7 @@ export default function AdminPage() {
                 className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-[12px] font-bold text-white hover:bg-emerald-700"
               >
                 {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                {copiedLink ? "Copied referral link" : "Copy neighbour referral link ($1 + 1¢/can)"}
+                {copiedLink ? "Copied referral link" : "Copy neighbour referral link (+100 PTS + 1 PT/can)"}
               </button>
               <Link
                 href="/flyer"
@@ -427,7 +427,7 @@ export default function AdminPage() {
                   COEX Secondary-Sorted CRP Settlement Ledger (17.68¢/can)
                 </p>
                 <p className="text-[14px] font-extrabold text-slate-900">
-                  10.00¢ COEX Refund + 7.68¢ Handling = 17.68¢ → {crpLedger.activeHouseholdRateCents}¢ Sorter · 1¢ Referrals · 3¢ Runner · +3.68¢ CRP Margin
+                  10.00¢ COEX Refund + 7.68¢ Handling = 17.68¢ → {crpLedger.activeHouseholdRateCents}¢ Sorter · 0¢ Referrals (Points) · 3¢ Runner · +4.68¢ CRP Margin
                 </p>
               </div>
               <span
@@ -470,7 +470,7 @@ export default function AdminPage() {
                 <p className="text-lg font-display font-extrabold text-violet-800">
                   ${crpLedger.totals.proFormaCrpNetMarginDollars.toFixed(2)}
                 </p>
-                <p className="text-[10px] text-violet-700 uppercase tracking-wider">+3.68¢ Margin</p>
+                <p className="text-[10px] text-violet-700 uppercase tracking-wider">+4.68¢ Margin</p>
               </div>
             </div>
 

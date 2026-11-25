@@ -211,7 +211,12 @@ export function computeScanStreaks(
 
 export function buildSorterLoyaltySummary(
   user: User,
-  network?: { sortersCount: number; referredContainers: number; totalNetworkCents: number } | null,
+  network?: {
+    sortersCount: number;
+    referredContainers: number;
+    totalNetworkCents?: number;
+    totalNetworkPoints?: number;
+  } | null,
   now: Date = new Date(),
 ): SorterLoyaltySummary {
   const scans = Array.isArray(user.scans) ? user.scans : [];
@@ -240,9 +245,13 @@ export function buildSorterLoyaltySummary(
   const clearedCents = Math.max(0, user.clearedCents || 0);
   const referredContainers = Math.max(0, network?.referredContainers || 0);
   const sortersCount = Math.max(0, network?.sortersCount || 0);
+  const referralBonusPoints =
+    typeof network?.totalNetworkPoints === "number"
+      ? Math.max(0, network.totalNetworkPoints)
+      : sortersCount * 100 + referredContainers;
 
-  // 10 Good Sort Points per scanned container + 1 bonus point per referred container
-  const goodSortPoints = totalContainers * POINTS_PER_CONTAINER + referredContainers;
+  // 10 Good Sort Points per scanned container + 100 bonus PTS per neighbour + 1 bonus PT per referred container
+  const goodSortPoints = totalContainers * POINTS_PER_CONTAINER + referralBonusPoints;
 
   const streams = countStreamsFromScans(scans);
   const distinctStreams = Object.values(streams).filter((c) => c > 0).length;

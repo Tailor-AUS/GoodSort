@@ -84,12 +84,12 @@ test("buildSorterLoyaltySummary computes points, 4 streams, progress ring, and m
 
   const summary = buildSorterLoyaltySummary(
     makeUser({ totalContainers: 12, pendingCents: 120, clearedCents: 50, totalCO2SavedKg: 1.8, scans }),
-    { sortersCount: 2, referredContainers: 30, totalNetworkCents: 230 },
+    { sortersCount: 2, referredContainers: 30, totalNetworkCents: 0, totalNetworkPoints: 230 },
     new Date("2026-11-25T00:00:00Z"),
   );
 
   assert.equal(summary.tier.id, "bronze");
-  assert.equal(summary.goodSortPoints, 150); // 12*10 + 30 referred
+  assert.equal(summary.goodSortPoints, 350); // 12*10 + 2*100 + 30 referred = 350 PTS
   assert.equal(summary.totalCreditCents, 170);
   assert.equal(summary.containersToNextTier, 38);
   assert.equal(summary.progressPct, 24);

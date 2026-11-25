@@ -15,9 +15,9 @@ namespace GoodSort.Api.Services;
 ///
 /// Full-scale payout stack:
 ///   - 10.00¢/container Sorter household payout
-///   -  1.00¢/container Container Mafia street referrer override (when referred)
+///   -  0.00¢/container Neighbour referral cash override (points-only: +100 PTS join, +1 PT/can)
 ///   -  3.00¢/container Suburb Runner collection payout
-///   = +3.68¢ to +4.68¢/container (+368 to +468 bp) net GoodSort margin.
+///   = +4.68¢/container (+468 bp) net GoodSort margin.
 /// </summary>
 public static class CrpSettlement
 {
@@ -27,7 +27,7 @@ public static class CrpSettlement
 
     public const int CrpHouseholdCentsPerContainer = 10;
     public const int PreCrpHouseholdCentsPerContainer = HouseholdCredit.CentsPerContainer; // 10¢
-    public const int ContainerMafiaCentsPerContainer = HouseholdCredit.ReferralCommissionCentsPerContainer; // 1¢
+    public const int ContainerMafiaCentsPerContainer = HouseholdCredit.ReferralCommissionCentsPerContainer; // 0¢ (points-only)
     public const int CrpRunnerTargetCentsPerContainer = 3;
 
     private const string CrockfordAlphabet = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
