@@ -38,7 +38,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
     if (suburbName) sessionStorage.setItem("goodsort_suburb_hint", suburbName);
     if (!hasValidToken()) {
       if (localStorage.getItem("goodsort_token")) clearAuth();
-    } else {
+    } else if (!suburbName && !new URLSearchParams(window.location.search).has("home")) {
       void waitlistContinuePath()
         .then((path) => {
           if (path === APP_HOME_PATH) router.push(path);
@@ -161,7 +161,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
               <GreenButton onClick={sendOtp} disabled={loading || !email.includes("@")}>
                 {loading ? "Sending code..." : "Continue"}
               </GreenButton>
-              <button onClick={() => setShowAuth(false)} className="w-full text-slate-400 text-[13px] mt-4 py-2">Back</button>
+              <button type="button" onClick={() => setShowAuth(false)} className="w-full min-h-[44px] text-slate-400 text-[13px] mt-3 py-2.5">Back</button>
             </>
           ) : (
             <>
@@ -185,14 +185,14 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
                   type="button"
                   disabled={loading || resendIn > 0}
                   onClick={() => void sendOtp()}
-                  className="text-green-700 font-semibold py-2 disabled:text-slate-300"
+                  className="min-h-[44px] text-green-700 font-semibold py-2.5 disabled:text-slate-300"
                 >
                   {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
                 </button>
                 <button
                   type="button"
                   onClick={() => { setStep("email"); setOtp(""); setError(""); setDevCode(""); }}
-                  className="text-slate-400 hover:text-slate-600 py-2"
+                  className="min-h-[44px] text-slate-400 hover:text-slate-600 py-2.5"
                 >
                   Use a different email
                 </button>
@@ -256,11 +256,11 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
             <GreenButton onClick={() => { track("waitlist_cta", { suburb: place }); router.push("/scan"); }}>
               Scan a container <ChevronRight className="w-5 h-5 inline ml-1" />
             </GreenButton>
-            <button onClick={() => {
+            <button type="button" onClick={() => {
               track("waitlist_cta", { suburb: place });
               if (hasValidToken()) { void waitlistContinuePath().then((path) => router.push(path)); return; }
               setShowAuth(true);
-            }} className="block mt-3 text-green-700 text-[13px] font-semibold hover:text-green-800 transition-colors">
+            }} className="block w-full min-h-[44px] mt-2 py-2.5 text-left sm:text-center text-green-700 text-[13px] font-semibold hover:text-green-800 transition-colors">
               No container handy? Join your suburb waitlist or sign in →
             </button>
           </div>
@@ -370,12 +370,12 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
         <p className="text-[11px] text-slate-400">
           Not a live city-wide pickup. Sorting credits are a private reward, not the 10¢ Containers for Change refund. We are not claiming approval as a Containers for Change refund point.
         </p>
-        <div className="flex justify-center gap-4 mt-2">
-          <a href="/brisbane" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">Brisbane suburbs</a>
-          <a href="/marketplace" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">Suburb map</a>
-          <a href="/guides/containers-for-change-brisbane" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">Containers for Change</a>
-          <a href="/terms" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">Terms</a>
-          <a href="/privacy" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">Privacy</a>
+        <div className="flex flex-wrap justify-center gap-x-1 gap-y-0.5 mt-2">
+          <a href="/brisbane" className="inline-flex items-center min-h-[44px] px-2.5 text-[12px] text-slate-500 hover:text-slate-700 transition-colors">Brisbane suburbs</a>
+          <a href="/marketplace" className="inline-flex items-center min-h-[44px] px-2.5 text-[12px] text-slate-500 hover:text-slate-700 transition-colors">Suburb map</a>
+          <a href="/guides/containers-for-change-brisbane" className="inline-flex items-center min-h-[44px] px-2.5 text-[12px] text-slate-500 hover:text-slate-700 transition-colors">Containers for Change</a>
+          <a href="/terms" className="inline-flex items-center min-h-[44px] px-2.5 text-[12px] text-slate-500 hover:text-slate-700 transition-colors">Terms</a>
+          <a href="/privacy" className="inline-flex items-center min-h-[44px] px-2.5 text-[12px] text-slate-500 hover:text-slate-700 transition-colors">Privacy</a>
         </div>
       </footer>
     </div>

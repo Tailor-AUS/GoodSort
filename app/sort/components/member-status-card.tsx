@@ -108,7 +108,7 @@ export function MemberStatusCard({ suburbLabel, onOpenPayouts }: RewardPreferenc
         <button
           type="button"
           onClick={onOpenPayouts}
-          className="mt-3 w-full text-left text-[13px] font-semibold text-emerald-700 hover:text-emerald-900 py-1"
+          className="mt-2 w-full min-h-[44px] inline-flex items-center text-left text-[13px] font-semibold text-emerald-700 hover:text-emerald-900 py-2.5"
         >
           Manage PayID &amp; bank details →
         </button>
