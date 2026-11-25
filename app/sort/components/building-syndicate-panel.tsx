@@ -653,13 +653,13 @@ export function BuildingSyndicatePanel({
                 : `Message ${syndicate.channelName} as ${myMembership.anonHandle}...`
             }
             aria-label="Anonymous building channel message"
-            className="flex-1 rounded-xl bg-white border border-slate-200 px-3.5 py-2.5 text-[13px] text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
+            className="flex-1 min-h-[44px] rounded-xl bg-white border border-slate-200 px-3.5 py-2.5 text-base text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
           />
           <button
             type="submit"
             disabled={sending || isPaused || !draft.trim()}
             aria-label="Send anonymous message"
-            className="h-10 w-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white flex items-center justify-center shrink-0 transition-colors"
+            className="h-11 w-11 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white flex items-center justify-center shrink-0 transition-colors"
           >
             <Send className="w-4 h-4" />
           </button>

@@ -121,7 +121,7 @@ export function PayoutFields({
         <button
           type="button"
           onClick={() => onMethodChange("payid")}
-          className={`py-2 rounded-lg text-[13px] font-bold transition-all ${
+          className={`min-h-[40px] py-2 rounded-lg text-[13px] font-bold transition-all ${
             method === "payid" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
           }`}
         >
@@ -130,7 +130,7 @@ export function PayoutFields({
         <button
           type="button"
           onClick={() => onMethodChange("aba")}
-          className={`py-2 rounded-lg text-[13px] font-bold transition-all ${
+          className={`min-h-[40px] py-2 rounded-lg text-[13px] font-bold transition-all ${
             method === "aba" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
           }`}
         >
@@ -161,7 +161,7 @@ export function PayoutFields({
                       onPayIdValueChange("");
                     }
                   }}
-                  className={`py-2 rounded-lg border text-[12px] font-bold transition-colors ${
+                  className={`min-h-[40px] py-2 rounded-lg border text-[12px] font-bold transition-colors ${
                     payIdType === opt.id
                       ? "border-green-500 bg-green-50 text-green-800"
                       : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
@@ -190,7 +190,7 @@ export function PayoutFields({
                   ? "0412 345 678"
                   : "12 345 678 901"
               }
-              className="w-full border border-slate-200 bg-white rounded-xl px-3.5 py-3 text-[15px] text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+              className="w-full border border-slate-200 bg-white rounded-xl px-3.5 py-3 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
             />
           </div>
         </>
@@ -206,7 +206,7 @@ export function PayoutFields({
               value={bsb}
               onChange={(e) => onBsbChange(e.target.value)}
               placeholder="064-000"
-              className="w-full border border-slate-200 bg-white rounded-xl px-3.5 py-3 text-[15px] text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+              className="w-full border border-slate-200 bg-white rounded-xl px-3.5 py-3 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
             />
           </div>
           <div className="col-span-3">
@@ -219,7 +219,7 @@ export function PayoutFields({
               value={accountNumber}
               onChange={(e) => onAccountNumberChange(e.target.value)}
               placeholder="12345678"
-              className="w-full border border-slate-200 bg-white rounded-xl px-3.5 py-3 text-[15px] text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+              className="w-full border border-slate-200 bg-white rounded-xl px-3.5 py-3 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
             />
           </div>
         </div>
@@ -233,7 +233,7 @@ export function PayoutFields({
           value={accountName}
           onChange={(e) => onAccountNameChange(e.target.value)}
           placeholder="Full name on bank account"
-          className="w-full border border-slate-200 bg-white rounded-xl px-3.5 py-3 text-[15px] text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+          className="w-full border border-slate-200 bg-white rounded-xl px-3.5 py-3 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
         />
       </div>
     </div>

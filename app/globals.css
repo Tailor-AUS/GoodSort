@@ -39,12 +39,22 @@ body {
 
 /* Full-screen Google Maps-style suburb map control offsets */
 .tgs-fullscreen-map .maplibregl-ctrl-top-right {
-  top: max(72px, calc(env(safe-area-inset-top) + 62px));
-  right: 10px;
+  top: max(76px, calc(env(safe-area-inset-top) + 66px));
+  right: 12px;
 }
-.tgs-fullscreen-map .maplibregl-ctrl-bottom-right,
+.tgs-fullscreen-map .maplibregl-ctrl-group button {
+  width: 40px;
+  height: 40px;
+}
+.tgs-fullscreen-map .maplibregl-ctrl-bottom-right {
+  left: 10px;
+  right: auto;
+  bottom: 186px;
+  max-width: calc(100vw - 84px);
+}
 .tgs-fullscreen-map .maplibregl-ctrl-bottom-left {
-  bottom: 172px;
+  left: 10px;
+  bottom: 186px;
 }
 
 /* Google Places Autocomplete — light theme */

@@ -128,29 +128,29 @@ export default function SortedBagsPage() {
     <div className="min-h-dvh bg-slate-50 text-slate-900 pb-16">
       {/* Screen Header (hidden when printing) */}
       <header className="print:hidden sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
+        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
             <Link
               href="/sort"
               aria-label="Back to home"
-              className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700"
+              className="w-10 h-10 shrink-0 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700"
             >
               <ArrowLeft size={18} />
             </Link>
-            <div>
-              <h1 className="font-display font-extrabold text-base text-slate-900 leading-tight">
+            <div className="min-w-0">
+              <h1 className="font-display font-extrabold text-base text-slate-900 leading-tight truncate">
                 Home Bag Tags
               </h1>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 leading-snug line-clamp-1">
                 Tag full bags so your scanned cans clear on kerb pickup
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <Link
               href="/scan"
-              className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs"
+              className="inline-flex items-center justify-center min-h-[40px] px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs whitespace-nowrap"
             >
               + Scan
             </Link>
@@ -158,7 +158,7 @@ export default function SortedBagsPage() {
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1.5"
+                className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs whitespace-nowrap"
               >
                 <Printer size={14} /> Print Tags
               </button>
@@ -219,11 +219,14 @@ export default function SortedBagsPage() {
 
         {/* Create New 4-Stream Bag Tag (hidden on print) */}
         <section className="print:hidden rounded-3xl bg-white border border-slate-200 p-5 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <h2 className="font-display font-extrabold text-lg text-slate-900">
               Tag a full bag at home
             </h2>
-            <Link href="/scan" className="text-xs font-bold text-emerald-700 hover:underline">
+            <Link
+              href="/scan"
+              className="inline-flex items-center min-h-[40px] px-2 -mr-2 text-xs font-bold text-emerald-700 hover:underline whitespace-nowrap shrink-0"
+            >
               + Scan a container
             </Link>
           </div>
@@ -304,7 +307,7 @@ export default function SortedBagsPage() {
                           : Math.max(1, maxBagCount),
                       );
                     }}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-bold text-slate-900 tabular-nums"
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-300 text-base font-bold text-slate-900 tabular-nums"
                   />
                   {effectiveBagCount < maxBagCount && (
                     <button

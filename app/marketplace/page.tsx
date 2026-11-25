@@ -124,7 +124,7 @@ export default function MarketplacePage() {
           <Link
             href={signedIn ? "/sort" : "/"}
             aria-label={signedIn ? "Back to dashboard" : "Back to home"}
-            className="h-9 w-9 rounded-full flex items-center justify-center text-slate-700 hover:bg-slate-100 active:scale-95 transition-all shrink-0"
+            className="h-10 w-10 rounded-full flex items-center justify-center text-slate-700 hover:bg-slate-100 active:scale-95 transition-all shrink-0"
           >
             <ArrowLeft className="w-5 h-5" />
           </Link>
@@ -153,7 +153,7 @@ export default function MarketplacePage() {
 
           <Link
             href="/scan"
-            className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[12px] font-bold px-3.5 py-2 shadow-sm active:scale-95 transition-all shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 min-h-[40px] rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[13px] font-bold px-4 py-2 shadow-sm active:scale-95 transition-all shrink-0"
           >
             <ScanBarcode className="w-3.5 h-3.5" />
             Scan
@@ -166,7 +166,7 @@ export default function MarketplacePage() {
         type="button"
         onClick={handleRecentre}
         aria-label="Recentre Brisbane map"
-        className="fixed right-3.5 bottom-[196px] z-20 h-11 w-11 rounded-full bg-white/95 backdrop-blur border border-slate-200/80 shadow-[0_4px_16px_rgba(15,23,42,0.16)] flex items-center justify-center text-slate-700 hover:text-slate-950 active:scale-95 transition-all"
+        className="fixed right-3.5 bottom-[204px] z-20 h-11 w-11 rounded-full bg-white/95 backdrop-blur border border-slate-200/80 shadow-[0_4px_16px_rgba(15,23,42,0.16)] flex items-center justify-center text-slate-700 hover:text-slate-950 active:scale-95 transition-all"
       >
         <LocateFixed className="w-5 h-5" />
       </button>
@@ -203,7 +203,7 @@ export default function MarketplacePage() {
                   type="button"
                   onClick={() => setSelectedCentroidId(null)}
                   aria-label="Close suburb details"
-                  className="h-8 w-8 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center justify-center shrink-0"
+                  className="h-10 w-10 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center justify-center shrink-0"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -224,14 +224,14 @@ export default function MarketplacePage() {
                 {selectedCentroid.slug && (
                   <Link
                     href={`/brisbane/${selectedCentroid.slug}`}
-                    className="flex-1 inline-flex items-center justify-center rounded-full bg-slate-900 hover:bg-slate-800 text-white text-[13px] font-bold py-2.5 px-4 transition-colors"
+                    className="flex-1 min-h-[44px] inline-flex items-center justify-center rounded-full bg-slate-900 hover:bg-slate-800 text-white text-[13px] font-bold py-2.5 px-4 transition-colors"
                   >
                     Open suburb
                   </Link>
                 )}
                 <Link
                   href="/scan"
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[13px] font-bold py-2.5 px-4 transition-colors"
+                  className="flex-1 min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[13px] font-bold py-2.5 px-4 transition-colors"
                 >
                   <ScanBarcode className="w-4 h-4" />
                   Scan cans
@@ -252,21 +252,21 @@ export default function MarketplacePage() {
               <div className="flex items-center gap-2 mb-3">
                 <Link
                   href="/scan"
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[13px] font-bold py-2.5 px-3.5 shadow-sm transition-colors"
+                  className="flex-1 min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[13px] font-bold py-2.5 px-3.5 shadow-sm transition-colors"
                 >
                   <ScanBarcode className="w-4 h-4" />
                   Scan
                 </Link>
                 <Link
                   href="/bags"
-                  className="inline-flex items-center justify-center gap-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-[13px] font-semibold py-2.5 px-3.5 transition-colors"
+                  className="min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-[13px] font-semibold py-2.5 px-3.5 transition-colors"
                 >
                   <Package className="w-4 h-4" />
                   Bags
                 </Link>
                 <Link
                   href={isRunner ? "/runner" : "/runner/signup"}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-[13px] font-semibold py-2.5 px-3.5 transition-colors"
+                  className="min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-[13px] font-semibold py-2.5 px-3.5 transition-colors"
                 >
                   <Truck className="w-4 h-4" />
                   Drive

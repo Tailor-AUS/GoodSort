@@ -109,12 +109,12 @@ export function AccountPanel({ user, open, onClose, onRefresh }: AccountPanelPro
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end overflow-hidden">
-      <div className="absolute inset-0 bg-black/20 touch-none" onClick={onClose} />
+      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px] touch-none" onClick={onClose} />
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Account"
-        className="relative z-10 h-full w-[calc(100%-2.5rem)] max-w-[22rem] shrink-0 glass-strong overflow-y-auto overflow-x-hidden overscroll-contain animate-slide-in-right border-l border-white/40 shadow-2xl"
+        className="relative z-10 h-full w-[calc(100%-2.5rem)] max-w-[22rem] shrink-0 bg-white overflow-y-auto overflow-x-hidden overscroll-contain animate-slide-in-right border-l border-slate-200 shadow-2xl"
       >
         <div className="p-6 border-b border-slate-100/60" style={{ paddingTop: "max(1.5rem, env(safe-area-inset-top))" }}>
           <div className="flex justify-between items-start mb-6">
@@ -499,7 +499,7 @@ function PayoutDestinationSection({
               setError("");
               setEditing(true);
             }}
-            className="text-[12px] font-bold text-green-700 hover:text-green-900 shrink-0"
+            className="text-[13px] font-bold text-green-700 hover:text-green-900 shrink-0 min-h-[40px] min-w-[44px] px-2.5 -mr-2 inline-flex items-center justify-center rounded-lg hover:bg-green-50 transition-colors"
           >
             {summaryLabel ? "Edit" : "Add"}
           </button>
@@ -804,7 +804,7 @@ function CashoutSection({
                 aria-label="PayID Type"
                 value={payIdType}
                 onChange={(e) => setPayIdType(e.target.value as "email" | "phone" | "abn")}
-                className="w-full border border-slate-200 bg-white rounded-lg px-3 py-2 text-sm text-slate-900"
+                className="w-full border border-slate-200 bg-white rounded-lg px-3 py-2.5 text-base text-slate-900"
               >
                 <option value="email">Email Address</option>
                 <option value="phone">Mobile Number</option>
@@ -825,7 +825,7 @@ function CashoutSection({
                     ? "0412 345 678"
                     : "12 345 678 901"
                 }
-                className="w-full border border-slate-200 bg-white rounded-lg px-3 py-2.5 text-sm text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+                className="w-full border border-slate-200 bg-white rounded-lg px-3 py-2.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
               />
             </div>
           </>

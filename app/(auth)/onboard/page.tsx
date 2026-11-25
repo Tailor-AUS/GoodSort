@@ -707,7 +707,7 @@ export default function OnboardPage() {
           setType(type === "residential" ? "unit_complex" : "residential");
           setError("");
         }}
-        className="w-full text-center text-[13px] text-slate-500 hover:text-slate-700 font-medium py-2 mt-1"
+        className="w-full min-h-[44px] text-center text-[13px] text-slate-500 hover:text-slate-700 font-medium py-2.5 mt-1"
       >
         {type === "residential" ? "I live in a unit / apartment" : "I live in a house"}
       </button>

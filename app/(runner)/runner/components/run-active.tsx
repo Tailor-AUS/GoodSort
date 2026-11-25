@@ -363,13 +363,13 @@ export function RunActive({
               value={manualBagCode}
               onChange={(e) => setManualBagCode(e.target.value.toUpperCase())}
               placeholder="Or type Sharpie code e.g. GSB-ALU-..."
-              className="flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-mono text-slate-900"
+              className="flex-1 min-h-[44px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-base font-mono text-slate-900"
             />
             <button
               type="button"
               onClick={() => handleVerifyBagCode(manualBagCode)}
               disabled={!manualBagCode.trim()}
-              className="px-3 py-1.5 rounded-lg bg-emerald-600 disabled:opacity-40 text-white text-xs font-bold"
+              className="min-h-[44px] px-3.5 py-2 rounded-lg bg-emerald-600 disabled:opacity-40 text-white text-xs font-bold shrink-0"
             >
               Verify
             </button>
@@ -437,7 +437,7 @@ export function RunActive({
                     setContaminationFlag(true);
                   }
                 }}
-                className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-800 font-medium"
+                className="w-full min-h-[44px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-base text-slate-800 font-medium"
               >
                 {DISCREPANCY_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -466,7 +466,7 @@ export function RunActive({
                   value={discrepancyNote}
                   onChange={(e) => setDiscrepancyNote(e.target.value)}
                   placeholder="Short note (optional)"
-                  className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800"
+                  className="w-full min-h-[44px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-base text-slate-800"
                 />
               )}
             </div>
@@ -581,7 +581,7 @@ export function RunActive({
                 disabled={isLockedCompleted}
                 value={isLockedCompleted ? run.actualContainers : (depotVerifiedInput === "" ? kerbsideContainers : depotVerifiedInput)}
                 onChange={(e) => setDepotVerifiedInput(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-white disabled:bg-slate-50 disabled:text-slate-500 px-3 py-2 text-sm font-bold text-slate-900"
+                className="w-full min-h-[44px] rounded-xl border border-slate-200 bg-white disabled:bg-slate-50 disabled:text-slate-500 px-3 py-2 text-base font-bold text-slate-900"
               />
             </div>
             <div>
@@ -595,7 +595,7 @@ export function RunActive({
                 value={effectiveDocketRef}
                 onChange={(e) => setCoexDocketRef(e.target.value)}
                 placeholder="e.g. DOCKET-1042"
-                className="w-full rounded-xl border border-slate-200 bg-white disabled:bg-slate-50 disabled:text-slate-500 px-3 py-2 text-xs font-mono text-slate-900"
+                className="w-full min-h-[44px] rounded-xl border border-slate-200 bg-white disabled:bg-slate-50 disabled:text-slate-500 px-3 py-2 text-base font-mono text-slate-900"
               />
             </div>
           </div>
