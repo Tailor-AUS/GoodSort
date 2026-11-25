@@ -23,13 +23,16 @@ test("formatVagueContainerBand returns privacy-safe approximate bands", () => {
 test("MapView pins inline absolute 100% sizing to defeat Tailwind v4 .maplibregl-map cascade collapse and fits suburb centroids", () => {
   const mapSrc = fs.readFileSync(path.join(ROOT, "app", "components", "shared", "map-view.tsx"), "utf8");
   assert.match(mapSrc, /style=\{\{\s*position:\s*"absolute",\s*inset:\s*0,\s*width:\s*"100%",\s*height:\s*"100%"\s*\}\}/);
-  assert.match(mapSrc, /map\.fitBounds\(bounds/);
+  assert.match(mapSrc, /\.fitBounds\(bounds/);
   assert.match(mapSrc, /formatVagueContainerBand/);
 
   const marketSrc = fs.readFileSync(path.join(ROOT, "app", "marketplace", "page.tsx"), "utf8");
   assert.match(marketSrc, /id="suburb-map"/);
+  assert.match(marketSrc, /h-dvh w-full/);
   assert.match(marketSrc, /disableAutoLocate/);
   assert.match(marketSrc, /formatVagueContainerBand/);
+  // Full-screen Google Maps layout: no marketing hero, no suburb filter dropdown or chip list
+  assert.doesNotMatch(marketSrc, /SuburbFinder|DensityBoard/);
 
   const homeSrc = fs.readFileSync(path.join(ROOT, "app", "sort", "components", "waitlist-home.tsx"), "utf8");
   assert.match(homeSrc, /href="\/marketplace#suburb-map"/);

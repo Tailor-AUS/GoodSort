@@ -340,16 +340,42 @@ function CentroidBubbles({
   centroids,
   focusedCentroidId,
   onSelect,
+  fitPadding,
+  resetViewTrigger,
 }: {
   centroids: RunCentroid[];
   focusedCentroidId?: string | null;
   onSelect?: (centroid: RunCentroid) => void;
+  fitPadding?: number | { top: number; bottom: number; left: number; right: number };
+  resetViewTrigger?: number;
 }) {
   const map = useMap();
   const labelMarkersRef = useRef<Map<string, MLMarker>>(new Map());
   const fittedKeyRef = useRef<string>("");
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
+  const paddingRef = useRef(fitPadding);
+  paddingRef.current = fitPadding;
+
+  const fitAllCentroids = useCallback(
+    (m: MLMap, items: RunCentroid[], duration = 450) => {
+      if (items.length === 0) return;
+      const bounds = new maplibregl.LngLatBounds();
+      for (const c of items) {
+        if (Number.isFinite(c.lat) && Number.isFinite(c.lng)) {
+          bounds.extend([c.lng, c.lat]);
+        }
+      }
+      if (!bounds.isEmpty()) {
+        m.fitBounds(bounds, {
+          padding: paddingRef.current ?? 64,
+          maxZoom: 12.2,
+          duration,
+        });
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!map) return;
@@ -423,15 +449,7 @@ function CentroidBubbles({
     const boundsKey = centroids.map((c) => `${c.id}:${c.lat}:${c.lng}`).join("|");
     if (centroids.length > 0 && fittedKeyRef.current !== boundsKey) {
       fittedKeyRef.current = boundsKey;
-      const bounds = new maplibregl.LngLatBounds();
-      for (const c of centroids) {
-        if (Number.isFinite(c.lat) && Number.isFinite(c.lng)) {
-          bounds.extend([c.lng, c.lat]);
-        }
-      }
-      if (!bounds.isEmpty()) {
-        map.fitBounds(bounds, { padding: 64, maxZoom: 12.2, duration: 400 });
-      }
+      fitAllCentroids(map, centroids, 400);
     }
 
     return () => {
@@ -439,7 +457,7 @@ function CentroidBubbles({
       if (map.getLayer(CENTROID_LAYER_ID)) map.removeLayer(CENTROID_LAYER_ID);
       if (map.getSource(CENTROID_SOURCE_ID)) map.removeSource(CENTROID_SOURCE_ID);
     };
-  }, [map, centroids, focusedCentroidId]);
+  }, [map, centroids, focusedCentroidId, fitAllCentroids]);
 
   useEffect(() => {
     if (!map || !focusedCentroidId) return;
@@ -447,6 +465,11 @@ function CentroidBubbles({
     if (!target) return;
     map.flyTo({ center: [target.lng, target.lat], zoom: 12.8, duration: 500 });
   }, [map, centroids, focusedCentroidId]);
+
+  useEffect(() => {
+    if (!map || !resetViewTrigger) return;
+    fitAllCentroids(map, centroids, 500);
+  }, [map, centroids, resetViewTrigger, fitAllCentroids]);
 
   return null;
 }
@@ -549,6 +572,8 @@ interface MapViewProps {
   disableAutoLocate?: boolean;
   focusedCentroidId?: string | null;
   onCentroidSelect?: (centroid: RunCentroid) => void;
+  fitPadding?: number | { top: number; bottom: number; left: number; right: number };
+  resetViewTrigger?: number;
 }
 
 export function MapView({
@@ -564,6 +589,8 @@ export function MapView({
   disableAutoLocate,
   focusedCentroidId,
   onCentroidSelect,
+  fitPadding,
+  resetViewTrigger,
 }: MapViewProps) {
   const [userLoc, setUserLoc] = useState<LatLng | null>(null);
   const handleLocated = useCallback((loc: LatLng) => setUserLoc(loc), []);
@@ -583,6 +610,8 @@ export function MapView({
             centroids={runCentroids}
             focusedCentroidId={focusedCentroidId}
             onSelect={onCentroidSelect}
+            fitPadding={fitPadding}
+            resetViewTrigger={resetViewTrigger}
           />
         )}
         {activeRunStops && activeRunStops.length > 0 && <ActiveRunStopMarkers stops={activeRunStops} />}

@@ -3,21 +3,16 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import {
-  ChevronRight,
-  Home,
-  Recycle,
-  Banknote,
-  QrCode,
+  ArrowLeft,
+  LocateFixed,
+  Package,
+  ScanBarcode,
   Truck,
-  MapPin,
+  X,
 } from "lucide-react";
-import { Logo } from "@/app/components/shared/logo";
 import { MapView, type RunCentroid } from "@/app/components/shared/map-view";
-import { SuburbFinder } from "@/app/components/marketing/suburb-finder";
-import { DensityBoard } from "@/app/components/marketing/density-board";
 import { getMarketplaceOverview } from "@/lib/marketplace-api";
 import { formatVagueContainerBand, type MarketplaceOverview } from "@/lib/marketplace";
-import { LAUNCH_BONUS_CONTAINERS, launchBonusHeadline } from "@/lib/credit";
 import { LIVE_VOLUME_THRESHOLD, titleSuburb } from "@/lib/brisbane";
 import { hasValidToken } from "@/lib/config";
 
@@ -25,11 +20,14 @@ function suburbSlug(name: string): string {
   return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
+const MAP_FIT_PADDING = { top: 96, bottom: 210, left: 48, right: 48 };
+
 export default function MarketplacePage() {
   const [overview, setOverview] = useState<MarketplaceOverview | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [isRunner, setIsRunner] = useState(false);
   const [selectedCentroidId, setSelectedCentroidId] = useState<string | null>(null);
+  const [resetTrigger, setResetTrigger] = useState(0);
 
   const loadOverview = useCallback(async () => {
     const ov = await getMarketplaceOverview();
@@ -50,12 +48,6 @@ export default function MarketplacePage() {
       setIsRunner(false);
     }
     loadOverview();
-
-    if (typeof window !== "undefined" && window.location.hash === "#suburb-map") {
-      requestAnimationFrame(() => {
-        document.getElementById("suburb-map")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-    }
   }, [loadOverview]);
 
   const liveCentroids = useMemo<RunCentroid[]>(() => {
@@ -97,253 +89,197 @@ export default function MarketplacePage() {
   );
   const handleSelectCentroid = useCallback((c: RunCentroid) => setSelectedCentroidId(c.id), []);
   const handleMapTap = useCallback(() => setSelectedCentroidId(null), []);
-  const bonusCap = overview?.rateCard?.launchBonusCap ?? LAUNCH_BONUS_CONTAINERS;
-  const bonusText = launchBonusHeadline(bonusCap);
+  const handleRecentre = useCallback(() => {
+    setSelectedCentroidId(null);
+    setResetTrigger((n) => n + 1);
+  }, []);
+
+  const activeAreasCount = liveCentroids.length;
 
   return (
-    <div
-      className="min-h-dvh bg-white text-slate-900 overflow-y-auto overscroll-none"
-      style={{ paddingTop: "env(safe-area-inset-top,0)" }}
+    <main
+      id="suburb-map"
+      className="tgs-fullscreen-map relative h-dvh w-full overflow-hidden bg-slate-100 text-slate-900 select-none"
     >
-      {/* Clean Header */}
-      <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/95 backdrop-blur">
-        <div className="max-w-4xl mx-auto px-5 py-3.5 flex items-center justify-between gap-3">
-          <Link href={signedIn ? "/sort" : "/"} aria-label="The Good Sort home">
-            <Logo size="sm" />
-          </Link>
-          <div className="flex items-center gap-2">
-            {signedIn && (
-              <Link
-                href="/sort"
-                className="px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors"
-              >
-                My home
-              </Link>
-            )}
-            <Link
-              href="/scan"
-              className="px-4 py-2 rounded-xl bg-gradient-to-b from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white text-xs font-extrabold transition-all flex items-center gap-1"
-            >
-              Scan to earn <ChevronRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-        </div>
-      </header>
+      {/* Full-bleed edge-to-edge interactive map (Google Maps app canvas) */}
+      <MapView
+        mode="collect"
+        bins={[]}
+        depot={null}
+        onMapTap={handleMapTap}
+        runCentroids={liveCentroids}
+        disableAutoLocate
+        focusedCentroidId={selectedCentroidId}
+        onCentroidSelect={handleSelectCentroid}
+        fitPadding={MAP_FIT_PADDING}
+        resetViewTrigger={resetTrigger}
+      />
 
-      {/* Hero (<= 3 elements: Headline, 1 plain sentence, Primary CTA) */}
-      <section className="px-5 py-12 sm:py-16 bg-gradient-to-br from-white via-violet-50/70 to-emerald-50/70 border-b border-slate-100">
-        <div className="max-w-2xl mx-auto text-center">
-          <h1 className="text-[36px] sm:text-[52px] leading-[1.02] font-display font-extrabold text-slate-950 mb-4">
-            Scan at home. Earn from every can.
-          </h1>
-          <p className="text-slate-600 text-[16px] sm:text-[18px] leading-relaxed mb-6 max-w-xl mx-auto">
-            Point your phone at drink cans and bottles for 10¢ each, keep 4 bags at home, and skip the depot — we collect from your front kerb once your Brisbane suburb hits {LIVE_VOLUME_THRESHOLD.toLocaleString()} containers.
-          </p>
-          <div className="max-w-xs mx-auto">
-            <Link
-              href="/scan"
-              className="w-full bg-gradient-to-b from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-extrabold py-4 px-6 rounded-2xl text-[16px] min-h-[52px] flex items-center justify-center gap-1.5 shadow-lg shadow-green-600/20 active:scale-[0.98] transition-all"
-            >
-              Scan a container <ChevronRight className="w-5 h-5" />
-            </Link>
-            {bonusText && (
-              <p className="mt-3 text-[12px] font-semibold text-violet-800">
-                {bonusText}
-              </p>
-            )}
-          </div>
-        </div>
-      </section>
-
-      <main className="max-w-4xl mx-auto px-5 py-10 space-y-12">
-        {/* Simple 3-step domestic home flow */}
-        <section>
-          <h2 className="text-center text-[12px] text-slate-400 font-semibold uppercase tracking-[0.15em] mb-6">
-            How Brisbane homes earn
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="rounded-2xl border border-slate-200 bg-white p-5">
-              <div className="w-10 h-10 rounded-xl bg-violet-100 text-violet-700 flex items-center justify-center mb-3">
-                <Home className="w-5 h-5" />
-              </div>
-              <h3 className="font-display font-bold text-[15px] text-slate-900 mb-1">
-                1. Scan in your kitchen
-              </h3>
-              <p className="text-[13px] text-slate-500 leading-relaxed">
-                Snap a quick photo or barcode before tossing a drink container in a bag. 10¢ pending credit straight away — plus 1¢/can when neighbours you invite scan.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white p-5">
-              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center mb-3">
-                <Recycle className="w-5 h-5" />
-              </div>
-              <h3 className="font-display font-bold text-[15px] text-slate-900 mb-1">
-                2. Fill your 4 home bags
-              </h3>
-              <p className="text-[13px] text-slate-500 leading-relaxed">
-                Keep cans, clear plastic, coloured plastic, and glass separate in your own bags.{" "}
-                <Link href="/bags" className="font-semibold text-emerald-700 underline">
-                  Tag full bags
-                </Link>{" "}
-                with a QR sticker or marker code.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white p-5">
-              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center mb-3">
-                <Banknote className="w-5 h-5" />
-              </div>
-              <h3 className="font-display font-bold text-[15px] text-slate-900 mb-1">
-                3. Kerb pickup &amp; payout
-              </h3>
-              <p className="text-[13px] text-slate-500 leading-relaxed">
-                At ~{LIVE_VOLUME_THRESHOLD.toLocaleString()} containers in your suburb, a local driver collects from your kerb. Credits clear after pickup to PayID or bank transfer ($20 min).
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* Check Your Suburb + Live Brisbane Map */}
-        <section className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          <div className="lg:col-span-5">
-            <h2 className="text-[12px] text-slate-400 font-semibold uppercase tracking-[0.15em] mb-3">
-              Check your Brisbane suburb
-            </h2>
-            <SuburbFinder />
-            <DensityBoard />
-          </div>
-
-          <div
-            id="suburb-map"
-            className="lg:col-span-7 scroll-mt-20 rounded-2xl border border-slate-200 overflow-hidden bg-slate-50 shadow-sm"
+      {/* Floating Google Maps Top Pill Bar */}
+      <div
+        className="pointer-events-none fixed inset-x-0 top-0 z-20 px-3"
+        style={{ paddingTop: "max(12px, env(safe-area-inset-top))" }}
+      >
+        <div className="pointer-events-auto mx-auto max-w-md flex items-center justify-between gap-2 rounded-full bg-white/95 backdrop-blur-xl border border-white shadow-[0_4px_20px_rgba(15,23,42,0.14)] px-2 py-1.5">
+          <Link
+            href={signedIn ? "/sort" : "/"}
+            aria-label={signedIn ? "Back to dashboard" : "Back to home"}
+            className="h-9 w-9 rounded-full flex items-center justify-center text-slate-700 hover:bg-slate-100 active:scale-95 transition-all shrink-0"
           >
-            <div className="px-4 py-3 bg-white border-b border-slate-100 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-emerald-600" />
-                <span className="text-[13px] font-bold text-slate-900">
-                  Brisbane Suburb Map
-                </span>
-              </div>
-              <Link
-                href="/bags"
-                className="inline-flex items-center gap-1 text-[12px] font-semibold text-violet-700 hover:text-violet-900"
-              >
-                <QrCode className="w-3.5 h-3.5" />
-                Home bag tags
-              </Link>
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/images/tgs-glass-icon.webp"
+              alt=""
+              aria-hidden="true"
+              width={22}
+              height={22}
+              className="h-[22px] w-[22px] rounded-[6px] shrink-0"
+            />
+            <div className="min-w-0">
+              <p className="text-[14px] font-display font-bold text-slate-900 leading-tight truncate">
+                Brisbane
+              </p>
+              <p className="text-[11px] text-slate-500 leading-tight truncate">
+                {activeAreasCount > 0
+                  ? `${activeAreasCount} active ${activeAreasCount === 1 ? "suburb" : "suburbs"} · tap a pin`
+                  : "Live suburb volume map"}
+              </p>
             </div>
-            <div className="relative h-[340px] sm:h-[400px] w-full">
-              <MapView
-                mode="collect"
-                bins={[]}
-                depot={null}
-                onMapTap={handleMapTap}
-                runCentroids={liveCentroids}
-                disableAutoLocate
-                focusedCentroidId={selectedCentroidId}
-                onCentroidSelect={handleSelectCentroid}
-              />
-              {selectedCentroid && (
-                <div className="absolute bottom-3 left-3 right-3 z-10 rounded-xl bg-white/95 backdrop-blur border border-slate-200 shadow-lg px-3.5 py-2.5 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-display font-bold text-slate-900 truncate">
-                      {selectedCentroid.label}
-                    </p>
-                    <p className="text-[11px] text-slate-600">
-                      Area volume: <strong className="text-emerald-700">{selectedCentroid.vagueCountLabel}</strong>
-                      {typeof selectedCentroid.progressPct === "number"
-                        ? ` · ${selectedCentroid.progressPct}% of ${LIVE_VOLUME_THRESHOLD.toLocaleString()}-can run`
-                        : ""}
-                    </p>
-                  </div>
-                  {selectedCentroid.slug && (
-                    <Link
-                      href={`/brisbane/${selectedCentroid.slug}`}
-                      className="shrink-0 rounded-lg bg-slate-900 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-slate-800"
-                    >
-                      Open suburb →
-                    </Link>
-                  )}
+          </div>
+
+          <Link
+            href="/scan"
+            className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[12px] font-bold px-3.5 py-2 shadow-sm active:scale-95 transition-all shrink-0"
+          >
+            <ScanBarcode className="w-3.5 h-3.5" />
+            Scan
+          </Link>
+        </div>
+      </div>
+
+      {/* Floating Google Maps Recentre FAB (right edge, cleanly above bottom sheet) */}
+      <button
+        type="button"
+        onClick={handleRecentre}
+        aria-label="Recentre Brisbane map"
+        className="fixed right-3.5 bottom-[196px] z-20 h-11 w-11 rounded-full bg-white/95 backdrop-blur border border-slate-200/80 shadow-[0_4px_16px_rgba(15,23,42,0.16)] flex items-center justify-center text-slate-700 hover:text-slate-950 active:scale-95 transition-all"
+      >
+        <LocateFixed className="w-5 h-5" />
+      </button>
+
+      {/* Google Maps Bottom Sheet */}
+      <div
+        className="pointer-events-none fixed inset-x-0 bottom-0 z-20 px-0 sm:px-4 sm:pb-4"
+      >
+        <div
+          className="pointer-events-auto mx-auto max-w-md rounded-t-[26px] sm:rounded-[26px] bg-white/97 backdrop-blur-xl border-t sm:border border-slate-200/80 shadow-[0_-8px_32px_rgba(15,23,42,0.14)] px-5 pt-2.5"
+          style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}
+        >
+          {/* Grab handle */}
+          <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200" />
+
+          {selectedCentroid ? (
+            <div>
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <div className="min-w-0">
+                  <h1 className="text-[19px] font-display font-bold text-slate-900 leading-tight truncate">
+                    {selectedCentroid.label}
+                  </h1>
+                  <p className="text-[12px] text-slate-600 mt-0.5">
+                    Area volume:{" "}
+                    <strong className="text-emerald-700">
+                      {selectedCentroid.vagueCountLabel}
+                    </strong>
+                    {typeof selectedCentroid.progressPct === "number"
+                      ? ` · ${selectedCentroid.progressPct}% of ${LIVE_VOLUME_THRESHOLD.toLocaleString()}-can run`
+                      : ""}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCentroidId(null)}
+                  aria-label="Close suburb details"
+                  className="h-8 w-8 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center justify-center shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {typeof selectedCentroid.progressPct === "number" && (
+                <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden mb-3.5">
+                  <div
+                    className="h-full rounded-full bg-emerald-600 transition-all"
+                    style={{
+                      width: `${Math.max(selectedCentroid.progressPct, selectedCentroid.containers > 0 ? 4 : 0)}%`,
+                    }}
+                  />
                 </div>
               )}
-            </div>
-            {liveCentroids.length > 0 && (
-              <div className="px-3.5 py-2.5 bg-white border-t border-slate-100 flex flex-wrap gap-1.5">
-                {liveCentroids.map((c) => {
-                  const active = selectedCentroidId === c.id;
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setSelectedCentroidId(c.id)}
-                      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold transition-colors ${
-                        active
-                          ? "bg-slate-900 text-white"
-                          : "bg-slate-100 text-slate-700 hover:bg-emerald-50 hover:text-emerald-800"
-                      }`}
-                    >
-                      <span>{c.label}</span>
-                      <span className={active ? "text-emerald-300" : "text-slate-500"}>
-                        {c.vagueCountLabel}
-                      </span>
-                    </button>
-                  );
-                })}
+
+              <div className="flex items-center gap-2">
+                {selectedCentroid.slug && (
+                  <Link
+                    href={`/brisbane/${selectedCentroid.slug}`}
+                    className="flex-1 inline-flex items-center justify-center rounded-full bg-slate-900 hover:bg-slate-800 text-white text-[13px] font-bold py-2.5 px-4 transition-colors"
+                  >
+                    Open suburb
+                  </Link>
+                )}
+                <Link
+                  href="/scan"
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[13px] font-bold py-2.5 px-4 transition-colors"
+                >
+                  <ScanBarcode className="w-4 h-4" />
+                  Scan cans
+                </Link>
               </div>
-            )}
-            <p className="px-4 py-2.5 text-[11px] text-slate-500 bg-white border-t border-slate-100">
-              Suburb bubbles show approximate area volume toward a {LIVE_VOLUME_THRESHOLD.toLocaleString()}-container pickup run (rounded to ~1 km so individual homes stay private).
-            </p>
-          </div>
-        </section>
-
-        {/* Quiet local driver note at bottom */}
-        <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-700 shrink-0 mt-0.5">
-              <Truck className="w-4 h-4" />
             </div>
+          ) : (
             <div>
-              <p className="text-[14px] font-bold text-slate-900">
-                Have a ute, van, or car in Brisbane?
-              </p>
-              <p className="text-[12px] text-slate-500">
-                Collect bagged containers from streets near you once a suburb unlocks a pickup run.
+              <div className="flex items-baseline justify-between gap-2 mb-3">
+                <h1 className="text-[17px] font-display font-bold text-slate-900">
+                  Brisbane container volume
+                </h1>
+                <span className="text-[11px] font-semibold text-emerald-700">
+                  ~1 km privacy radius
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 mb-3">
+                <Link
+                  href="/scan"
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[13px] font-bold py-2.5 px-3.5 shadow-sm transition-colors"
+                >
+                  <ScanBarcode className="w-4 h-4" />
+                  Scan
+                </Link>
+                <Link
+                  href="/bags"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-[13px] font-semibold py-2.5 px-3.5 transition-colors"
+                >
+                  <Package className="w-4 h-4" />
+                  Bags
+                </Link>
+                <Link
+                  href={isRunner ? "/runner" : "/runner/signup"}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-[13px] font-semibold py-2.5 px-3.5 transition-colors"
+                >
+                  <Truck className="w-4 h-4" />
+                  Drive
+                </Link>
+              </div>
+
+              <p className="text-[10px] text-slate-400 leading-snug">
+                Tap any area bubble for suburb progress toward a {LIVE_VOLUME_THRESHOLD.toLocaleString()}-can pickup. Private sorting credit — not a Containers for Change refund point.
               </p>
             </div>
-          </div>
-          <Link
-            href={isRunner ? "/runner" : "/runner/signup"}
-            className="px-4 py-2.5 rounded-xl bg-white border border-slate-300 hover:border-slate-400 text-slate-800 font-bold text-xs whitespace-nowrap text-center transition-colors"
-          >
-            {isRunner ? "Open driver view →" : "Drive a suburb run →"}
-          </Link>
-        </section>
-      </main>
-
-      <footer className="px-5 py-8 text-center border-t border-slate-100">
-        <div className="flex justify-center mb-3">
-          <Logo size="sm" />
+          )}
         </div>
-        <p className="text-[11px] text-slate-400 max-w-lg mx-auto">
-          Not a live city-wide pickup. Sorting credits are a private reward, not the 10¢ Containers for Change refund. We are not claiming approval as a Containers for Change refund point.
-        </p>
-        <div className="flex justify-center gap-4 mt-2">
-          <Link href="/" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">
-            Home
-          </Link>
-          <Link href="/brisbane" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">
-            Brisbane suburbs
-          </Link>
-          <Link href="/terms" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">
-            Terms
-          </Link>
-          <Link href="/privacy" className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors">
-            Privacy
-          </Link>
-        </div>
-      </footer>
-    </div>
+      </div>
+    </main>
   );
 }
