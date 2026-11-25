@@ -37,6 +37,16 @@ body {
 /* Google Maps */
 .gm-style iframe + div { border: none !important; }
 
+/* Full-screen Google Maps-style suburb map control offsets */
+.tgs-fullscreen-map .maplibregl-ctrl-top-right {
+  top: max(72px, calc(env(safe-area-inset-top) + 62px));
+  right: 10px;
+}
+.tgs-fullscreen-map .maplibregl-ctrl-bottom-right,
+.tgs-fullscreen-map .maplibregl-ctrl-bottom-left {
+  bottom: 172px;
+}
+
 /* Google Places Autocomplete — light theme */
 .pac-container {
   background-color: #ffffff;
