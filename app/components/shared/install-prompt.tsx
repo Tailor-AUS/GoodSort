@@ -106,7 +106,8 @@ export function InstallPrompt() {
       className={`fixed inset-x-0 z-40 pointer-events-none ${pathname === "/sort" ? "bottom-[86px]" : "bottom-0"}`}
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
-      <div className="pointer-events-auto mx-4 mb-4 bg-white rounded-2xl shadow-[0_-4px_40px_rgba(0,0,0,0.14)] border border-slate-200 overflow-hidden animate-slide-up">
+      <div className="pointer-events-auto mx-auto max-w-[390px] px-4 mb-3">
+        <div className="rounded-[26px] liquid-glass-light shadow-[0_18px_48px_rgba(6,18,22,0.28)] overflow-hidden animate-slide-up text-slate-900">
 
         {/* Main prompt */}
         {!showSteps && (
@@ -161,13 +162,15 @@ export function InstallPrompt() {
             {platform === "desktop" && <DesktopSteps />}
 
             <button
+              type="button"
               onClick={dismiss}
-              className="w-full mt-4 py-3 bg-gradient-to-b from-green-500 to-green-600 text-white font-bold rounded-xl text-[13px] min-h-[44px] active:scale-[0.98] transition-transform"
+              className="w-full mt-4 py-3 bg-gradient-to-b from-emerald-500 to-emerald-600 text-white font-bold rounded-xl text-[13px] min-h-[44px] active:scale-[0.98] transition-transform"
             >
               Got it
             </button>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

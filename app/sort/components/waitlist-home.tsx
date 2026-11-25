@@ -6,6 +6,7 @@ import {
   Award,
   Building2,
   Check,
+  CheckCircle2,
   ChevronRight,
   Copy,
   Flame,
@@ -25,6 +26,7 @@ import {
   Truck,
   User as UserIcon,
   Users,
+  X,
 } from "lucide-react";
 import {
   LIVE_VOLUME_THRESHOLD,
@@ -90,6 +92,15 @@ function formatShortMemberId(id: string): string {
   return `TGS-${clean.slice(0, 8)}`;
 }
 
+const FIRST_BAG_TARGET = 50;
+
+const TAB_DOCK_INDEX: Record<AppTab, number> = {
+  home: 0,
+  pickups: 1,
+  points: 3,
+  profile: 4,
+};
+
 export function WaitlistHome({
   user,
   household,
@@ -111,6 +122,8 @@ export function WaitlistHome({
   const [firstName, setFirstName] = useState("there");
   const [copiedMemberId, setCopiedMemberId] = useState(false);
   const [showInviteSheet, setShowInviteSheet] = useState(false);
+  const [showHelpSheet, setShowHelpSheet] = useState(false);
+  const [showPassSheet, setShowPassSheet] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
   const suburb = household?.suburb;
@@ -172,10 +185,22 @@ export function WaitlistHome({
     }
   }
 
+  function switchTab(next: AppTab) {
+    setActiveTab(next);
+    if (typeof window !== "undefined") {
+      window.scrollTo(0, 0);
+    }
+  }
+
   function handleScanClick() {
     if (onScanPress) onScanPress();
     else window.location.href = "/scan";
   }
+
+  const firstBagCount = Math.min(FIRST_BAG_TARGET, summary.totalContainers);
+  const firstBagPct = Math.min(100, Math.round((firstBagCount / FIRST_BAG_TARGET) * 100));
+  const fullBagReady = summary.totalContainers >= FIRST_BAG_TARGET;
+  const dockCol = TAB_DOCK_INDEX[activeTab];
 
   return (
     <div className="relative min-h-dvh text-white pb-28 overflow-x-clip">
@@ -184,19 +209,20 @@ export function WaitlistHome({
       <div className="relative z-10 mx-auto w-full max-w-[430px]">
         {/* ══════════════════ TAB 1: HOME ══════════════════ */}
         {activeTab === "home" && (
-          <div className="px-5" style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top))" }}>
-            {/* Top Bar: Liquid Glass Help pill (left) + Card pill (right) */}
+          <div key="tab-home" className="px-5 animate-tab-in" style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top))" }}>
+            {/* Top Bar: Liquid Glass Quick Guide pill (left) + Member Pass pill (right) */}
             <div className="flex items-center justify-between mb-5">
-              <Link
-                href="/guides/containers-for-change-brisbane"
-                className="inline-flex items-center gap-1.5 min-h-[40px] rounded-full liquid-glass-pill px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-white/25 active:scale-[0.97] transition-all"
-              >
-                <HelpCircle className="w-4 h-4 text-white/85" />
-                Help
-              </Link>
               <button
                 type="button"
-                onClick={() => setActiveTab("profile")}
+                onClick={() => setShowHelpSheet(true)}
+                className="inline-flex items-center gap-1.5 min-h-[40px] rounded-full liquid-glass-pill px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-white/25 active:scale-[0.97] transition-all"
+              >
+                <HelpCircle className="w-4 h-4 text-white/90" />
+                Guide
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowPassSheet(true)}
                 className="inline-flex items-center gap-1.5 min-h-[40px] rounded-full liquid-glass-pill px-3.5 py-2 text-[13px] font-bold text-white hover:bg-white/25 active:scale-[0.97] transition-all"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -217,92 +243,132 @@ export function WaitlistHome({
               Hi {firstName}
             </h1>
 
-            {/* Refractive Liquid Glass Balance & Containers Hero Card */}
-            <button
-              type="button"
-              onClick={() => setActiveTab("profile")}
+            {/* Refractive Liquid Glass Balance + Dual Momentum Rings Card */}
+            <div
               className={`w-full text-left rounded-[26px] ${
                 summary.totalContainers > 0 ? "liquid-glass-emerald" : "liquid-glass"
-              } p-5 mb-6 active:scale-[0.99] transition-transform`}
+              } p-5 mb-4`}
             >
-              <div className="flex items-start justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => switchTab("profile")}
+                className="w-full text-left flex items-start justify-between gap-3 active:opacity-90 transition-opacity"
+              >
                 <div className="flex items-center gap-5 min-w-0">
                   <div>
-                    <p className="text-[12px] font-medium text-white/80">
-                      {user.clearedCents > 0 ? "Balance" : "Pending"}
+                    <p className="text-[12px] font-medium text-white/85">
+                      {user.clearedCents > 0 ? "Balance" : "Pending credit"}
                     </p>
-                    <p className="text-[30px] leading-tight font-display font-extrabold text-white tabular-nums mt-0.5 tracking-[-0.03em] glass-text-shadow">
+                    <p className="text-[32px] leading-tight font-display font-extrabold text-white tabular-nums mt-0.5 tracking-[-0.03em] glass-text-shadow">
                       {formatCents(summary.totalCreditCents)}
                     </p>
                   </div>
                   <div className="h-10 w-px bg-white/25" />
                   <div>
-                    <p className="text-[12px] font-medium text-white/80">Containers</p>
-                    <div className="flex items-baseline gap-1.5 mt-0.5">
-                      <p className="text-[24px] leading-tight font-display font-bold text-white tabular-nums tracking-[-0.02em]">
-                        {summary.totalContainers.toLocaleString()}
-                      </p>
-                      <span className="text-[11px] font-bold text-emerald-200 tabular-nums">
-                        · {summary.goodSortPoints.toLocaleString()} pts
-                      </span>
-                    </div>
+                    <p className="text-[12px] font-medium text-white/85">Containers</p>
+                    <p className="text-[26px] leading-tight font-display font-bold text-white tabular-nums tracking-[-0.02em] mt-0.5">
+                      {summary.totalContainers.toLocaleString()}
+                    </p>
                   </div>
                 </div>
                 <span className="shrink-0 rounded-full bg-emerald-400/25 border border-emerald-200/45 px-2.5 py-1 text-[11px] font-bold text-emerald-100">
                   {live ? "Ready" : summary.tier.label}
                 </span>
-              </div>
+              </button>
 
-              {/* Embedded translucent suburb progress pill */}
-              <div className="mt-4 pt-3 border-t border-white/15">
-                <div className="flex items-center justify-between text-[11px] font-semibold text-white/85 mb-1.5">
-                  <span className="truncate">{place}</span>
-                  <span className="tabular-nums text-emerald-200 shrink-0 ml-2">
-                    {containers.toLocaleString()} / {LIVE_VOLUME_THRESHOLD.toLocaleString()} cans
-                  </span>
+              {/* Dual Progress: Personal First Bag (moves every scan) + Suburb Unlock */}
+              <div className="mt-4 pt-3.5 border-t border-white/15 space-y-3">
+                <div>
+                  <div className="flex items-center justify-between text-[11px] font-semibold text-white/90 mb-1.5">
+                    <span>{fullBagReady ? "Kitchen bag ready to tag" : "First kitchen bag ($5.00)"}</span>
+                    <span className="tabular-nums text-emerald-200 shrink-0 ml-2">
+                      {fullBagReady ? `${summary.totalContainers.toLocaleString()} scanned` : `${firstBagCount} / ${FIRST_BAG_TARGET} cans`}
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full bg-black/25 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-emerald-300 to-teal-200 transition-all duration-300"
+                      style={{ width: `${Math.max(firstBagPct, summary.totalContainers > 0 ? 5 : 2)}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="h-2 rounded-full bg-black/25 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-300 transition-all"
-                    style={{ width: `${Math.max(pct, containers > 0 ? 4 : 2)}%` }}
-                  />
+
+                <div>
+                  <div className="flex items-center justify-between gap-2 text-[11px] font-semibold text-white/85 mb-1.5">
+                    <span className="truncate">
+                      {building ? `${place} street pool` : `${place} run`}
+                      {!live && !building && needed > 0 ? ` · ${needed.toLocaleString()} more to unlock a run` : ""}
+                    </span>
+                    <Link
+                      href="/marketplace#suburb-map"
+                      className="tabular-nums text-emerald-200 hover:text-white shrink-0 inline-flex items-center gap-0.5"
+                    >
+                      {containers.toLocaleString()}/{LIVE_VOLUME_THRESHOLD.toLocaleString()}
+                      <ChevronRight className="w-3 h-3" />
+                    </Link>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-black/25 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-300 transition-all duration-300"
+                      style={{ width: `${Math.max(pct, containers > 0 ? 4 : 2)}%` }}
+                    />
+                  </div>
                 </div>
               </div>
+            </div>
+
+            {/* Primary Apple-style Bright Liquid Glass Scan Action Capsule */}
+            <button
+              type="button"
+              onClick={handleScanClick}
+              className="w-full min-h-[60px] rounded-full liquid-glass-bright pl-5 pr-2 py-2 flex items-center justify-between gap-3 text-left mb-5 active:scale-[0.98] transition-transform"
+            >
+              <div className="min-w-0">
+                <p className="text-[15px] font-display font-extrabold text-slate-950 leading-tight truncate">
+                  Scan a container · +10¢
+                </p>
+                <p className="text-[12px] font-medium text-slate-700 leading-tight mt-0.5 truncate">
+                  Photo AI or rapid barcode · sort at home
+                </p>
+              </div>
+              <span className="h-11 w-11 shrink-0 rounded-full bg-gradient-to-b from-emerald-500 to-emerald-600 text-white flex items-center justify-center shadow-lg shadow-emerald-900/25">
+                <ScanBarcode className="w-5 h-5" />
+              </span>
             </button>
 
             {/* Setup prompt if address or PayID still missing */}
             {residentialNeedsStreet(household) ? (
               <Link
                 href="/onboard"
-                className="mb-6 flex items-center justify-between gap-3 rounded-2xl liquid-glass px-4 py-3.5 hover:bg-white/20 transition-colors"
+                className="mb-5 flex items-center justify-between gap-3 rounded-2xl liquid-glass px-4 py-3.5 hover:bg-white/20 transition-colors"
               >
                 <div className="min-w-0">
                   <p className="text-[13px] font-bold text-white">Add home address &amp; payout</p>
-                  <p className="text-[11px] text-white/75">So we can collect &amp; pay your 10¢ credits</p>
+                  <p className="text-[11px] text-white/80">So we can collect &amp; pay your 10¢ credits</p>
                 </div>
-                <ChevronRight className="w-4 h-4 text-white/75 shrink-0" />
+                <ChevronRight className="w-4 h-4 text-white/80 shrink-0" />
               </Link>
             ) : hasPayoutDetails === false ? (
               <Link
                 href="/onboard"
-                className="mb-6 flex items-center justify-between gap-3 rounded-2xl liquid-glass px-4 py-3.5 hover:bg-white/20 transition-colors"
+                className="mb-5 flex items-center justify-between gap-3 rounded-2xl liquid-glass px-4 py-3.5 hover:bg-white/20 transition-colors"
               >
                 <div className="min-w-0">
                   <p className="text-[13px] font-bold text-white">Add PayID or bank details</p>
-                  <p className="text-[11px] text-white/75">Ready for cashout once verified at depot</p>
+                  <p className="text-[11px] text-white/80">Ready for cashout once verified at depot</p>
                 </div>
-                <ChevronRight className="w-4 h-4 text-white/75 shrink-0" />
+                <ChevronRight className="w-4 h-4 text-white/80 shrink-0" />
               </Link>
             ) : null}
 
-            {/* Section: Sort and explore (2x2 Apple Liquid Glass tile grid matching 2D inspiration) */}
-            <h2 className="text-[16px] font-display font-bold text-white/95 glass-text-shadow mb-3 tracking-[-0.015em]">
+            {/* Section: Sort and explore (clean 2x2 Apple Liquid Glass tile grid, zero jargon) */}
+            <h2 className="text-[15px] font-display font-bold text-white/95 glass-text-shadow mb-3 tracking-[-0.015em]">
               Sort and explore
             </h2>
-            <div className="grid grid-cols-2 gap-3 mb-6">
+            <div className="grid grid-cols-2 gap-3 mb-5">
               <GlassTileLink
                 label="Home Bags"
-                caption="4-stream QR tags"
+                caption="Cans, plastic & glass"
                 href="/bags"
                 icon={<Package className="w-6 h-6 text-white" strokeWidth={1.75} />}
               />
@@ -313,14 +379,14 @@ export function WaitlistHome({
                 icon={<MapPin className="w-6 h-6 text-emerald-300" strokeWidth={1.75} />}
               />
               <GlassTileLink
-                label="Invite"
-                caption="+100 PTS per neighbour"
+                label="Invite Street"
+                caption="+100 pts per neighbour"
                 href="/invite"
                 icon={<Users className="w-6 h-6 text-amber-200" strokeWidth={1.75} />}
               />
               <GlassTileLink
                 label="Household"
-                caption="Address & payouts"
+                caption="Address & kerb status"
                 href="/household"
                 icon={<Home className="w-6 h-6 text-white" strokeWidth={1.75} />}
               />
@@ -332,9 +398,9 @@ export function WaitlistHome({
                 type="button"
                 onClick={() => {
                   setPickupsFilter("building");
-                  setActiveTab("pickups");
+                  switchTab("pickups");
                 }}
-                className="w-full text-left mb-6 rounded-2xl liquid-glass-emerald p-4 flex items-center justify-between gap-3 active:scale-[0.99] transition-transform"
+                className="w-full text-left mb-5 rounded-2xl liquid-glass-emerald p-4 flex items-center justify-between gap-3 active:scale-[0.99] transition-transform"
               >
                 <div className="flex items-start gap-3 min-w-0">
                   <div className="h-10 w-10 rounded-xl bg-white/15 border border-white/25 text-emerald-200 flex items-center justify-center shrink-0">
@@ -375,65 +441,6 @@ export function WaitlistHome({
               </button>
             )}
 
-            {/* Editorial Suburb Run Glass Card */}
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-[16px] font-display font-bold text-white/95 glass-text-shadow">
-                Your suburb run
-              </h2>
-              <Link
-                href="/marketplace#suburb-map"
-                className="inline-flex items-center gap-0.5 min-h-[40px] rounded-full liquid-glass-pill px-3.5 py-2 text-[12px] font-semibold text-white hover:bg-white/25"
-              >
-                View map <ChevronRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-
-            <div className="overflow-hidden rounded-[26px] liquid-glass mb-5">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/images/brisbane-kerbside-hero.webp"
-                alt="Four sorted home recycling bags on a Brisbane kerbside path"
-                className="h-44 w-full object-cover"
-              />
-              <div className="p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[17px] font-display font-bold text-white">
-                    {building ? `${place} building pool` : `${place} kerbside run`}
-                  </p>
-                  <span className="text-[12px] font-bold text-emerald-300 tabular-nums">
-                    {pct}%
-                  </span>
-                </div>
-                <div className="h-2 bg-black/25 rounded-full overflow-hidden mt-2.5 mb-2">
-                  <div
-                    className="h-full bg-gradient-to-r from-emerald-400 to-teal-300 rounded-full transition-all"
-                    style={{ width: `${Math.max(pct, containers > 0 ? 3 : 0)}%` }}
-                  />
-                </div>
-                <p className="text-[13px] text-white/80">
-                  {building
-                    ? live
-                      ? "Street volume has hit a driver trip. You do not count toward suburb volume."
-                      : `${containers} containers scanned near ${place}. Invite a house on the street to unlock a run.`
-                    : live
-                      ? `${containers} containers — enough for a driver trip`
-                      : `${containers.toLocaleString()}/${LIVE_VOLUME_THRESHOLD.toLocaleString()} containers${needed > 0 ? ` · ${needed.toLocaleString()} more to unlock a run` : ""}`}
-                </p>
-                <div className="mt-3 pt-2.5 border-t border-white/15 flex items-center justify-between">
-                  <span className="text-[12px] font-medium text-white/75">
-                    Balance · <strong className="text-white">{formatCents(summary.totalCreditCents)}</strong>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleScanClick}
-                    className="inline-flex items-center min-h-[40px] px-2 -mr-2 text-[13px] font-bold text-emerald-300 hover:text-emerald-200"
-                  >
-                    Scan a can →
-                  </button>
-                </div>
-              </div>
-            </div>
-
             <div className="text-slate-900">
               <CollectionNightCard
                 nextPickup={nextPickup}
@@ -447,7 +454,7 @@ export function WaitlistHome({
 
         {/* ══════════════════ TAB 2: PICKUPS ══════════════════ */}
         {activeTab === "pickups" && (
-          <div className="px-5" style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top))" }}>
+          <div key="tab-pickups" className="px-5 animate-tab-in" style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top))" }}>
             <div className="flex items-center justify-end mb-1">
               <button
                 type="button"
@@ -628,20 +635,18 @@ export function WaitlistHome({
 
             {pickupsFilter === "suburb" && (
               <div className="space-y-4">
-                <div className="text-slate-900">
-                  <WaitlistCard
-                    suburb={suburb ?? null}
-                    households={have}
-                    containers={containers}
-                    needed={needed}
-                    live={live}
-                    binStatus={household?.binStatus}
-                    dayName={dayName}
-                    day={household?.councilCollectionDay}
-                    building={building}
-                    hideInvite
-                  />
-                </div>
+                <WaitlistCard
+                  suburb={suburb ?? null}
+                  households={have}
+                  containers={containers}
+                  needed={needed}
+                  live={live}
+                  binStatus={household?.binStatus}
+                  dayName={dayName}
+                  day={household?.councilCollectionDay}
+                  building={building}
+                  hideInvite
+                />
                 {canInviteSuburb && (
                   <div className="rounded-2xl liquid-glass p-4">
                     <p className="text-[15px] font-display font-bold text-white mb-1">
@@ -660,7 +665,7 @@ export function WaitlistHome({
 
         {/* ══════════════════ TAB 4: POINTS ══════════════════ */}
         {activeTab === "points" && (
-          <div className="px-5" style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top))" }}>
+          <div key="tab-points" className="px-5 animate-tab-in" style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top))" }}>
             {/* Centered Points Header */}
             <div className="text-center mb-5">
               <h1 className="text-[20px] font-display font-bold text-white glass-text-shadow">Points</h1>
@@ -777,12 +782,10 @@ export function WaitlistHome({
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="text-slate-900">
-                  <MemberStatusCard
-                    suburbLabel={suburb ? titleSuburb(suburb) : null}
-                    onOpenPayouts={() => onOpenAccount?.()}
-                  />
-                </div>
+                <MemberStatusCard
+                  suburbLabel={suburb ? titleSuburb(suburb) : null}
+                  onOpenPayouts={() => onOpenAccount?.()}
+                />
                 <div className="rounded-2xl liquid-glass p-4">
                   <p className="text-[14px] font-bold text-white mb-1">How points &amp; credits clear</p>
                   <p className="text-[12px] text-white/80 leading-relaxed">
@@ -796,7 +799,7 @@ export function WaitlistHome({
 
         {/* ══════════════════ TAB 5: PROFILE ══════════════════ */}
         {activeTab === "profile" && (
-          <div className="px-5" style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top))" }}>
+          <div key="tab-profile" className="px-5 animate-tab-in" style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top))" }}>
             <div className="flex items-center justify-between gap-2.5 mb-4">
               <h1 className="text-[32px] leading-tight font-display font-bold tracking-tight text-white glass-text-shadow">
                 {firstName === "there" ? "Member" : firstName}
@@ -990,12 +993,12 @@ export function WaitlistHome({
                 <ActionTile
                   label="Rewards"
                   icon={<Sparkles className="w-5 h-5 text-white" strokeWidth={1.75} />}
-                  onClick={() => { setPointsFilter("rewards"); setActiveTab("points"); }}
+                  onClick={() => { setPointsFilter("rewards"); switchTab("points"); }}
                 />
                 <ActionTile
                   label={`${summary.currentStreakDays}d Streak`}
                   icon={<Flame className="w-5 h-5 text-amber-300" strokeWidth={1.75} />}
-                  onClick={() => setActiveTab("points")}
+                  onClick={() => switchTab("points")}
                 />
                 <ActionTile
                   label={`${summary.co2SavedKg.toFixed(1)}kg CO₂`}
@@ -1038,43 +1041,198 @@ export function WaitlistHome({
         )}
       </div>
 
-      {/* ══════════════════ FLOATING iOS 26 LIQUID GLASS BOTTOM TAB BAR ══════════════════ */}
+      {/* ══════════════════ QUICK SORTING GUIDE SHEET (z-50) ══════════════════ */}
+      {showHelpSheet && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-3 pb-4 sm:p-5">
+          <div className="absolute inset-0 bg-slate-950/55 backdrop-blur-sm" onClick={() => setShowHelpSheet(false)} />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="What containers are eligible"
+            className="relative z-10 w-full max-w-[400px] rounded-[28px] liquid-glass-light p-6 text-slate-900 shadow-2xl animate-slide-up"
+          >
+            <div className="flex items-center justify-between gap-2 mb-4">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700">10-second guide</p>
+                <h2 className="text-[20px] font-display font-extrabold text-slate-950 leading-tight">What earns 10¢?</h2>
+              </div>
+              <button
+                type="button"
+                aria-label="Close sorting guide"
+                onClick={() => setShowHelpSheet(false)}
+                className="h-10 w-10 rounded-full bg-slate-900/10 hover:bg-slate-900/15 flex items-center justify-center text-slate-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-2.5 text-[13px] mb-5">
+              <div className="flex items-start gap-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-600/20 p-3">
+                <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+                <p className="text-slate-800">
+                  <strong>Yes:</strong> 150mL–3L drink cans, clear &amp; coloured plastic bottles, glass beer/wine/spirit bottles, and poppers with the 10¢ refund mark.
+                </p>
+              </div>
+              <div className="flex items-start gap-2.5 rounded-2xl bg-slate-900/5 border border-slate-900/10 p-3">
+                <X className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <p className="text-slate-700">
+                  <strong>No:</strong> Plain milk cartons, cordial/syrup bottles, wine casks, or crushed containers whose barcode can&apos;t be verified.
+                </p>
+              </div>
+              <p className="text-[12px] text-slate-600 px-1">
+                Empty &amp; rinse lightly, keep lids off or loose, and sort into your 4 home bags: <strong>Cans, Clear PET, Coloured, Glass</strong>.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => { setShowHelpSheet(false); handleScanClick(); }}
+                className="flex-1 min-h-[46px] rounded-full bg-gradient-to-b from-emerald-500 to-emerald-600 text-white font-bold text-[14px] shadow-md"
+              >
+                Scan now
+              </button>
+              <Link
+                href="/guides/containers-for-change-brisbane"
+                onClick={() => setShowHelpSheet(false)}
+                className="min-h-[46px] inline-flex items-center justify-center rounded-full bg-slate-900/10 hover:bg-slate-900/15 px-4 text-[13px] font-bold text-slate-800"
+              >
+                Full FAQ
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════ APPLE WALLET-STYLE MEMBER PASS SHEET (z-50) ══════════════════ */}
+      {showPassSheet && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-3 pb-4 sm:p-5">
+          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setShowPassSheet(false)} />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Good Sort Member Card"
+            className="relative z-10 w-full max-w-[390px] rounded-[28px] liquid-glass-emerald p-6 text-white shadow-2xl animate-slide-up"
+          >
+            <div className="flex items-center justify-between gap-2 mb-5">
+              <div className="flex items-center gap-2.5">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/images/tgs-glass-icon.webp"
+                  alt=""
+                  aria-hidden="true"
+                  width={28}
+                  height={28}
+                  className="h-7 w-7 rounded-[7px]"
+                />
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-200">Member Pass</p>
+                  <p className="text-[15px] font-display font-bold text-white leading-tight">{summary.tier.label} Sorter</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label="Close member card"
+                onClick={() => setShowPassSheet(false)}
+                className="h-10 w-10 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="rounded-2xl bg-black/25 border border-white/20 p-4 mb-4">
+              <p className="text-[11px] uppercase tracking-wider text-white/70 mb-1">Member ID</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[22px] font-mono font-extrabold tracking-wide text-white tabular-nums">{memberCode}</p>
+                <button
+                  type="button"
+                  onClick={copyMemberCode}
+                  className="inline-flex items-center gap-1.5 min-h-[38px] rounded-full bg-white/95 text-slate-950 px-3.5 py-1.5 text-[12px] font-bold"
+                >
+                  {copiedMemberId ? <><Check className="w-3.5 h-3.5 text-emerald-600" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 mb-5 text-center">
+              <div className="rounded-xl bg-white/10 border border-white/15 py-2.5 px-2">
+                <p className="text-[15px] font-display font-extrabold text-white tabular-nums">{formatCents(summary.totalCreditCents)}</p>
+                <p className="text-[10px] uppercase tracking-wider text-white/70 mt-0.5">Credit</p>
+              </div>
+              <div className="rounded-xl bg-white/10 border border-white/15 py-2.5 px-2">
+                <p className="text-[15px] font-display font-extrabold text-white tabular-nums">{summary.totalContainers.toLocaleString()}</p>
+                <p className="text-[10px] uppercase tracking-wider text-white/70 mt-0.5">Cans</p>
+              </div>
+              <div className="rounded-xl bg-white/10 border border-white/15 py-2.5 px-2">
+                <p className="text-[15px] font-display font-extrabold text-emerald-200 tabular-nums">{summary.goodSortPoints.toLocaleString()}</p>
+                <p className="text-[10px] uppercase tracking-wider text-white/70 mt-0.5">Points</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => { setShowPassSheet(false); onOpenAccount?.(); }}
+                className="flex-1 min-h-[46px] rounded-full bg-white/95 hover:bg-white text-slate-950 font-bold text-[13px]"
+              >
+                Payouts &amp; settings
+              </button>
+              <Link
+                href="/invite"
+                onClick={() => setShowPassSheet(false)}
+                className="min-h-[46px] inline-flex items-center justify-center rounded-full liquid-glass-pill px-4 text-[13px] font-bold text-white"
+              >
+                Share
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════ FLOATING iOS 26 LIQUID GLASS BOTTOM TAB BAR (SPRING SLIDER) ══════════════════ */}
       <nav
         aria-label="Main app navigation"
         className="fixed inset-x-0 z-30 flex justify-center px-4 pointer-events-none"
         style={{ bottom: "max(14px, env(safe-area-inset-bottom, 14px))" }}
       >
-        <div className="pointer-events-auto w-full max-w-[390px] rounded-full liquid-glass-dock p-1.5 grid grid-cols-5 items-center gap-0.5">
+        <div className="pointer-events-auto relative w-full max-w-[390px] rounded-full liquid-glass-dock p-1.5 grid grid-cols-5 items-center gap-0.5">
+          {/* Smooth spring sliding white pill behind active tab */}
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1.5 bottom-1.5 left-1.5 rounded-full bg-white/95 shadow-[0_4px_14px_rgba(0,0,0,0.22)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+            style={{
+              width: "calc((100% - 12px) / 5)",
+              transform: `translateX(${dockCol * 100}%)`,
+            }}
+          />
           <TabPill
             label="Home"
             active={activeTab === "home"}
-            icon={<Home className="w-[21px] h-[21px]" strokeWidth={activeTab === "home" ? 2.25 : 1.75} />}
-            onClick={() => setActiveTab("home")}
+            icon={<Home className="w-[20px] h-[20px]" strokeWidth={activeTab === "home" ? 2.25 : 1.75} />}
+            onClick={() => switchTab("home")}
           />
           <TabPill
             label="Pickups"
             active={activeTab === "pickups"}
-            icon={<Truck className="w-[21px] h-[21px]" strokeWidth={activeTab === "pickups" ? 2.25 : 1.75} />}
-            onClick={() => setActiveTab("pickups")}
+            icon={<Truck className="w-[20px] h-[20px]" strokeWidth={activeTab === "pickups" ? 2.25 : 1.75} />}
+            onClick={() => switchTab("pickups")}
           />
           <TabPill
             label="Scan"
             active={false}
             accent
-            icon={<ScanBarcode className="w-[21px] h-[21px]" strokeWidth={2} />}
+            icon={<ScanBarcode className="w-[20px] h-[20px]" strokeWidth={2.25} />}
             onClick={handleScanClick}
           />
           <TabPill
             label="Points"
             active={activeTab === "points"}
-            icon={<Sparkles className="w-[21px] h-[21px]" strokeWidth={activeTab === "points" ? 2.25 : 1.75} />}
-            onClick={() => setActiveTab("points")}
+            icon={<Sparkles className="w-[20px] h-[20px]" strokeWidth={activeTab === "points" ? 2.25 : 1.75} />}
+            onClick={() => switchTab("points")}
           />
           <TabPill
             label="Profile"
             active={activeTab === "profile"}
-            icon={<UserIcon className="w-[21px] h-[21px]" strokeWidth={activeTab === "profile" ? 2.25 : 1.75} />}
-            onClick={() => setActiveTab("profile")}
+            icon={<UserIcon className="w-[20px] h-[20px]" strokeWidth={activeTab === "profile" ? 2.25 : 1.75} />}
+            onClick={() => switchTab("profile")}
           />
         </div>
       </nav>
@@ -1100,16 +1258,16 @@ function TabPill({
       type="button"
       onClick={onClick}
       aria-current={active ? "page" : undefined}
-      className={`flex flex-col items-center justify-center rounded-full py-2 px-1 transition-all duration-150 ${
+      className={`relative z-10 flex flex-col items-center justify-center rounded-full py-2 px-1 transition-all duration-200 active:scale-[0.94] ${
         active
-          ? "bg-white/95 text-slate-950 shadow-[0_4px_14px_rgba(0,0,0,0.22)]"
+          ? "text-slate-950"
           : accent
-            ? "text-emerald-300 hover:bg-emerald-400/20"
-            : "text-white/85 hover:text-white hover:bg-white/10"
+            ? "bg-gradient-to-b from-emerald-400 to-emerald-600 text-slate-950 shadow-[0_6px_18px_rgba(16,185,129,0.45)] mx-0.5"
+            : "text-white/90 hover:text-white"
       }`}
     >
       {icon}
-      <span className={`text-[10px] mt-1 leading-none tracking-[-0.01em] ${active ? "font-bold" : "font-medium"}`}>
+      <span className={`text-[10px] mt-1 leading-none tracking-[-0.01em] ${active || accent ? "font-bold" : "font-medium"}`}>
         {label}
       </span>
     </button>
