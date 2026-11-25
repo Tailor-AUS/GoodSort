@@ -48,11 +48,12 @@ public class HouseholdCreditTests
     }
 
     [Fact]
-    public void Referral_commission_credits_one_cent_per_collected_container()
+    public void Referral_rewards_are_points_only_with_zero_cash_commission()
     {
         Assert.Equal(0, HouseholdCredit.ReferralCommissionForPickup(0));
         Assert.Equal(0, HouseholdCredit.ReferralCommissionForPickup(-5));
-        Assert.Equal(40, HouseholdCredit.ReferralCommissionForPickup(40));
-        Assert.Equal(100, HouseholdCredit.ReferralCommissionForPickup(100));
+        Assert.Equal(0, HouseholdCredit.ReferralCommissionForPickup(40));
+        Assert.Equal(0, HouseholdCredit.ReferralCommissionForPickup(100));
+        Assert.Equal(230, HouseholdCredit.ReferralPointsForNetwork(activeHouseholds: 2, referredContainers: 30));
     }
 }

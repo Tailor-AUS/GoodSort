@@ -207,7 +207,7 @@ public class R1BreakerHardeningTests : IClassFixture<R1BreakerHardeningTests.R1H
         Assert.Equal(HttpStatusCode.OK, partialSettle.StatusCode);
         var partialJson = await partialSettle.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(500, partialJson.GetProperty("householdPayoutCents").GetInt32()); // 50 * 10¢ = $5.00
-        Assert.Equal(25, partialJson.GetProperty("containerMafiaCents").GetInt32());  // 25 * 1¢ (bin1 already had LastCollectedAt on runZero)
+        Assert.Equal(0, partialJson.GetProperty("containerMafiaCents").GetInt32());    // Points-only referrals = 0¢ cash
     }
 
     [Fact]
@@ -362,7 +362,7 @@ public class R1BreakerHardeningTests : IClassFixture<R1BreakerHardeningTests.R1H
         Assert.Equal(HttpStatusCode.Created, joinB.StatusCode);
         Assert.Equal(hhAId, (await joinB.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid());
 
-        // Real neighbour at 90 Ipswich Road grants +100 PendingCents, and deleting before first pickup reverses -100!
+        // Real neighbour at 90 Ipswich Road grants 0¢ cash PendingCents and +100 Good Sort Points; deleting neighbour drops points back to 0!
         var neighbour = await SignUp("real-neighbour@r1.test", referrerId: userA.ProfileId);
         Assert.Equal(HttpStatusCode.Created, (await neighbour.Client.PostAsJsonAsync("/api/households", new
         {
@@ -378,12 +378,17 @@ public class R1BreakerHardeningTests : IClassFixture<R1BreakerHardeningTests.R1H
         })).StatusCode);
 
         var aBeforeDel = await userA.Client.GetFromJsonAsync<JsonElement>($"/api/profiles/{userA.ProfileId}");
-        Assert.Equal(100, aBeforeDel.GetProperty("pendingCents").GetInt32());
+        Assert.Equal(0, aBeforeDel.GetProperty("pendingCents").GetInt32());
+        var netBeforeDel = await userA.Client.GetFromJsonAsync<JsonElement>($"/api/profiles/{userA.ProfileId}/network");
+        Assert.Equal(0, netBeforeDel.GetProperty("totalNetworkCents").GetInt32());
+        Assert.Equal(100, netBeforeDel.GetProperty("totalNetworkPoints").GetInt32());
 
         Assert.Equal(HttpStatusCode.OK, (await neighbour.Client.DeleteAsync($"/api/profiles/{neighbour.ProfileId}")).StatusCode);
 
         var aAfterDel = await userA.Client.GetFromJsonAsync<JsonElement>($"/api/profiles/{userA.ProfileId}");
         Assert.Equal(0, aAfterDel.GetProperty("pendingCents").GetInt32());
+        var netAfterDel = await userA.Client.GetFromJsonAsync<JsonElement>($"/api/profiles/{userA.ProfileId}/network");
+        Assert.Equal(0, netAfterDel.GetProperty("totalNetworkPoints").GetInt32());
     }
 
     [Fact]

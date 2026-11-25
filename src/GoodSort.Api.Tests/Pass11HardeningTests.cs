@@ -132,7 +132,7 @@ public class Pass11HardeningTests : IClassFixture<OpaqueBoxHost>
             var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
             var mafia = await db.Profiles.AsNoTracking().FirstAsync(p => p.Id == mafiaId);
             Assert.Equal(0, mafia.PendingCents);
-            Assert.Equal(220, mafia.ClearedCents); // 100¢ signup bonus + 120¢ (120 * 1¢) commission!
+            Assert.Equal(0, mafia.ClearedCents); // Points-only referrals = 0¢ cash commission
 
             var binAfter = await db.Bins.AsNoTracking().FirstAsync(b => b.HouseholdId == hhId);
             Assert.NotNull(binAfter.LastCollectedAt);

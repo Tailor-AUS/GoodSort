@@ -45,7 +45,7 @@ public class Pass14HardeningTests : IClassFixture<OpaqueBoxHost>
         {
             var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
             var referrer = await db.Profiles.FirstAsync(p => p.Id == referrerId);
-            referrer.PendingCents = 100; // $1 signup bonus awaiting neighbour's first verified pickup
+            referrer.PendingCents = 0; // Points-only referrals (no $1 cash signup bonus)
 
             var sorter = await db.Profiles.FirstAsync(p => p.Id == sorterId);
             sorter.ReferrerId = referrerId;
@@ -176,9 +176,9 @@ public class Pass14HardeningTests : IClassFixture<OpaqueBoxHost>
             Assert.Equal(250, sorter.ClearedCents);
             Assert.All(scans, s => Assert.Equal("settled", s.Status));
 
-            // Referrer: $1 (100c) pending signup bonus moved to ClearedCents + 25 * 1c = 25c commission -> 125c ClearedCents
+            // Referrer: points-only referral policy (0¢ cash bonus, 0¢/can override)
             Assert.Equal(0, referrer.PendingCents);
-            Assert.Equal(125, referrer.ClearedCents);
+            Assert.Equal(0, referrer.ClearedCents);
 
             // Driver: 25 * 5c = 125c
             Assert.Equal(125, driver.ClearedCents);

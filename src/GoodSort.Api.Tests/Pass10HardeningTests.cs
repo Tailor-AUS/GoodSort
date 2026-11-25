@@ -60,17 +60,17 @@ public class Pass10HardeningTests : IClassFixture<OpaqueBoxHost>
         var hh2Id = await CreateTarragindiHouseholdAsync(sorter2Client, "Tarragindi Home 2", 14, 0.0002);
         var hh3Id = await CreateTarragindiHouseholdAsync(sorter3Client, "Tarragindi Home 3", 16, 0.0003);
 
-        // Referrer starts with $1 (100¢) pending from Sorter 1's household onboarding, plus $0.50 (50¢) of own pending scans
+        // Referrer receives 0¢ cash signup bonus (points-only referrals); add $0.50 (50¢) of own pending scans
         var mafiaHhId = await CreateTarragindiHouseholdAsync(mafiaClient, "Mafia Home", 99, 0.0500);
         using (var scope = _host.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
             var mafiaProfile = await db.Profiles.FindAsync(mafiaId);
             Assert.NotNull(mafiaProfile);
-            Assert.Equal(100, mafiaProfile!.PendingCents);
+            Assert.Equal(0, mafiaProfile!.PendingCents);
             Assert.Equal(0, mafiaProfile.ClearedCents);
 
-            // Give Mafia 50¢ of their own uncollected scan credit so we verify only 100¢ clears on Sorter 1's pickup
+            // Give Mafia 50¢ of their own uncollected scan credit so we verify it stays untouched on Sorter 1's pickup
             mafiaProfile.PendingCents += 50;
 
             if (!await db.PricingConfigs.AnyAsync())
@@ -196,9 +196,9 @@ public class Pass10HardeningTests : IClassFixture<OpaqueBoxHost>
         var settleRes = await adminClient.PostAsync($"/api/marketplace/runs/{runId}/settle", null);
         Assert.Equal(HttpStatusCode.OK, settleRes.StatusCode);
         var settleJson = await settleRes.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(500, settleJson.GetProperty("containerMafiaCents").GetInt32()); // 400 * 1¢ per-can + 100¢ ($1.00) cleared signup bonus
+        Assert.Equal(0, settleJson.GetProperty("containerMafiaCents").GetInt32()); // Points-only referrals = 0¢ cash
 
-        // Verify all 3 households had BinIsOut reset to false and Mafia cleared $1.00 signup + $4.00 override = $5.00 (500¢)
+        // Verify all 3 households had BinIsOut reset to false and referrer cash stayed untouched (points-only)
         using (var scope = _host.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
@@ -212,8 +212,8 @@ public class Pass10HardeningTests : IClassFixture<OpaqueBoxHost>
             }
 
             var mafiaAfter = await db.Profiles.AsNoTracking().FirstAsync(p => p.Id == mafiaId);
-            Assert.Equal(50, mafiaAfter.PendingCents); // Only Mafia's own 50¢ uncollected scan remains pending!
-            Assert.Equal(500, mafiaAfter.ClearedCents); // 100¢ signup bonus + 400¢ (400 * 1¢) commission!
+            Assert.Equal(50, mafiaAfter.PendingCents); // Own 50¢ uncollected scan untouched!
+            Assert.Equal(0, mafiaAfter.ClearedCents);  // Points-only referral: 0¢ cash commission
         }
 
         // Trigger RunGenerationService again -> ZERO phantom runs spawned for Tarragindi!
@@ -290,8 +290,8 @@ public class Pass10HardeningTests : IClassFixture<OpaqueBoxHost>
         {
             var db = scope.ServiceProvider.GetRequiredService<GoodSortDbContext>();
             var mafiaFinal = await db.Profiles.AsNoTracking().FirstAsync(p => p.Id == mafiaId);
-            Assert.Equal(50, mafiaFinal.PendingCents);   // Own 50¢ scan untouched!
-            Assert.Equal(550, mafiaFinal.ClearedCents);  // 500¢ + 50¢ (1¢/can), NOT 600¢!
+            Assert.Equal(50, mafiaFinal.PendingCents); // Own 50¢ scan untouched!
+            Assert.Equal(0, mafiaFinal.ClearedCents);  // Points-only referrals = 0¢ cash
         }
     }
 

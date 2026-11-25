@@ -1519,10 +1519,7 @@ app.MapPost("/api/households", async (HttpContext ctx, HouseholdCreateRequest re
                                 {
                                     me.ReferrerId = null;
                                 }
-                                else
-                                {
-                                    referrer.PendingCents += 100;
-                                }
+                                // Referrals earn Good Sort Points only (+100 PTS join + 1 PT/can), 0¢ cash bonus.
                             }
                             else
                             {
@@ -1598,14 +1595,11 @@ app.MapPost("/api/households", async (HttpContext ctx, HouseholdCreateRequest re
                             : null;
                         var sameHouse = houseKey is not null && refKey is not null
                             && string.Equals(houseKey, refKey, StringComparison.OrdinalIgnoreCase);
-                        if (referrer is not null && referrer.ReferrerId != uid && !sameHouse)
-                        {
-                            referrer.PendingCents += 100;
-                        }
-                        else
+                        if (referrer is null || referrer.ReferrerId == uid || sameHouse)
                         {
                             me.ReferrerId = null;
                         }
+                        // Referrals earn Good Sort Points only (0¢ cash signup bonus).
                     }
                     var isFirstHousehold = me.HouseholdId is null;
                     me.HouseholdId ??= household.Id;
@@ -2061,14 +2055,11 @@ app.MapPost("/api/waitlist/unit-complex", async (HttpContext ctx, UnitComplexWai
                                 (unitKey is not null && refKey is not null && string.Equals(unitKey, refKey, StringComparison.OrdinalIgnoreCase))
                                 || (string.Equals((refHouse.Address ?? "").Trim(), (placeholder.Address ?? "").Trim(), StringComparison.OrdinalIgnoreCase)
                                     && string.Equals((refHouse.Suburb ?? "").Trim(), (placeholder.Suburb ?? "").Trim(), StringComparison.OrdinalIgnoreCase)));
-                            if (referrer is not null && referrer.ReferrerId != nonAdminUnitUid && !sameBuilding)
-                            {
-                                referrer.PendingCents += 100;
-                            }
-                            else
+                            if (referrer is null || referrer.ReferrerId == nonAdminUnitUid || sameBuilding)
                             {
                                 caller.ReferrerId = null;
                             }
+                            // Referrals earn Good Sort Points only (0¢ cash signup bonus).
                         }
                         var orphans = await db.Scans
                             .Where(sc => sc.UserId == caller.Id && sc.HouseholdId == null && sc.Status == "pending")
@@ -2106,14 +2097,11 @@ app.MapPost("/api/waitlist/unit-complex", async (HttpContext ctx, UnitComplexWai
                     (unitKey is not null && refKey is not null && string.Equals(unitKey, refKey, StringComparison.OrdinalIgnoreCase))
                     || (string.Equals((refHouse.Address ?? "").Trim(), (placeholder.Address ?? "").Trim(), StringComparison.OrdinalIgnoreCase)
                         && string.Equals((refHouse.Suburb ?? "").Trim(), (placeholder.Suburb ?? "").Trim(), StringComparison.OrdinalIgnoreCase)));
-                if (referrer is not null && referrer.ReferrerId != callerUid && !sameBuilding)
-                {
-                    referrer.PendingCents += 100;
-                }
-                else
+                if (referrer is null || referrer.ReferrerId == callerUid || sameBuilding)
                 {
                     caller.ReferrerId = null;
                 }
+                // Referrals earn Good Sort Points only (0¢ cash signup bonus).
             }
             var isFirstHousehold = caller.HouseholdId is null;
             caller.HouseholdId ??= placeholder.Id;
@@ -2242,8 +2230,10 @@ app.MapGet("/api/profiles/{id:guid}/network", async (HttpContext ctx, Guid id, G
 
     var activeHouseholds = referredRows.Count(r => r.HasHousehold);
     var referredContainers = referredRows.Sum(r => r.TotalContainers);
-    var signupBonusCents = activeHouseholds * 100;
+    var signupBonusCents = 0;
     var containerCommissionCents = referredContainers * HouseholdCredit.ReferralCommissionCentsPerContainer;
+    var signupBonusPoints = activeHouseholds * HouseholdCredit.ReferralSignupBonusPoints;
+    var containerBonusPoints = referredContainers * HouseholdCredit.ReferralPointsPerContainer;
 
     return Results.Ok(new
     {
@@ -2254,6 +2244,9 @@ app.MapGet("/api/profiles/{id:guid}/network", async (HttpContext ctx, Guid id, G
         signupBonusCents,
         containerCommissionCents,
         totalNetworkCents = signupBonusCents + containerCommissionCents,
+        signupBonusPoints,
+        containerBonusPoints,
+        totalNetworkPoints = signupBonusPoints + containerBonusPoints,
         sorters = referred,
     });
 }).RequireAuthorization();
@@ -2584,31 +2577,16 @@ legacyRoutes.MapPost("/api/routes/{id:guid}/settle", async (HttpContext ctx, Gui
         }
         HouseholdCredit.ApplyPickup(payees, pendingScans, count, householdRateCents);
 
+        // Neighbour referrals earn Good Sort Points only (0¢ cash signup bonus, 0¢/can cash override).
         var referredMember = payees.FirstOrDefault(m => m.ReferrerId.HasValue && m.ReferrerId.Value != m.Id);
         if (referredMember?.ReferrerId is Guid referrerId && count > 0)
         {
-            var referrer = await db.Profiles.FindAsync(referrerId);
-            if (referrer is not null)
-                referrer.ClearedCents += HouseholdCredit.ReferralCommissionForPickup(count);
-        }
-
-        if (isFirstHouseholdPickup && count > 0)
-        {
-            var distinctReferrerIds = hh.Members
-                .Where(m => m.ReferrerId.HasValue && m.ReferrerId.Value != m.Id)
-                .Select(m => m.ReferrerId!.Value)
-                .Distinct()
-                .ToList();
-            foreach (var signupReferrerId in distinctReferrerIds)
+            var commission = HouseholdCredit.ReferralCommissionForPickup(count);
+            if (commission > 0)
             {
-                var signupReferrer = await db.Profiles.FindAsync(signupReferrerId);
-                if (signupReferrer is null) continue;
-                var signupBonusToClear = Math.Min(100, Math.Max(0, signupReferrer.PendingCents));
-                if (signupBonusToClear > 0)
-                {
-                    signupReferrer.PendingCents -= signupBonusToClear;
-                    signupReferrer.ClearedCents += signupBonusToClear;
-                }
+                var referrer = await db.Profiles.FindAsync(referrerId);
+                if (referrer is not null)
+                    referrer.ClearedCents += commission;
             }
         }
 
@@ -2899,7 +2877,7 @@ app.MapGet("/api/admin/crp-ledger", async (GoodSortDbContext db, CashoutService 
             sorterCents = CrpSettlement.CrpHouseholdCentsPerContainer,
             containerMafiaCents = CrpSettlement.ContainerMafiaCentsPerContainer,
             runnerTargetCents = CrpSettlement.CrpRunnerTargetCentsPerContainer,
-            netMarginWithMafiaCents = 3.68m,
+            netMarginWithMafiaCents = 4.68m,
             netMarginDirectCents = 4.68m,
         },
         payouts = new
@@ -3431,8 +3409,8 @@ app.MapPatch("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, Profile
             if (occupiedByAnother)
                 return Results.Forbid();
         }
-        // Attaching a household via PATCH never grants the $1.00 signup referral bonus,
-        // so clear any un-awarded ReferrerId to prevent DELETE from subtracting 100¢ later.
+        // Attaching a household via PATCH bypasses the same-house/same-building anti-abuse checks
+        // on POST /api/households, so clear any pending ReferrerId when linking this way.
         if (profile.HouseholdId is null)
             profile.ReferrerId = null;
         profile.HouseholdId = targetHhId;
@@ -3475,25 +3453,7 @@ app.MapDelete("/api/profiles/{id:guid}", async (HttpContext ctx, Guid id, GoodSo
         db.BuildingSyndicateMembers.RemoveRange(syndicateMemberships);
     }
 
-    // Reverse any un-cleared $1.00 (100¢) Container Mafia signup bonus if this sole-member
-    // household never completed a depot-settled pickup (prevents signup/delete PendingCents farming).
-    if (profile.ReferrerId is Guid signupRefId && signupRefId != id && profile.HouseholdId is Guid checkHhId)
-    {
-        var otherHhMembers = await db.Profiles.AnyAsync(p => p.HouseholdId == checkHhId && p.Id != id);
-        if (!otherHhMembers)
-        {
-            var checkHh = await db.Households.AsNoTracking().FirstOrDefaultAsync(h => h.Id == checkHhId);
-            var hhBin = await db.Bins.AsNoTracking().FirstOrDefaultAsync(b => b.HouseholdId == checkHhId);
-            var neverCollected = hhBin is not null ? hhBin.LastCollectedAt is null : checkHh?.LastPickupAt is null;
-            if (neverCollected)
-            {
-                var signupRef = await db.Profiles.FindAsync(signupRefId);
-                if (signupRef is not null)
-                    signupRef.PendingCents = Math.Max(0, signupRef.PendingCents - 100);
-            }
-        }
-    }
-
+    // Neighbour referrals earn Good Sort Points only (no pending cash signup bonus to reverse on delete).
     var referredProfiles = await db.Profiles.Where(p => p.ReferrerId == id).ToListAsync();
     foreach (var r in referredProfiles) r.ReferrerId = null;
 
@@ -4775,35 +4735,18 @@ app.MapPost("/api/marketplace/runs/{id:guid}/settle", async (HttpContext ctx, Gu
             var clearedAfter = payees.Sum(m => m.ClearedCents);
             totalHouseholdPayoutCents += Math.Max(0, clearedAfter - clearedBefore);
 
+            // Neighbour referrals earn Good Sort Points only (0¢ cash signup bonus, 0¢/can cash override).
             var referredMember = payees.FirstOrDefault(m => m.ReferrerId.HasValue && m.ReferrerId.Value != m.Id);
             if (referredMember?.ReferrerId is Guid referrerId && payableCount > 0)
             {
-                var referrer = await db.Profiles.FindAsync(referrerId);
-                if (referrer is not null)
+                var mafiaCommission = HouseholdCredit.ReferralCommissionForPickup(payableCount);
+                if (mafiaCommission > 0)
                 {
-                    var mafiaCommission = HouseholdCredit.ReferralCommissionForPickup(payableCount);
-                    referrer.ClearedCents += mafiaCommission;
-                    totalMafiaCents += mafiaCommission;
-                }
-            }
-
-            if (isFirstHouseholdPickup && payableCount > 0)
-            {
-                var distinctReferrerIds = hh.Members
-                    .Where(m => m.ReferrerId.HasValue && m.ReferrerId.Value != m.Id)
-                    .Select(m => m.ReferrerId!.Value)
-                    .Distinct()
-                    .ToList();
-                foreach (var signupReferrerId in distinctReferrerIds)
-                {
-                    var signupReferrer = await db.Profiles.FindAsync(signupReferrerId);
-                    if (signupReferrer is null) continue;
-                    var signupBonusToClear = Math.Min(100, Math.Max(0, signupReferrer.PendingCents));
-                    if (signupBonusToClear > 0)
+                    var referrer = await db.Profiles.FindAsync(referrerId);
+                    if (referrer is not null)
                     {
-                        signupReferrer.PendingCents -= signupBonusToClear;
-                        signupReferrer.ClearedCents += signupBonusToClear;
-                        totalMafiaCents += signupBonusToClear;
+                        referrer.ClearedCents += mafiaCommission;
+                        totalMafiaCents += mafiaCommission;
                     }
                 }
             }

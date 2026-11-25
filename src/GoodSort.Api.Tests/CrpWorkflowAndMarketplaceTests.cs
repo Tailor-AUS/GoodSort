@@ -330,10 +330,10 @@ public class CrpWorkflowAndMarketplaceTests : IClassFixture<CrpWorkflowAndMarket
         var settleJson = await settleRes.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("coex_crp", settleJson.GetProperty("settlementMode").GetString());
         Assert.Equal(3000, settleJson.GetProperty("householdPayoutCents").GetInt32()); // 300 * 10¢ = $30.00
-        Assert.Equal(400, settleJson.GetProperty("containerMafiaCents").GetInt32());   // 300 *  1¢ + $1.00 signup bonus = $4.00
+        Assert.Equal(0, settleJson.GetProperty("containerMafiaCents").GetInt32());     // Points-only referrals = $0.00 cash
         Assert.Equal(900, settleJson.GetProperty("actualPayoutCents").GetInt32());     // 300 *  3¢ =  $9.00
         Assert.Equal(53.04m, settleJson.GetProperty("grossRevenueDollars").GetDecimal()); // 300 * 17.68¢
-        Assert.Equal(10.04m, settleJson.GetProperty("netMarginDollars").GetDecimal());    // $53.04 - $30.00 - $4.00 - $9.00
+        Assert.Equal(14.04m, settleJson.GetProperty("netMarginDollars").GetDecimal());    // $53.04 - $30.00 - $9.00 (+4.68¢/can)
 
         // 6. Sorter requests $25 PayID payout & Admin downloads NPP PayID CSV + inspects CRP Ledger
         var payIdReq = await sorter.Client.PostAsJsonAsync("/api/cashout/payid", new

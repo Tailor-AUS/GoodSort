@@ -35,7 +35,6 @@ import {
   titleSuburb,
   canonicalSuburb,
 } from "@/lib/brisbane";
-import { formatCredit } from "@/lib/credit";
 import { apiUrl, authHeaders, readStoredProfileId } from "@/lib/config";
 import { formatCents, type User } from "@/lib/store";
 import { buildSorterLoyaltySummary, bucketScanMaterial } from "@/lib/sorter-loyalty";
@@ -124,7 +123,7 @@ export function WaitlistHome({
   const place = suburb ? titleSuburb(suburb) : "Brisbane";
 
   const [profileId, setProfileId] = useState<string | undefined>(undefined);
-  const [network, setNetwork] = useState<{ sortersCount: number; referredContainers: number; totalNetworkCents: number } | null>(null);
+  const [network, setNetwork] = useState<{ sortersCount: number; referredContainers: number; totalNetworkPoints?: number } | null>(null);
   const [hasPayoutDetails, setHasPayoutDetails] = useState<boolean | null>(null);
   const [syndicateData, setSyndicateData] = useState<MySyndicateResponse | null>(null);
   const [syndicateLoading, setSyndicateLoading] = useState(false);
@@ -644,10 +643,10 @@ export function WaitlistHome({
                 {canInviteSuburb && (
                   <div className="rounded-2xl bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.05)]">
                     <p className="text-[15px] font-display font-bold text-slate-900 mb-1">
-                      Grow your neighbour network · earn 1¢/can
+                      Grow your neighbour network · earn bonus points
                     </p>
                     <p className="text-[12px] text-slate-500 mb-3">
-                      Earn $1 when a neighbour joins plus a 1¢ bonus on every container they sort.
+                      Earn 100 Good Sort Points when a neighbour joins plus 1 bonus point on every container they sort.
                     </p>
                     <InviteActions url={inviteUrl} message={message} compact />
                   </div>
@@ -756,14 +755,14 @@ export function WaitlistHome({
                 {/* Neighbour Network Offer Card */}
                 <div className="rounded-2xl bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.05)]">
                   <p className="text-[15px] font-display font-bold text-slate-900 mb-1">
-                    Earn 1¢/can from your neighbour network
+                    Earn Good Sort Points from your neighbour network
                   </p>
                   <p className="text-[12px] text-slate-500 leading-relaxed mb-3">
-                    Get $1 when a neighbour joins {place} plus 1¢ and 1 bonus point on every container they sort.
+                    Get 100 Good Sort Points when a neighbour joins {place} plus 1 bonus point on every container they sort.
                   </p>
                   {network && network.sortersCount > 0 && (
                     <p className="text-[12px] font-semibold text-emerald-700 mb-3">
-                      Active network: {network.sortersCount} sorter{network.sortersCount === 1 ? "" : "s"} · {network.referredContainers} cans · +{formatCredit(network.totalNetworkCents)}
+                      Active network: {network.sortersCount} sorter{network.sortersCount === 1 ? "" : "s"} · {network.referredContainers} cans · +{(network.totalNetworkPoints ?? network.sortersCount * 100 + network.referredContainers).toLocaleString()} PTS
                     </p>
                   )}
                   <Link
@@ -980,7 +979,7 @@ export function WaitlistHome({
                       Neighbour Network bonus
                     </p>
                     <p className="text-[12px] text-slate-500 mt-1 leading-relaxed">
-                      Earn $1 when a neighbour joins {place} plus 1¢ on every container they sort.
+                      Earn 100 Good Sort Points when a neighbour joins {place} plus 1 bonus point on every container they sort.
                     </p>
                     {!showInviteSheet ? (
                       <button

@@ -39,17 +39,16 @@ export default function TermsPage() {
           separate, private arrangement between you and The Good Sort.
         </p>
 
-        <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">3. Sorting Credit Rates &amp; Sorter Network Commission</h2>
+        <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">3. Sorting Credit Rates &amp; Good Sort Points</h2>
         <p className="text-slate-600 text-sm mb-4">
           Sorters earn Sorting Credits at the rate displayed in the app (currently 10 cents per eligible
           container scanned and sorted at home,
           subject to physical collection and depot verification). When you invite a neighbour at a separate residential address using your
-          referral link, a $1.00 pending signup bonus is recorded when their household registers and clears
-          alongside a 1-cent Sorter Network Commission on every depot-verified container collected from
-          households you referred when their pickup run settles (if a referred account is deleted before a
-          settled pickup, the pending signup bonus is reversed). Scanning records a pending credit; it does not
+          referral link, you earn non-cash Good Sort Points (currently 100 points when their household registers plus 1 bonus point per
+          container they sort). Referral rewards are non-cash loyalty points only — no cash signup bonus or per-container cash commission
+          applies. Scanning records a pending credit; it does not
           itself create a scheme refund. Runner Credits are earned at rates displayed in the Runner app.
-          We reserve the right to adjust credit and commission rates at any time. Rate changes will be reflected in the
+          We reserve the right to adjust credit and points rates at any time. Rate changes will be reflected in the
           app and apply to future collections only.
         </p>
 
