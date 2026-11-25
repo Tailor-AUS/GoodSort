@@ -82,6 +82,24 @@ function jwtSubject(token: string): string | undefined {
   }
 }
 
+/** Client-only check for whether the signed-in user has admin privileges (stored profile or JWT role claim). */
+export function isStoredAdmin(): boolean {
+  if (typeof window === "undefined" || !hasValidToken()) return false;
+  if (readStoredProfile().isAdmin === true) return true;
+  try {
+    const token = localStorage.getItem("goodsort_token");
+    if (!token) return false;
+    const payload = token.split(".")[1];
+    if (!payload) return false;
+    const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))) as { role?: string | string[] };
+    if (decoded.role === "admin") return true;
+    if (Array.isArray(decoded.role)) return decoded.role.includes("admin");
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 /** Client-only profile id. Empty on the first render so static HTML matches. */
 export function readStoredProfileId(): string | undefined {
   const id = readStoredProfile().id;

@@ -17,6 +17,7 @@ import { getMarketplaceOverview } from "@/lib/marketplace-api";
 import { formatVagueContainerBand, type MarketplaceOverview } from "@/lib/marketplace";
 import { LIVE_VOLUME_THRESHOLD, titleSuburb } from "@/lib/brisbane";
 import { hasValidToken } from "@/lib/config";
+import { track } from "@/lib/analytics";
 
 function suburbSlug(name: string): string {
   return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -52,6 +53,7 @@ export default function MarketplacePage() {
     } else {
       setIsRunner(false);
     }
+    track("map_viewed");
     loadOverview();
   }, [loadOverview]);
 

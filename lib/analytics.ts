@@ -11,6 +11,9 @@ import { apiUrl } from "./config.ts";
  * the activation metric.
  */
 export const TRACKED_EVENTS = [
+  "landing_viewed",
+  "suburb_page_viewed",
+  "map_viewed",
   "waitlist_cta",
   "scan_camera_opened",
   "scan_captured",
@@ -20,12 +23,16 @@ export const TRACKED_EVENTS = [
   "otp_verified",
   "household_joined",
   "payout_details_saved",
+  "bag_tagged",
+  "flyer_printed",
   "invite_whatsapp",
   "invite_sms",
   "invite_share",
   "invite_landed",
   "suburb_picked",
   "bin_day_looked_up",
+  "points_swap_voted",
+  "cash_payout_selected",
 ] as const;
 
 export type TrackedEvent = (typeof TRACKED_EVENTS)[number];

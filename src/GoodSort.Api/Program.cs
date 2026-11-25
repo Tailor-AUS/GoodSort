@@ -1808,11 +1808,14 @@ app.MapGet("/api/growth/brisbane", async (GoodSortDbContext db, IConfiguration c
 // it is instrumented camera-to-credit; first_scan_credited is activation.
 var waitlistEvents = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
 {
+    "landing_viewed", "suburb_page_viewed", "map_viewed",
     "waitlist_cta",
     "scan_camera_opened", "scan_captured", "scan_credited", "first_scan_credited",
     "otp_sent", "otp_verified", "household_joined", "payout_details_saved",
+    "bag_tagged", "flyer_printed",
     "invite_whatsapp", "invite_sms", "invite_share", "invite_landed", "suburb_picked",
     "bin_day_looked_up",
+    "points_swap_voted", "cash_payout_selected",
 };
 app.MapPost("/api/growth/events", async (WaitlistEventRequest req, GoodSortDbContext db, ILoggerFactory logFactory) =>
 {
@@ -1842,30 +1845,114 @@ app.MapPost("/api/growth/events", async (WaitlistEventRequest req, GoodSortDbCon
     return Results.Accepted();
 }).RequireRateLimiting("growth-events");
 
-// Durable now. The old version counted into an in-process dictionary, so every
-// push to main rolled the image and reset the board, and each replica held its
-// own partial view. `days` defaults to 30 to match the retention sweep.
-app.MapGet("/api/admin/funnel", async (int? days, GoodSortDbContext db) =>
+// Durable now. Supports `days` (1..RetentionDays, default 30) and optional `suburb`
+// filter, returning ordered conversion stages, top suburbs, and daily scan/signup momentum.
+app.MapGet("/api/admin/funnel", async (int? days, string? suburb, GoodSortDbContext db) =>
 {
     var window = Math.Clamp(days ?? 30, 1, GrowthEventRetention.RetentionDays);
     var since = DateTime.UtcNow.AddDays(-window);
+    var canonicalSuburb = string.IsNullOrWhiteSpace(suburb) ? null : BinDayService.CanonicalSuburb(suburb);
 
-    var counts = await db.GrowthEvents
-        .Where(e => e.CreatedAt >= since)
+    var baseQuery = db.GrowthEvents.AsNoTracking().Where(e => e.CreatedAt >= since);
+
+    var suburbBreakdown = await baseQuery
+        .Where(e => e.Suburb != null && e.Suburb != "")
+        .GroupBy(e => e.Suburb!)
+        .Select(g => new { suburb = g.Key, totalEvents = g.LongCount() })
+        .OrderByDescending(x => x.totalEvents)
+        .Take(30)
+        .ToListAsync();
+
+    var filteredQuery = canonicalSuburb is not null
+        ? baseQuery.Where(e => e.Suburb == canonicalSuburb)
+        : baseQuery;
+
+    var counts = await filteredQuery
         .GroupBy(e => e.Name)
         .Select(g => new { Name = g.Key, Count = g.LongCount() })
         .ToListAsync();
     var byName = counts.ToDictionary(c => c.Name, c => c.Count, StringComparer.OrdinalIgnoreCase);
 
-    // Zero-fill so a step that never fired is visibly 0 rather than absent —
-    // an absent step reads as "not instrumented", which is what we just fixed.
+    long CountOf(string key) => byName.TryGetValue(key, out var c) ? c : 0L;
+
+    // Ordered conversion funnel stages from landing through activation, bags, and sharing.
+    var rawStages = new (string Key, string Label, long Count)[]
+    {
+        ("views", "Landing & suburb views", CountOf("landing_viewed") + CountOf("suburb_page_viewed") + CountOf("map_viewed")),
+        ("waitlist_cta", "Start / Scan CTA tapped", CountOf("waitlist_cta")),
+        ("scan_camera_opened", "Camera opened", CountOf("scan_camera_opened")),
+        ("scan_captured", "Container captured", CountOf("scan_captured")),
+        ("otp_sent", "OTP code sent", CountOf("otp_sent")),
+        ("otp_verified", "OTP verified", CountOf("otp_verified")),
+        ("first_scan_credited", "First scan credited", CountOf("first_scan_credited")),
+        ("household_joined", "Address saved", CountOf("household_joined")),
+        ("payout_details_saved", "PayID / BSB saved", CountOf("payout_details_saved")),
+        ("bag_tagged", "Home bag tagged", CountOf("bag_tagged")),
+        ("invites_shared", "Neighbour invites shared", CountOf("invite_whatsapp") + CountOf("invite_sms") + CountOf("invite_share")),
+    };
+
+    var orderedStages = new List<object>(rawStages.Length);
+    long? prevCount = null;
+    foreach (var stage in rawStages)
+    {
+        int? conversionPct = prevCount is > 0
+            ? (int)Math.Round(Math.Min(999, (stage.Count * 100.0) / prevCount.Value))
+            : null;
+        orderedStages.Add(new
+        {
+            key = stage.Key,
+            label = stage.Label,
+            count = stage.Count,
+            conversionFromPrevPct = conversionPct,
+        });
+        prevCount = stage.Count;
+    }
+
+    // Daily activity trend (Brisbane local calendar days, capped at 14 days for crisp sparklines).
+    var trendDays = Math.Min(window, 14);
+    var trendSinceUtc = DateTime.UtcNow.AddDays(-trendDays);
+    var recentSignups = await db.Profiles.AsNoTracking()
+        .Where(p => !p.IsAdmin && p.CreatedAt >= trendSinceUtc)
+        .Select(p => p.CreatedAt)
+        .ToListAsync();
+    var recentScans = await db.Scans.AsNoTracking()
+        .Where(s => s.CreatedAt >= trendSinceUtc)
+        .Select(s => s.CreatedAt)
+        .ToListAsync();
+
+    var todayBrisbane = BrisbaneTime.Now.Date;
+    var signupsByDay = recentSignups
+        .GroupBy(dt => (dt + BrisbaneTime.Offset).Date)
+        .ToDictionary(g => g.Key, g => g.Count());
+    var scansByDay = recentScans
+        .GroupBy(dt => (dt + BrisbaneTime.Offset).Date)
+        .ToDictionary(g => g.Key, g => g.Count());
+
+    var dailyTrend = Enumerable.Range(0, trendDays)
+        .Select(offset => todayBrisbane.AddDays(-(trendDays - 1 - offset)))
+        .Select(day => new
+        {
+            date = day.ToString("yyyy-MM-dd"),
+            label = day.ToString("dd MMM"),
+            signups = signupsByDay.TryGetValue(day, out var u) ? u : 0,
+            scans = scansByDay.TryGetValue(day, out var s) ? s : 0,
+        })
+        .ToList();
+
+    // Zero-fill so a step that never fired is visibly 0 rather than absent.
     return Results.Ok(new
     {
         since,
         windowDays = window,
-        note = $"Counts over the last {window} days. Durable across restarts and deploys.",
+        suburb = canonicalSuburb,
+        note = canonicalSuburb is not null
+            ? $"Counts for {canonicalSuburb} over the last {window} days."
+            : $"Counts over the last {window} days. Durable across restarts and deploys.",
         events = waitlistEvents.OrderBy(n => n)
             .ToDictionary(n => n, n => byName.TryGetValue(n, out var c) ? c : 0L),
+        orderedStages,
+        suburbs = suburbBreakdown,
+        dailyTrend,
     });
 })
     .RequireAuthorization(AuthHelpers.AdminPolicy);
@@ -3098,9 +3185,457 @@ app.MapGet("/api/admin/vision/health", async (GoodSortDbContext db, IConfigurati
     });
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
-// ── Admin: List all users (admin only — PII) ──
-app.MapGet("/api/admin/users", async (GoodSortDbContext db) =>
-    Results.Ok(await db.Profiles.Include(p => p.Household).OrderByDescending(p => p.CreatedAt).Take(100).ToListAsync()))
+// ── Admin: Enriched User CRM list with search, suburb/status filters, and activity metrics (admin only — PII) ──
+app.MapGet("/api/admin/users", async (string? q, string? suburb, string? filter, int? limit, GoodSortDbContext db) =>
+{
+    var maxRows = Math.Clamp(limit ?? 500, 1, 2000);
+    var cutoff7d = DateTime.UtcNow.AddDays(-7);
+
+    var profiles = await db.Profiles
+        .AsNoTracking()
+        .Include(p => p.Household)
+        .OrderByDescending(p => p.CreatedAt)
+        .ToListAsync();
+
+    var scanStats = await db.Scans
+        .AsNoTracking()
+        .GroupBy(s => s.UserId)
+        .Select(g => new
+        {
+            UserId = g.Key,
+            LastScanAt = g.Max(s => s.CreatedAt),
+            Scans7d = g.Count(s => s.CreatedAt >= cutoff7d),
+            TotalScans = g.Count(),
+        })
+        .ToDictionaryAsync(x => x.UserId);
+
+    var bagStatsByHousehold = await db.SortedBags
+        .AsNoTracking()
+        .Where(b => b.Status != "cancelled")
+        .GroupBy(b => b.HouseholdId)
+        .Select(g => new
+        {
+            HouseholdId = g.Key,
+            TotalBags = g.Count(),
+            OnKerbBags = g.Count(b => b.Status == "on_kerb"),
+        })
+        .ToDictionaryAsync(x => x.HouseholdId);
+
+    var runnerProfileIds = await db.RunnerProfiles
+        .AsNoTracking()
+        .Select(r => r.ProfileId)
+        .ToHashSetAsync();
+
+    var profileLookup = profiles.ToDictionary(p => p.Id);
+    var referralsByReferrer = profiles
+        .Where(p => p.ReferrerId.HasValue && p.ReferrerId.Value != p.Id)
+        .GroupBy(p => p.ReferrerId!.Value)
+        .ToDictionary(
+            g => g.Key,
+            g => new
+            {
+                Count = g.Count(),
+                ActiveCount = g.Count(x => x.HouseholdId != null),
+                ReferredContainers = g.Sum(x => x.TotalContainers),
+            });
+
+    var canonicalSuburbFilter = string.IsNullOrWhiteSpace(suburb)
+        ? null
+        : BinDayService.CanonicalSuburb(suburb);
+    var needle = q?.Trim();
+    var filterKey = filter?.Trim().ToLowerInvariant() ?? "all";
+
+    var enriched = profiles.Select(p =>
+    {
+        var canonicalSuburb = BinDayService.CanonicalSuburb(p.Household?.Suburb);
+        var hasAddress = p.Household is not null && !string.IsNullOrWhiteSpace(p.Household.Address) && canonicalSuburb is not null;
+        var hasPayoutDetails = !string.IsNullOrWhiteSpace(p.PayIdValue)
+            || (!string.IsNullOrWhiteSpace(p.BankBsb) && !string.IsNullOrWhiteSpace(p.BankAccountNumber));
+        scanStats.TryGetValue(p.Id, out var scanInfo);
+        var hasBags = p.HouseholdId.HasValue && bagStatsByHousehold.TryGetValue(p.HouseholdId.Value, out var bagInfo)
+            ? bagInfo
+            : null;
+        referralsByReferrer.TryGetValue(p.Id, out var refStats);
+        var referrer = p.ReferrerId.HasValue && profileLookup.TryGetValue(p.ReferrerId.Value, out var rp) ? rp : null;
+        var isRunner = runnerProfileIds.Contains(p.Id) || p.Role is "driver" or "both";
+
+        var statusTag = p.IsAdmin
+            ? "admin"
+            : !hasAddress
+                ? "needs_address"
+                : p.TotalContainers == 0
+                    ? "no_scans"
+                    : !hasPayoutDetails
+                        ? "needs_payout"
+                        : "active";
+
+        return new
+        {
+            id = p.Id,
+            email = p.Email,
+            name = p.Name,
+            role = p.Role,
+            isAdmin = p.IsAdmin,
+            isRunner,
+            totalContainers = p.TotalContainers,
+            pendingCents = p.PendingCents,
+            clearedCents = p.ClearedCents,
+            createdAt = p.CreatedAt,
+            lastScanAt = scanInfo?.LastScanAt,
+            scansLast7d = scanInfo?.Scans7d ?? 0,
+            scanCount = scanInfo?.TotalScans ?? 0,
+            suburb = canonicalSuburb,
+            hasAddress,
+            hasPayoutDetails,
+            preferredPayoutMethod = p.PreferredPayoutMethod,
+            bagsCount = hasBags?.TotalBags ?? 0,
+            bagsOnKerbCount = hasBags?.OnKerbBags ?? 0,
+            referrerId = p.ReferrerId,
+            referrerLabel = referrer is not null ? (referrer.Email ?? referrer.Name) : null,
+            referralsCount = refStats?.Count ?? 0,
+            networkPoints = HouseholdCredit.ReferralPointsForNetwork(refStats?.ActiveCount ?? 0, refStats?.ReferredContainers ?? 0),
+            statusTag,
+            household = p.Household is null ? null : new
+            {
+                id = p.Household.Id,
+                name = p.Household.Name,
+                address = p.Household.Address,
+                suburb = p.Household.Suburb,
+                type = p.Household.Type,
+                binStatus = p.Household.BinStatus,
+                binIsOut = p.Household.BinIsOut,
+                lat = p.Household.Lat,
+                lng = p.Household.Lng,
+                pendingContainers = p.Household.PendingContainers,
+                pendingValueCents = p.Household.PendingValueCents,
+            },
+        };
+    });
+
+    if (!string.IsNullOrWhiteSpace(needle))
+    {
+        enriched = enriched.Where(u =>
+            (u.email?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (u.name?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (u.suburb?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (u.household?.address?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (u.referrerLabel?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false));
+    }
+
+    if (canonicalSuburbFilter is not null)
+    {
+        enriched = enriched.Where(u => string.Equals(u.suburb, canonicalSuburbFilter, StringComparison.OrdinalIgnoreCase));
+    }
+
+    enriched = filterKey switch
+    {
+        "no_address" => enriched.Where(u => !u.hasAddress && !u.isAdmin),
+        "no_payout" => enriched.Where(u => !u.hasPayoutDetails && !u.isAdmin),
+        "zero_scans" => enriched.Where(u => u.totalContainers == 0 && !u.isAdmin),
+        "active_7d" => enriched.Where(u => u.scansLast7d > 0),
+        "referred" => enriched.Where(u => u.referrerId != null || u.referralsCount > 0),
+        "runners" => enriched.Where(u => u.isRunner),
+        "admins" => enriched.Where(u => u.isAdmin),
+        _ => enriched,
+    };
+
+    return Results.Ok(enriched.Take(maxRows).ToList());
+})
+    .RequireAuthorization(AuthHelpers.AdminPolicy);
+
+// ── Admin: Single-user CRM drill-down (scans, bags, referrals, payout readiness, cashouts, syndicate) ──
+app.MapGet("/api/admin/users/{id:guid}", async (Guid id, GoodSortDbContext db) =>
+{
+    var profile = await db.Profiles
+        .AsNoTracking()
+        .Include(p => p.Household)
+        .FirstOrDefaultAsync(p => p.Id == id);
+    if (profile is null) return Results.NotFound();
+
+    var recentScans = await db.Scans
+        .AsNoTracking()
+        .Where(s => s.UserId == id)
+        .OrderByDescending(s => s.CreatedAt)
+        .Take(50)
+        .Select(s => new
+        {
+            id = s.Id,
+            containerName = s.ContainerName,
+            material = s.Material,
+            barcode = s.Barcode,
+            refundCents = s.RefundCents,
+            status = s.Status,
+            sortedBagId = s.SortedBagId,
+            createdAt = s.CreatedAt,
+        })
+        .ToListAsync();
+
+    var materialCounts = await db.Scans
+        .AsNoTracking()
+        .Where(s => s.UserId == id)
+        .GroupBy(s => s.Material)
+        .Select(g => new { material = g.Key, count = g.Count() })
+        .ToListAsync();
+
+    var bags = profile.HouseholdId.HasValue
+        ? await db.SortedBags
+            .AsNoTracking()
+            .Where(b => b.HouseholdId == profile.HouseholdId.Value)
+            .OrderByDescending(b => b.CreatedAt)
+            .Take(30)
+            .Select(b => new
+            {
+                id = b.Id,
+                code = b.Code,
+                stream = b.Stream,
+                declaredContainers = b.DeclaredContainers,
+                linkedScanCount = b.LinkedScanCount,
+                verifiedContainers = b.VerifiedContainers,
+                status = b.Status,
+                createdAt = b.CreatedAt,
+            })
+            .ToListAsync()
+        : [];
+
+    var cashouts = await db.CashoutRequests
+        .AsNoTracking()
+        .Where(c => c.UserId == id)
+        .OrderByDescending(c => c.CreatedAt)
+        .Take(20)
+        .Select(c => new
+        {
+            id = c.Id,
+            amountCents = c.AmountCents,
+            payoutMethod = c.PayoutMethod,
+            status = c.Status,
+            createdAt = c.CreatedAt,
+        })
+        .ToListAsync();
+
+    var referrer = profile.ReferrerId.HasValue
+        ? await db.Profiles
+            .AsNoTracking()
+            .Where(p => p.Id == profile.ReferrerId.Value)
+            .Select(p => new { id = p.Id, name = p.Name, email = p.Email })
+            .FirstOrDefaultAsync()
+        : null;
+
+    var referrals = await db.Profiles
+        .AsNoTracking()
+        .Include(p => p.Household)
+        .Where(p => p.ReferrerId == id && p.Id != id)
+        .OrderByDescending(p => p.CreatedAt)
+        .Take(50)
+        .Select(p => new
+        {
+            id = p.Id,
+            name = p.Name,
+            email = p.Email,
+            suburb = p.Household != null ? p.Household.Suburb : null,
+            totalContainers = p.TotalContainers,
+            createdAt = p.CreatedAt,
+        })
+        .ToListAsync();
+
+    var syndicateMembership = await db.BuildingSyndicateMembers
+        .AsNoTracking()
+        .Include(m => m.Syndicate)
+        .Where(m => m.ProfileId == id)
+        .Select(m => new
+        {
+            syndicateId = m.SyndicateId,
+            buildingName = m.Syndicate.DisplayName,
+            suburb = m.Syndicate.Suburb,
+            anonHandle = m.AnonHandle,
+            role = m.Role,
+            status = m.Status,
+        })
+        .FirstOrDefaultAsync();
+
+    var maskedAccount = !string.IsNullOrWhiteSpace(profile.BankAccountNumber)
+        ? (profile.BankAccountNumber.Length > 4
+            ? new string('*', profile.BankAccountNumber.Length - 4) + profile.BankAccountNumber[^4..]
+            : "****")
+        : null;
+
+    var hasPayoutDetails = !string.IsNullOrWhiteSpace(profile.PayIdValue)
+        || (!string.IsNullOrWhiteSpace(profile.BankBsb) && !string.IsNullOrWhiteSpace(profile.BankAccountNumber));
+
+    return Results.Ok(new
+    {
+        id = profile.Id,
+        name = profile.Name,
+        email = profile.Email,
+        role = profile.Role,
+        isAdmin = profile.IsAdmin,
+        totalContainers = profile.TotalContainers,
+        pendingCents = profile.PendingCents,
+        clearedCents = profile.ClearedCents,
+        totalCo2SavedKg = profile.TotalCo2SavedKg,
+        createdAt = profile.CreatedAt,
+        lastScanAt = recentScans.FirstOrDefault()?.createdAt,
+        household = profile.Household is null ? null : new
+        {
+            id = profile.Household.Id,
+            name = profile.Household.Name,
+            address = profile.Household.Address,
+            suburb = BinDayService.CanonicalSuburb(profile.Household.Suburb) ?? profile.Household.Suburb,
+            type = profile.Household.Type,
+            binStatus = profile.Household.BinStatus,
+            binIsOut = profile.Household.BinIsOut,
+            councilCollectionDay = profile.Household.CouncilCollectionDay,
+            lat = profile.Household.Lat,
+            lng = profile.Household.Lng,
+            pendingContainers = profile.Household.PendingContainers,
+            pendingValueCents = profile.Household.PendingValueCents,
+        },
+        payout = new
+        {
+            hasPayoutDetails,
+            preferredPayoutMethod = profile.PreferredPayoutMethod,
+            payIdType = profile.PayIdType,
+            payIdValue = profile.PayIdValue,
+            bankBsb = profile.BankBsb,
+            bankAccountMasked = maskedAccount,
+            bankAccountName = profile.BankAccountName,
+            payoutUpdatedAt = profile.PayoutUpdatedAt,
+        },
+        referrer,
+        referrals,
+        materialCounts,
+        recentScans,
+        bags,
+        cashouts,
+        syndicate = syndicateMembership,
+    });
+})
+    .RequireAuthorization(AuthHelpers.AdminPolicy);
+
+// ── Admin: Live chronological activity feed (signups, scans, bags, cashouts) ──
+app.MapGet("/api/admin/activity", async (int? limit, GoodSortDbContext db) =>
+{
+    var take = Math.Clamp(limit ?? 30, 1, 100);
+    var perKind = Math.Min(take, 40);
+
+    var recentUsers = await db.Profiles
+        .AsNoTracking()
+        .Include(p => p.Household)
+        .OrderByDescending(p => p.CreatedAt)
+        .Take(perKind)
+        .ToListAsync();
+
+    var recentScans = await db.Scans
+        .AsNoTracking()
+        .Include(s => s.User).ThenInclude(u => u.Household)
+        .OrderByDescending(s => s.CreatedAt)
+        .Take(perKind)
+        .ToListAsync();
+
+    var recentBags = await db.SortedBags
+        .AsNoTracking()
+        .Include(b => b.Household)
+        .OrderByDescending(b => b.CreatedAt)
+        .Take(perKind)
+        .ToListAsync();
+
+    var recentCashouts = await db.CashoutRequests
+        .AsNoTracking()
+        .Include(c => c.User).ThenInclude(u => u.Household)
+        .OrderByDescending(c => c.CreatedAt)
+        .Take(perKind)
+        .ToListAsync();
+
+    var bagCreatorIds = recentBags.Select(b => b.CreatorProfileId).Distinct().ToList();
+    var bagCreators = bagCreatorIds.Count == 0
+        ? new Dictionary<Guid, (string Name, string? Email)>()
+        : await db.Profiles
+            .AsNoTracking()
+            .Where(p => bagCreatorIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id, p => (p.Name, p.Email));
+
+    var feed = new List<(DateTime Timestamp, object Item)>();
+
+    foreach (var u in recentUsers)
+    {
+        var suburb = BinDayService.CanonicalSuburb(u.Household?.Suburb);
+        var missingAddress = u.Household is null || suburb is null;
+        feed.Add((u.CreatedAt, new
+        {
+            id = $"signup-{u.Id}",
+            kind = "signup",
+            timestamp = u.CreatedAt,
+            userId = (Guid?)u.Id,
+            userEmail = u.Email,
+            userName = u.Name,
+            suburb,
+            summary = missingAddress
+                ? "Signed up (address still missing)"
+                : $"Joined in {suburb}",
+            badge = u.ReferrerId.HasValue ? "Referred" : (missingAddress ? "Needs address" : "Joined"),
+        }));
+    }
+
+    foreach (var s in recentScans)
+    {
+        var suburb = BinDayService.CanonicalSuburb(s.User?.Household?.Suburb);
+        var label = string.IsNullOrWhiteSpace(s.ContainerName) ? "Eligible container" : s.ContainerName;
+        feed.Add((s.CreatedAt, new
+        {
+            id = $"scan-{s.Id}",
+            kind = "scan",
+            timestamp = s.CreatedAt,
+            userId = (Guid?)s.UserId,
+            userEmail = s.User?.Email,
+            userName = s.User?.Name ?? "Sorter",
+            suburb,
+            summary = $"Scanned {label} ({s.Material}) · +{s.RefundCents}¢",
+            badge = s.Material,
+        }));
+    }
+
+    foreach (var b in recentBags)
+    {
+        var suburb = BinDayService.CanonicalSuburb(b.Household?.Suburb);
+        bagCreators.TryGetValue(b.CreatorProfileId, out var creator);
+        feed.Add((b.CreatedAt, new
+        {
+            id = $"bag-{b.Id}",
+            kind = "bag",
+            timestamp = b.CreatedAt,
+            userId = b.CreatorProfileId != Guid.Empty ? (Guid?)b.CreatorProfileId : null,
+            userEmail = creator.Email,
+            userName = string.IsNullOrWhiteSpace(creator.Name) ? (b.Household?.Name ?? "Household") : creator.Name,
+            suburb,
+            summary = $"Tagged bag {b.Code} ({b.Stream}, {b.DeclaredContainers} cans) — {b.Status}",
+            badge = b.Status,
+        }));
+    }
+
+    foreach (var c in recentCashouts)
+    {
+        var suburb = BinDayService.CanonicalSuburb(c.User?.Household?.Suburb);
+        feed.Add((c.CreatedAt, new
+        {
+            id = $"cashout-{c.Id}",
+            kind = "cashout",
+            timestamp = c.CreatedAt,
+            userId = (Guid?)c.UserId,
+            userEmail = c.User?.Email,
+            userName = c.User?.Name ?? "Member",
+            suburb,
+            summary = $"Requested ${(c.AmountCents / 100.0):0.00} cashout via {c.PayoutMethod}",
+            badge = c.Status,
+        }));
+    }
+
+    var ordered = feed
+        .OrderByDescending(x => x.Timestamp)
+        .Take(take)
+        .Select(x => x.Item)
+        .ToList();
+
+    return Results.Ok(new { items = ordered });
+})
     .RequireAuthorization(AuthHelpers.AdminPolicy);
 
 // ── Admin: Tomorrow's pickups + active/pilot runner status ──

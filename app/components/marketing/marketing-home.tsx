@@ -39,6 +39,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
     if (suburbName) sessionStorage.setItem("goodsort_suburb_hint", suburbName);
     if (!hasValidToken()) {
       if (localStorage.getItem("goodsort_token")) clearAuth();
+      track(suburbName ? "suburb_page_viewed" : "landing_viewed", { suburb: suburbName ?? null });
     } else if (!suburbName && !new URLSearchParams(window.location.search).has("home")) {
       setRedirectingToApp(true);
       const cachedProfile = readStoredProfile();
@@ -51,6 +52,8 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
           else setRedirectingToApp(false);
         })
         .catch(() => { setRedirectingToApp(false); });
+    } else {
+      track(suburbName ? "suburb_page_viewed" : "landing_viewed", { suburb: suburbName ?? null });
     }
     const rid = readReferrerId();
     if (!rid) return;
