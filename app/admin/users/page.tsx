@@ -526,7 +526,7 @@ export default function AdminUsersPage() {
                 aria-label="Search users by email, name, suburb, address, or referrer"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search email, name, street, suburb, referrer…"
+                placeholder="Search name, email, suburb..."
                 className="w-full min-h-[44px] pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-base text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500"
               />
             </div>
