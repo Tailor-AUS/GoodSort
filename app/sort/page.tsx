@@ -13,6 +13,7 @@ import { SorterSheet, type HouseholdStatus } from "./components/sorter-sheet";
 import { WaitlistHome } from "./components/waitlist-home";
 import { AccountButton } from "@/app/components/shared/account-button";
 import { AccountPanel } from "@/app/components/shared/account-panel";
+import { GlassBackdrop } from "@/app/components/shared/glass-backdrop";
 
 function userFromProfile(): User | null {
   try {
@@ -161,24 +162,22 @@ export default function SorterApp() {
 
   if (loading) {
     return (
-      <div className="min-h-dvh bg-[#f4f5f7] pb-28" aria-busy="true" aria-label="Loading dashboard">
-        <div className="mx-auto w-full max-w-[430px] px-5" style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top))" }}>
+      <div className="relative min-h-dvh pb-28 overflow-x-clip" aria-busy="true" aria-label="Loading dashboard">
+        <GlassBackdrop />
+        <div className="relative z-10 mx-auto w-full max-w-[430px] px-5" style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top))" }}>
           <div className="flex items-center justify-between mb-6">
-            <div className="h-10 w-20 rounded-full bg-white animate-pulse" />
-            <div className="h-10 w-24 rounded-full bg-white animate-pulse" />
+            <div className="h-10 w-20 rounded-full liquid-glass-pill animate-pulse" />
+            <div className="h-10 w-24 rounded-full liquid-glass-pill animate-pulse" />
           </div>
-          <div className="h-8 w-36 rounded-xl bg-slate-200/80 animate-pulse mb-4" />
-          <div className="h-24 w-full rounded-[24px] bg-white shadow-[0_2px_12px_rgba(15,23,42,0.04)] animate-pulse mb-7" />
-          <div className="h-5 w-32 rounded-lg bg-slate-200/80 animate-pulse mb-3.5" />
-          <div className="grid grid-cols-4 gap-3 mb-7">
+          <div className="h-8 w-36 rounded-xl bg-white/25 animate-pulse mb-4" />
+          <div className="h-32 w-full rounded-[26px] liquid-glass animate-pulse mb-6" />
+          <div className="h-5 w-32 rounded-lg bg-white/25 animate-pulse mb-3" />
+          <div className="grid grid-cols-2 gap-3 mb-6">
             {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="space-y-2">
-                <div className="w-full aspect-square rounded-2xl bg-white animate-pulse" />
-                <div className="h-3 w-12 mx-auto rounded bg-slate-200/80 animate-pulse" />
-              </div>
+              <div key={i} className="h-28 w-full rounded-[24px] liquid-glass animate-pulse" />
             ))}
           </div>
-          <div className="h-64 w-full rounded-[24px] bg-white shadow-[0_2px_14px_rgba(15,23,42,0.05)] animate-pulse" />
+          <div className="h-56 w-full rounded-[26px] liquid-glass animate-pulse" />
         </div>
       </div>
     );
@@ -186,26 +185,27 @@ export default function SorterApp() {
 
   if (!user) {
     return (
-      <div className="min-h-dvh flex items-center justify-center bg-white px-6">
-        <div className="w-full max-w-sm text-center">
-          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-green-700 mb-2">
+      <div className="relative min-h-dvh flex items-center justify-center px-6 py-10 text-white overflow-x-clip">
+        <GlassBackdrop />
+        <div className="relative z-10 w-full max-w-sm rounded-[28px] liquid-glass p-6 text-center">
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-200 mb-2">
             The Good Sort · Brisbane
           </p>
-          <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-2">
+          <h1 className="text-2xl font-display font-extrabold text-white glass-text-shadow mb-2">
             Scan cans at home. Earn 10¢.
           </h1>
-          <p className="text-[13px] text-slate-500 leading-relaxed mb-6">
+          <p className="text-[13px] text-white/85 leading-relaxed mb-6">
             Scan your first eligible container to start banking 10¢ credits, or sign in to view your saved balance and suburb progress.
           </p>
           <Link
             href="/scan"
-            className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-4 rounded-2xl text-[15px] shadow-lg shadow-green-600/20 flex items-center justify-center min-h-[48px] mb-3"
+            className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold py-4 rounded-full text-[15px] shadow-lg flex items-center justify-center min-h-[48px] mb-3 transition-colors"
           >
             Scan a container
           </Link>
           <Link
             href="/login"
-            className="block text-[13px] font-semibold text-slate-500 hover:text-slate-800 py-2.5 min-h-[44px]"
+            className="block text-[13px] font-semibold text-white/90 hover:text-white py-2.5 min-h-[44px]"
           >
             Sign in to existing account
           </Link>
@@ -216,7 +216,7 @@ export default function SorterApp() {
 
   if (onWaitlist) {
     return (
-      <div className="min-h-dvh relative bg-[#f4f5f7]">
+      <div className="min-h-dvh relative">
         <WaitlistHome
           user={user}
           household={household}

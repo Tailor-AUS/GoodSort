@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Users, ChevronRight } from "lucide-react";
+import { Users, ChevronRight, ArrowLeft } from "lucide-react";
 import { apiUrl, authHeaders, clearAuth, hasValidToken, readStoredProfile, readStoredProfileId } from "@/lib/config";
 import { inviteMessage, residentialNeedsStreet, sameSuburb, streetInviteUrl, streetStatsForViewer, titleSuburb, type GrowthSuburb } from "@/lib/brisbane";
 import { Logo } from "@/app/components/shared/logo";
 import { InviteActions } from "@/app/components/shared/invite-actions";
+import { GlassBackdrop } from "@/app/components/shared/glass-backdrop";
 
 export default function InvitePage() {
   const router = useRouter();
@@ -89,50 +90,65 @@ export default function InvitePage() {
   });
 
   return (
-    <div className="min-h-dvh bg-white flex flex-col items-center justify-center px-6 py-10">
-      <div className="w-full max-w-sm">
-        <div className="flex justify-center mb-6"><Logo size="lg" /></div>
-        <div className="w-14 h-14 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-          <Users className="w-7 h-7 text-green-600" />
+    <div className="relative min-h-dvh overflow-x-clip flex flex-col items-center justify-center px-5 py-8 text-white">
+      <GlassBackdrop />
+      <div className="relative z-10 w-full max-w-sm">
+        <div className="flex items-center justify-between mb-5">
+          <Link
+            href="/sort"
+            className="inline-flex items-center gap-1.5 min-h-[44px] rounded-full liquid-glass-pill px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-white/25"
+          >
+            <ArrowLeft className="w-4 h-4" /> Back
+          </Link>
+          <Logo size="sm" dark />
         </div>
-        <h1 className="text-2xl font-display font-extrabold text-slate-900 text-center mb-2">
-          {building
-            ? (dayLive ? `${titleSuburb(suburb ?? "")} volume can unlock` : "Invite houses to scan")
-            : (dayLive ? `${titleSuburb(suburb ?? "")} can unlock` : "Build suburb volume")}
-        </h1>
-        <p className="text-[14px] text-slate-500 text-center mb-6">
-          {building
-            ? (dayLive
-              ? "Street volume has hit a driver trip. Common-area pickups are still phase 2. Invite more houses to scan so the first trip is full."
-              : `${waiting} house${waiting === 1 ? "" : "s"} scanning near ${suburb ? titleSuburb(suburb) : "your suburb"}. You do not count toward suburb volume.`)
-            : (dayLive
-            ? "Enough scanned containers for a driver trip. We'll tell you when to bag out. Invite neighbours to scan so the first run is full."
-            : `${cluster.containers} container${cluster.containers === 1 ? "" : "s"} toward a volume run in ${suburb ? titleSuburb(suburb) : "your suburb"}. ${needed} more and we run to the refund point.`)}
-        </p>
-        <div className="mb-3">
-          <InviteActions url={inviteUrl} message={message} />
-        </div>
-        {network && (
-          <div className="mb-4 rounded-xl bg-emerald-50 border border-emerald-200 px-3.5 py-2.5 text-center text-[12px] font-semibold text-emerald-900">
-            Your neighbour network: {network.sortersCount} sorter{network.sortersCount === 1 ? "" : "s"} · {network.referredContainers} container{network.referredContainers === 1 ? "" : "s"} ·{" "}
-            <span className="whitespace-nowrap">
-              +{(network.totalNetworkPoints ?? network.sortersCount * 100 + network.referredContainers).toLocaleString()} PTS
-            </span>
+
+        <div className="rounded-[28px] liquid-glass p-6">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-400/25 border border-emerald-200/50 flex items-center justify-center mx-auto mb-4 shadow-inner">
+            <Users className="w-7 h-7 text-emerald-100" />
           </div>
-        )}
-        <p className="text-[12px] text-slate-400 text-center mb-3">
-          Grow your neighbour network: earn 100 Good Sort Points when a neighbour joins plus 1 bonus point on every container they sort. Send this to three neighbours to build suburb volume.
-        </p>
-        <Link
-          href="/flyer"
-          className="flex items-center justify-center min-h-[44px] py-2 text-center text-[13px] font-semibold text-emerald-700 hover:text-emerald-900 mb-4"
-        >
-          Print Home Sorting Guide &amp; Street Flyer →
-        </Link>
-        <button type="button" onClick={() => router.push("/sort")}
-          className="w-full text-green-700 font-semibold text-[14px] py-3 flex items-center justify-center gap-1">
-          Continue to scan <ChevronRight className="w-4 h-4" />
-        </button>
+          <h1 className="text-2xl font-display font-extrabold text-white glass-text-shadow text-center mb-2">
+            {building
+              ? (dayLive ? `${titleSuburb(suburb ?? "")} volume can unlock` : "Invite houses to scan")
+              : (dayLive ? `${titleSuburb(suburb ?? "")} can unlock` : "Build suburb volume")}
+          </h1>
+          <p className="text-[14px] text-white/85 text-center leading-relaxed mb-6">
+            {building
+              ? (dayLive
+                ? "Street volume has hit a driver trip. Common-area pickups are still phase 2. Invite more houses to scan so the first trip is full."
+                : `${waiting} house${waiting === 1 ? "" : "s"} scanning near ${suburb ? titleSuburb(suburb) : "your suburb"}. You do not count toward suburb volume.`)
+              : (dayLive
+              ? "Enough scanned containers for a driver trip. We'll tell you when to bag out. Invite neighbours to scan so the first run is full."
+              : `${cluster.containers} container${cluster.containers === 1 ? "" : "s"} toward a volume run in ${suburb ? titleSuburb(suburb) : "your suburb"}. ${needed} more and we run to the refund point.`)}
+          </p>
+          <div className="mb-3">
+            <InviteActions url={inviteUrl} message={message} />
+          </div>
+          {network && (
+            <div className="mb-4 rounded-2xl liquid-glass-emerald px-3.5 py-2.5 text-center text-[12px] font-semibold text-white">
+              Your neighbour network: {network.sortersCount} sorter{network.sortersCount === 1 ? "" : "s"} · {network.referredContainers} container{network.referredContainers === 1 ? "" : "s"} ·{" "}
+              <span className="whitespace-nowrap text-emerald-200 font-bold">
+                +{(network.totalNetworkPoints ?? network.sortersCount * 100 + network.referredContainers).toLocaleString()} PTS
+              </span>
+            </div>
+          )}
+          <p className="text-[12px] text-white/75 text-center leading-relaxed mb-4">
+            Grow your neighbour network: earn 100 Good Sort Points when a neighbour joins plus 1 bonus point on every container they sort. Send this to three neighbours to build suburb volume.
+          </p>
+          <Link
+            href="/flyer"
+            className="flex items-center justify-center min-h-[44px] rounded-full liquid-glass-pill px-4 py-2 text-center text-[13px] font-semibold text-white hover:bg-white/25 mb-3"
+          >
+            Print Home Sorting Guide &amp; Street Flyer →
+          </Link>
+          <button
+            type="button"
+            onClick={() => router.push("/sort")}
+            className="w-full min-h-[44px] text-white/90 hover:text-white font-semibold text-[14px] py-2.5 flex items-center justify-center gap-1"
+          >
+            Continue to scan <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -9,6 +9,7 @@ import { formatCents } from "@/lib/store";
 import { DAY_NAMES, isCollecting, LIVE_VOLUME_THRESHOLD, sameSuburb, streetStatsForViewer, type GrowthSuburb, householdCountsTowardUnlock } from "@/lib/brisbane";
 import { WaitlistCard } from "@/app/components/shared/waitlist-card";
 import { CollectionNightCard } from "@/app/components/shared/collection-night-card";
+import { GlassBackdrop } from "@/app/components/shared/glass-backdrop";
 
 interface HouseholdDetail {
   id: string;
@@ -103,30 +104,37 @@ export default function HouseholdPage() {
   }, []);
 
   return (
-    <div className="min-h-dvh bg-slate-50">
-      <div className="max-w-sm mx-auto px-6 py-6">
-        <Link href="/sort" className="inline-flex items-center gap-1.5 min-h-[44px] px-1 -ml-1 text-[13px] font-semibold text-slate-500 hover:text-slate-900 mb-3">
+    <div className="relative min-h-dvh overflow-x-clip text-white">
+      <GlassBackdrop />
+      <div className="relative z-10 max-w-sm mx-auto px-5 py-6 pb-12">
+        <Link
+          href="/sort"
+          className="inline-flex items-center gap-1.5 min-h-[44px] rounded-full liquid-glass-pill px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-white/25 mb-4"
+        >
           <ArrowLeft className="w-4 h-4" /> Back
         </Link>
-        <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-1 flex items-center gap-2">
-          <Home className="w-6 h-6 text-green-600" /> Household
+        <h1 className="text-3xl font-display font-extrabold text-white glass-text-shadow mb-1 flex items-center gap-2.5">
+          <span className="h-9 w-9 rounded-2xl bg-emerald-400/25 border border-emerald-200/50 flex items-center justify-center">
+            <Home className="w-5 h-5 text-emerald-100" />
+          </span>
+          Household
         </h1>
         {err && (
-          <div className="mt-4 bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
-            <p className="text-[13px] font-semibold text-slate-800">{err}</p>
-            <p className="text-[12px] text-slate-500 leading-relaxed">
+          <div className="mt-4 rounded-[26px] liquid-glass p-5 space-y-3">
+            <p className="text-[14px] font-semibold text-white">{err}</p>
+            <p className="text-[12px] text-white/80 leading-relaxed">
               Add your home pickup address and payout details so we can count your 10¢ scans toward a 1,000-container suburb run and pay you when we collect.
             </p>
             <div className="flex flex-col gap-2 pt-1">
               <Link
                 href={signedIn ? "/onboard" : "/login"}
-                className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-bold py-3 rounded-xl text-[13px] text-center shadow-md shadow-green-600/20 min-h-[44px] flex items-center justify-center"
+                className="w-full bg-gradient-to-b from-emerald-500 to-emerald-600 text-white font-bold py-3 rounded-xl text-[13px] text-center shadow-lg shadow-emerald-950/25 min-h-[44px] flex items-center justify-center"
               >
                 {signedIn ? "Add home address & payout details →" : "Sign in to set up household"}
               </Link>
               <Link
                 href="/scan"
-                className="w-full text-center text-[13px] font-semibold text-slate-500 hover:text-slate-800 py-2"
+                className="w-full text-center text-[13px] font-semibold text-white/80 hover:text-white py-2"
               >
                 Scan a container first
               </Link>
@@ -135,46 +143,50 @@ export default function HouseholdPage() {
         )}
         {hh && (
           <>
-            <p className="text-[13px] text-slate-500 mb-6">{hh.name} · {hh.address}</p>
+            <p className="text-[13px] text-white/85 glass-text-shadow mb-5">{hh.name} · {hh.address}</p>
 
             {hh && !isCollecting(hh.binStatus) && (
-              <WaitlistCard
-                suburb={hh.suburb}
-                households={growth?.households ?? (hh.type === "unit_complex" ? 0 : 1)}
-                containers={growth?.containers ?? 0}
-                needed={growth?.needed ?? LIVE_VOLUME_THRESHOLD}
-                live={!!growth?.live}
-                binStatus={hh.binStatus}
-                dayName={growth?.dayName}
-                day={hh.councilCollectionDay}
-                building={hh.type === "unit_complex"}
-              />
+              <div className="text-slate-900 mb-3">
+                <WaitlistCard
+                  suburb={hh.suburb}
+                  households={growth?.households ?? (hh.type === "unit_complex" ? 0 : 1)}
+                  containers={growth?.containers ?? 0}
+                  needed={growth?.needed ?? LIVE_VOLUME_THRESHOLD}
+                  live={!!growth?.live}
+                  binStatus={hh.binStatus}
+                  dayName={growth?.dayName}
+                  day={hh.councilCollectionDay}
+                  building={hh.type === "unit_complex"}
+                />
+              </div>
             )}
 
             {isCollecting(hh.binStatus) && (
               <BinOutToggle hh={hh} onChange={(v) => setHh({ ...hh, binIsOut: v })} />
             )}
 
-            <CollectionNightCard
-              nextPickup={nextPickup}
-              confirmed={pickupConfirmed || isCollecting(hh.binStatus)}
-              unlocked={!!growth?.live || hh.binStatus === "allocated"}
-              dayName={hh.councilCollectionDay != null ? DAY_NAMES[hh.councilCollectionDay] : growth?.dayName}
-              tone="green"
-            />
+            <div className="text-slate-900">
+              <CollectionNightCard
+                nextPickup={nextPickup}
+                confirmed={pickupConfirmed || isCollecting(hh.binStatus)}
+                unlocked={!!growth?.live || hh.binStatus === "allocated"}
+                dayName={hh.councilCollectionDay != null ? DAY_NAMES[hh.councilCollectionDay] : growth?.dayName}
+                tone="green"
+              />
+            </div>
             {!hh.suburb && hh.type === "residential" && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex items-start gap-3">
-                <Recycle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                <p className="text-[13px] text-amber-900">
+              <div className="liquid-glass-amber rounded-2xl p-4 mb-5 flex items-start gap-3">
+                <Recycle className="w-5 h-5 text-amber-100 shrink-0 mt-0.5" />
+                <p className="text-[13px] text-white">
                   Add your Brisbane street address on{" "}
-                  <Link href="/onboard" className="font-semibold underline">onboarding</Link>{" "}
+                  <Link href="/onboard" className="font-semibold underline text-amber-100">onboarding</Link>{" "}
                   so your scans count toward your suburb&apos;s {LIVE_VOLUME_THRESHOLD.toLocaleString()}-container volume run.
                 </p>
               </div>
             )}
 
             {isCollecting(hh.binStatus) && (
-            <div className="grid grid-cols-2 gap-3 mb-6">
+            <div className="grid grid-cols-2 gap-3 mb-5">
               <Card icon={Package} label="Containers pending" value={String(hh.pendingContainers)} />
               <Card icon={Users} label="Value" value={formatCents(hh.pendingValueCents)} />
               <Card icon={Weight} label="Weight est." value={`${hh.estimatedWeightKg.toFixed(1)} kg`} />
@@ -183,8 +195,8 @@ export default function HouseholdPage() {
             )}
 
             {isCollecting(hh.binStatus) && hh.materials && (
-              <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
-                <p className="text-[11px] uppercase tracking-wider text-slate-400 mb-3">By material</p>
+              <div className="rounded-[24px] liquid-glass p-4 mb-5">
+                <p className="text-[11px] uppercase tracking-wider text-white/75 font-semibold mb-3">By material</p>
                 <div className="grid grid-cols-4 gap-2 text-center">
                   <Mat label="Cans" n={hh.materials.aluminium} />
                   <Mat label="PET" n={hh.materials.pet} />
@@ -194,16 +206,16 @@ export default function HouseholdPage() {
               </div>
             )}
 
-            <div className="bg-white rounded-xl border border-slate-200">
-              <div className="px-4 py-3 border-b border-slate-100 text-[13px] font-semibold text-slate-900">Members</div>
-              <div className="divide-y divide-slate-100">
+            <div className="rounded-[24px] liquid-glass overflow-hidden">
+              <div className="px-4 py-3 border-b border-white/20 text-[13px] font-semibold text-white">Members</div>
+              <div className="divide-y divide-white/15">
                 {members.map(m => (
                   <div key={m.id} className="px-4 py-3 flex items-center justify-between">
                     <div>
-                      <p className="text-[13px] font-medium text-slate-900">{m.name}</p>
-                      <p className="text-[11px] text-slate-400">{m.email}</p>
+                      <p className="text-[13px] font-semibold text-white">{m.name}</p>
+                      <p className="text-[11px] text-white/70">{m.email}</p>
                     </div>
-                    <p className="text-[13px] font-display font-extrabold text-slate-900">{m.totalContainers}</p>
+                    <p className="text-[14px] font-display font-extrabold text-white tabular-nums">{m.totalContainers}</p>
                   </div>
                 ))}
               </div>
@@ -217,10 +229,10 @@ export default function HouseholdPage() {
 
 function Card({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4">
-      <Icon className="w-4 h-4 text-green-600/70 mb-2" />
-      <p className="text-xl font-display font-extrabold text-slate-900">{value}</p>
-      <p className="text-[10px] uppercase tracking-wider text-slate-400 mt-0.5">{label}</p>
+    <div className="rounded-[22px] liquid-glass p-4">
+      <Icon className="w-4 h-4 text-emerald-200 mb-2" />
+      <p className="text-xl font-display font-extrabold text-white tabular-nums">{value}</p>
+      <p className="text-[10px] uppercase tracking-wider text-white/75 mt-0.5">{label}</p>
     </div>
   );
 }
@@ -241,17 +253,17 @@ function BinOutToggle({ hh, onChange }: { hh: HouseholdDetail; onChange: (v: boo
   }
   return (
     <button type="button" role="switch" aria-checked={hh.binIsOut} onClick={toggle} disabled={saving}
-      className={`w-full rounded-2xl p-4 mb-4 border-2 flex items-center justify-between transition-colors ${hh.binIsOut ? "bg-green-50 border-green-500" : "bg-white border-slate-300"}`}>
-      <div className="text-left">
-        <p className={`text-[14px] font-semibold ${hh.binIsOut ? "text-green-800" : "text-slate-900"}`}>
+      className={`w-full rounded-[24px] p-4 mb-4 flex items-center justify-between transition-all ${hh.binIsOut ? "liquid-glass-emerald" : "liquid-glass"}`}>
+      <div className="text-left pr-3">
+        <p className="text-[14px] font-semibold text-white">
           {hh.binIsOut ? "Bags on kerb ✓" : "Bag out sorted containers?"}
         </p>
-        <p className="text-[12px] text-slate-500 mt-0.5">
+        <p className="text-[12px] text-white/80 mt-0.5">
           {hh.binIsOut ? "Tap to mark bags as back inside." : "Tap once your bags are on the kerb so the runner knows they're ready."}
         </p>
       </div>
-      <div className={`w-12 h-6 rounded-full relative transition-colors ${hh.binIsOut ? "bg-green-500" : "bg-slate-300"}`}>
-        <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${hh.binIsOut ? "translate-x-6" : "translate-x-0.5"}`} />
+      <div className={`w-12 h-6 rounded-full relative transition-colors shrink-0 ${hh.binIsOut ? "bg-emerald-400" : "bg-white/30"}`}>
+        <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 shadow transition-transform ${hh.binIsOut ? "translate-x-6" : "translate-x-0.5"}`} />
       </div>
     </button>
   );
@@ -260,8 +272,8 @@ function BinOutToggle({ hh, onChange }: { hh: HouseholdDetail; onChange: (v: boo
 function Mat({ label, n }: { label: string; n: number }) {
   return (
     <div>
-      <p className="text-lg font-display font-extrabold text-slate-900">{n}</p>
-      <p className="text-[10px] uppercase tracking-wider text-slate-400">{label}</p>
+      <p className="text-lg font-display font-extrabold text-white tabular-nums">{n}</p>
+      <p className="text-[10px] uppercase tracking-wider text-white/75">{label}</p>
     </div>
   );
 }

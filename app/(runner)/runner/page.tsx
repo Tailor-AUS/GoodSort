@@ -17,6 +17,8 @@ import { MapView } from "@/app/components/shared/map-view";
 import { RunnerSheet } from "./components/runner-sheet";
 import { AccountButton } from "@/app/components/shared/account-button";
 import { AccountPanel } from "@/app/components/shared/account-panel";
+import { GlassBackdrop } from "@/app/components/shared/glass-backdrop";
+import { Logo } from "@/app/components/shared/logo";
 
 export default function RunnerApp() {
   const [user, setUser] = useState<User | null>(null);
@@ -233,39 +235,46 @@ export default function RunnerApp() {
 
   if (loading) {
     return (
-      <div className="h-dvh flex items-center justify-center bg-white">
-        <div className="text-slate-400 text-sm">Loading...</div>
+      <div className="relative h-dvh flex items-center justify-center overflow-hidden text-white">
+        <GlassBackdrop />
+        <div className="relative z-10 rounded-full liquid-glass-pill px-5 py-2.5 text-white/90 text-sm font-semibold">
+          Loading...
+        </div>
       </div>
     );
   }
 
   if (!user) {
     return (
-      <div className="min-h-dvh flex items-center justify-center bg-white px-6">
-        <div className="w-full max-w-sm text-center">
-          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700 mb-2">
-            Suburb Runner · Brisbane
-          </p>
-          <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-2">
-            Sign in to run suburb drops
-          </h1>
-          <p className="text-[13px] text-slate-500 leading-relaxed mb-6">
-            Register as a Brisbane Runner or sign in to claim 1,000-container suburb runs, scan kerbside QR bag tags, and get paid via PayID or BSB.
-          </p>
-          <Link
-            href="/runner/signup"
-            className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-4 rounded-2xl text-[15px] shadow-lg shadow-green-600/20 flex items-center justify-center min-h-[48px] mb-3"
-          >
-            Register as Runner
-          </Link>
-          <div className="flex items-center justify-center gap-4 text-[13px] font-semibold">
-            <Link href="/login" className="text-slate-600 hover:text-slate-900 py-2 min-h-[44px] flex items-center">
-              Sign in
+      <div className="relative min-h-dvh flex items-center justify-center overflow-x-clip px-5 py-8 text-white">
+        <GlassBackdrop />
+        <div className="relative z-10 w-full max-w-sm">
+          <div className="flex justify-center mb-5"><Logo size="md" dark /></div>
+          <div className="rounded-[28px] liquid-glass p-6 text-center">
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-200 mb-2">
+              Suburb Runner · Brisbane
+            </p>
+            <h1 className="text-2xl font-display font-extrabold text-white glass-text-shadow mb-2">
+              Sign in to run suburb drops
+            </h1>
+            <p className="text-[13px] text-white/85 leading-relaxed mb-6">
+              Register as a Brisbane Runner or sign in to claim 1,000-container suburb runs, scan kerbside QR bag tags, and get paid via PayID or BSB.
+            </p>
+            <Link
+              href="/runner/signup"
+              className="w-full bg-gradient-to-b from-emerald-500 to-emerald-600 text-white font-extrabold py-4 rounded-2xl text-[15px] shadow-lg shadow-emerald-950/30 flex items-center justify-center min-h-[48px] mb-3"
+            >
+              Register as Runner
             </Link>
-            <span className="text-slate-300">·</span>
-            <Link href="/marketplace" className="text-emerald-700 hover:text-emerald-900 py-2 min-h-[44px] flex items-center">
-              Suburb map
-            </Link>
+            <div className="flex items-center justify-center gap-4 text-[13px] font-semibold">
+              <Link href="/login" className="text-white/90 hover:text-white py-2 min-h-[44px] flex items-center">
+                Sign in
+              </Link>
+              <span className="text-white/35">·</span>
+              <Link href="/marketplace" className="text-emerald-200 hover:text-white py-2 min-h-[44px] flex items-center">
+                Suburb map
+              </Link>
+            </div>
           </div>
         </div>
       </div>
@@ -274,31 +283,35 @@ export default function RunnerApp() {
 
   if (hasRunnerProfile === false) {
     return (
-      <div className="min-h-dvh flex items-center justify-center bg-white px-6">
-        <div className="w-full max-w-sm text-center">
-          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700 mb-2">
-            Suburb Runner · Brisbane
-          </p>
-          <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-2">
-            Become a Suburb Runner
-          </h1>
-          <p className="text-[13px] text-slate-500 leading-relaxed mb-6">
-            Add your vehicle details first to claim 1,000-container suburb runs, scan kerbside QR bag tags, and earn driver bounties.
-          </p>
-          <Link
-            href="/runner/signup"
-            className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-4 rounded-2xl text-[15px] shadow-lg shadow-green-600/20 flex items-center justify-center min-h-[48px] mb-3"
-          >
-            Register your vehicle
-          </Link>
-          <div className="flex items-center justify-center gap-4 text-[13px] font-semibold">
-            <Link href="/sort" className="text-slate-600 hover:text-slate-900 py-2 min-h-[44px] flex items-center">
-              Back to home sorting
+      <div className="relative min-h-dvh flex items-center justify-center overflow-x-clip px-5 py-8 text-white">
+        <GlassBackdrop />
+        <div className="relative z-10 w-full max-w-sm">
+          <div className="flex justify-center mb-5"><Logo size="md" dark /></div>
+          <div className="rounded-[28px] liquid-glass p-6 text-center">
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-200 mb-2">
+              Suburb Runner · Brisbane
+            </p>
+            <h1 className="text-2xl font-display font-extrabold text-white glass-text-shadow mb-2">
+              Become a Suburb Runner
+            </h1>
+            <p className="text-[13px] text-white/85 leading-relaxed mb-6">
+              Add your vehicle details first to claim 1,000-container suburb runs, scan kerbside QR bag tags, and earn driver bounties.
+            </p>
+            <Link
+              href="/runner/signup"
+              className="w-full bg-gradient-to-b from-emerald-500 to-emerald-600 text-white font-extrabold py-4 rounded-2xl text-[15px] shadow-lg shadow-emerald-950/30 flex items-center justify-center min-h-[48px] mb-3"
+            >
+              Register your vehicle
             </Link>
-            <span className="text-slate-300">·</span>
-            <Link href="/marketplace" className="text-emerald-700 hover:text-emerald-900 py-2 min-h-[44px] flex items-center">
-              Suburb map
-            </Link>
+            <div className="flex items-center justify-center gap-4 text-[13px] font-semibold">
+              <Link href="/sort" className="text-white/90 hover:text-white py-2 min-h-[44px] flex items-center">
+                Back to home sorting
+              </Link>
+              <span className="text-white/35">·</span>
+              <Link href="/marketplace" className="text-emerald-200 hover:text-white py-2 min-h-[44px] flex items-center">
+                Suburb map
+              </Link>
+            </div>
           </div>
         </div>
       </div>

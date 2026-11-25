@@ -67,7 +67,7 @@ export function InviteActions({ url, message, compact }: InviteActionsProps) {
         target="_blank"
         rel="noopener noreferrer"
         onClick={() => track("invite_whatsapp")}
-        className={`${btn} bg-[#25D366] text-white`}
+        className={`${btn} bg-[#25D366] hover:bg-[#22c55e] text-white shadow-md shadow-emerald-950/20`}
       >
         <MessageCircle className={compact ? "w-4 h-4" : "w-5 h-5"} />
         WhatsApp the street
@@ -75,14 +75,14 @@ export function InviteActions({ url, message, compact }: InviteActionsProps) {
       <a
         href={smsShareUrl(message)}
         onClick={() => track("invite_sms")}
-        className={`${btn} bg-white border border-slate-200 text-slate-800`}
+        className={`${btn} bg-white/95 hover:bg-white border border-white/80 text-slate-900 shadow-sm`}
       >
         <Smartphone className={compact ? "w-4 h-4" : "w-5 h-5"} />
         Text a neighbour
       </a>
       <button
         onClick={handleShare}
-        className={`${btn} bg-gradient-to-b from-green-500 to-green-600 text-white`}
+        className={`${btn} bg-gradient-to-b from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white shadow-md shadow-emerald-950/25`}
       >
         {shared ? <><CheckCircle className="w-4 h-4" /> Shared</> : copied ? <><CheckCircle className="w-4 h-4" /> Copied</> : <><Share2 className="w-4 h-4" /> {compact ? "Share / copy" : "Share or copy link"}</>}
       </button>

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { LIVE_VOLUME_THRESHOLD, wedgeSuburbs } from "@/lib/brisbane";
 import { Logo } from "@/app/components/shared/logo";
+import { GlassBackdrop } from "@/app/components/shared/glass-backdrop";
 import { SITE_URL, SOCIAL_IMAGE } from "@/app/seo";
 
 const PATH = "/guides/containers-for-change-brisbane";
@@ -58,12 +59,23 @@ export default function ContainersForChangeBrisbanePage() {
   };
 
   return (
-    <div className="min-h-dvh bg-white px-6 py-10 max-w-2xl mx-auto">
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
-      />
-      <div className="mb-8"><Logo size="sm" /></div>
+    <div className="relative min-h-dvh overflow-x-clip px-4 sm:px-6 py-8 sm:py-10">
+      <GlassBackdrop />
+      <div className="relative z-10 max-w-2xl mx-auto">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+        />
+        <div className="flex items-center justify-between mb-6">
+          <Logo size="sm" dark />
+          <Link
+            href="/"
+            className="inline-flex items-center min-h-[40px] rounded-full liquid-glass-pill px-4 py-1.5 text-[13px] font-semibold text-white hover:bg-white/25"
+          >
+            Back to home
+          </Link>
+        </div>
+        <div className="rounded-[28px] liquid-glass-light p-6 sm:p-10 text-slate-900">
       <p className="text-[12px] font-semibold uppercase tracking-[0.15em] text-violet-800 mb-3">
         Brisbane · scan first
       </p>
@@ -175,7 +187,7 @@ export default function ContainersForChangeBrisbanePage() {
         </Link>
       </div>
 
-      <p className="text-[12px] text-slate-400 leading-relaxed border-t border-slate-100 pt-6">
+      <p className="text-[12px] text-slate-500 leading-relaxed border-t border-slate-200/70 pt-6">
         Sorting credits are a private reward, not the 10¢ Containers for Change
         refund. We are not claiming approval as a refund point.{" "}
         <Link href="/terms" className="underline">Terms</Link>
@@ -184,6 +196,8 @@ export default function ContainersForChangeBrisbanePage() {
         {" · "}
         <a href={SITE_URL} className="underline">thegoodsort.org</a>
       </p>
+        </div>
+      </div>
     </div>
   );
 }

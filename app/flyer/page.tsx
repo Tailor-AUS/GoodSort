@@ -7,6 +7,7 @@ import { Printer, ArrowLeft, MapPin } from "lucide-react";
 import { hasValidToken, readStoredProfileId } from "@/lib/config";
 import { findSuburb } from "@/lib/brisbane";
 import { track } from "@/lib/analytics";
+import { GlassBackdrop } from "@/app/components/shared/glass-backdrop";
 
 const LAUNCH_SUBURBS = [
   { slug: "", label: "All Brisbane", postcode: "" },
@@ -69,12 +70,13 @@ export default function FlyerPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-slate-100 py-8 px-4 print:bg-white print:p-0">
-      <div className="max-w-2xl mx-auto mb-4 flex flex-col gap-3 print:hidden">
+    <div className="relative min-h-dvh overflow-x-clip py-8 px-4 print:bg-white print:p-0">
+      <GlassBackdrop printHidden />
+      <div className="relative z-10 max-w-2xl mx-auto mb-5 flex flex-col gap-3 print:hidden">
         <div className="flex items-center justify-between gap-3">
           <Link
             href={signedIn ? "/sort" : "/"}
-            className="inline-flex items-center gap-2 min-h-[44px] px-2 -ml-2 text-sm font-semibold text-slate-700 hover:text-slate-900 shrink-0"
+            className="inline-flex items-center gap-2 min-h-[44px] rounded-full liquid-glass-pill px-4 py-2 text-sm font-semibold text-white hover:bg-white/25 shrink-0"
           >
             <ArrowLeft className="w-4 h-4" />
             Back
@@ -82,7 +84,7 @@ export default function FlyerPage() {
           <button
             type="button"
             onClick={printFlyer}
-            className="inline-flex items-center justify-center gap-2 min-h-[44px] rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 shrink-0 whitespace-nowrap"
+            className="inline-flex items-center justify-center gap-2 min-h-[44px] rounded-full bg-gradient-to-b from-emerald-500 to-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-950/25 hover:from-emerald-400 hover:to-emerald-500 shrink-0 whitespace-nowrap"
           >
             <Printer className="w-4 h-4 shrink-0" />
             <span className="sm:hidden">Print Flyer</span>
@@ -90,9 +92,9 @@ export default function FlyerPage() {
           </button>
         </div>
 
-        <div className="rounded-2xl bg-white border border-slate-200 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600">
-            <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+        <div className="rounded-[22px] liquid-glass px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-white">
+          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-white/90">
+            <MapPin className="w-3.5 h-3.5 text-emerald-200" />
             Target suburb flyer &amp; QR link:
           </span>
           <div className="flex flex-wrap items-center gap-1.5">
@@ -105,8 +107,8 @@ export default function FlyerPage() {
                   onClick={() => setSelectedSlug(s.slug)}
                   className={`min-h-[40px] px-3.5 py-2 rounded-full text-xs font-bold transition-colors ${
                     active
-                      ? "bg-slate-900 text-white"
-                      : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                      ? "bg-white text-slate-950 shadow-sm"
+                      : "bg-white/15 hover:bg-white/25 text-white border border-white/30"
                   }`}
                 >
                   {s.label}{s.postcode ? ` ${s.postcode}` : ""}
@@ -117,7 +119,7 @@ export default function FlyerPage() {
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto space-y-6 print:space-y-4">
+      <div className="relative z-10 max-w-2xl mx-auto space-y-6 print:space-y-4">
         {/* CUT-OUT HOME SORTING REMINDER */}
         <div className="bg-amber-400 rounded-3xl border-4 border-dashed border-slate-950 p-6 md:p-8 text-slate-950 shadow-sm print:shadow-none">
           <div className="flex items-center justify-between gap-2 mb-2">

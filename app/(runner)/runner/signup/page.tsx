@@ -6,6 +6,8 @@ import Link from "next/link";
 import { ArrowLeft, Car, Mail, ShieldCheck } from "lucide-react";
 import { apiUrl, authHeaders, hasValidToken, persistWaitlistFromUrl, readReferrerId } from "@/lib/config";
 import { track } from "@/lib/analytics";
+import { GlassBackdrop } from "@/app/components/shared/glass-backdrop";
+import { Logo } from "@/app/components/shared/logo";
 
 type Step = "vehicle" | "auth" | "verify";
 
@@ -153,45 +155,49 @@ export default function RunnerSignupPage() {
 
   if (step === "auth") {
     return (
-      <div className="min-h-dvh bg-white flex flex-col items-center justify-center px-6 py-8">
-        <div className="w-full max-w-sm">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Mail className="w-8 h-8 text-green-600" />
+      <div className="relative min-h-dvh overflow-x-clip flex flex-col items-center justify-center px-5 py-8 text-white">
+        <GlassBackdrop />
+        <div className="relative z-10 w-full max-w-sm">
+          <div className="flex justify-center mb-5"><Logo size="md" dark /></div>
+          <div className="rounded-[28px] liquid-glass p-6">
+            <div className="text-center mb-6">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-400/25 border border-emerald-200/50 flex items-center justify-center mx-auto mb-3.5">
+                <Mail className="w-7 h-7 text-emerald-100" />
+              </div>
+              <h1 className="text-2xl font-display font-extrabold text-white glass-text-shadow mb-1">Verify your driver email</h1>
+              <p className="text-white/80 text-[13px]">
+                Enter your email to activate your Runner profile ({vehicleType.toUpperCase()} · up to {capacityBags} bags).
+              </p>
             </div>
-            <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-1">Verify your driver email</h1>
-            <p className="text-slate-500 text-[13px]">
-              Enter your email to activate your Runner profile ({vehicleType.toUpperCase()} · up to {capacityBags} bags).
-            </p>
-          </div>
-          <form onSubmit={sendOtp} className="space-y-3">
-            <input
-              id="runner-auth-email"
-              aria-label="Driver email address"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="driver@email.com"
-              autoComplete="email"
-              autoFocus
-              className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
-            />
-            {error && <p className="text-red-500 text-[13px]">{error}</p>}
+            <form onSubmit={sendOtp} className="space-y-3">
+              <input
+                id="runner-auth-email"
+                aria-label="Driver email address"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="driver@email.com"
+                autoComplete="email"
+                autoFocus
+                className="w-full bg-white/95 border border-white/70 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:border-emerald-400"
+              />
+              {error && <p className="rounded-xl bg-red-500/20 border border-red-200/40 px-3 py-2 text-red-100 text-[13px]">{error}</p>}
+              <button
+                type="submit"
+                disabled={loading || !email.includes("@")}
+                className="w-full bg-gradient-to-b from-emerald-500 to-emerald-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-emerald-950/30 disabled:opacity-50 min-h-[48px]"
+              >
+                {loading ? "Sending code..." : "Send verification code"}
+              </button>
+            </form>
             <button
-              type="submit"
-              disabled={loading || !email.includes("@")}
-              className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20 disabled:opacity-50 min-h-[48px]"
+              type="button"
+              onClick={() => { setStep("vehicle"); setError(""); }}
+              className="w-full text-white/80 hover:text-white text-[13px] font-medium mt-4 py-2"
             >
-              {loading ? "Sending code..." : "Send verification code"}
+              Back to vehicle details
             </button>
-          </form>
-          <button
-            type="button"
-            onClick={() => { setStep("vehicle"); setError(""); }}
-            className="w-full text-slate-400 hover:text-slate-600 text-[13px] font-medium mt-4 py-2"
-          >
-            Back to vehicle details
-          </button>
+          </div>
         </div>
       </div>
     );
@@ -199,61 +205,65 @@ export default function RunnerSignupPage() {
 
   if (step === "verify") {
     return (
-      <div className="min-h-dvh bg-white flex flex-col items-center justify-center px-6 py-8">
-        <div className="w-full max-w-sm">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <ShieldCheck className="w-8 h-8 text-green-600" />
-            </div>
-            <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-1">Check your email</h1>
-            <p className="text-slate-500 text-[13px]">
-              Code sent to {email}. Check spam too — expires in 15 minutes.
-            </p>
-            {devCode && (
-              <p className="text-[12px] text-violet-700 mt-2">
-                Local code {devCode} — ACS email is not configured on this machine.
+      <div className="relative min-h-dvh overflow-x-clip flex flex-col items-center justify-center px-5 py-8 text-white">
+        <GlassBackdrop />
+        <div className="relative z-10 w-full max-w-sm">
+          <div className="flex justify-center mb-5"><Logo size="md" dark /></div>
+          <div className="rounded-[28px] liquid-glass p-6">
+            <div className="text-center mb-6">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-400/25 border border-emerald-200/50 flex items-center justify-center mx-auto mb-3.5">
+                <ShieldCheck className="w-7 h-7 text-emerald-100" />
+              </div>
+              <h1 className="text-2xl font-display font-extrabold text-white glass-text-shadow mb-1">Check your email</h1>
+              <p className="text-white/80 text-[13px]">
+                Code sent to {email}. Check spam too — expires in 15 minutes.
               </p>
-            )}
-          </div>
-          <form onSubmit={verifyOtp} className="space-y-3">
-            <input
-              id="runner-auth-otp"
-              aria-label="6-digit verification code"
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              value={otp}
-              onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-              placeholder="000000"
-              autoFocus
-              className="w-full text-center text-3xl font-display font-extrabold tracking-[0.3em] border border-slate-200 rounded-xl px-4 py-4 text-slate-900 placeholder-slate-200 focus:outline-none focus:ring-2 focus:ring-green-500/30"
-            />
-            {error && <p className="text-red-500 text-[13px] text-center">{error}</p>}
-            <button
-              type="submit"
-              disabled={loading || otp.length < 6}
-              className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20 disabled:opacity-50 min-h-[48px]"
-            >
-              {loading ? "Finishing registration..." : "Verify & register as Runner"}
-            </button>
-          </form>
-          <div className="flex items-center justify-between mt-4 text-[13px]">
-            <button
-              type="button"
-              onClick={() => void sendOtp()}
-              disabled={loading || resendIn > 0}
-              className="text-green-700 font-semibold py-2 disabled:text-slate-300"
-            >
-              {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
-            </button>
-            <button
-              type="button"
-              onClick={() => { setStep("auth"); setOtp(""); setError(""); setDevCode(""); }}
-              className="text-slate-400 hover:text-slate-600 py-2"
-            >
-              Use a different email
-            </button>
+              {devCode && (
+                <p className="text-[12px] text-amber-100 bg-amber-500/25 border border-amber-200/40 rounded-xl px-3 py-1.5 mt-2">
+                  Local code {devCode} — ACS email is not configured on this machine.
+                </p>
+              )}
+            </div>
+            <form onSubmit={verifyOtp} className="space-y-3">
+              <input
+                id="runner-auth-otp"
+                aria-label="6-digit verification code"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                placeholder="000000"
+                autoFocus
+                className="w-full text-center text-3xl font-display font-extrabold tracking-[0.3em] bg-white/95 border border-white/70 rounded-xl px-4 py-4 text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
+              />
+              {error && <p className="rounded-xl bg-red-500/20 border border-red-200/40 px-3 py-2 text-red-100 text-[13px] text-center">{error}</p>}
+              <button
+                type="submit"
+                disabled={loading || otp.length < 6}
+                className="w-full bg-gradient-to-b from-emerald-500 to-emerald-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-emerald-950/30 disabled:opacity-50 min-h-[48px]"
+              >
+                {loading ? "Finishing registration..." : "Verify & register as Runner"}
+              </button>
+            </form>
+            <div className="flex items-center justify-between mt-4 text-[13px]">
+              <button
+                type="button"
+                onClick={() => void sendOtp()}
+                disabled={loading || resendIn > 0}
+                className="text-emerald-200 hover:text-white font-semibold py-2 disabled:text-white/40"
+              >
+                {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setStep("auth"); setOtp(""); setError(""); setDevCode(""); }}
+                className="text-white/75 hover:text-white py-2"
+              >
+                Use a different email
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -261,65 +271,74 @@ export default function RunnerSignupPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-white">
-      <div className="max-w-sm mx-auto px-6 py-8">
-        <Link href={signedIn ? "/sort" : "/marketplace"} className="inline-flex items-center gap-1.5 min-h-[44px] px-1 -ml-1 text-[13px] font-semibold text-slate-500 hover:text-slate-900 mb-4">
-          <ArrowLeft className="w-4 h-4" /> Back
-        </Link>
-
-        <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center mb-4">
-          <Car className="w-8 h-8 text-green-600" />
+    <div className="relative min-h-dvh overflow-x-clip text-white">
+      <GlassBackdrop />
+      <div className="relative z-10 max-w-sm mx-auto px-5 py-6 pb-12">
+        <div className="flex items-center justify-between mb-4">
+          <Link
+            href={signedIn ? "/sort" : "/marketplace"}
+            className="inline-flex items-center gap-1.5 min-h-[44px] rounded-full liquid-glass-pill px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-white/25"
+          >
+            <ArrowLeft className="w-4 h-4" /> Back
+          </Link>
+          <Logo size="sm" dark />
         </div>
-        <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-1">Become a Runner</h1>
-        <p className="text-[13px] text-slate-500 mb-6">Collect sorted bags from the kerb on suburb volume runs. Deliver to a refund point or depot we nominate. Paid on the runner count — separate from the household 10¢ sorting credit.</p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="runner-vehicle-type" className="block text-[13px] font-semibold text-slate-700 mb-1.5">Vehicle type</label>
-            <select id="runner-vehicle-type" value={vehicleType} onChange={e => setVehicleType(e.target.value)}
-              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500">
-              <option value="car">Car</option>
-              <option value="ute">Ute / Van</option>
-              <option value="bike">Bike / Cargo bike</option>
-              <option value="walk">On foot</option>
-            </select>
+        <div className="rounded-[28px] liquid-glass p-6">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-400/25 border border-emerald-200/50 flex items-center justify-center mb-4">
+            <Car className="w-7 h-7 text-emerald-100" />
           </div>
-          <div>
-            <label htmlFor="runner-vehicle-make" className="block text-[13px] font-semibold text-slate-700 mb-1.5">Make / model</label>
-            <input id="runner-vehicle-make" type="text" value={vehicleMake} onChange={e => setVehicleMake(e.target.value)} placeholder="e.g. Toyota Corolla"
-              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500" />
-          </div>
-          <div>
-            <label htmlFor="runner-vehicle-rego" className="block text-[13px] font-semibold text-slate-700 mb-1.5">Registration</label>
-            <input id="runner-vehicle-rego" type="text" value={vehicleRego} onChange={e => setVehicleRego(e.target.value.toUpperCase())} placeholder="e.g. 123ABC"
-              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+          <h1 className="text-2xl font-display font-extrabold text-white glass-text-shadow mb-1">Become a Runner</h1>
+          <p className="text-[13px] text-white/80 leading-relaxed mb-6">Collect sorted bags from the kerb on suburb volume runs. Deliver to a refund point or depot we nominate. Paid on the runner count — separate from the household 10¢ sorting credit.</p>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="runner-capacity-bags" className="block text-[13px] font-semibold text-slate-700 mb-1.5">Bag capacity</label>
-              <input id="runner-capacity-bags" type="number" min={1} max={100} value={capacityBags} onChange={e => setCapacityBags(Math.min(100, Math.max(1, Math.round(Number(e.target.value) || 1))))}
-                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500" />
+              <label htmlFor="runner-vehicle-type" className="block text-[13px] font-semibold text-white/90 mb-1.5">Vehicle type</label>
+              <select id="runner-vehicle-type" value={vehicleType} onChange={e => setVehicleType(e.target.value)}
+                className="w-full bg-white/95 border border-white/70 rounded-xl px-4 py-3 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:border-emerald-400">
+                <option value="car">Car</option>
+                <option value="ute">Ute / Van</option>
+                <option value="bike">Bike / Cargo bike</option>
+                <option value="walk">On foot</option>
+              </select>
             </div>
             <div>
-              <label htmlFor="runner-service-radius" className="block text-[13px] font-semibold text-slate-700 mb-1.5">Range (km)</label>
-              <input id="runner-service-radius" type="number" min={1} max={200} value={serviceRadiusKm} onChange={e => setServiceRadiusKm(Math.min(200, Math.max(1, Number(e.target.value) || 1)))}
-                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500" />
+              <label htmlFor="runner-vehicle-make" className="block text-[13px] font-semibold text-white/90 mb-1.5">Make / model</label>
+              <input id="runner-vehicle-make" type="text" value={vehicleMake} onChange={e => setVehicleMake(e.target.value)} placeholder="e.g. Toyota Corolla"
+                className="w-full bg-white/95 border border-white/70 rounded-xl px-4 py-3 text-base text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:border-emerald-400" />
             </div>
-          </div>
-          <div>
-            <label htmlFor="runner-scheme-id" className="block text-[13px] font-semibold text-slate-700 mb-1.5">Containers for Change Scheme ID (optional)</label>
-            <input id="runner-scheme-id" type="text" value={coexSchemeId} onChange={e => setCoexSchemeId(e.target.value.toUpperCase())} placeholder="e.g. C101234567"
-              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-base text-slate-900 placeholder-slate-300 font-mono focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500" />
-          </div>
-          {error && <p className="text-red-500 text-[13px]">{error}</p>}
-          <button type="submit" disabled={loading}
-            className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20 disabled:opacity-50 min-h-[48px]">
-            {loading ? "Registering..." : signedIn ? "Register as Runner" : "Continue & verify email"}
-          </button>
-          <p className="text-[11px] text-slate-400 text-center">
-            By registering you agree to collect sorted containers from the kerb and drop them at a depot or refund point we nominate.
-          </p>
-        </form>
+            <div>
+              <label htmlFor="runner-vehicle-rego" className="block text-[13px] font-semibold text-white/90 mb-1.5">Registration</label>
+              <input id="runner-vehicle-rego" type="text" value={vehicleRego} onChange={e => setVehicleRego(e.target.value.toUpperCase())} placeholder="e.g. 123ABC"
+                className="w-full bg-white/95 border border-white/70 rounded-xl px-4 py-3 text-base text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:border-emerald-400" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="runner-capacity-bags" className="block text-[13px] font-semibold text-white/90 mb-1.5">Bag capacity</label>
+                <input id="runner-capacity-bags" type="number" min={1} max={100} value={capacityBags} onChange={e => setCapacityBags(Math.min(100, Math.max(1, Math.round(Number(e.target.value) || 1))))}
+                  className="w-full bg-white/95 border border-white/70 rounded-xl px-4 py-3 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:border-emerald-400" />
+              </div>
+              <div>
+                <label htmlFor="runner-service-radius" className="block text-[13px] font-semibold text-white/90 mb-1.5">Range (km)</label>
+                <input id="runner-service-radius" type="number" min={1} max={200} value={serviceRadiusKm} onChange={e => setServiceRadiusKm(Math.min(200, Math.max(1, Number(e.target.value) || 1)))}
+                  className="w-full bg-white/95 border border-white/70 rounded-xl px-4 py-3 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:border-emerald-400" />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="runner-scheme-id" className="block text-[13px] font-semibold text-white/90 mb-1.5">Containers for Change Scheme ID (optional)</label>
+              <input id="runner-scheme-id" type="text" value={coexSchemeId} onChange={e => setCoexSchemeId(e.target.value.toUpperCase())} placeholder="e.g. C101234567"
+                className="w-full bg-white/95 border border-white/70 rounded-xl px-4 py-3 text-base text-slate-900 placeholder-slate-400 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:border-emerald-400" />
+            </div>
+            {error && <p className="rounded-xl bg-red-500/20 border border-red-200/40 px-3 py-2 text-red-100 text-[13px]">{error}</p>}
+            <button type="submit" disabled={loading}
+              className="w-full bg-gradient-to-b from-emerald-500 to-emerald-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-emerald-950/30 disabled:opacity-50 min-h-[48px]">
+              {loading ? "Registering..." : signedIn ? "Register as Runner" : "Continue & verify email"}
+            </button>
+            <p className="text-[11px] text-white/75 text-center leading-relaxed">
+              By registering you agree to collect sorted containers from the kerb and drop them at a depot or refund point we nominate.
+            </p>
+          </form>
+        </div>
       </div>
     </div>
   );

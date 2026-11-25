@@ -6,6 +6,8 @@ import { apiUrl, authHeaders, clearAuth, hasValidToken, readStoredProfile } from
 import { canonicalSuburb, residentialNeedsStreet, titleSuburb } from "@/lib/brisbane";
 import { track } from "@/lib/analytics";
 import { AddressAutocomplete, geocodeAddress, hasStreetNumber } from "@/app/components/shared/address-autocomplete";
+import { GlassBackdrop } from "@/app/components/shared/glass-backdrop";
+import { Logo } from "@/app/components/shared/logo";
 
 export type PayoutMethodChoice = "payid" | "aba";
 export type PayIdTypeChoice = "email" | "phone" | "abn";
@@ -633,9 +635,14 @@ export function PostScanSetup({
   const payoutSummaryText = formatSavedPayoutLabel(savedPayoutSummary);
 
   return (
-    <div className="min-h-dvh bg-white flex flex-col items-center justify-center px-5 overflow-y-auto">
-      <div className="w-full max-w-md py-8">
-        <div className="text-center mb-5">
+    <div className="relative min-h-dvh overflow-x-clip flex flex-col items-center justify-center px-4 sm:px-5 py-8 overflow-y-auto">
+      <GlassBackdrop />
+      <div className="relative z-10 w-full max-w-md">
+        <div className="flex justify-center mb-4">
+          <Logo size="md" dark />
+        </div>
+        <div className="rounded-[28px] liquid-glass-light p-6 text-slate-900">
+          <div className="text-center mb-5">
           <div className="w-14 h-14 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
             <Check className="w-7 h-7 text-green-600" />
           </div>
@@ -900,12 +907,13 @@ export function PostScanSetup({
               onClick={() => {
                 window.location.href = "/sort";
               }}
-              className="w-full py-3 text-slate-500 font-semibold text-[13px] hover:text-slate-700 transition-colors"
+              className="w-full py-3 text-slate-600 font-semibold text-[13px] hover:text-slate-900 transition-colors"
             >
               Back to dashboard
             </button>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

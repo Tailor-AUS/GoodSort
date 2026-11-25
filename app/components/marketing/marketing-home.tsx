@@ -9,6 +9,7 @@ import { apiUrl, clearAuth, hasValidToken, persistWaitlistFromUrl, readDayHint, 
 import { track } from "@/lib/analytics";
 import { BCC_BIN_DAY_DATASET, LIVE_VOLUME_THRESHOLD, dayClusterStats, daySlug, findSuburb, inviteMessage, sameSuburb, streetInviteUrl, titleSuburb, type GrowthSuburb } from "@/lib/brisbane";
 import { Logo } from "@/app/components/shared/logo";
+import { GlassBackdrop } from "@/app/components/shared/glass-backdrop";
 import { HeroKerbsideCard, SortAnimation } from "@/app/components/shared/sort-animation";
 import { InviteActions } from "@/app/components/shared/invite-actions";
 import { SuburbFinder } from "@/app/components/marketing/suburb-finder";
@@ -156,9 +157,10 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
 
   if (redirectingToApp) {
     return (
-      <div className="min-h-dvh bg-white flex flex-col items-center justify-center px-6" aria-busy="true" aria-label="Opening your dashboard">
-        <div className="animate-pulse">
-          <Logo size="lg" />
+      <div className="relative min-h-dvh flex flex-col items-center justify-center px-6 overflow-x-clip" aria-busy="true" aria-label="Opening your dashboard">
+        <GlassBackdrop />
+        <div className="relative z-10 animate-pulse">
+          <Logo size="lg" dark />
         </div>
       </div>
     );
@@ -166,38 +168,39 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
 
   if (showAuth) {
     return (
-      <div className="min-h-dvh bg-white flex flex-col items-center justify-center px-6" style={{ paddingTop: "env(safe-area-inset-top,0)", paddingBottom: "env(safe-area-inset-bottom,0)" }}>
-        <div className="w-full max-w-sm">
+      <div className="relative min-h-dvh text-white flex flex-col items-center justify-center px-5 py-8 overflow-x-clip" style={{ paddingTop: "max(24px, env(safe-area-inset-top, 24px))", paddingBottom: "max(24px, env(safe-area-inset-bottom, 24px))" }}>
+        <GlassBackdrop />
+        <div className="relative z-10 w-full max-w-sm rounded-[28px] liquid-glass p-6">
           {step === "email" ? (
             <>
-              <div className="text-center mb-8">
-                <div className="flex justify-center mb-5"><Logo size="lg" /></div>
-                <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-2">Start scanning today</h1>
-                <p className="text-slate-400 text-[13px]">Your email. Then your address &amp; payout details. Scan for 10¢ — suburb volume unlocks a driver trip.</p>
+              <div className="text-center mb-6">
+                <div className="flex justify-center mb-4"><Logo size="md" dark /></div>
+                <h1 className="text-2xl font-display font-extrabold text-white glass-text-shadow mb-2">Start scanning today</h1>
+                <p className="text-white/85 text-[13px]">Your email. Then your address &amp; payout details. Scan for 10¢ — suburb volume unlocks a driver trip.</p>
               </div>
               <input type="email" aria-label="Email address" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com"
                 onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}
-                className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 mb-3" autoFocus />
-              {error && <p className="text-red-500 text-[12px] mb-2">{error}</p>}
+                className="w-full bg-white/95 border border-white rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 mb-3" autoFocus />
+              {error && <p className="text-red-200 bg-red-950/40 rounded-xl px-3 py-2 text-[12px] mb-2">{error}</p>}
               <GreenButton onClick={sendOtp} disabled={loading || !email.includes("@")}>
                 {loading ? "Sending code..." : "Continue"}
               </GreenButton>
-              <button type="button" onClick={() => setShowAuth(false)} className="w-full min-h-[44px] text-slate-400 text-[13px] mt-3 py-2.5">Back</button>
+              <button type="button" onClick={() => setShowAuth(false)} className="w-full min-h-[44px] text-white/85 hover:text-white text-[13px] font-semibold mt-2 py-2.5">Back</button>
             </>
           ) : (
             <>
-              <div className="text-center mb-8">
-                <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <ShieldCheck className="w-8 h-8 text-green-600" />
+              <div className="text-center mb-6">
+                <div className="w-14 h-14 liquid-glass-emerald rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <ShieldCheck className="w-7 h-7 text-emerald-200" />
                 </div>
-                <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-1">Check your email</h1>
-                <p className="text-slate-400 text-[13px]">Code sent to {email}. The code is in the subject line — check spam too. It expires in 15 minutes.</p>
-                {devCode && <p className="text-[12px] text-violet-700 mt-2">Local code {devCode} — ACS email is not configured on this machine.</p>}
+                <h1 className="text-2xl font-display font-extrabold text-white glass-text-shadow mb-1">Check your email</h1>
+                <p className="text-white/85 text-[13px]">Code sent to {email}. The code is in the subject line — check spam too. It expires in 15 minutes.</p>
+                {devCode && <p className="text-[12px] text-amber-200 mt-2">Local code {devCode} — ACS email is not configured on this machine.</p>}
               </div>
               <input type="text" aria-label="6-digit verification code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} placeholder="000000"
-                className="w-full text-center text-3xl font-display font-extrabold tracking-[0.3em] border border-slate-200 rounded-xl px-4 py-4 text-slate-900 placeholder-slate-200 focus:outline-none focus:ring-2 focus:ring-green-500/30 mb-3" autoFocus />
-              {error && <p className="text-red-500 text-[12px] mb-2 text-center">{error}</p>}
+                className="w-full text-center text-3xl font-display font-extrabold tracking-[0.3em] bg-white/95 border border-white rounded-xl px-4 py-4 text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 mb-3" autoFocus />
+              {error && <p className="text-red-200 bg-red-950/40 rounded-xl px-3 py-2 text-[12px] mb-2 text-center">{error}</p>}
               <GreenButton onClick={verifyOtp} disabled={loading || otp.length < 6}>
                 {loading ? "Verifying..." : "Verify"}
               </GreenButton>
@@ -206,14 +209,14 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
                   type="button"
                   disabled={loading || resendIn > 0}
                   onClick={() => void sendOtp()}
-                  className="min-h-[44px] text-green-700 font-semibold py-2.5 disabled:text-slate-300"
+                  className="min-h-[44px] text-emerald-200 font-semibold py-2.5 disabled:text-white/40"
                 >
                   {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
                 </button>
                 <button
                   type="button"
                   onClick={() => { setStep("email"); setOtp(""); setError(""); setDevCode(""); }}
-                  className="min-h-[44px] text-slate-400 hover:text-slate-600 py-2.5"
+                  className="min-h-[44px] text-white/80 hover:text-white py-2.5"
                 >
                   Use a different email
                 </button>
@@ -261,13 +264,13 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
           <img
             src="/images/brisbane-veranda-glass.webp"
             alt=""
-            className="h-full w-full object-cover object-center"
+            className="h-full w-full object-cover object-center brightness-[1.14] saturate-[1.08]"
           />
           <div
             className="absolute inset-0"
             style={{
               background:
-                "linear-gradient(180deg, rgba(6,15,17,0.40) 0%, rgba(7,16,18,0.28) 42%, rgba(6,16,15,0.74) 100%)",
+                "linear-gradient(180deg, rgba(10,28,38,0.16) 0%, rgba(14,32,36,0.12) 44%, rgba(8,22,22,0.40) 100%)",
             }}
           />
         </div>

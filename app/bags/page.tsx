@@ -26,6 +26,7 @@ import {
   type SortedBagDto,
   type MyBagsResponse,
 } from "@/lib/marketplace";
+import { GlassBackdrop } from "@/app/components/shared/glass-backdrop";
 
 export default function SortedBagsPage() {
   const [data, setData] = useState<MyBagsResponse | null>(null);
@@ -135,22 +136,7 @@ export default function SortedBagsPage() {
 
   return (
     <div className="relative min-h-dvh text-white print:bg-white print:text-slate-900 pb-16 overflow-x-clip">
-      {/* Full-bleed sunlit Brisbane backdrop for tinted Liquid Glass (hidden when printing QR tags) */}
-      <div className="print:hidden fixed inset-0 z-0 pointer-events-none select-none overflow-hidden" aria-hidden="true">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/images/brisbane-veranda-glass.webp"
-          alt=""
-          className="h-full w-full object-cover object-center scale-[1.03]"
-        />
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              "linear-gradient(180deg, rgba(6,15,17,0.48) 0%, rgba(8,18,18,0.42) 48%, rgba(6,15,15,0.72) 100%)",
-          }}
-        />
-      </div>
+      <GlassBackdrop printHidden />
 
       {/* Screen Header (hidden when printing) */}
       <header className="print:hidden sticky top-0 z-20 px-4 pt-3 pb-2" style={{ paddingTop: "max(12px, env(safe-area-inset-top))" }}>
