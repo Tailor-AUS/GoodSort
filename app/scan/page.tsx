@@ -10,6 +10,8 @@ import { lookupContainerAsync } from "@/lib/containers";
 import { addScanApi, flushUnsyncedScans } from "@/lib/store-api";
 import { streamGuideForMaterial } from "@/lib/marketplace";
 import { PostScanSetup } from "@/app/components/shared/post-scan-setup";
+import { GlassBackdrop } from "@/app/components/shared/glass-backdrop";
+import { Logo } from "@/app/components/shared/logo";
 
 interface BinInfo {
   id: string; code: string; name: string; address: string; hostedBy: string | null;
@@ -683,20 +685,20 @@ function ScanPageContent() {
   // RENDER
   // ════════════════════════════════════
 
-  if (step === "loading") return <Center><p className="text-slate-400">Loading...</p></Center>;
+  if (step === "loading") return <Center><p className="text-white/85 font-medium">Loading...</p></Center>;
 
   // Auth
   if (step === "auth") return (
     <Center>
-      <IconBubble><Mail className="w-7 h-7 text-green-600" /></IconBubble>
-      <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">Nice — where should we keep it?</h1>
-      <p className="text-slate-400 text-[13px] mb-6">
+      <IconBubble><Mail className="w-7 h-7 text-emerald-100" /></IconBubble>
+      <h1 className="text-xl font-display font-extrabold text-white glass-text-shadow mb-1">Nice — where should we keep it?</h1>
+      <p className="text-white/80 text-[13px] mb-6 leading-relaxed">
         Your photo is ready. Enter your email to save your 10¢ sorting credit — next we&apos;ll ask where to collect and pay you.
       </p>
       <input type="email" aria-label="Email address" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
         onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}
-        className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 mb-3" autoFocus />
-      {authError && <p className="text-red-500 text-[12px] mb-2">{authError}</p>}
+        className="w-full bg-white/95 border border-white/70 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:border-emerald-400 mb-3" autoFocus />
+      {authError && <p className="rounded-xl bg-red-500/20 border border-red-200/40 px-3 py-2 text-red-100 text-[12px] mb-2">{authError}</p>}
       <GreenButton onClick={sendOtp} disabled={authLoading || !email.includes("@")}>
         {authLoading ? "Sending..." : "Continue"}
       </GreenButton>
@@ -705,30 +707,30 @@ function ScanPageContent() {
 
   if (step === "verify") return (
     <Center>
-      <IconBubble><ShieldCheck className="w-7 h-7 text-green-600" /></IconBubble>
-      <h1 className="text-xl font-display font-extrabold text-slate-900 mb-1">Check your email</h1>
-      <p className="text-slate-400 text-[13px] mb-4">Code sent to {email}. The code is in the subject line — check spam too. It expires in 15 minutes.</p>
+      <IconBubble><ShieldCheck className="w-7 h-7 text-emerald-100" /></IconBubble>
+      <h1 className="text-xl font-display font-extrabold text-white glass-text-shadow mb-1">Check your email</h1>
+      <p className="text-white/80 text-[13px] mb-4 leading-relaxed">Code sent to {email}. The code is in the subject line — check spam too. It expires in 15 minutes.</p>
       {preScanStatus === "running" && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3.5 py-2 text-[12px] font-medium text-emerald-800 mb-4 text-center flex items-center justify-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+        <div className="liquid-glass-emerald rounded-xl px-3.5 py-2 text-[12px] font-medium text-white mb-4 text-center flex items-center justify-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse" />
           Identifying your container in the background while you grab your code…
         </div>
       )}
       {preScanStatus === "ready" && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-emerald-800 mb-4 text-center flex items-center justify-center gap-1.5">
-          <Check className="w-3.5 h-3.5 text-emerald-600" />
+        <div className="liquid-glass-emerald rounded-xl px-3.5 py-2 text-[12px] font-bold text-white mb-4 text-center flex items-center justify-center gap-1.5">
+          <Check className="w-3.5 h-3.5 text-emerald-200" />
           Container identified — enter your code to reveal &amp; claim instantly.
         </div>
       )}
       {devCode && (
-        <p className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-mono text-amber-800 mb-3 text-center">
+        <p className="bg-amber-500/25 border border-amber-200/40 rounded-lg px-3 py-2 text-xs font-mono text-amber-100 mb-3 text-center">
           Dev code: <strong>{devCode}</strong>
         </p>
       )}
       <input type="text" aria-label="6-digit verification code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp}
         onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} placeholder="000000"
-        className="w-full text-center text-3xl font-display font-extrabold tracking-[0.3em] border border-slate-200 rounded-xl px-4 py-4 text-slate-900 placeholder-slate-200 focus:outline-none focus:ring-2 focus:ring-green-500/30 mb-3" autoFocus />
-      {authError && <p className="text-red-500 text-[12px] mb-2 text-center">{authError}</p>}
+        className="w-full text-center text-3xl font-display font-extrabold tracking-[0.3em] bg-white/95 border border-white/70 rounded-xl px-4 py-4 text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 mb-3" autoFocus />
+      {authError && <p className="rounded-xl bg-red-500/20 border border-red-200/40 px-3 py-2 text-red-100 text-[12px] mb-2 text-center">{authError}</p>}
       <GreenButton onClick={verifyOtp} disabled={authLoading || otp.length < 6}>
         {authLoading ? "Verifying..." : "Verify"}
       </GreenButton>
@@ -743,11 +745,11 @@ function ScanPageContent() {
         <button
           onClick={() => { setOtp(""); setAuthError(""); sendOtp(); }}
           disabled={authLoading || resendIn > 0}
-          className="text-green-700 font-semibold disabled:text-slate-300 min-h-[44px] px-2"
+          className="text-emerald-200 hover:text-white font-semibold disabled:text-white/40 min-h-[44px] px-2"
         >
           {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
         </button>
-        <span className="text-slate-200">·</span>
+        <span className="text-white/35">·</span>
         <button
           onClick={() => {
             setOtp("");
@@ -761,7 +763,7 @@ function ScanPageContent() {
             try { sessionStorage.removeItem(PENDING_EMAIL_KEY); } catch { /* ignore */ }
             setStep("auth");
           }}
-          className="text-slate-500 font-semibold min-h-[44px] px-2"
+          className="text-white/80 hover:text-white font-semibold min-h-[44px] px-2"
         >
           Use a different email
         </button>
@@ -1043,17 +1045,27 @@ function ScanPageContent() {
 // ── Shared ──
 
 function Center({ children }: { children: React.ReactNode }) {
-  return <div className="min-h-dvh bg-white flex flex-col items-center justify-center px-6 overflow-y-auto"><div className="w-full max-w-sm text-center py-8">{children}</div></div>;
+  return (
+    <div className="relative min-h-dvh overflow-x-clip flex flex-col items-center justify-center px-5 py-8 overflow-y-auto text-white">
+      <GlassBackdrop />
+      <div className="relative z-10 w-full max-w-sm">
+        <div className="flex justify-center mb-4">
+          <Logo size="md" dark />
+        </div>
+        <div className="rounded-[28px] liquid-glass p-6 text-center">{children}</div>
+      </div>
+    </div>
+  );
 }
 
 function IconBubble({ children }: { children: React.ReactNode }) {
-  return <div className="w-14 h-14 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-4">{children}</div>;
+  return <div className="w-14 h-14 rounded-2xl bg-emerald-400/25 border border-emerald-200/50 flex items-center justify-center mx-auto mb-4 shadow-inner">{children}</div>;
 }
 
 function GreenButton({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
   return (
     <button onClick={onClick} disabled={disabled}
-      className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20 disabled:opacity-50 transition-all min-h-[48px] flex items-center justify-center mt-3"
+      className="w-full bg-gradient-to-b from-emerald-500 to-emerald-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-emerald-950/30 disabled:opacity-50 transition-all min-h-[48px] flex items-center justify-center mt-3"
       style={{ touchAction: "manipulation" }}>
       {children}
     </button>
@@ -1062,7 +1074,7 @@ function GreenButton({ children, onClick, disabled }: { children: React.ReactNod
 
 export default function ScanPage() {
   return (
-    <Suspense fallback={<Center><p className="text-slate-400">Loading...</p></Center>}>
+    <Suspense fallback={<Center><p className="text-white/85 font-medium">Loading...</p></Center>}>
       <ScanPageContent />
     </Suspense>
   );

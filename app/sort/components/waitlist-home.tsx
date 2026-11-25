@@ -40,6 +40,7 @@ import { buildSorterLoyaltySummary, bucketScanMaterial } from "@/lib/sorter-loya
 import { WaitlistCard } from "@/app/components/shared/waitlist-card";
 import { CollectionNightCard } from "@/app/components/shared/collection-night-card";
 import { InviteActions } from "@/app/components/shared/invite-actions";
+import { GlassBackdrop } from "@/app/components/shared/glass-backdrop";
 import { MemberStatusCard } from "./member-status-card";
 import { BuildingSyndicatePanel } from "./building-syndicate-panel";
 import { fetchMySyndicate, type MySyndicateResponse } from "@/lib/syndicate-api";
@@ -178,22 +179,7 @@ export function WaitlistHome({
 
   return (
     <div className="relative min-h-dvh text-white pb-28 overflow-x-clip">
-      {/* Full-bleed golden-hour Brisbane veranda backdrop so Liquid Glass refracts real light, timber & greenery */}
-      <div className="fixed inset-0 z-0 pointer-events-none select-none overflow-hidden" aria-hidden="true">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/images/brisbane-veranda-glass.webp"
-          alt=""
-          className="h-full w-full object-cover object-center scale-[1.03]"
-        />
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              "linear-gradient(180deg, rgba(6,15,17,0.42) 0%, rgba(8,18,18,0.36) 44%, rgba(5,14,14,0.68) 100%)",
-          }}
-        />
-      </div>
+      <GlassBackdrop />
 
       <div className="relative z-10 mx-auto w-full max-w-[430px]">
         {/* ══════════════════ TAB 1: HOME ══════════════════ */}

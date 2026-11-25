@@ -10,6 +10,8 @@ import { AddressAutocomplete, geocodeAddress } from "@/app/components/shared/add
 import { InviteActions } from "@/app/components/shared/invite-actions";
 import { PayoutFields, validateClientPayout, type PayIdTypeChoice, type PayoutMethodChoice } from "@/app/components/shared/post-scan-setup";
 import { looksLikeMultiUnitOrCommercialAddress } from "@/lib/syndicate-api";
+import { GlassBackdrop } from "@/app/components/shared/glass-backdrop";
+import { Logo } from "@/app/components/shared/logo";
 
 type Step = "place" | "auth" | "verify" | "unit_waitlist";
 type PendingPlaceSubmit = {
@@ -485,7 +487,7 @@ export default function OnboardPage() {
       >
         <form onSubmit={sendOtp} className="space-y-4">
           <div>
-            <label htmlFor={`${onboardFieldId}-auth-email`} className="block text-[13px] font-semibold text-slate-700 mb-1.5">
+            <label htmlFor={`${onboardFieldId}-auth-email`} className="block text-[13px] font-semibold text-white/90 mb-1.5">
               Email address
             </label>
             <input
@@ -496,21 +498,21 @@ export default function OnboardPage() {
               placeholder="you@example.com"
               autoFocus
               required
-              className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+              className="w-full bg-white/95 border border-white/70 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:border-emerald-400"
             />
           </div>
-          {error && <p className="text-red-500 text-[13px]">{error}</p>}
+          {error && <p className="rounded-xl bg-red-500/20 border border-red-200/40 px-3 py-2 text-red-100 text-[13px]">{error}</p>}
           <button
             type="submit"
             disabled={loading || !authEmail.includes("@")}
-            className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20 disabled:opacity-50 min-h-[48px]"
+            className="w-full bg-gradient-to-b from-emerald-500 to-emerald-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-emerald-950/30 disabled:opacity-50 min-h-[48px]"
           >
             {loading ? "Sending code..." : "Send verification code"}
           </button>
           <button
             type="button"
             onClick={() => { setError(""); setStep("place"); }}
-            className="w-full inline-flex items-center justify-center gap-1.5 text-[13px] text-slate-500 hover:text-slate-700 font-medium py-2"
+            className="w-full inline-flex items-center justify-center gap-1.5 text-[13px] text-white/80 hover:text-white font-medium py-2"
           >
             <ArrowLeft className="w-3.5 h-3.5" /> Back to address details
           </button>
@@ -528,9 +530,9 @@ export default function OnboardPage() {
       >
         <form onSubmit={verifyOtp} className="space-y-4">
           {devCode && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
-              <p className="text-amber-700 text-[11px] font-medium mb-1">Dev mode — code auto-filled</p>
-              <p className="text-amber-900 font-mono font-bold text-lg tracking-widest">{devCode}</p>
+            <div className="bg-amber-400/25 border border-amber-200/50 rounded-xl p-3 text-center">
+              <p className="text-amber-100 text-[11px] font-medium mb-1">Dev mode — code auto-filled</p>
+              <p className="text-white font-mono font-bold text-lg tracking-widest">{devCode}</p>
             </div>
           )}
           <div>
@@ -546,14 +548,14 @@ export default function OnboardPage() {
               onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
               placeholder="000000"
               autoFocus
-              className="w-full border border-slate-200 rounded-xl px-4 py-4 text-center text-2xl font-mono font-bold tracking-[0.3em] text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+              className="w-full bg-white/95 border border-white/70 rounded-xl px-4 py-4 text-center text-2xl font-mono font-bold tracking-[0.3em] text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:border-emerald-400"
             />
           </div>
-          {error && <p className="text-red-500 text-[13px] text-center">{error}</p>}
+          {error && <p className="rounded-xl bg-red-500/20 border border-red-200/40 px-3 py-2 text-red-100 text-[13px] text-center">{error}</p>}
           <button
             type="submit"
             disabled={loading || otp.length < 6}
-            className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20 disabled:opacity-50 min-h-[48px]"
+            className="w-full bg-gradient-to-b from-emerald-500 to-emerald-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-emerald-950/30 disabled:opacity-50 min-h-[48px]"
           >
             {loading ? "Saving your street..." : "Verify & Start Scanning"}
           </button>
@@ -561,7 +563,7 @@ export default function OnboardPage() {
             <button
               type="button"
               onClick={() => { setStep("auth"); setOtp(""); setError(""); }}
-              className="text-slate-500 hover:text-slate-700 py-1"
+              className="text-white/80 hover:text-white py-1"
             >
               Change email
             </button>
@@ -569,7 +571,7 @@ export default function OnboardPage() {
               type="button"
               onClick={() => void sendOtp()}
               disabled={resendIn > 0 || loading}
-              className="text-green-600 font-semibold disabled:text-slate-300 py-1"
+              className="text-emerald-200 hover:text-white font-semibold disabled:text-white/40 py-1"
             >
               {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
             </button>
@@ -596,43 +598,45 @@ export default function OnboardPage() {
       <div className="space-y-3 mb-4">
         {type === "residential" && (
           <div>
-            <label htmlFor={`${onboardFieldId}-name`} className="block text-[13px] font-semibold text-slate-700 mb-1.5">Your name</label>
+            <label htmlFor={`${onboardFieldId}-name`} className="block text-[13px] font-semibold text-white/90 mb-1.5">Your name</label>
             <input id={`${onboardFieldId}-name`} type="text" value={name} onChange={e => {
               const v = e.target.value;
               setName(v);
               if (!accountNameTouched) setAccountName(v);
             }} placeholder="e.g. Sarah"
-              className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500" />
+              className="w-full bg-white/95 border border-white/70 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:border-emerald-400" />
           </div>
         )}
         {type === "unit_complex" && (
           <div>
-            <label htmlFor={`${onboardFieldId}-building`} className="block text-[13px] font-semibold text-slate-700 mb-1.5">Building name</label>
+            <label htmlFor={`${onboardFieldId}-building`} className="block text-[13px] font-semibold text-white/90 mb-1.5">Building name</label>
             <input id={`${onboardFieldId}-building`} type="text" value={buildingName} onChange={e => setBuildingName(e.target.value)} placeholder="e.g. Kurilpa Apartments"
-              className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500" />
+              className="w-full bg-white/95 border border-white/70 rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:border-emerald-400" />
           </div>
         )}
         <div>
-          <label htmlFor={`${onboardFieldId}-address`} className="block text-[13px] font-semibold text-slate-700 mb-1.5">Address</label>
-          <AddressAutocomplete
-            id={`${onboardFieldId}-address`}
-            value={address}
-            onChange={(text) => {
-              setAddress(text);
-              setLat(null); setLng(null); setCollectionDay(null); setDayAuto(false); setPickedSuburb(null);
-            }}
-            onSelect={(sel) => {
-              setAddress(sel.address); setLat(sel.lat); setLng(sel.lng);
-              setPickedSuburb(sel.suburb ?? null);
-              lookupBinDay(sel.lat, sel.lng, sel.address);
-            }}
-            placeholder={suburbHint ? `Start typing your ${suburbHint} address…` : "Start typing your address…"}
-          />
+          <label htmlFor={`${onboardFieldId}-address`} className="block text-[13px] font-semibold text-white/90 mb-1.5">Address</label>
+          <div className="text-slate-900">
+            <AddressAutocomplete
+              id={`${onboardFieldId}-address`}
+              value={address}
+              onChange={(text) => {
+                setAddress(text);
+                setLat(null); setLng(null); setCollectionDay(null); setDayAuto(false); setPickedSuburb(null);
+              }}
+              onSelect={(sel) => {
+                setAddress(sel.address); setLat(sel.lat); setLng(sel.lng);
+                setPickedSuburb(sel.suburb ?? null);
+                lookupBinDay(sel.lat, sel.lng, sel.address);
+              }}
+              placeholder={suburbHint ? `Start typing your ${suburbHint} address…` : "Start typing your address…"}
+            />
+          </div>
           {lat != null && lng != null && (
-            <p className="text-[11px] text-slate-500 mt-1.5">Address confirmed. Change it if this is the wrong house.</p>
+            <p className="text-[11px] text-emerald-100 mt-1.5">Address confirmed. Change it if this is the wrong house.</p>
           )}
           {looksLikeMultiUnitOrCommercialAddress(address).detected && (
-            <div className="mt-2 rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2 text-[11px] text-emerald-900">
+            <div className="mt-2 rounded-xl bg-white/92 border border-emerald-200 px-3 py-2 text-[11px] text-emerald-900">
               <strong>
                 {looksLikeMultiUnitOrCommercialAddress(address).kind === "commercial"
                   ? "Commercial building detected"
@@ -647,10 +651,10 @@ export default function OnboardPage() {
 
       {type === "residential" && (
         <>
-          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl mb-3">
+          <div className="p-3.5 bg-white/92 border border-white/75 rounded-2xl mb-3 text-slate-900">
             <div className="flex items-center justify-between mb-2">
               <p className="text-[13px] font-display font-extrabold text-slate-900">How should we pay you?</p>
-              <span className="text-[11px] font-medium text-slate-400">From $20 cleared</span>
+              <span className="text-[11px] font-medium text-slate-500">From $20 cleared</span>
             </div>
             <PayoutFields
               method={payoutMethod}
@@ -671,12 +675,12 @@ export default function OnboardPage() {
               defaultEmail={defaultEmail}
             />
           </div>
-          <label className="flex items-start gap-3 p-3 bg-white border border-slate-200 rounded-xl mb-4 cursor-pointer">
+          <label className="flex items-start gap-3 p-3.5 bg-white/92 border border-white/75 rounded-2xl mb-4 cursor-pointer text-slate-900">
             <input type="checkbox" checked={accessConsent} onChange={e => setAccessConsent(e.target.checked)} className="w-4 h-4 accent-green-600 mt-0.5" />
             <div className="flex-1">
               <p className="text-[13px] font-semibold text-slate-900">Start scanning today. Tell me when to bag out.</p>
-              <p className="text-[11px] text-slate-500">
-                I will scan and sort eligible containers at home. Contact me when suburb volume unlocks a pickup. When you collect, I authorise The Good Sort to take my bagged containers from the kerb. See our <a href="/terms" target="_blank" className="underline text-green-600">Terms</a> and <a href="/privacy" target="_blank" className="underline text-green-600">Privacy Policy</a>.
+              <p className="text-[11px] text-slate-600">
+                I will scan and sort eligible containers at home. Contact me when suburb volume unlocks a pickup. When you collect, I authorise The Good Sort to take my bagged containers from the kerb. See our <a href="/terms" target="_blank" className="underline text-green-700">Terms</a> and <a href="/privacy" target="_blank" className="underline text-green-700">Privacy Policy</a>.
               </p>
             </div>
           </label>
@@ -684,18 +688,18 @@ export default function OnboardPage() {
       )}
 
       {type === "unit_complex" && (
-        <label className="flex items-start gap-3 p-3 bg-white border border-slate-200 rounded-xl mb-4 cursor-pointer">
+        <label className="flex items-start gap-3 p-3.5 bg-white/92 border border-white/75 rounded-2xl mb-4 cursor-pointer text-slate-900">
           <input type="checkbox" checked={accessConsent} onChange={e => setAccessConsent(e.target.checked)} className="w-4 h-4 accent-green-600 mt-0.5" />
           <div className="flex-1">
             <p className="text-[13px] font-semibold text-slate-900">Put this building on the waitlist</p>
-            <p className="text-[11px] text-slate-500">
-              Contact me about common-area pickups. I can invite houses on my street to scan — their volume unlocks a run first. See our <a href="/terms" target="_blank" className="underline text-green-600">Terms</a> and <a href="/privacy" target="_blank" className="underline text-green-600">Privacy Policy</a>.
+            <p className="text-[11px] text-slate-600">
+              Contact me about common-area pickups. I can invite houses on my street to scan — their volume unlocks a run first. See our <a href="/terms" target="_blank" className="underline text-green-700">Terms</a> and <a href="/privacy" target="_blank" className="underline text-green-700">Privacy Policy</a>.
             </p>
           </div>
         </label>
       )}
 
-      {error && <p className="text-red-500 text-[13px] mb-3">{error}</p>}
+      {error && <p className="rounded-xl bg-red-500/20 border border-red-200/40 px-3 py-2 text-red-100 text-[13px] mb-3">{error}</p>}
       <Continue
         onClick={continueFromPlace}
         disabled={loading || !address.trim() || !accessConsent || (type === "unit_complex" ? !buildingName.trim() : !name.trim())}
@@ -707,7 +711,7 @@ export default function OnboardPage() {
           setType(type === "residential" ? "unit_complex" : "residential");
           setError("");
         }}
-        className="w-full min-h-[44px] text-center text-[13px] text-slate-500 hover:text-slate-700 font-medium py-2.5 mt-1"
+        className="w-full min-h-[44px] text-center text-[13px] text-white/85 hover:text-white font-medium py-2.5 mt-1"
       >
         {type === "residential" ? "I live in a unit / apartment" : "I live in a house"}
       </button>
@@ -719,12 +723,12 @@ export default function OnboardPage() {
     const inviteUrl = streetInviteUrl({ suburb: place, profileId: readStoredProfileId() });
     return (
     <Shell icon={Check} title="You're on the building list" sub="We'll email you when we launch common-area pickups. Invite houses on your street to scan — their volume unlocks a run first.">
-      <p className="text-[13px] text-slate-500 mb-4">Body-corporate bins are phase 2. A neighbour scanning in a house still builds suburb volume toward a driver trip.</p>
+      <p className="text-[13px] text-white/80 mb-4">Body-corporate bins are phase 2. A neighbour scanning in a house still builds suburb volume toward a driver trip.</p>
       <div className="mb-4">
         <InviteActions url={inviteUrl} message={inviteMessage(inviteUrl, place)} />
       </div>
       <button type="button" onClick={() => router.push("/sort")}
-        className="w-full bg-slate-100 hover:bg-slate-200 text-slate-900 font-semibold py-3.5 rounded-xl text-[15px] min-h-[48px]">Done</button>
+        className="w-full liquid-glass-pill hover:bg-white/25 text-white font-semibold py-3.5 rounded-xl text-[15px] min-h-[48px]">Done</button>
     </Shell>
     );
   }
@@ -734,16 +738,22 @@ export default function OnboardPage() {
 
 function Shell({ icon: Icon, title, sub, children }: { icon: React.ElementType; title: string; sub?: string; children: React.ReactNode }) {
   return (
-    <div className="min-h-dvh bg-white flex flex-col items-center justify-center px-6 py-10">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Icon className="w-8 h-8 text-green-600" />
-          </div>
-          <h1 className="text-2xl font-display font-extrabold text-slate-900">{title}</h1>
-          {sub && <p className="text-slate-400 text-[13px] mt-1">{sub}</p>}
+    <div className="relative min-h-dvh overflow-x-clip flex flex-col items-center justify-center px-5 py-8 text-white">
+      <GlassBackdrop />
+      <div className="relative z-10 w-full max-w-sm">
+        <div className="flex justify-center mb-4">
+          <Logo size="md" dark />
         </div>
-        {children}
+        <div className="rounded-[28px] liquid-glass p-6">
+          <div className="text-center mb-6">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-400/25 border border-emerald-200/50 flex items-center justify-center mx-auto mb-3.5 shadow-inner">
+              <Icon className="w-7 h-7 text-emerald-100" />
+            </div>
+            <h1 className="text-2xl font-display font-extrabold text-white glass-text-shadow">{title}</h1>
+            {sub && <p className="text-white/80 text-[13px] mt-1.5 leading-relaxed">{sub}</p>}
+          </div>
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -752,7 +762,7 @@ function Shell({ icon: Icon, title, sub, children }: { icon: React.ElementType; 
 function Continue({ onClick, disabled, label = "Continue" }: { onClick: () => void; disabled?: boolean; label?: string }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled}
-      className="w-full bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20 disabled:opacity-50 transition-all min-h-[48px]">
+      className="w-full bg-gradient-to-b from-emerald-500 to-emerald-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-emerald-950/30 disabled:opacity-50 transition-all min-h-[48px]">
       {label}
     </button>
   );

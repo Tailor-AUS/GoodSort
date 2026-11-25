@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { GlassBackdrop } from "@/app/components/shared/glass-backdrop";
+import { Logo } from "@/app/components/shared/logo";
 
 export const metadata: Metadata = {
   title: "Terms of Service",
@@ -13,15 +15,21 @@ export const metadata: Metadata = {
 
 export default function TermsPage() {
   return (
-    <div className="min-h-dvh bg-white px-6 py-8 sm:py-12 max-w-2xl mx-auto">
-      <Link
-        href="/"
-        className="inline-flex items-center gap-1.5 min-h-[44px] px-1 -ml-1 mb-4 text-[13px] font-semibold text-slate-500 hover:text-slate-900"
-      >
-        <ArrowLeft className="w-4 h-4" /> Back
-      </Link>
-      <h1 className="text-3xl font-display font-extrabold text-slate-900 mb-8">Terms of Service</h1>
-      <div className="prose prose-slate prose-sm">
+    <div className="relative min-h-dvh overflow-x-clip px-4 sm:px-6 py-8 sm:py-12">
+      <GlassBackdrop />
+      <div className="relative z-10 max-w-2xl mx-auto">
+        <div className="flex items-center justify-between mb-5">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1.5 min-h-[44px] rounded-full liquid-glass-pill px-4 py-2 text-[13px] font-semibold text-white hover:bg-white/25"
+          >
+            <ArrowLeft className="w-4 h-4" /> Back
+          </Link>
+          <Logo size="sm" dark />
+        </div>
+        <div className="rounded-[28px] liquid-glass-light p-6 sm:p-10 text-slate-900">
+          <h1 className="text-3xl font-display font-extrabold text-slate-900 mb-6">Terms of Service</h1>
+          <div className="prose prose-slate prose-sm">
         <p className="text-slate-500 text-sm mb-6">Last updated: November 2026</p>
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">1. Service Description</h2>
@@ -145,6 +153,8 @@ export default function TermsPage() {
           or write to:
           Tailor Intelligence Pty Ltd (ABN 13 688 827 572), trading as The Good Sort, Moorooka QLD 4105, Australia.
         </p>
+          </div>
+        </div>
       </div>
     </div>
   );
