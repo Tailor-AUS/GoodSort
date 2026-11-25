@@ -316,6 +316,24 @@ export function streamGuideForMaterial(material: string | undefined | null, item
   return { stream, ...BAG_STREAMS[stream] };
 }
 
+/**
+ * Privacy-safe approximate container volume label for suburb map bubbles.
+ * Communicates neighbourhood momentum without exposing exact single-home counts.
+ */
+export function formatVagueContainerBand(count: number): string {
+  const n = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+  if (n === 0) return "Starting";
+  if (n < 10) return "< 10 cans";
+  if (n < 25) return "~10+ cans";
+  if (n < 50) return "~25+ cans";
+  if (n < 100) return "~50+ cans";
+  if (n < 250) return "~100+ cans";
+  if (n < 500) return "~250+ cans";
+  if (n < 750) return "~500+ cans";
+  if (n < 1000) return "~750+ cans";
+  return "1,000+ ready";
+}
+
 export const DISCREPANCY_OPTIONS: Array<{ value: DiscrepancyCode; label: string }> = [
   { value: "none", label: "Clean sorted bag (no issues)" },
   { value: "short_count", label: "Short Count (fewer containers than declared)" },

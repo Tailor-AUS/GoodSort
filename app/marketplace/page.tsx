@@ -16,15 +16,20 @@ import { MapView, type RunCentroid } from "@/app/components/shared/map-view";
 import { SuburbFinder } from "@/app/components/marketing/suburb-finder";
 import { DensityBoard } from "@/app/components/marketing/density-board";
 import { getMarketplaceOverview } from "@/lib/marketplace-api";
-import { type MarketplaceOverview } from "@/lib/marketplace";
+import { formatVagueContainerBand, type MarketplaceOverview } from "@/lib/marketplace";
 import { LAUNCH_BONUS_CONTAINERS, launchBonusHeadline } from "@/lib/credit";
-import { LIVE_VOLUME_THRESHOLD } from "@/lib/brisbane";
+import { LIVE_VOLUME_THRESHOLD, titleSuburb } from "@/lib/brisbane";
 import { hasValidToken } from "@/lib/config";
+
+function suburbSlug(name: string): string {
+  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
 
 export default function MarketplacePage() {
   const [overview, setOverview] = useState<MarketplaceOverview | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [isRunner, setIsRunner] = useState(false);
+  const [selectedCentroidId, setSelectedCentroidId] = useState<string | null>(null);
 
   const loadOverview = useCallback(async () => {
     const ov = await getMarketplaceOverview();
@@ -45,6 +50,12 @@ export default function MarketplacePage() {
       setIsRunner(false);
     }
     loadOverview();
+
+    if (typeof window !== "undefined" && window.location.hash === "#suburb-map") {
+      requestAnimationFrame(() => {
+        document.getElementById("suburb-map")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
   }, [loadOverview]);
 
   const liveCentroids = useMemo<RunCentroid[]>(() => {
@@ -56,25 +67,36 @@ export default function MarketplacePage() {
         id: `run-${r.id}`,
         lat: r.centroidLat,
         lng: r.centroidLng,
-        label: r.areaName,
+        label: titleSuburb(r.areaName),
         containers: r.estimatedContainers,
+        vagueCountLabel: formatVagueContainerBand(r.estimatedContainers),
         pricingTier: r.pricingTier,
+        progressPct: 100,
       });
     }
     for (const p of overview.suburbPools) {
+      const label = titleSuburb(p.suburb);
       pins.push({
         id: `pool-${p.suburb}`,
         lat: p.centroidLat,
         lng: p.centroidLng,
-        label: p.suburb,
+        label,
         containers: p.pendingContainers,
+        vagueCountLabel: formatVagueContainerBand(p.pendingContainers),
         pricingTier: p.readyForRun ? 5 : Math.max(1, Math.ceil(p.progressPct / 25)),
+        progressPct: p.progressPct,
+        slug: suburbSlug(p.suburb),
       });
     }
     return pins;
   }, [overview]);
 
-  const noop = useCallback(() => {}, []);
+  const selectedCentroid = useMemo(
+    () => liveCentroids.find((c) => c.id === selectedCentroidId) ?? null,
+    [liveCentroids, selectedCentroidId],
+  );
+  const handleSelectCentroid = useCallback((c: RunCentroid) => setSelectedCentroidId(c.id), []);
+  const handleMapTap = useCallback(() => setSelectedCentroidId(null), []);
   const bonusCap = overview?.rateCard?.launchBonusCap ?? LAUNCH_BONUS_CONTAINERS;
   const bonusText = launchBonusHeadline(bonusCap);
 
@@ -192,7 +214,10 @@ export default function MarketplacePage() {
             <DensityBoard />
           </div>
 
-          <div className="lg:col-span-7 rounded-2xl border border-slate-200 overflow-hidden bg-slate-50 shadow-sm">
+          <div
+            id="suburb-map"
+            className="lg:col-span-7 scroll-mt-20 rounded-2xl border border-slate-200 overflow-hidden bg-slate-50 shadow-sm"
+          >
             <div className="px-4 py-3 bg-white border-b border-slate-100 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-emerald-600" />
@@ -208,17 +233,67 @@ export default function MarketplacePage() {
                 Home bag tags
               </Link>
             </div>
-            <div className="relative h-72 sm:h-80 w-full">
+            <div className="relative h-[340px] sm:h-[400px] w-full">
               <MapView
                 mode="collect"
                 bins={[]}
                 depot={null}
-                onMapTap={noop}
+                onMapTap={handleMapTap}
                 runCentroids={liveCentroids}
+                disableAutoLocate
+                focusedCentroidId={selectedCentroidId}
+                onCentroidSelect={handleSelectCentroid}
               />
+              {selectedCentroid && (
+                <div className="absolute bottom-3 left-3 right-3 z-10 rounded-xl bg-white/95 backdrop-blur border border-slate-200 shadow-lg px-3.5 py-2.5 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-display font-bold text-slate-900 truncate">
+                      {selectedCentroid.label}
+                    </p>
+                    <p className="text-[11px] text-slate-600">
+                      Area volume: <strong className="text-emerald-700">{selectedCentroid.vagueCountLabel}</strong>
+                      {typeof selectedCentroid.progressPct === "number"
+                        ? ` · ${selectedCentroid.progressPct}% of ${LIVE_VOLUME_THRESHOLD.toLocaleString()}-can run`
+                        : ""}
+                    </p>
+                  </div>
+                  {selectedCentroid.slug && (
+                    <Link
+                      href={`/brisbane/${selectedCentroid.slug}`}
+                      className="shrink-0 rounded-lg bg-slate-900 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-slate-800"
+                    >
+                      Open suburb →
+                    </Link>
+                  )}
+                </div>
+              )}
             </div>
+            {liveCentroids.length > 0 && (
+              <div className="px-3.5 py-2.5 bg-white border-t border-slate-100 flex flex-wrap gap-1.5">
+                {liveCentroids.map((c) => {
+                  const active = selectedCentroidId === c.id;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setSelectedCentroidId(c.id)}
+                      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold transition-colors ${
+                        active
+                          ? "bg-slate-900 text-white"
+                          : "bg-slate-100 text-slate-700 hover:bg-emerald-50 hover:text-emerald-800"
+                      }`}
+                    >
+                      <span>{c.label}</span>
+                      <span className={active ? "text-emerald-300" : "text-slate-500"}>
+                        {c.vagueCountLabel}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <p className="px-4 py-2.5 text-[11px] text-slate-500 bg-white border-t border-slate-100">
-              Suburb pins show neighbourhood progress toward a {LIVE_VOLUME_THRESHOLD.toLocaleString()}-container pickup run (rounded to ~1 km so individual homes stay private).
+              Suburb bubbles show approximate area volume toward a {LIVE_VOLUME_THRESHOLD.toLocaleString()}-container pickup run (rounded to ~1 km so individual homes stay private).
             </p>
           </div>
         </section>
