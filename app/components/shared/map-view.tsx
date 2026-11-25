@@ -72,6 +72,7 @@ function MapProvider({
   const [map, setMap] = useState<MLMap | null>(null);
   const tapRef = useRef(onMapTap);
   tapRef.current = onMapTap;
+  const initialZoomRef = useRef(initialZoom);
 
   useEffect(() => {
     const container = divRef.current;
@@ -86,7 +87,7 @@ function MapProvider({
       container,
       style: MAP_STYLE_URL,
       center: [BRISBANE_CENTER.lng, BRISBANE_CENTER.lat],
-      zoom: initialZoom,
+      zoom: initialZoomRef.current,
       attributionControl: { compact: true },
     });
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
@@ -102,6 +103,8 @@ function MapProvider({
     });
     m.once("load", () => {
       mapRef.current = m;
+      // Keep OSM attribution compact (tappable (i) icon) on first paint instead of a 280px open banner.
+      container.querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show");
       m.resize();
       setMap(m);
     });
@@ -115,10 +118,11 @@ function MapProvider({
 
     return () => {
       ro?.disconnect();
+      setMap(null);
       m.remove();
       mapRef.current = null;
     };
-  }, [initialZoom]);
+  }, []);
 
   return (
     <MapContext.Provider value={map}>
@@ -600,7 +604,7 @@ export function MapView({
 
   return (
     <MapErrorBoundary>
-      <MapProvider onMapTap={onMapTap} initialZoom={runCentroids && runCentroids.length > 0 ? 11.2 : 13}>
+      <MapProvider onMapTap={onMapTap} initialZoom={runCentroids !== undefined ? 11.2 : 13}>
         {!disableAutoLocate && <AutoLocate onLocated={handleLocated} />}
         {userLoc && <UserLocationMarker loc={userLoc} />}
         {onBinSelect && <BinMarkers bins={bins} selectedId={selectedBinId ?? null} onSelect={onBinSelect} />}

@@ -86,3 +86,17 @@ test("/sort Pickups segmented pills fit 4 columns without overflow, /marketplace
   assert.match(login, /href="\/"/, "/login should include Back navigation");
   assert.match(terms, /href="\/"/, "/terms should include Back navigation");
 });
+
+test("MapProvider mounts MapLibre once without tearing down on centroid load, collapses initial attribution, and MarketingHome never redirects /brisbane/[suburb]", () => {
+  const mapView = read("app/components/shared/map-view.tsx");
+  assert.match(mapView, /initialZoomRef = useRef\(initialZoom\)/, "MapProvider should capture initialZoom in a ref so centroid loads do not destroy and recreate WebGL");
+  assert.doesNotMatch(mapView, /\}, \[initialZoom\]\);/, "MapProvider useEffect must not depend on initialZoom");
+  assert.match(mapView, /maplibregl-compact-show/, "MapProvider should collapse OpenFreeMap attribution to its compact (i) button on initial load");
+
+  const mkt = read("app/components/marketing/marketing-home.tsx");
+  assert.match(mkt, /!suburbName && !new URLSearchParams\(window\.location\.search\)\.has\("home"\)/, "MarketingHome must not hijack signed-in visitors off /brisbane/[suburb] or /?home=1");
+  assert.match(mkt, /min-h-\[44px\].*Brisbane suburbs/, "MarketingHome footer links should meet 44px mobile touch target height");
+
+  const finder = read("app/components/marketing/suburb-finder.tsx");
+  assert.match(finder, /min-h-\[40px\][\s\S]*?All suburbs/, "SuburbFinder pills should be >=40px tall");
+});

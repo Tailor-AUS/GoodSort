@@ -44,7 +44,7 @@ export function SuburbFinder() {
                   track("suburb_picked", { suburb: s.name });
                   router.push(`/brisbane/${s.slug}`);
                 }}
-                className="w-full text-left px-4 py-2.5 text-[14px] font-semibold text-slate-900 hover:bg-violet-50"
+                className="w-full min-h-[44px] text-left px-4 py-2.5 text-[14px] font-semibold text-slate-900 hover:bg-violet-50"
               >
                 {s.name}
               </button>
@@ -57,14 +57,14 @@ export function SuburbFinder() {
           <Link
             key={s.slug}
             href={`/brisbane/${s.slug}`}
-            className="text-[12px] font-semibold text-violet-800 bg-white/80 border border-violet-200 rounded-full px-3 py-1 hover:border-violet-400"
+            className="inline-flex items-center min-h-[40px] text-[13px] font-semibold text-violet-800 bg-white/80 border border-violet-200 rounded-full px-3.5 py-2 hover:border-violet-400"
           >
             {s.name}
           </Link>
         ))}
         <Link
           href="/brisbane"
-          className="text-[12px] font-semibold text-slate-600 bg-white/80 border border-slate-200 rounded-full px-3 py-1 hover:border-slate-400"
+          className="inline-flex items-center min-h-[40px] text-[13px] font-semibold text-slate-600 bg-white/80 border border-slate-200 rounded-full px-3.5 py-2 hover:border-slate-400"
         >
           All suburbs
         </Link>

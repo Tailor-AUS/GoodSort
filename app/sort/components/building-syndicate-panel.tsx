@@ -277,9 +277,9 @@ export function BuildingSyndicatePanel({
             type="button"
             onClick={onRefresh}
             aria-label="Refresh join request status"
-            className="h-8 w-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200"
+            className="h-10 w-10 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200 shrink-0"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
+            <RefreshCw className="w-4 h-4" />
           </button>
         </div>
 
@@ -343,9 +343,9 @@ export function BuildingSyndicatePanel({
             type="button"
             onClick={onRefresh}
             aria-label="Refresh building channel"
-            className="h-8 w-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200 shrink-0"
+            className="h-10 w-10 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200 shrink-0"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
+            <RefreshCw className="w-4 h-4" />
           </button>
         </div>
 

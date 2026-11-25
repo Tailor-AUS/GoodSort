@@ -61,7 +61,7 @@ export function DensityBoard() {
             <Link
               key={s.slug}
               href={`/brisbane/${s.slug}`}
-              className="text-[13px] font-semibold text-violet-800 bg-violet-50 border border-violet-200 rounded-full px-3 py-1.5 hover:border-violet-400"
+              className="inline-flex items-center min-h-[40px] text-[13px] font-semibold text-violet-800 bg-violet-50 border border-violet-200 rounded-full px-3.5 py-2 hover:border-violet-400"
             >
               {s.name}
             </Link>
