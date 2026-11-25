@@ -734,8 +734,8 @@ export default function AdminRunnersPage() {
         <div className="grid grid-cols-3 gap-1.5 rounded-2xl bg-slate-200/70 p-1.5 mb-5">
           {(
             [
-              { key: "fleet", label: `Fleet (${summary.totalRunners})`, icon: ShieldCheck },
-              { key: "dispatch", label: `Dispatch (${runs.length})`, icon: Truck },
+              { key: "fleet", label: "Fleet", icon: ShieldCheck },
+              { key: "dispatch", label: "Dispatch", icon: Truck },
               { key: "pricing", label: "Pricing", icon: Sliders },
             ] as const
           ).map(({ key, label, icon: Icon }) => (
@@ -773,7 +773,7 @@ export default function AdminRunnersPage() {
                   type="search"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search name, email, vehicle, rego, COEX ID..."
+                  placeholder="Search runner, rego, COEX ID..."
                   aria-label="Search runners"
                   className="w-full min-h-[44px] pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-base text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-emerald-500"
                 />
