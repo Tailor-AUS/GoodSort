@@ -70,7 +70,7 @@ test("AccountPanel uses opaque white drawer surface, AddressAutocomplete status 
 
 test("/sort Pickups segmented pills fit 4 columns without overflow, /marketplace attribution clears Recentre FAB, and /scan barcode hint is mode-aware", () => {
   const waitlist = read("app/sort/components/waitlist-home.tsx");
-  assert.match(waitlist, /grid grid-cols-4 gap-1 rounded-2xl bg-white/, "Pickups tabs should use a 4-column segmented track with zero horizontal scroll");
+  assert.match(waitlist, /grid grid-cols-4 gap-1 rounded-2xl (?:bg-white|liquid-glass)/, "Pickups tabs should use a 4-column segmented track with zero horizontal scroll");
 
   const css = read("app/globals.css");
   assert.match(css, /\.tgs-fullscreen-map \.maplibregl-ctrl-bottom-right\s*\{[\s\S]*?left:\s*1[02]px;[\s\S]*?right:\s*auto;/, "MapLibre attribution should sit bottom-left away from Recentre FAB");
