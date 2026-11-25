@@ -21,6 +21,7 @@ import { AccountPanel } from "@/app/components/shared/account-panel";
 export default function RunnerApp() {
   const [user, setUser] = useState<User | null>(null);
   const [hasRunnerProfile, setHasRunnerProfile] = useState<boolean | null>(null);
+  const [runnerApprovalStatus, setRunnerApprovalStatus] = useState<"approved" | "pending" | "suspended">("approved");
   const [loading, setLoading] = useState(true);
   const [bins, setBins] = useState<SortBin[]>([]);
   const [depot, setDepot] = useState<Depot | null>(null);
@@ -61,9 +62,11 @@ export default function RunnerApp() {
     setHasRunnerProfile(Boolean(runnerProfile));
     if (!runnerProfile) {
       setRunnerId(undefined);
+      setRunnerApprovalStatus("approved");
       return;
     }
     setRunnerId(runnerProfile.id);
+    setRunnerApprovalStatus(runnerProfile.approvalStatus ?? "approved");
 
     // Load marketplace data in parallel
     const [runs, active, earningsData, boardData] = await Promise.all([
@@ -98,9 +101,9 @@ export default function RunnerApp() {
     refreshData().then(() => setLoading(false));
   }, [refreshData]);
 
-  // Location heartbeat every 60s when authenticated as an enrolled Runner
+  // Location heartbeat every 60s when authenticated as an approved enrolled Runner
   useEffect(() => {
-    if (!user || !hasRunnerProfile) return;
+    if (!user || !hasRunnerProfile || runnerApprovalStatus !== "approved") return;
     heartbeatRef.current = setInterval(() => {
       sendHeartbeat(userLat, userLng, true).catch(() => {});
     }, 60000);
@@ -112,7 +115,7 @@ export default function RunnerApp() {
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
       sendHeartbeat(userLat, userLng, false).catch(() => {}); // Go offline
     };
-  }, [user, hasRunnerProfile, userLat, userLng]);
+  }, [user, hasRunnerProfile, runnerApprovalStatus, userLat, userLng]);
 
   // ── Marketplace Actions ──
 
@@ -322,6 +325,22 @@ export default function RunnerApp() {
         activeRunStops={activeRun?.stops}
         onMapTap={() => {}}
       />
+
+      {runnerApprovalStatus !== "approved" && (
+        <div
+          role="status"
+          className={`fixed left-1/2 -translate-x-1/2 z-[55] max-w-sm w-[92%] text-[13px] font-semibold px-4 py-3 rounded-2xl shadow-xl border ${
+            runnerApprovalStatus === "suspended"
+              ? "bg-red-50 text-red-900 border-red-200"
+              : "bg-amber-50 text-amber-950 border-amber-200"
+          }`}
+          style={{ top: "calc(env(safe-area-inset-top, 16px) + 3.5rem)" }}
+        >
+          {runnerApprovalStatus === "suspended"
+            ? "Your runner account is paused. Email hello@thegoodsort.org if you need help."
+            : "Your runner profile is pending ops approval. You'll be able to claim Brisbane runs once verified."}
+        </div>
+      )}
 
       {actionError && (
         <div

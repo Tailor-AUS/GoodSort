@@ -1158,6 +1158,20 @@ namespace GoodSort.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("AdminNote")
+                        .HasMaxLength(280)
+                        .HasColumnType("nvarchar(280)");
+
+                    b.Property<string>("ApprovalStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)")
+                        .HasDefaultValue("approved");
+
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Badges")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -1211,6 +1225,9 @@ namespace GoodSort.Api.Migrations
                     b.Property<double>("ServiceRadiusKm")
                         .HasColumnType("float");
 
+                    b.Property<DateTime?>("SuspendedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<int>("TotalContainersCollected")
                         .HasColumnType("int");
 
@@ -1233,6 +1250,8 @@ namespace GoodSort.Api.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ApprovalStatus");
 
                     b.HasIndex("IsOnline");
 

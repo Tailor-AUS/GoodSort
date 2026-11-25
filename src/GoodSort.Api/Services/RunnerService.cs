@@ -223,6 +223,7 @@ public class RunnerService
         var safeLimit = Math.Clamp(limit, 1, 100);
         var query = _db.RunnerProfiles
             .Include(rp => rp.Profile)
+            .Where(rp => rp.ApprovalStatus != "suspended")
             .AsQueryable();
 
         // For weekly/monthly we'd filter by runs completed in period, but for MVP use lifetime stats

@@ -197,9 +197,13 @@ public class GoodSortDbContext(DbContextOptions<GoodSortDbContext> options) : Db
                     v => v.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList()
                 );
 
+            e.Property(rp => rp.ApprovalStatus).HasMaxLength(24).HasDefaultValue("approved");
+            e.Property(rp => rp.AdminNote).HasMaxLength(280);
+
             e.HasIndex(rp => rp.ProfileId).IsUnique();
             e.HasIndex(rp => rp.IsOnline);
             e.HasIndex(rp => rp.Level);
+            e.HasIndex(rp => rp.ApprovalStatus);
         });
 
         // Run

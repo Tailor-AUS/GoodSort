@@ -812,6 +812,14 @@ export default function AdminPage() {
               <p className="text-[12px] text-slate-400">Search &amp; filter members, inspect scans/bags/PayID/referrals, export CSV &amp; view households on the map</p>
             </div>
           </Link>
+          <Link href="/admin/runners"
+            className="flex items-center gap-3 w-full bg-white rounded-xl p-4 border border-slate-200 hover:border-emerald-300 transition-colors text-left">
+            <Truck className="w-5 h-5 text-emerald-600" />
+            <div>
+              <p className="text-[14px] font-semibold text-slate-900">Runners &amp; Dispatch Console</p>
+              <p className="text-[12px] text-slate-400">Approve or suspend runners, force-release stuck runs, and tune dynamic payout bounds &amp; surge pricing</p>
+            </div>
+          </Link>
           <Link href="/admin/syndicates"
             className="flex items-center gap-3 w-full bg-white rounded-xl p-4 border border-slate-200 hover:border-emerald-300 transition-colors text-left">
             <Building2 className="w-5 h-5 text-emerald-600" />

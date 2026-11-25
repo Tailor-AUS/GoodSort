@@ -35,6 +35,12 @@ public class RunnerProfile
     public List<string> Badges { get; set; } = [];
     public int LifetimeEarningsCents { get; set; }
 
+    // Admin approval & fleet moderation gate ("approved" | "pending" | "suspended")
+    public string ApprovalStatus { get; set; } = "approved";
+    public string? AdminNote { get; set; }
+    public DateTime? ApprovedAt { get; set; }
+    public DateTime? SuspendedAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public ICollection<Run> Runs { get; set; } = [];
