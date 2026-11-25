@@ -2,14 +2,38 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Users, Package, Truck, DollarSign, Download, MapPin, RotateCcw, Copy, Check, Printer, Building2 } from "lucide-react";
+import { Users, Package, Truck, DollarSign, Download, MapPin, RotateCcw, Copy, Check, Printer, Building2, Activity, RefreshCw, ChevronRight } from "lucide-react";
 import { apiUrl, readStoredProfileId } from "@/lib/config";
 import { titleSuburb } from "@/lib/brisbane";
 
+interface FunnelStage {
+  key: string;
+  label: string;
+  count: number;
+  conversionFromPrevPct: number | null;
+}
+
 interface Funnel {
   since: string;
+  windowDays?: number;
+  suburb?: string | null;
   note?: string;
   events: Record<string, number>;
+  orderedStages?: FunnelStage[];
+  suburbs?: Array<{ suburb: string; totalEvents: number }>;
+  dailyTrend?: Array<{ date: string; label: string; signups: number; scans: number }>;
+}
+
+interface ActivityItem {
+  id: string;
+  kind: "signup" | "scan" | "bag" | "cashout";
+  timestamp: string;
+  userId: string | null;
+  userEmail: string | null;
+  userName: string;
+  suburb: string | null;
+  summary: string;
+  badge: string;
 }
 
 interface Stats {
@@ -99,6 +123,10 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [denied, setDenied] = useState(false);
   const [funnel, setFunnel] = useState<Funnel | null>(null);
+  const [funnelDays, setFunnelDays] = useState<1 | 7 | 30>(30);
+  const [funnelSuburb, setFunnelSuburb] = useState<string>("");
+  const [showRawEvents, setShowRawEvents] = useState(false);
+  const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [crpLedger, setCrpLedger] = useState<CrpLedgerData | null>(null);
   const [readyDays, setReadyDays] = useState<{ suburb: string; dayName: string }[]>([]);
   const [stalledHouseholds, setStalledHouseholds] = useState(0);
@@ -119,6 +147,17 @@ export default function AdminPage() {
     setTimeout(() => setCopiedLink(false), 2000);
   }
 
+  const loadFunnel = useCallback((days: number, suburb: string) => {
+    const token = localStorage.getItem("goodsort_token");
+    const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+    const params = new URLSearchParams({ days: String(days) });
+    if (suburb) params.set("suburb", suburb);
+    fetch(apiUrl(`/api/admin/funnel?${params.toString()}`), { headers })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setFunnel(d); })
+      .catch(() => {});
+  }, []);
+
   const loadDashboard = useCallback(() => {
     const token = localStorage.getItem("goodsort_token");
     const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
@@ -131,9 +170,10 @@ export default function AdminPage() {
       .then(setStats)
       .catch(() => {})
       .finally(() => setLoading(false));
-    fetch(apiUrl("/api/admin/funnel"), { headers })
+    loadFunnel(funnelDays, funnelSuburb);
+    fetch(apiUrl("/api/admin/activity?limit=25"), { headers })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) setFunnel(d); })
+      .then((d) => { if (Array.isArray(d?.items)) setActivity(d.items); })
       .catch(() => {});
     fetch(apiUrl("/api/admin/crp-ledger"), { headers })
       .then((r) => (r.ok ? r.json() : null))
@@ -161,7 +201,7 @@ export default function AdminPage() {
         setStalledHouseholds(stalled);
       })
       .catch(() => {});
-  }, []);
+  }, [funnelDays, funnelSuburb, loadFunnel]);
 
   useEffect(() => {
     setAdminProfileId(readStoredProfileId());
@@ -402,20 +442,207 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* Ordered Conversion Funnel + 24h/7d/30d + Suburb Filter */}
         {funnel && (
-          <div className="bg-white rounded-xl p-4 border border-slate-200 mb-8">
-            <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-1">Waitlist funnel</p>
-            <p className="text-[11px] text-slate-400 mb-3">{funnel.note ?? "Since this API process started."}</p>
-            <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
-              {/* Derived from the API response, not a fourth hardcoded list —
-                  a name added to the allowlists used to stay invisible here. */}
-              {Object.keys(funnel.events ?? {}).map((name) => (
-                <div key={name}>
-                  <p className="text-2xl font-display font-extrabold text-slate-900">{funnel.events?.[name] ?? 0}</p>
-                  <p className="text-[11px] text-slate-400">{name.replaceAll("_", " ")}</p>
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 mb-6 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Conversion Funnel</p>
+                <p className="text-[12px] text-slate-500 mt-0.5">{funnel.note ?? "Durable across restarts and deploys."}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex rounded-xl bg-slate-100 p-1">
+                  {([1, 7, 30] as const).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setFunnelDays(d)}
+                      className={`min-h-[32px] px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
+                        funnelDays === d ? "bg-slate-900 text-white" : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      {d === 1 ? "24h" : `${d}d`}
+                    </button>
+                  ))}
                 </div>
-              ))}
+                <select
+                  aria-label="Filter funnel by suburb"
+                  value={funnelSuburb}
+                  onChange={(e) => setFunnelSuburb(e.target.value)}
+                  className="min-h-[40px] rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-800"
+                >
+                  <option value="">All suburbs</option>
+                  {(funnel.suburbs ?? []).map((s) => (
+                    <option key={s.suburb} value={s.suburb}>
+                      {titleSuburb(s.suburb)} ({s.totalEvents})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
+
+            {funnel.orderedStages && funnel.orderedStages.length > 0 && (() => {
+              const maxStage = Math.max(1, ...funnel.orderedStages.map((s) => s.count));
+              return (
+                <div className="space-y-2 mb-4">
+                  {funnel.orderedStages.map((stage, idx) => {
+                    const pctWidth = stage.count > 0 ? Math.max(4, Math.round((stage.count / maxStage) * 100)) : 0;
+                    return (
+                      <div key={stage.key} className="grid grid-cols-[1fr_auto] items-center gap-3">
+                        <div>
+                          <div className="flex items-center justify-between text-xs mb-1">
+                            <span className="font-semibold text-slate-800">
+                              <span className="text-slate-400 mr-1.5 tabular-nums">{idx + 1}.</span>
+                              {stage.label}
+                            </span>
+                            {stage.conversionFromPrevPct != null && (
+                              <span className="text-[11px] font-semibold text-emerald-700 tabular-nums">
+                                {stage.conversionFromPrevPct}% of prev
+                              </span>
+                            )}
+                          </div>
+                          <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-emerald-600 transition-all"
+                              style={{ width: `${pctWidth}%` }}
+                            />
+                          </div>
+                        </div>
+                        <span className="w-12 text-right text-sm font-display font-extrabold text-slate-900 tabular-nums">
+                          {stage.count}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
+            {funnel.dailyTrend && funnel.dailyTrend.length > 0 && (() => {
+              const maxDay = Math.max(1, ...funnel.dailyTrend.map((d) => d.scans + d.signups));
+              return (
+                <div className="pt-3 border-t border-slate-100 mb-3">
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 mb-2">
+                    <span className="font-bold uppercase tracking-wider text-slate-400">Daily Scans &amp; Signups</span>
+                    <span>Green = scans · Dark = signups</span>
+                  </div>
+                  <div className="grid gap-1 items-end h-16" style={{ gridTemplateColumns: `repeat(${funnel.dailyTrend.length}, minmax(0, 1fr))` }}>
+                    {funnel.dailyTrend.map((d) => (
+                      <div key={d.date} className="flex flex-col items-center gap-0.5 h-full justify-end" title={`${d.label}: ${d.scans} scans, ${d.signups} signups`}>
+                        <div className="w-full flex items-end justify-center gap-0.5 h-11">
+                          <div
+                            className="w-1.5 rounded-t bg-emerald-500"
+                            style={{ height: `${d.scans > 0 ? Math.max(12, Math.round((d.scans / maxDay) * 100)) : 4}%`, opacity: d.scans > 0 ? 1 : 0.2 }}
+                          />
+                          <div
+                            className="w-1.5 rounded-t bg-slate-900"
+                            style={{ height: `${d.signups > 0 ? Math.max(12, Math.round((d.signups / maxDay) * 100)) : 4}%`, opacity: d.signups > 0 ? 1 : 0.2 }}
+                          />
+                        </div>
+                        <span className="text-[9px] text-slate-400 truncate max-w-full">{d.label.slice(0, 2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+              <div className="text-[11px] text-slate-500">
+                Points Swap votes: <strong className="text-slate-900">{funnel.events?.points_swap_voted ?? 0}</strong> · Flyer prints: <strong className="text-slate-900">{funnel.events?.flyer_printed ?? 0}</strong>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRawEvents((v) => !v)}
+                className="text-xs font-bold text-emerald-700 hover:text-emerald-900 min-h-[36px] px-2"
+              >
+                {showRawEvents ? "Hide raw events" : `All ${Object.keys(funnel.events ?? {}).length} raw events`}
+              </button>
+            </div>
+
+            {showRawEvents && (
+              <div className="grid grid-cols-3 md:grid-cols-5 gap-3 pt-3 mt-2 border-t border-slate-100">
+                {Object.keys(funnel.events ?? {}).map((name) => (
+                  <div key={name}>
+                    <p className="text-xl font-display font-extrabold text-slate-900 tabular-nums">{funnel.events?.[name] ?? 0}</p>
+                    <p className="text-[11px] text-slate-400">{name.replaceAll("_", " ")}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Live Activity Stream */}
+        {!denied && (
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 mb-8 shadow-sm">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-emerald-600" />
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  Live Activity Stream ({activity.length})
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={loadDashboard}
+                  className="inline-flex items-center gap-1 min-h-[36px] px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-[11px] font-bold text-slate-700"
+                >
+                  <RefreshCw className="w-3 h-3" /> Refresh
+                </button>
+                <Link
+                  href="/admin/users"
+                  className="inline-flex items-center gap-0.5 min-h-[36px] px-2.5 rounded-lg bg-emerald-50 text-emerald-800 text-[11px] font-bold"
+                >
+                  Users CRM <ChevronRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+            </div>
+            {activity.length === 0 ? (
+              <p className="text-xs text-slate-400 py-2">No recent user activity yet.</p>
+            ) : (
+              <div className="divide-y divide-slate-100 max-h-80 overflow-y-auto">
+                {activity.map((item) => {
+                  const href = item.userId ? `/admin/users?user=${item.userId}` : "/admin/users";
+                  const badgeCls =
+                    item.kind === "scan"
+                      ? "bg-emerald-50 text-emerald-800"
+                      : item.kind === "bag"
+                        ? "bg-blue-50 text-blue-800"
+                        : item.kind === "cashout"
+                          ? "bg-violet-50 text-violet-800"
+                          : "bg-amber-50 text-amber-800";
+                  return (
+                    <Link
+                      key={item.id}
+                      href={href}
+                      className="py-2.5 flex items-center justify-between gap-3 hover:bg-slate-50 px-2 -mx-2 rounded-xl transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[13px] font-bold text-slate-900 truncate">
+                            {item.userEmail || item.userName}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${badgeCls}`}>
+                            {item.badge}
+                          </span>
+                          {item.suburb && (
+                            <span className="text-[10px] font-semibold text-slate-400">
+                              {titleSuburb(item.suburb)}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[12px] text-slate-600 truncate mt-0.5">{item.summary}</p>
+                      </div>
+                      <span className="text-[11px] text-slate-400 shrink-0 tabular-nums">
+                        {new Date(item.timestamp).toLocaleString("en-AU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -581,8 +808,8 @@ export default function AdminPage() {
             className="flex items-center gap-3 w-full bg-white rounded-xl p-4 border border-slate-200 hover:border-green-300 transition-colors text-left">
             <MapPin className="w-5 h-5 text-green-600" />
             <div>
-              <p className="text-[14px] font-semibold text-slate-900">Users & Map</p>
-              <p className="text-[12px] text-slate-400">See all users, their households, and bin locations on a map</p>
+              <p className="text-[14px] font-semibold text-slate-900">Users CRM &amp; Map</p>
+              <p className="text-[12px] text-slate-400">Search &amp; filter members, inspect scans/bags/PayID/referrals, export CSV &amp; view households on the map</p>
             </div>
           </Link>
           <Link href="/admin/syndicates"
@@ -597,7 +824,7 @@ export default function AdminPage() {
             className="flex items-center gap-3 w-full bg-white rounded-xl p-4 border border-slate-200 hover:border-green-300 transition-colors text-left">
             <Package className="w-5 h-5 text-violet-600" />
             <div>
-              <p className="text-[14px] font-semibold text-slate-900">Bin waitlist</p>
+              <p className="text-[14px] font-semibold text-slate-900">Suburb waitlist</p>
               <p className="text-[12px] text-slate-400">Suburb volume — trigger a run at about 1,000 scanned containers</p>
             </div>
           </Link>

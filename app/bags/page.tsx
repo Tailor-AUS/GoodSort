@@ -19,6 +19,7 @@ import {
   updateBagStatus,
 } from "@/lib/marketplace-api";
 import { hasValidToken } from "@/lib/config";
+import { track } from "@/lib/analytics";
 import {
   BAG_STREAMS,
   type BagStream,
@@ -112,6 +113,7 @@ export default function SortedBagsPage() {
       setError("Could not create bag tag. Save your home street address first.");
       return;
     }
+    track("bag_tagged");
     await loadBags(selectedStream);
   };
 

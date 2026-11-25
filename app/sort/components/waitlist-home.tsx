@@ -34,7 +34,7 @@ import {
   titleSuburb,
   canonicalSuburb,
 } from "@/lib/brisbane";
-import { apiUrl, authHeaders, readStoredProfileId } from "@/lib/config";
+import { apiUrl, authHeaders, isStoredAdmin, readStoredProfileId } from "@/lib/config";
 import { formatCents, type User } from "@/lib/store";
 import { buildSorterLoyaltySummary, bucketScanMaterial } from "@/lib/sorter-loyalty";
 import { WaitlistCard } from "@/app/components/shared/waitlist-card";
@@ -110,6 +110,7 @@ export function WaitlistHome({
   const [firstName, setFirstName] = useState("there");
   const [copiedMemberId, setCopiedMemberId] = useState(false);
   const [showInviteSheet, setShowInviteSheet] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const suburb = household?.suburb;
   const building = household?.type === "unit_complex";
@@ -139,6 +140,7 @@ export function WaitlistHome({
     setFirstName(resolveFirstName(user));
     const pid = readStoredProfileId();
     setProfileId(pid);
+    setIsAdmin(isStoredAdmin());
     if (pid) {
       fetch(apiUrl(`/api/profiles/${pid}/network`), { headers: authHeaders() })
         .then((r) => (r.ok ? r.json() : null))
@@ -822,6 +824,31 @@ export function WaitlistHome({
                   />
                 </div>
               </div>
+
+              {/* Admin-only quick shortcut (invisible to non-admin sorters) */}
+              {isAdmin && (
+                <div className="rounded-2xl bg-slate-900 text-white p-3.5 shadow-[0_4px_18px_rgba(15,23,42,0.14)] flex items-center justify-between gap-2">
+                  <Link
+                    href="/admin"
+                    className="flex-1 min-h-[44px] flex items-center gap-2.5 px-1"
+                  >
+                    <div className="h-9 w-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                      <ShieldCheck className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-bold leading-tight">Admin Command Centre</p>
+                      <p className="text-[11px] text-slate-400 leading-tight mt-0.5">Funnel, live activity &amp; ops</p>
+                    </div>
+                  </Link>
+                  <Link
+                    href="/admin/users"
+                    className="min-h-[40px] px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold text-white inline-flex items-center gap-1 shrink-0"
+                  >
+                    Users
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              )}
 
               {/* Points, Status & Recent Activity Statement Card */}
               <div className="rounded-2xl bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.05)]">

@@ -6,6 +6,7 @@ import QRCode from "qrcode";
 import { Printer, ArrowLeft, MapPin } from "lucide-react";
 import { hasValidToken, readStoredProfileId } from "@/lib/config";
 import { findSuburb } from "@/lib/brisbane";
+import { track } from "@/lib/analytics";
 
 const LAUNCH_SUBURBS = [
   { slug: "", label: "All Brisbane", postcode: "" },
@@ -61,6 +62,7 @@ export default function FlyerPage() {
   }, [fullTargetUrl]);
 
   function printFlyer() {
+    track("flyer_printed", { suburb: suburbLabel });
     if (typeof window !== "undefined") {
       window.print();
     }
