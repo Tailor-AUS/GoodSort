@@ -337,7 +337,12 @@ function circlePolygon(lng: number, lat: number, radiusMeters: number, steps = 6
 }
 
 function tierColor(tier: number): string {
-  return tier >= 4 ? "#f59e0b" : tier >= 3 ? "#16a34a" : "#3b82f6";
+  // Brand-matched obsidian & emerald palette (never generic web-blue).
+  return tier >= 5 ? "#16a34a" : tier >= 3 ? "#059669" : "#0f172a";
+}
+
+function radiusFillColor(tier: number): string {
+  return tier >= 5 ? "#16a34a" : "#10b981";
 }
 
 function CentroidBubbles({
@@ -387,7 +392,7 @@ function CentroidBubbles({
     // Build a single FeatureCollection for all privacy-safe ~900m suburb bubbles.
     const features = centroids.map((c) => ({
       type: "Feature" as const,
-      properties: { color: tierColor(c.pricingTier) },
+      properties: { color: radiusFillColor(c.pricingTier) },
       geometry: {
         type: "Polygon" as const,
         coordinates: [circlePolygon(c.lng, c.lat, 900)],
@@ -406,7 +411,7 @@ function CentroidBubbles({
         source: CENTROID_SOURCE_ID,
         paint: {
           "fill-color": ["get", "color"],
-          "fill-opacity": 0.14,
+          "fill-opacity": 0.11,
           "fill-outline-color": ["get", "color"],
         },
       });
@@ -420,15 +425,20 @@ function CentroidBubbles({
     }
     for (const c of centroids) {
       const isFocused = focusedCentroidId === c.id;
-      const color = isFocused ? "#0f172a" : tierColor(c.pricingTier);
+      const bg = isFocused ? "#ffffff" : tierColor(c.pricingTier);
+      const border = isFocused ? "#16a34a" : "rgba(255,255,255,0.92)";
+      const titleFill = isFocused ? "#0f172a" : "#ffffff";
+      const subFill = isFocused ? "#047857" : "rgba(255,255,255,0.82)";
+      const dotFill = isFocused ? "#16a34a" : c.pricingTier >= 5 ? "#bbf7d0" : "#34d399";
       const safeLabel = escapeSvgText(c.label);
       const safeVague = escapeSvgText(c.vagueCountLabel || formatVagueContainerBand(c.containers));
-      const width = Math.max(108, Math.min(168, Math.max(c.label.length, safeVague.length) * 7 + 26));
-      const cx = Math.round(width / 2);
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="42">
-        <rect x="1" y="1" width="${width - 2}" height="38" rx="19" fill="${color}" stroke="#ffffff" stroke-width="2" opacity="0.96"/>
-        <text x="${cx}" y="17" text-anchor="middle" fill="#ffffff" font-size="11" font-weight="800" font-family="Inter,system-ui,sans-serif">${safeLabel}</text>
-        <text x="${cx}" y="30" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="9.5" font-weight="600" font-family="Inter,system-ui,sans-serif">${safeVague}</text>
+      const width = Math.max(114, Math.min(176, Math.max(c.label.length, safeVague.length) * 7 + 34));
+      const textX = Math.round(width / 2) + 4;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="44" style="filter:drop-shadow(0 4px 10px rgba(15,23,42,0.22));">
+        <rect x="2" y="2" width="${width - 4}" height="38" rx="19" fill="${bg}" stroke="${border}" stroke-width="${isFocused ? 2.25 : 1.75}" opacity="0.98"/>
+        <circle cx="15" cy="21" r="4" fill="${dotFill}"/>
+        <text x="${textX}" y="18" text-anchor="middle" fill="${titleFill}" font-size="11" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,Inter,system-ui,sans-serif">${safeLabel}</text>
+        <text x="${textX}" y="31" text-anchor="middle" fill="${subFill}" font-size="9.5" font-weight="600" font-family="-apple-system,BlinkMacSystemFont,Inter,system-ui,sans-serif">${safeVague}</text>
       </svg>`;
       const m = prev.get(c.id);
       if (m) {

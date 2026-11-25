@@ -257,9 +257,11 @@ export default function SortedBagsPage() {
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1">{info.rule}</p>
                   <p className={`text-[11px] font-bold mt-1.5 ${unbagged > 0 || loading ? "text-emerald-700" : "text-slate-400"}`}>
-                    {loading
-                      ? "Checking scanned containers…"
-                      : `${unbagged} scanned ${unbagged === 1 ? "container" : "containers"} ready to bag`}
+                    {loading ? (
+                      <span className="inline-block h-3 w-32 rounded-full bg-slate-200 animate-pulse align-middle" aria-label="Checking scanned containers" />
+                    ) : (
+                      `${unbagged} scanned ${unbagged === 1 ? "container" : "containers"} ready to bag`
+                    )}
                   </p>
                 </button>
               );
