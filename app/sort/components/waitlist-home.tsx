@@ -292,7 +292,7 @@ export function WaitlistHome({
               />
               <ActionTileLink
                 label="Suburb Map"
-                href="/marketplace"
+                href="/marketplace#suburb-map"
                 icon={<MapPin className="w-6 h-6 text-teal-600" strokeWidth={1.75} />}
               />
               <ActionTile
@@ -395,7 +395,7 @@ export function WaitlistHome({
                 Your suburb run
               </h2>
               <Link
-                href="/marketplace"
+                href="/marketplace#suburb-map"
                 className="inline-flex items-center gap-0.5 rounded-full bg-white px-3 py-1 text-[12px] font-semibold text-slate-700 shadow-[0_1px_4px_rgba(15,23,42,0.06)]"
               >
                 View map <ChevronRight className="w-3.5 h-3.5" />
@@ -578,7 +578,7 @@ export function WaitlistHome({
                     label="Tag my 4 home bags"
                   />
                   <ListLinkRow
-                    href="/marketplace"
+                    href="/marketplace#suburb-map"
                     icon={<MapPin className="w-5 h-5 text-slate-700" strokeWidth={1.75} />}
                     label="View Brisbane suburb progress"
                   />

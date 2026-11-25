@@ -30,14 +30,14 @@ export default function SortedBagsPage() {
   const [data, setData] = useState<MyBagsResponse | null>(null);
   const [qrMap, setQrMap] = useState<Record<string, string>>({});
   const [selectedStream, setSelectedStream] = useState<BagStream>("aluminium");
-  const [declaredCount, setDeclaredCount] = useState<number>(150);
+  const [declaredCount, setDeclaredCount] = useState<number>(0);
   const [putOnKerb, setPutOnKerb] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(true);
   const [signedIn, setSignedIn] = useState<boolean>(true);
   const [creating, setCreating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadBags = useCallback(async () => {
+  const loadBags = useCallback(async (preferredStream?: BagStream) => {
     const authed = hasValidToken();
     setSignedIn(authed);
     if (!authed) {
@@ -49,14 +49,23 @@ export default function SortedBagsPage() {
     setData(res);
     setLoading(false);
     if (res) {
-      const unbagged = res.unbaggedByStream.aluminium;
-      if (unbagged > 0) setDeclaredCount(unbagged);
+      const streams = Object.keys(BAG_STREAMS) as BagStream[];
+      const chosen =
+        preferredStream && (res.unbaggedByStream[preferredStream] ?? 0) > 0
+          ? preferredStream
+          : streams.find((s) => (res.unbaggedByStream[s] ?? 0) > 0) ?? preferredStream ?? "aluminium";
+      setSelectedStream(chosen);
+      setDeclaredCount(Math.min(500, res.unbaggedByStream[chosen] ?? 0));
     }
   }, []);
 
   useEffect(() => {
     loadBags();
   }, [loadBags]);
+
+  const selectedUnbagged = data?.unbaggedByStream?.[selectedStream] ?? 0;
+  const maxBagCount = Math.min(500, selectedUnbagged);
+  const effectiveBagCount = selectedUnbagged > 0 ? Math.max(1, Math.min(maxBagCount, declaredCount || selectedUnbagged)) : 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -85,20 +94,25 @@ export default function SortedBagsPage() {
 
   const handleSelectStream = (s: BagStream) => {
     setSelectedStream(s);
+    setError(null);
     const unbagged = data?.unbaggedByStream?.[s] ?? 0;
-    setDeclaredCount(unbagged > 0 ? unbagged : 150);
+    setDeclaredCount(Math.min(500, unbagged));
   };
 
   const handleCreateBag = async () => {
+    if (selectedUnbagged <= 0) {
+      setError(`Scan at least 1 ${BAG_STREAMS[selectedStream].shortLabel.toLowerCase()} container before creating this bag tag.`);
+      return;
+    }
     setCreating(true);
     setError(null);
-    const created = await createSortedBag(selectedStream, declaredCount, putOnKerb);
+    const created = await createSortedBag(selectedStream, effectiveBagCount, putOnKerb);
     setCreating(false);
     if (!created) {
       setError("Could not create bag tag. Save your home street address first.");
       return;
     }
-    await loadBags();
+    await loadBags(selectedStream);
   };
 
   const handleStatusChange = async (bagId: string, status: "sealed" | "on_kerb" | "cancelled") => {
@@ -107,7 +121,7 @@ export default function SortedBagsPage() {
     if (!updated) {
       setError("Could not update bag status — a Runner may have already scanned this bag.");
     }
-    await loadBags();
+    await loadBags(selectedStream);
   };
 
   return (
@@ -239,7 +253,7 @@ export default function SortedBagsPage() {
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1">{info.rule}</p>
-                  <p className="text-[11px] font-bold text-emerald-700 mt-1.5">
+                  <p className={`text-[11px] font-bold mt-1.5 ${unbagged > 0 || loading ? "text-emerald-700" : "text-slate-400"}`}>
                     {loading
                       ? "Checking scanned containers…"
                       : `${unbagged} scanned ${unbagged === 1 ? "container" : "containers"} ready to bag`}
@@ -249,36 +263,79 @@ export default function SortedBagsPage() {
             })}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-            <div>
-              <label htmlFor="declared-count" className="block text-xs font-bold text-slate-700 mb-1">
-                Containers in this bag
-              </label>
-              <input
-                id="declared-count"
-                type="number"
-                min={1}
-                max={500}
-                value={declaredCount}
-                onChange={(e) => setDeclaredCount(Math.max(1, Math.min(500, Number(e.target.value) || 1)))}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-bold text-slate-900"
-              />
+          {!loading && selectedUnbagged === 0 ? (
+            <div className="rounded-2xl bg-slate-50 border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-slate-800">
+                  No scanned {BAG_STREAMS[selectedStream].label.toLowerCase()} ready to bag yet
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Bag tags link directly to your scanned inventory so every container clears cleanly at pickup.
+                </p>
+              </div>
+              <Link
+                href="/scan"
+                className="inline-flex items-center justify-center rounded-xl bg-emerald-600 hover:bg-emerald-700 px-3.5 py-2 text-xs font-bold text-white whitespace-nowrap"
+              >
+                + Scan {BAG_STREAMS[selectedStream].shortLabel}
+              </Link>
             </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div>
+                <label htmlFor="declared-count" className="block text-xs font-bold text-slate-700 mb-1">
+                  Scanned containers to include{" "}
+                  <span className="font-semibold text-emerald-700">
+                    ({selectedUnbagged} in inventory)
+                  </span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="declared-count"
+                    type="number"
+                    min={1}
+                    max={Math.max(1, maxBagCount)}
+                    value={effectiveBagCount}
+                    onChange={(e) => {
+                      const next = Number(e.target.value);
+                      setDeclaredCount(
+                        Number.isFinite(next)
+                          ? Math.max(1, Math.min(Math.max(1, maxBagCount), Math.floor(next)))
+                          : Math.max(1, maxBagCount),
+                      );
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-bold text-slate-900 tabular-nums"
+                  />
+                  {effectiveBagCount < maxBagCount && (
+                    <button
+                      type="button"
+                      onClick={() => setDeclaredCount(maxBagCount)}
+                      className="shrink-0 px-3 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-800 hover:bg-emerald-100"
+                    >
+                      All {maxBagCount}
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Links {effectiveBagCount} scanned {effectiveBagCount === 1 ? "container" : "containers"} (${(effectiveBagCount * 0.1).toFixed(2)} credit once verified at depot).
+                </p>
+              </div>
 
-            <div className="flex items-end">
-              <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-50 border border-slate-200 w-full cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={putOnKerb}
-                  onChange={(e) => setPutOnKerb(e.target.checked)}
-                  className="w-4 h-4 accent-emerald-600 rounded"
-                />
-                <span className="text-xs font-semibold text-slate-700">
-                  Bag is out on the kerb ready for pickup
-                </span>
-              </label>
+              <div className="flex items-start sm:items-end">
+                <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-50 border border-slate-200 w-full cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={putOnKerb}
+                    onChange={(e) => setPutOnKerb(e.target.checked)}
+                    className="w-4 h-4 accent-emerald-600 rounded"
+                  />
+                  <span className="text-xs font-semibold text-slate-700">
+                    Bag is out on the kerb ready for pickup
+                  </span>
+                </label>
+              </div>
             </div>
-          </div>
+          )}
 
           {error && (
             <p className="text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
@@ -288,12 +345,16 @@ export default function SortedBagsPage() {
 
           <button
             type="button"
-            disabled={creating || loading || !signedIn || !data || !data.hasHousehold}
+            disabled={creating || loading || !signedIn || !data || !data.hasHousehold || selectedUnbagged <= 0}
             onClick={handleCreateBag}
             className="w-full py-3.5 rounded-2xl bg-gradient-to-b from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:opacity-50 text-white font-display font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-green-600/20 transition-all"
           >
             <Plus size={18} />
-            {creating ? "Creating tag..." : `Create ${BAG_STREAMS[selectedStream].shortLabel} Bag Tag`}
+            {creating
+              ? "Creating tag..."
+              : selectedUnbagged > 0
+                ? `Create ${BAG_STREAMS[selectedStream].shortLabel} Bag Tag (${effectiveBagCount} scanned)`
+                : `Scan ${BAG_STREAMS[selectedStream].shortLabel} containers first`}
           </button>
 
           <p className="text-[11px] text-slate-500 text-center">

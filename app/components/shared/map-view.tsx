@@ -9,7 +9,7 @@ import type { Map as MLMap, Marker as MLMarker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { AlertTriangle } from "lucide-react";
 import type { SortBin, Route, Depot } from "@/lib/store";
-import type { RunStopDetail } from "@/lib/marketplace";
+import { formatVagueContainerBand, type RunStopDetail } from "@/lib/marketplace";
 
 export interface RunCentroid {
   id: string;
@@ -18,6 +18,9 @@ export interface RunCentroid {
   label: string;
   containers: number;
   pricingTier: number;
+  vagueCountLabel?: string;
+  progressPct?: number;
+  slug?: string;
 }
 
 export type AppMode = "sort" | "collect";
@@ -55,7 +58,15 @@ function useMapsError(): string | null {
 const MapContext = createContext<MLMap | null>(null);
 function useMap() { return useContext(MapContext); }
 
-function MapProvider({ children, onMapTap }: { children: ReactNode; onMapTap?: () => void }) {
+function MapProvider({
+  children,
+  onMapTap,
+  initialZoom = 12,
+}: {
+  children: ReactNode;
+  onMapTap?: () => void;
+  initialZoom?: number;
+}) {
   const divRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const [map, setMap] = useState<MLMap | null>(null);
@@ -63,7 +74,8 @@ function MapProvider({ children, onMapTap }: { children: ReactNode; onMapTap?: (
   tapRef.current = onMapTap;
 
   useEffect(() => {
-    if (!divRef.current || mapRef.current) return;
+    const container = divRef.current;
+    if (!container || mapRef.current) return;
     // MapLibre GL 6.x resolves ./maplibre-gl-worker.mjs relative to import.meta.url,
     // which breaks under Next.js static export / Azure SWA (404 HTML MIME error).
     // Serve the self-contained worker from /maplibre-gl-worker.js instead.
@@ -71,10 +83,10 @@ function MapProvider({ children, onMapTap }: { children: ReactNode; onMapTap?: (
       maplibregl.setWorkerUrl("/maplibre-gl-worker.js");
     }
     const m = new maplibregl.Map({
-      container: divRef.current,
+      container,
       style: MAP_STYLE_URL,
       center: [BRISBANE_CENTER.lng, BRISBANE_CENTER.lat],
-      zoom: 13,
+      zoom: initialZoom,
       attributionControl: { compact: true },
     });
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
@@ -90,18 +102,32 @@ function MapProvider({ children, onMapTap }: { children: ReactNode; onMapTap?: (
     });
     m.once("load", () => {
       mapRef.current = m;
+      m.resize();
       setMap(m);
     });
 
+    const ro = typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(() => {
+          try { m.resize(); } catch { /* ignore */ }
+        })
+      : null;
+    ro?.observe(container);
+
     return () => {
+      ro?.disconnect();
       m.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [initialZoom]);
 
   return (
     <MapContext.Provider value={map}>
-      <div ref={divRef} className="absolute inset-0 z-0" />
+      {/* Inline position + 100% sizing beats unlayered .maplibregl-map { position: relative } under Tailwind v4 */}
+      <div
+        ref={divRef}
+        className="z-0"
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+      />
       {map && children}
     </MapContext.Provider>
   );
@@ -310,20 +336,31 @@ function tierColor(tier: number): string {
   return tier >= 4 ? "#f59e0b" : tier >= 3 ? "#16a34a" : "#3b82f6";
 }
 
-function CentroidBubbles({ centroids }: { centroids: RunCentroid[] }) {
+function CentroidBubbles({
+  centroids,
+  focusedCentroidId,
+  onSelect,
+}: {
+  centroids: RunCentroid[];
+  focusedCentroidId?: string | null;
+  onSelect?: (centroid: RunCentroid) => void;
+}) {
   const map = useMap();
   const labelMarkersRef = useRef<Map<string, MLMarker>>(new Map());
+  const fittedKeyRef = useRef<string>("");
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
 
   useEffect(() => {
     if (!map) return;
 
-    // Build a single FeatureCollection for all bubbles (one fill layer per render).
+    // Build a single FeatureCollection for all privacy-safe ~900m suburb bubbles.
     const features = centroids.map((c) => ({
       type: "Feature" as const,
       properties: { color: tierColor(c.pricingTier) },
       geometry: {
         type: "Polygon" as const,
-        coordinates: [circlePolygon(c.lng, c.lat, 500)],
+        coordinates: [circlePolygon(c.lng, c.lat, 900)],
       },
     }));
     const data = { type: "FeatureCollection" as const, features };
@@ -339,26 +376,29 @@ function CentroidBubbles({ centroids }: { centroids: RunCentroid[] }) {
         source: CENTROID_SOURCE_ID,
         paint: {
           "fill-color": ["get", "color"],
-          "fill-opacity": 0.08,
+          "fill-opacity": 0.14,
           "fill-outline-color": ["get", "color"],
         },
       });
     }
 
-    // Label markers (one per centroid).
+    // Label markers (one per suburb / area centroid) showing Suburb + vague area count.
     const prev = labelMarkersRef.current;
     const nextIds = new Set(centroids.map((c) => c.id));
     for (const [id, marker] of prev) {
       if (!nextIds.has(id)) { marker.remove(); prev.delete(id); }
     }
     for (const c of centroids) {
-      const color = tierColor(c.pricingTier);
-      const safeContainers = Number(c.containers) || 0;
+      const isFocused = focusedCentroidId === c.id;
+      const color = isFocused ? "#0f172a" : tierColor(c.pricingTier);
       const safeLabel = escapeSvgText(c.label);
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="44">
-        <rect x="0" y="0" width="80" height="30" rx="15" fill="${color}" opacity="0.9"/>
-        <text x="40" y="14" text-anchor="middle" fill="#fff" font-size="10" font-weight="800" font-family="Inter,system-ui,sans-serif">${safeContainers}</text>
-        <text x="40" y="24" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="7" font-family="Inter,system-ui,sans-serif">${safeLabel}</text>
+      const safeVague = escapeSvgText(c.vagueCountLabel || formatVagueContainerBand(c.containers));
+      const width = Math.max(108, Math.min(168, Math.max(c.label.length, safeVague.length) * 7 + 26));
+      const cx = Math.round(width / 2);
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="42">
+        <rect x="1" y="1" width="${width - 2}" height="38" rx="19" fill="${color}" stroke="#ffffff" stroke-width="2" opacity="0.96"/>
+        <text x="${cx}" y="17" text-anchor="middle" fill="#ffffff" font-size="11" font-weight="800" font-family="Inter,system-ui,sans-serif">${safeLabel}</text>
+        <text x="${cx}" y="30" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="9.5" font-weight="600" font-family="Inter,system-ui,sans-serif">${safeVague}</text>
       </svg>`;
       const m = prev.get(c.id);
       if (m) {
@@ -366,10 +406,31 @@ function CentroidBubbles({ centroids }: { centroids: RunCentroid[] }) {
         const el = m.getElement();
         el.innerHTML = svg;
       } else {
-        const marker = new maplibregl.Marker({ element: svgMarker(svg), anchor: "center" })
+        const el = svgMarker(svg);
+        el.style.cursor = "pointer";
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          onSelectRef.current?.(c);
+        });
+        const marker = new maplibregl.Marker({ element: el, anchor: "center" })
           .setLngLat([c.lng, c.lat])
           .addTo(map);
         prev.set(c.id, marker);
+      }
+    }
+
+    // Fit map bounds to show all active suburbs cleanly on load / change.
+    const boundsKey = centroids.map((c) => `${c.id}:${c.lat}:${c.lng}`).join("|");
+    if (centroids.length > 0 && fittedKeyRef.current !== boundsKey) {
+      fittedKeyRef.current = boundsKey;
+      const bounds = new maplibregl.LngLatBounds();
+      for (const c of centroids) {
+        if (Number.isFinite(c.lat) && Number.isFinite(c.lng)) {
+          bounds.extend([c.lng, c.lat]);
+        }
+      }
+      if (!bounds.isEmpty()) {
+        map.fitBounds(bounds, { padding: 64, maxZoom: 12.2, duration: 400 });
       }
     }
 
@@ -378,7 +439,14 @@ function CentroidBubbles({ centroids }: { centroids: RunCentroid[] }) {
       if (map.getLayer(CENTROID_LAYER_ID)) map.removeLayer(CENTROID_LAYER_ID);
       if (map.getSource(CENTROID_SOURCE_ID)) map.removeSource(CENTROID_SOURCE_ID);
     };
-  }, [map, centroids]);
+  }, [map, centroids, focusedCentroidId]);
+
+  useEffect(() => {
+    if (!map || !focusedCentroidId) return;
+    const target = centroids.find((c) => c.id === focusedCentroidId);
+    if (!target) return;
+    map.flyTo({ center: [target.lng, target.lat], zoom: 12.8, duration: 500 });
+  }, [map, centroids, focusedCentroidId]);
 
   return null;
 }
@@ -478,9 +546,25 @@ interface MapViewProps {
   onMapTap: () => void;
   runCentroids?: RunCentroid[];
   activeRunStops?: RunStopDetail[];
+  disableAutoLocate?: boolean;
+  focusedCentroidId?: string | null;
+  onCentroidSelect?: (centroid: RunCentroid) => void;
 }
 
-export function MapView({ mode, bins, selectedBinId, activeRoute, depot, onBinSelect, onMapTap, runCentroids, activeRunStops }: MapViewProps) {
+export function MapView({
+  mode,
+  bins,
+  selectedBinId,
+  activeRoute,
+  depot,
+  onBinSelect,
+  onMapTap,
+  runCentroids,
+  activeRunStops,
+  disableAutoLocate,
+  focusedCentroidId,
+  onCentroidSelect,
+}: MapViewProps) {
   const [userLoc, setUserLoc] = useState<LatLng | null>(null);
   const handleLocated = useCallback((loc: LatLng) => setUserLoc(loc), []);
   const mapsError = useMapsError();
@@ -489,12 +573,18 @@ export function MapView({ mode, bins, selectedBinId, activeRoute, depot, onBinSe
 
   return (
     <MapErrorBoundary>
-      <MapProvider onMapTap={onMapTap}>
-        <AutoLocate onLocated={handleLocated} />
+      <MapProvider onMapTap={onMapTap} initialZoom={runCentroids && runCentroids.length > 0 ? 11.2 : 13}>
+        {!disableAutoLocate && <AutoLocate onLocated={handleLocated} />}
         {userLoc && <UserLocationMarker loc={userLoc} />}
         {onBinSelect && <BinMarkers bins={bins} selectedId={selectedBinId ?? null} onSelect={onBinSelect} />}
         {activeRoute && <RouteLine route={activeRoute} depot={depot} />}
-        {runCentroids && runCentroids.length > 0 && <CentroidBubbles centroids={runCentroids} />}
+        {runCentroids && runCentroids.length > 0 && (
+          <CentroidBubbles
+            centroids={runCentroids}
+            focusedCentroidId={focusedCentroidId}
+            onSelect={onCentroidSelect}
+          />
+        )}
         {activeRunStops && activeRunStops.length > 0 && <ActiveRunStopMarkers stops={activeRunStops} />}
       </MapProvider>
     </MapErrorBoundary>
