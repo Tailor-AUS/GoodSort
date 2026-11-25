@@ -131,7 +131,7 @@ export function AddressAutocomplete({ id, ariaLabel, value, onChange, onSelect, 
         </ul>
       )}
       {loading && value.trim().length >= 3 && results.length === 0 && (
-        <p className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">Searching…</p>
+        <p role="status" className="mt-1.5 text-[11px] font-medium text-slate-400">Searching addresses…</p>
       )}
     </div>
   );

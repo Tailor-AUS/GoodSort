@@ -114,7 +114,10 @@ export default function InvitePage() {
         </div>
         {network && (
           <div className="mb-4 rounded-xl bg-emerald-50 border border-emerald-200 px-3.5 py-2.5 text-center text-[12px] font-semibold text-emerald-900">
-            Your neighbour network: {network.sortersCount} sorter{network.sortersCount === 1 ? "" : "s"} · {network.referredContainers} container{network.referredContainers === 1 ? "" : "s"} · +{(network.totalNetworkPoints ?? network.sortersCount * 100 + network.referredContainers).toLocaleString()} PTS
+            Your neighbour network: {network.sortersCount} sorter{network.sortersCount === 1 ? "" : "s"} · {network.referredContainers} container{network.referredContainers === 1 ? "" : "s"} ·{" "}
+            <span className="whitespace-nowrap">
+              +{(network.totalNetworkPoints ?? network.sortersCount * 100 + network.referredContainers).toLocaleString()} PTS
+            </span>
           </div>
         )}
         <p className="text-[12px] text-slate-400 text-center mb-3">
@@ -122,7 +125,7 @@ export default function InvitePage() {
         </p>
         <Link
           href="/flyer"
-          className="block text-center text-[12px] font-semibold text-emerald-700 hover:text-emerald-900 mb-6"
+          className="flex items-center justify-center min-h-[44px] py-2 text-center text-[13px] font-semibold text-emerald-700 hover:text-emerald-900 mb-4"
         >
           Print Home Sorting Guide &amp; Street Flyer →
         </Link>

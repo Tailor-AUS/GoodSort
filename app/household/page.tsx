@@ -105,7 +105,7 @@ export default function HouseholdPage() {
   return (
     <div className="min-h-dvh bg-slate-50">
       <div className="max-w-sm mx-auto px-6 py-6">
-        <Link href="/sort" className="inline-flex items-center gap-1 text-[13px] text-slate-500 mb-4">
+        <Link href="/sort" className="inline-flex items-center gap-1.5 min-h-[44px] px-1 -ml-1 text-[13px] font-semibold text-slate-500 hover:text-slate-900 mb-3">
           <ArrowLeft className="w-4 h-4" /> Back
         </Link>
         <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-1 flex items-center gap-2">

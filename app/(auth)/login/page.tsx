@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { apiUrl, persistWaitlistFromUrl } from "@/lib/config";
 import { track } from "@/lib/analytics";
 import { Logo } from "@/app/components/shared/logo";
@@ -46,9 +48,17 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-white flex flex-col items-center justify-center px-6 overflow-y-auto">
+    <div className="min-h-dvh bg-white flex flex-col items-center justify-center px-6 py-8 overflow-y-auto">
       <div className="w-full max-w-sm">
-        <div className="text-center mb-10">
+        <div className="mb-4">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1.5 min-h-[44px] px-1 -ml-1 text-[13px] font-semibold text-slate-500 hover:text-slate-900"
+          >
+            <ArrowLeft className="w-4 h-4" /> Back
+          </Link>
+        </div>
+        <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
             <Logo size="lg" />
           </div>

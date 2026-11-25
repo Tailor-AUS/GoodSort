@@ -929,20 +929,20 @@ function ScanPageContent() {
           {bin ? bin.name : "Scan a container · 10¢"}
         </p>
         {!bin && (
-          <div role="group" aria-label="Scanner mode" className="inline-flex rounded-full bg-white/10 p-0.5 border border-white/15">
+          <div role="group" aria-label="Scanner mode" className="inline-flex rounded-full bg-white/10 p-1 border border-white/15 shrink-0">
             <button
               type="button"
               onClick={() => { setScanMode("photo"); setBarcodeError(""); }}
-              className={`px-3 py-1 rounded-full text-[11px] font-bold transition-colors ${scanMode === "photo" ? "bg-white text-slate-900" : "text-white/75"}`}
+              className={`min-h-[38px] px-3.5 py-1.5 rounded-full text-[12px] font-bold transition-colors ${scanMode === "photo" ? "bg-white text-slate-900" : "text-white/80"}`}
             >
               Photo AI
             </button>
             <button
               type="button"
               onClick={() => { setScanMode("barcode"); setBarcodeError(""); }}
-              className={`px-3 py-1 rounded-full text-[11px] font-bold transition-colors flex items-center gap-1 ${scanMode === "barcode" ? "bg-white text-slate-900" : "text-white/75"}`}
+              className={`min-h-[38px] px-3.5 py-1.5 rounded-full text-[12px] font-bold transition-colors flex items-center gap-1 ${scanMode === "barcode" ? "bg-white text-slate-900" : "text-white/80"}`}
             >
-              <ScanBarcode className="w-3 h-3" /> Barcode
+              <ScanBarcode className="w-3.5 h-3.5" /> Barcode
             </button>
           </div>
         )}
@@ -976,12 +976,12 @@ function ScanPageContent() {
                 onChange={(e) => setManualBarcode(e.target.value.replace(/\D/g, ""))}
                 placeholder="e.g. 9300675024235"
                 maxLength={14}
-                className="flex-1 bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-[14px] text-white placeholder-white/40 focus:outline-none focus:border-green-400"
+                className="flex-1 min-h-[44px] bg-white/10 border border-white/20 rounded-xl px-3.5 py-2.5 text-base text-white placeholder-white/40 focus:outline-none focus:border-green-400"
               />
               <button
                 type="submit"
                 disabled={barcodeBusy || manualBarcode.length < 8}
-                className="bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white font-bold px-4 py-2 rounded-xl text-[13px] min-h-[40px]"
+                className="bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white font-bold px-4 py-2.5 rounded-xl text-[14px] min-h-[44px]"
               >
                 {barcodeBusy ? "..." : "Add"}
               </button>
@@ -1024,8 +1024,12 @@ function ScanPageContent() {
         </div>
 
         {/* Status text */}
-        <p className="text-white/30 text-[12px] text-center pb-1">
-          {cameraDenied
+        <p className="text-white/50 text-[12px] text-center pb-1 px-4">
+          {scanMode === "barcode"
+            ? cameraReady
+              ? "Aim at a container barcode, or enter the digits above"
+              : "Type the barcode above, or tap the green button for a photo"
+            : cameraDenied
             ? "Camera blocked — tap the green button to use your photo gallery"
             : cameraReady
             ? "Tap the white button to capture, or use the gallery"

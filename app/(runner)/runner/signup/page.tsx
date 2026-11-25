@@ -263,7 +263,7 @@ export default function RunnerSignupPage() {
   return (
     <div className="min-h-dvh bg-white">
       <div className="max-w-sm mx-auto px-6 py-8">
-        <Link href={signedIn ? "/sort" : "/marketplace"} className="inline-flex items-center gap-1 text-[13px] text-slate-500 mb-6">
+        <Link href={signedIn ? "/sort" : "/marketplace"} className="inline-flex items-center gap-1.5 min-h-[44px] px-1 -ml-1 text-[13px] font-semibold text-slate-500 hover:text-slate-900 mb-4">
           <ArrowLeft className="w-4 h-4" /> Back
         </Link>
 

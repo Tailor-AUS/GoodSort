@@ -185,7 +185,7 @@ export function WaitlistHome({
             <div className="flex items-center justify-between mb-6">
               <Link
                 href="/guides/containers-for-change-brisbane"
-                className="inline-flex items-center gap-1.5 rounded-full bg-white px-3.5 py-2 text-[13px] font-semibold text-slate-800 shadow-[0_2px_8px_rgba(15,23,42,0.06)] active:scale-[0.97] transition-transform"
+                className="inline-flex items-center gap-1.5 min-h-[40px] rounded-full bg-white px-3.5 py-2 text-[13px] font-semibold text-slate-800 shadow-[0_2px_8px_rgba(15,23,42,0.06)] active:scale-[0.97] transition-transform"
               >
                 <HelpCircle className="w-4 h-4 text-slate-600" />
                 Help
@@ -193,7 +193,7 @@ export function WaitlistHome({
               <button
                 type="button"
                 onClick={() => setActiveTab("profile")}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-bold shadow-[0_2px_10px_rgba(15,23,42,0.1)] active:scale-[0.97] transition-transform ${summary.tier.pillClass}`}
+                className={`inline-flex items-center gap-1.5 min-h-[40px] rounded-full px-3.5 py-2 text-[13px] font-bold shadow-[0_2px_10px_rgba(15,23,42,0.1)] active:scale-[0.97] transition-transform ${summary.tier.pillClass}`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -395,7 +395,7 @@ export function WaitlistHome({
               </h2>
               <Link
                 href="/marketplace#suburb-map"
-                className="inline-flex items-center gap-0.5 rounded-full bg-white px-3 py-1 text-[12px] font-semibold text-slate-700 shadow-[0_1px_4px_rgba(15,23,42,0.06)]"
+                className="inline-flex items-center gap-0.5 min-h-[40px] rounded-full bg-white px-3.5 py-2 text-[12px] font-semibold text-slate-700 shadow-[0_1px_4px_rgba(15,23,42,0.06)]"
               >
                 View map <ChevronRight className="w-3.5 h-3.5" />
               </Link>
@@ -432,14 +432,14 @@ export function WaitlistHome({
                       ? `${containers} containers — enough for a driver trip`
                       : `${containers.toLocaleString()}/${LIVE_VOLUME_THRESHOLD.toLocaleString()} containers${needed > 0 ? ` · ${needed.toLocaleString()} more to unlock a run` : ""}`}
                 </p>
-                <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
+                <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
                   <span className="text-[12px] font-medium text-slate-500">
                     Balance · <strong className="text-slate-900">{formatCents(summary.totalCreditCents)}</strong>
                   </span>
                   <button
                     type="button"
                     onClick={handleScanClick}
-                    className="text-[13px] font-bold text-emerald-700 hover:text-emerald-900"
+                    className="inline-flex items-center min-h-[40px] px-2 -mr-2 text-[13px] font-bold text-emerald-700 hover:text-emerald-900"
                   >
                     Scan a can →
                   </button>
@@ -474,14 +474,14 @@ export function WaitlistHome({
               Pickups
             </h1>
 
-            {/* Segmented Filter Pills */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 mb-5">
+            {/* Segmented Filter Pills (4-column iOS track — fits 360px+ with zero horizontal overflow) */}
+            <div className="grid grid-cols-4 gap-1 rounded-2xl bg-white p-1 shadow-[0_2px_10px_rgba(15,23,42,0.05)] mb-5">
               {(
                 [
-                  { id: "upcoming", label: "Upcoming", icon: <Truck className="w-3.5 h-3.5" /> },
-                  { id: "building", label: "Building", icon: <Building2 className="w-3.5 h-3.5" /> },
-                  { id: "bags", label: "My Bags", icon: <Package className="w-3.5 h-3.5" /> },
-                  { id: "suburb", label: "Suburb", icon: <Users className="w-3.5 h-3.5" /> },
+                  { id: "upcoming", label: "Upcoming", icon: <Truck className="w-3.5 h-3.5 shrink-0" /> },
+                  { id: "building", label: "Building", icon: <Building2 className="w-3.5 h-3.5 shrink-0" /> },
+                  { id: "bags", label: "My Bags", icon: <Package className="w-3.5 h-3.5 shrink-0" /> },
+                  { id: "suburb", label: "Suburb", icon: <Users className="w-3.5 h-3.5 shrink-0" /> },
                 ] as const
               ).map((pill) => {
                 const selected = pickupsFilter === pill.id;
@@ -490,14 +490,14 @@ export function WaitlistHome({
                     key={pill.id}
                     type="button"
                     onClick={() => setPickupsFilter(pill.id)}
-                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-semibold transition-all ${
+                    className={`min-h-[44px] flex flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-[11px] font-semibold transition-all ${
                       selected
                         ? "bg-slate-900 text-white shadow-sm"
-                        : "bg-white text-slate-800 shadow-[0_1px_6px_rgba(15,23,42,0.05)]"
+                        : "text-slate-700 hover:bg-slate-50"
                     }`}
                   >
                     {pill.icon}
-                    {pill.label}
+                    <span className="leading-none truncate max-w-full">{pill.label}</span>
                   </button>
                 );
               })}
@@ -672,7 +672,7 @@ export function WaitlistHome({
               <button
                 type="button"
                 onClick={() => setPointsFilter("earn")}
-                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-semibold transition-all ${
+                className={`inline-flex items-center gap-1.5 min-h-[40px] rounded-full px-4 py-2 text-[13px] font-semibold transition-all ${
                   pointsFilter === "earn"
                     ? "bg-slate-900 text-white shadow-sm"
                     : "bg-white text-slate-800 shadow-[0_1px_6px_rgba(15,23,42,0.05)]"
@@ -684,7 +684,7 @@ export function WaitlistHome({
               <button
                 type="button"
                 onClick={() => setPointsFilter("rewards")}
-                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-semibold transition-all ${
+                className={`inline-flex items-center gap-1.5 min-h-[40px] rounded-full px-4 py-2 text-[13px] font-semibold transition-all ${
                   pointsFilter === "rewards"
                     ? "bg-slate-900 text-white shadow-sm"
                     : "bg-white text-slate-800 shadow-[0_1px_6px_rgba(15,23,42,0.05)]"
@@ -767,7 +767,7 @@ export function WaitlistHome({
                   )}
                   <Link
                     href="/invite"
-                    className="inline-flex items-center gap-1 text-[13px] font-bold text-emerald-700 hover:text-emerald-900"
+                    className="inline-flex items-center gap-1 min-h-[40px] py-2 -mb-2 text-[13px] font-bold text-emerald-700 hover:text-emerald-900"
                   >
                     Share invite link <ChevronRight className="w-4 h-4" />
                   </Link>
@@ -830,7 +830,7 @@ export function WaitlistHome({
                   <button
                     type="button"
                     onClick={copyMemberCode}
-                    className="inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-500 hover:text-slate-800 mt-0.5"
+                    className="inline-flex items-center gap-1.5 min-h-[40px] py-1.5 -my-1 text-[13px] font-medium text-slate-500 hover:text-slate-800"
                   >
                     <span className="tabular-nums">{memberCode}</span>
                     {copiedMemberId ? (
@@ -937,7 +937,7 @@ export function WaitlistHome({
                 <button
                   type="button"
                   onClick={() => onOpenAccount?.()}
-                  className="w-full pt-3.5 border-t border-slate-100 flex items-center justify-between text-[14px] font-semibold text-slate-900"
+                  className="w-full min-h-[44px] pt-3.5 pb-1 border-t border-slate-100 flex items-center justify-between text-[14px] font-semibold text-slate-900"
                 >
                   <span>View payouts &amp; activity statement</span>
                   <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -985,7 +985,7 @@ export function WaitlistHome({
                       <button
                         type="button"
                         onClick={() => setShowInviteSheet(true)}
-                        className="mt-2.5 text-[13px] font-bold text-emerald-700 hover:text-emerald-900"
+                        className="mt-1 inline-flex items-center min-h-[40px] py-2 -mb-2 text-[13px] font-bold text-emerald-700 hover:text-emerald-900"
                       >
                         Share invite link
                       </button>

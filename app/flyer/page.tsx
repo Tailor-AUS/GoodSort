@@ -69,10 +69,10 @@ export default function FlyerPage() {
   return (
     <div className="min-h-dvh bg-slate-100 py-8 px-4 print:bg-white print:p-0">
       <div className="max-w-2xl mx-auto mb-4 flex flex-col gap-3 print:hidden">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <Link
             href={signedIn ? "/sort" : "/"}
-            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-slate-900"
+            className="inline-flex items-center gap-2 min-h-[44px] px-2 -ml-2 text-sm font-semibold text-slate-700 hover:text-slate-900 shrink-0"
           >
             <ArrowLeft className="w-4 h-4" />
             Back
@@ -80,10 +80,11 @@ export default function FlyerPage() {
           <button
             type="button"
             onClick={printFlyer}
-            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700"
+            className="inline-flex items-center justify-center gap-2 min-h-[44px] rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 shrink-0 whitespace-nowrap"
           >
-            <Printer className="w-4 h-4" />
-            Print Home Sorting Guide &amp; Street Flyer
+            <Printer className="w-4 h-4 shrink-0" />
+            <span className="sm:hidden">Print Flyer</span>
+            <span className="hidden sm:inline">Print Home Sorting Guide &amp; Street Flyer</span>
           </button>
         </div>
 
@@ -100,7 +101,7 @@ export default function FlyerPage() {
                   key={s.slug || "all"}
                   type="button"
                   onClick={() => setSelectedSlug(s.slug)}
-                  className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${
+                  className={`min-h-[40px] px-3.5 py-2 rounded-full text-xs font-bold transition-colors ${
                     active
                       ? "bg-slate-900 text-white"
                       : "bg-slate-100 hover:bg-slate-200 text-slate-700"

@@ -102,8 +102,11 @@ export function InstallPrompt() {
     //
     // An install nag is the least important thing on the screen. It belongs
     // under anything the member deliberately opened.
-    <div className="fixed inset-x-0 bottom-0 z-40 pointer-events-none" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
-      <div className="pointer-events-auto mx-4 mb-4 glass-strong rounded-2xl shadow-[0_-4px_40px_rgba(0,0,0,0.1)] border border-white/40 overflow-hidden animate-slide-up">
+    <div
+      className={`fixed inset-x-0 z-40 pointer-events-none ${pathname === "/sort" ? "bottom-[86px]" : "bottom-0"}`}
+      style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+    >
+      <div className="pointer-events-auto mx-4 mb-4 bg-white rounded-2xl shadow-[0_-4px_40px_rgba(0,0,0,0.14)] border border-slate-200 overflow-hidden animate-slide-up">
 
         {/* Main prompt */}
         {!showSteps && (
@@ -116,13 +119,14 @@ export function InstallPrompt() {
                 <p className="text-[15px] font-display font-bold text-slate-900">Add to Home Screen</p>
                 <p className="text-[13px] text-slate-500 mt-0.5">Get the full app experience — instant access, no browser bar</p>
               </div>
-              <button onClick={dismiss} aria-label="Dismiss install prompt" className="flex-shrink-0 p-1 -mr-1 -mt-1 text-slate-300 hover:text-slate-500">
+              <button type="button" onClick={dismiss} aria-label="Dismiss install prompt" className="flex-shrink-0 min-w-[44px] min-h-[44px] -mr-2.5 -mt-2.5 flex items-center justify-center text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="flex gap-2 mt-4">
               <button
+                type="button"
                 onClick={handleInstall}
                 className="flex-1 bg-gradient-to-b from-green-500 to-green-600 text-white font-bold py-3 rounded-xl text-[13px] shadow-lg shadow-green-600/20 min-h-[44px] active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
               >
@@ -130,8 +134,9 @@ export function InstallPrompt() {
                 {deferredPrompt ? "Install App" : "Show Me How"}
               </button>
               <button
+                type="button"
                 onClick={dismiss}
-                className="px-4 py-3 glass border border-white/40 text-slate-400 font-bold rounded-xl text-[13px] min-h-[44px]"
+                className="px-4 py-3 bg-slate-100 border border-slate-200 text-slate-600 font-bold rounded-xl text-[13px] min-h-[44px]"
               >
                 Later
               </button>
@@ -146,7 +151,7 @@ export function InstallPrompt() {
               <p className="text-[15px] font-display font-bold text-slate-900">
                 {platform === "ios" ? "Add to Home Screen" : "Install the app"}
               </p>
-              <button onClick={dismiss} aria-label="Dismiss install prompt" className="p-1 text-slate-300 hover:text-slate-500">
+              <button type="button" onClick={dismiss} aria-label="Dismiss install prompt" className="min-w-[44px] min-h-[44px] -mr-2.5 flex items-center justify-center text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
