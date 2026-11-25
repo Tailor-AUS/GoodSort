@@ -510,8 +510,8 @@ export default function AdminUsersPage() {
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5 mb-5">
           <MiniKpi label="Total" value={summary.total} active={statusFilter === "all"} onClick={() => setStatusFilter("all")} />
           <MiniKpi label="Active 7d" value={summary.active7d} accent="emerald" active={statusFilter === "active_7d"} onClick={() => setStatusFilter("active_7d")} />
-          <MiniKpi label="Needs address" value={summary.noAddress} accent="amber" active={statusFilter === "no_address"} onClick={() => setStatusFilter("no_address")} />
-          <MiniKpi label="Needs PayID" value={summary.noPayout} accent="violet" active={statusFilter === "no_payout"} onClick={() => setStatusFilter("no_payout")} />
+          <MiniKpi label="No address" value={summary.noAddress} accent="amber" active={statusFilter === "no_address"} onClick={() => setStatusFilter("no_address")} />
+          <MiniKpi label="No PayID" value={summary.noPayout} accent="violet" active={statusFilter === "no_payout"} onClick={() => setStatusFilter("no_payout")} />
           <MiniKpi label="0 scans" value={summary.zeroScans} active={statusFilter === "zero_scans"} onClick={() => setStatusFilter("zero_scans")} />
           <MiniKpi label="Referred" value={summary.referred} accent="emerald" active={statusFilter === "referred"} onClick={() => setStatusFilter("referred")} />
         </div>

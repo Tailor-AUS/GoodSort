@@ -827,26 +827,38 @@ export function WaitlistHome({
 
               {/* Admin-only quick shortcut (invisible to non-admin sorters) */}
               {isAdmin && (
-                <div className="rounded-2xl bg-slate-900 text-white p-3.5 shadow-[0_4px_18px_rgba(15,23,42,0.14)] flex items-center justify-between gap-2">
+                <div className="rounded-2xl bg-slate-900 text-white p-3.5 shadow-[0_4px_18px_rgba(15,23,42,0.14)] space-y-2.5">
                   <Link
                     href="/admin"
-                    className="flex-1 min-h-[44px] flex items-center gap-2.5 px-1"
+                    className="min-h-[44px] flex items-center justify-between gap-2.5 px-1"
                   >
-                    <div className="h-9 w-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-                      <ShieldCheck className="w-4 h-4" />
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="h-9 w-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                        <ShieldCheck className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-bold leading-tight">Admin Command Centre</p>
+                        <p className="text-[11px] text-slate-400 leading-tight mt-0.5">Funnel, live activity &amp; ops</p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-[13px] font-bold leading-tight">Admin Command Centre</p>
-                      <p className="text-[11px] text-slate-400 leading-tight mt-0.5">Funnel, live activity &amp; ops</p>
-                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
                   </Link>
-                  <Link
-                    href="/admin/users"
-                    className="min-h-[40px] px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold text-white inline-flex items-center gap-1 shrink-0"
-                  >
-                    Users
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </Link>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Link
+                      href="/admin/users"
+                      className="min-h-[40px] px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold text-white inline-flex items-center justify-center gap-1"
+                    >
+                      Users CRM
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </Link>
+                    <Link
+                      href="/admin/runners"
+                      className="min-h-[40px] px-3 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-xs font-bold text-emerald-200 inline-flex items-center justify-center gap-1"
+                    >
+                      Runners
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </Link>
+                  </div>
                 </div>
               )}
 

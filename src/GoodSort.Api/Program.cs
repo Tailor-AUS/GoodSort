@@ -4560,7 +4560,7 @@ static string SanitizeSingleLine(string? value, int maxLen)
 }
 
 // ── Runner: Register as runner ──
-app.MapPost("/api/runner/register", async (HttpContext ctx, RunnerRegisterRequest req, GoodSortDbContext db) =>
+app.MapPost("/api/runner/register", async (HttpContext ctx, RunnerRegisterRequest req, GoodSortDbContext db, IConfiguration cfg) =>
 {
     var profileId = ctx.GetCallerId();
     if (profileId is null) return Results.Unauthorized();
@@ -4588,6 +4588,7 @@ app.MapPost("/api/runner/register", async (HttpContext ctx, RunnerRegisterReques
         return Results.Ok(existing);
     }
 
+    var requireApproval = string.Equals(cfg["RUNNER_REQUIRE_APPROVAL"], "true", StringComparison.OrdinalIgnoreCase) && !profile.IsAdmin;
     var schemeId = SanitizeSingleLine(req.CoexSchemeId, 32).ToUpperInvariant();
     var runner = new RunnerProfile
     {
@@ -4598,6 +4599,8 @@ app.MapPost("/api/runner/register", async (HttpContext ctx, RunnerRegisterReques
         CapacityBags = req.CapacityBags ?? 10,
         ServiceRadiusKm = req.ServiceRadiusKm ?? 10.0,
         CoexSchemeId = schemeId.Length == 0 ? null : schemeId,
+        ApprovalStatus = requireApproval ? "pending" : "approved",
+        ApprovedAt = requireApproval ? null : DateTime.UtcNow,
     };
     profile.Role = "both";
     db.RunnerProfiles.Add(runner);
@@ -4655,6 +4658,18 @@ app.MapPost("/api/runner/heartbeat", async (HttpContext ctx, RunnerHeartbeatRequ
 
     var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == profileId.Value);
     if (runner is null) return Results.NotFound();
+    if (runner.ApprovalStatus != "approved")
+    {
+        if (runner.IsOnline)
+        {
+            runner.IsOnline = false;
+            await db.SaveChangesAsync();
+        }
+        var msg = runner.ApprovalStatus == "suspended"
+            ? "Your runner account is suspended. Contact hello@thegoodsort.org."
+            : "Your runner account is pending approval. Ops will activate you shortly.";
+        return Results.Json(new { error = msg, approvalStatus = runner.ApprovalStatus }, statusCode: StatusCodes.Status403Forbidden);
+    }
     runner.IsOnline = req.IsOnline;
     runner.LastLat = req.Lat;
     runner.LastLng = req.Lng;
@@ -4748,6 +4763,10 @@ app.MapPost("/api/marketplace/runs/{id:guid}/claim", async (HttpContext ctx, Gui
     var runner = await db.RunnerProfiles.FirstOrDefaultAsync(rp => rp.ProfileId == profileId.Value);
     if (runner is null)
         return Results.BadRequest(new { error = "Not registered as runner" });
+    if (runner.ApprovalStatus == "suspended")
+        return Results.Json(new { error = "Your runner account is suspended. Contact hello@thegoodsort.org." }, statusCode: StatusCodes.Status403Forbidden);
+    if (runner.ApprovalStatus != "approved")
+        return Results.Json(new { error = "Your runner account is pending approval. Ops will activate you shortly." }, statusCode: StatusCodes.Status403Forbidden);
 
     // Re-price with runner's level bonus, enforce one active run per runner (preventing
     // run hoarding and mass stop-coordinate scraping), then atomically claim the transition
@@ -5498,15 +5517,368 @@ app.MapPost("/api/admin/pricing/simulate", async (PricingSimulateRequest req, Pr
     return Results.Ok(result);
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
-// ── Admin: All marketplace runs ──
+// ── Admin: Re-price all open unclaimed runs immediately after pricing changes ──
+app.MapPost("/api/admin/pricing/reprice", async (PricingService pricing, IConfiguration cfg) =>
+{
+    var minPayoutCents = RunGenerationService.ResolveMinPayoutCents(cfg);
+    var repricedRuns = await pricing.RepriceAvailableRuns(minPayoutCents, allowDecrease: true);
+    return Results.Ok(new { repricedRuns });
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
+
+// ── Admin: Runner fleet roster & status summary ──
+app.MapGet("/api/admin/runners", async (string? q, string? status, int? limit, GoodSortDbContext db, IConfiguration cfg) =>
+{
+    var safeLimit = Math.Clamp(limit ?? 200, 1, 1000);
+    var now = DateTime.UtcNow;
+    var onlineCutoff = now - PricingService.OnlineRunnerFreshness;
+
+    var allRunners = await db.RunnerProfiles
+        .Include(rp => rp.Profile)
+            .ThenInclude(p => p.Household)
+        .AsNoTracking()
+        .ToListAsync();
+
+    var activeRunStatuses = new[] { "claimed", "in_progress", "delivering" };
+    var activeRuns = await db.Runs
+        .Include(r => r.Stops)
+        .Where(r => activeRunStatuses.Contains(r.Status) && r.RunnerId != null)
+        .AsNoTracking()
+        .ToListAsync();
+    var activeRunByRunnerId = activeRuns
+        .GroupBy(r => r.RunnerId!.Value)
+        .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.StartedAt ?? x.ClaimedAt ?? x.CreatedAt).First());
+
+    var unclaimedRunsCount = await db.Runs.CountAsync(r => r.Status == "available" || r.Status == "below_threshold");
+    var completedAwaitingSettleCount = await db.Runs.CountAsync(r => r.Status == "completed");
+
+    var rows = allRunners.Select(rp =>
+    {
+        var p = rp.Profile;
+        var approval = string.IsNullOrWhiteSpace(rp.ApprovalStatus) ? "approved" : rp.ApprovalStatus;
+        var effectiveOnline = rp.IsOnline
+            && approval == "approved"
+            && rp.LastLocationAt.HasValue
+            && rp.LastLocationAt.Value >= onlineCutoff;
+        var hasPayoutDetails = !string.IsNullOrWhiteSpace(p.PayIdValue)
+            || (!string.IsNullOrWhiteSpace(p.BankBsb) && !string.IsNullOrWhiteSpace(p.BankAccountNumber));
+        activeRunByRunnerId.TryGetValue(rp.Id, out var activeRun);
+        var activeAnchor = activeRun is null ? (DateTime?)null : (activeRun.StartedAt ?? activeRun.ClaimedAt ?? activeRun.CreatedAt);
+        var stuckMinutes = activeAnchor.HasValue ? Math.Max(0, (int)Math.Floor((now - activeAnchor.Value).TotalMinutes)) : 0;
+
+        return new
+        {
+            id = rp.Id,
+            profileId = rp.ProfileId,
+            name = p.Name,
+            email = p.Email,
+            suburb = BinDayService.CanonicalSuburb(p.Household?.Suburb) ?? p.Household?.Suburb,
+            isAdmin = p.IsAdmin,
+            approvalStatus = approval,
+            approvedAt = rp.ApprovedAt,
+            suspendedAt = rp.SuspendedAt,
+            adminNote = rp.AdminNote,
+            vehicleType = rp.VehicleType,
+            vehicleMake = rp.VehicleMake,
+            vehicleRego = rp.VehicleRego,
+            capacityBags = rp.CapacityBags,
+            serviceRadiusKm = rp.ServiceRadiusKm,
+            coexSchemeId = rp.CoexSchemeId,
+            isOnline = effectiveOnline,
+            rawIsOnline = rp.IsOnline,
+            lastLat = rp.LastLat,
+            lastLng = rp.LastLng,
+            lastLocationAt = rp.LastLocationAt,
+            level = rp.Level,
+            rating = Math.Round(rp.Rating, 2),
+            totalRatings = rp.TotalRatings,
+            totalRuns = rp.TotalRuns,
+            totalContainersCollected = rp.TotalContainersCollected,
+            lifetimeEarningsCents = rp.LifetimeEarningsCents,
+            clearedCents = p.ClearedCents,
+            hasPayoutDetails,
+            preferredPayoutMethod = p.PreferredPayoutMethod,
+            currentStreakDays = rp.CurrentStreakDays,
+            efficiencyScore = Math.Round(rp.EfficiencyScore, 1),
+            lastRunCompletedAt = rp.LastRunCompletedAt,
+            createdAt = rp.CreatedAt,
+            activeRun = activeRun is null ? null : new
+            {
+                id = activeRun.Id,
+                areaName = activeRun.AreaName,
+                status = activeRun.Status,
+                estimatedContainers = activeRun.EstimatedContainers,
+                stopCount = activeRun.Stops.Count,
+                pickedUpStops = activeRun.Stops.Count(s => s.Status == "picked_up"),
+                perContainerCents = activeRun.PerContainerCents,
+                estimatedPayoutCents = activeRun.EstimatedPayoutCents,
+                claimedAt = activeRun.ClaimedAt,
+                startedAt = activeRun.StartedAt,
+                stuckMinutes,
+            },
+        };
+    }).ToList();
+
+    var summary = new
+    {
+        totalRunners = rows.Count,
+        approvedCount = rows.Count(r => r.approvalStatus == "approved"),
+        pendingCount = rows.Count(r => r.approvalStatus == "pending"),
+        suspendedCount = rows.Count(r => r.approvalStatus == "suspended"),
+        onlineNowCount = rows.Count(r => r.isOnline),
+        activeRunsCount = activeRuns.Count,
+        unclaimedRunsCount,
+        completedAwaitingSettleCount,
+        requireApprovalGate = string.Equals(cfg["RUNNER_REQUIRE_APPROVAL"], "true", StringComparison.OrdinalIgnoreCase),
+    };
+
+    var needle = q?.Trim();
+    var filterStatus = status?.Trim().ToLowerInvariant() ?? "all";
+    var filtered = rows.Where(r =>
+    {
+        if (!string.IsNullOrWhiteSpace(needle))
+        {
+            var hit = (r.name?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (r.email?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (r.vehicleType?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (r.vehicleMake?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (r.vehicleRego?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (r.coexSchemeId?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (r.adminNote?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (r.suburb?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false);
+            if (!hit) return false;
+        }
+        return filterStatus switch
+        {
+            "approved" => r.approvalStatus == "approved",
+            "pending" => r.approvalStatus == "pending",
+            "suspended" => r.approvalStatus == "suspended",
+            "online" => r.isOnline,
+            "on_run" => r.activeRun is not null,
+            _ => true,
+        };
+    })
+    .OrderByDescending(r => r.activeRun is not null)
+    .ThenByDescending(r => r.isOnline)
+    .ThenByDescending(r => r.approvalStatus == "pending")
+    .ThenByDescending(r => r.totalRuns)
+    .ThenByDescending(r => r.createdAt)
+    .Take(safeLimit)
+    .ToList();
+
+    return Results.Ok(new { summary, runners = filtered });
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
+
+// ── Admin: Approve, pause (pending), or suspend a runner (+ optional active run force-release) ──
+app.MapPatch("/api/admin/runners/{id:guid}/status", async (Guid id, AdminRunnerStatusRequest req, GoodSortDbContext db, PricingService pricing, IConfiguration cfg) =>
+{
+    var normalizedStatus = req.Status?.Trim().ToLowerInvariant();
+    if (normalizedStatus is not ("approved" or "pending" or "suspended"))
+        return Results.BadRequest(new { error = "Status must be one of: approved, pending, suspended." });
+
+    var runner = await db.RunnerProfiles
+        .Include(rp => rp.Profile)
+        .FirstOrDefaultAsync(rp => rp.Id == id || rp.ProfileId == id);
+    if (runner is null) return Results.NotFound(new { error = "Runner not found." });
+
+    Run? activeRun = null;
+    if (req.ReleaseActiveRun == true && normalizedStatus == "suspended")
+    {
+        activeRun = await db.Runs
+            .Include(r => r.Stops)
+            .FirstOrDefaultAsync(r => r.RunnerId == runner.Id
+                && (r.Status == "claimed" || r.Status == "in_progress" || r.Status == "delivering"));
+        if (activeRun is not null)
+        {
+            var pickedUpStops = activeRun.Stops.Count(s => s.Status == "picked_up");
+            if (pickedUpStops > 0 && req.ForceEvenIfPickedUp != true)
+            {
+                return Results.Conflict(new
+                {
+                    error = $"This runner has already marked {pickedUpStops} stop(s) as picked up on run {activeRun.AreaName}. Confirm force-release to reset those stops back to pending.",
+                    requiresConfirmation = true,
+                    pickedUpStops,
+                    activeRunId = activeRun.Id,
+                });
+            }
+        }
+    }
+
+    var now = DateTime.UtcNow;
+    runner.ApprovalStatus = normalizedStatus;
+    if (normalizedStatus == "approved")
+    {
+        runner.ApprovedAt = now;
+        runner.SuspendedAt = null;
+    }
+    else if (normalizedStatus == "suspended")
+    {
+        runner.SuspendedAt = now;
+        runner.IsOnline = false;
+    }
+    else
+    {
+        runner.IsOnline = false;
+    }
+
+    if (req.AdminNote is not null)
+    {
+        var cleaned = SanitizeSingleLine(req.AdminNote, 280);
+        runner.AdminNote = cleaned.Length == 0 ? null : cleaned;
+    }
+
+    await db.SaveChangesAsync();
+
+    Guid? releasedRunId = null;
+    if (activeRun is not null)
+    {
+        var outcome = await ForceReleaseRunAsync(
+            activeRun.Id,
+            req.ForceEvenIfPickedUp == true,
+            publishImmediately: false,
+            db,
+            pricing,
+            cfg);
+        if (outcome.Released) releasedRunId = activeRun.Id;
+    }
+
+    return Results.Ok(new
+    {
+        id = runner.Id,
+        profileId = runner.ProfileId,
+        approvalStatus = runner.ApprovalStatus,
+        approvedAt = runner.ApprovedAt,
+        suspendedAt = runner.SuspendedAt,
+        isOnline = runner.IsOnline,
+        adminNote = runner.AdminNote,
+        releasedRunId,
+    });
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
+
+// ── Admin: All marketplace runs (projected with runner details & stuck duration) ──
 app.MapGet("/api/admin/marketplace/runs", async (string? status, GoodSortDbContext db) =>
 {
-    var q = db.Runs.Include(r => r.Stops).Include(r => r.Runner).AsQueryable();
-    if (!string.IsNullOrEmpty(status))
-        q = q.Where(r => r.Status == status);
+    var now = DateTime.UtcNow;
+    var q = db.Runs
+        .Include(r => r.Stops)
+        .Include(r => r.DropPoint)
+        .Include(r => r.Runner!)
+            .ThenInclude(rp => rp.Profile)
+        .AsNoTracking()
+        .AsQueryable();
+
+    if (!string.IsNullOrWhiteSpace(status))
+    {
+        var s = status.Trim().ToLowerInvariant();
+        if (s == "active")
+            q = q.Where(r => r.Status == "claimed" || r.Status == "in_progress" || r.Status == "delivering");
+        else if (s == "open")
+            q = q.Where(r => r.Status == "available" || r.Status == "below_threshold");
+        else
+            q = q.Where(r => r.Status == s);
+    }
     else
+    {
         q = q.Where(r => r.Status != "expired"); // show everything except expired
-    return Results.Ok(await q.OrderByDescending(r => r.CreatedAt).Take(100).ToListAsync());
+    }
+
+    var runs = await q.OrderByDescending(r => r.CreatedAt).Take(100).ToListAsync();
+    var projected = runs.Select(r =>
+    {
+        var isActive = r.Status is "claimed" or "in_progress" or "delivering";
+        var anchor = r.StartedAt ?? r.ClaimedAt ?? r.CreatedAt;
+        var stuckMinutes = isActive ? Math.Max(0, (int)Math.Floor((now - anchor).TotalMinutes)) : 0;
+        var pickedUpStops = r.Stops.Count(s => s.Status == "picked_up");
+        return new
+        {
+            id = r.Id,
+            status = r.Status,
+            areaName = r.AreaName,
+            materialFocus = r.MaterialFocus,
+            estimatedContainers = r.EstimatedContainers,
+            actualContainers = r.ActualContainers,
+            depotVerifiedContainers = r.DepotVerifiedContainers,
+            coexDocketRef = r.CoexDocketRef,
+            estimatedWeightKg = r.EstimatedWeightKg,
+            perContainerCents = r.PerContainerCents,
+            estimatedPayoutCents = r.EstimatedPayoutCents,
+            actualPayoutCents = r.ActualPayoutCents,
+            pricingTier = r.PricingTier,
+            estimatedDistanceKm = r.EstimatedDistanceKm,
+            estimatedDurationMin = r.EstimatedDurationMin,
+            stopCount = r.Stops.Count,
+            pickedUpStops,
+            stuckMinutes,
+            dropPointName = r.DropPoint?.Name,
+            runnerId = r.RunnerId,
+            runnerProfileId = r.Runner?.ProfileId,
+            runnerName = r.Runner?.Profile?.Name,
+            runnerEmail = r.Runner?.Profile?.Email,
+            runnerVehicleType = r.Runner?.VehicleType,
+            runnerVehicleRego = r.Runner?.VehicleRego,
+            runnerApprovalStatus = r.Runner?.ApprovalStatus,
+            claimedAt = r.ClaimedAt,
+            startedAt = r.StartedAt,
+            deliveredAt = r.DeliveredAt,
+            completedAt = r.CompletedAt,
+            settledAt = r.SettledAt,
+            expiresAt = r.ExpiresAt,
+            createdAt = r.CreatedAt,
+        };
+    }).ToList();
+
+    return Results.Ok(projected);
+}).RequireAuthorization(AuthHelpers.AdminPolicy);
+
+// ── Admin: Force-release a stuck run (claimed, in_progress, or delivering) back to open dispatch ──
+app.MapPost("/api/admin/marketplace/runs/{id:guid}/force-release", async (HttpContext ctx, Guid id, GoodSortDbContext db, PricingService pricing, IConfiguration cfg) =>
+{
+    AdminForceReleaseRunRequest req = new();
+    if (ctx.Request.ContentLength is > 0 || (ctx.Request.ContentType?.Contains("json", StringComparison.OrdinalIgnoreCase) ?? false))
+    {
+        try
+        {
+            var parsed = await ctx.Request.ReadFromJsonAsync<AdminForceReleaseRunRequest>(ctx.RequestAborted);
+            if (parsed is not null) req = parsed;
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest(new { error = "Invalid JSON body." });
+        }
+    }
+
+    var outcome = await ForceReleaseRunAsync(
+        id,
+        req.ForceEvenIfPickedUp == true,
+        req.PublishImmediately == true,
+        db,
+        pricing,
+        cfg);
+
+    if (outcome.NotFound) return Results.NotFound(new { error = "Run not found." });
+    if (outcome.RequiresConfirmation)
+    {
+        return Results.Conflict(new
+        {
+            error = outcome.Error,
+            requiresConfirmation = true,
+            pickedUpStops = outcome.PickedUpStops,
+        });
+    }
+    if (!outcome.Released)
+        return Results.BadRequest(new { error = outcome.Error });
+
+    return Results.Ok(new
+    {
+        released = true,
+        id,
+        previousStatus = outcome.PreviousStatus,
+        previousRunnerId = outcome.PreviousRunnerId,
+        resetStops = outcome.ResetStops,
+        resetBags = outcome.ResetBags,
+        status = outcome.NewStatus,
+        perContainerCents = outcome.PerContainerCents,
+        estimatedPayoutCents = outcome.EstimatedPayoutCents,
+    });
 }).RequireAuthorization(AuthHelpers.AdminPolicy);
 
 // ── Admin: Trigger marketplace run generation immediately (coordinates via SingletonLease) ──
@@ -5649,6 +6021,103 @@ static double HaversineKm(double lat1, double lng1, double lat2, double lng2)
     return R * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
 }
 
+static async Task<ForceReleaseOutcome> ForceReleaseRunAsync(
+    Guid runId,
+    bool forceEvenIfPickedUp,
+    bool publishImmediately,
+    GoodSortDbContext db,
+    PricingService pricing,
+    IConfiguration cfg)
+{
+    return await Atomic.RunAsync(db, async () =>
+    {
+        var run = await db.Runs
+            .Include(r => r.Stops)
+            .FirstOrDefaultAsync(r => r.Id == runId);
+        if (run is null)
+            return ForceReleaseOutcome.FailNotFound();
+
+        if (run.Status is not ("claimed" or "in_progress" or "delivering"))
+            return ForceReleaseOutcome.FailBadRequest("Only claimed, in_progress, or delivering runs can be force-released.");
+
+        var pickedUpStops = run.Stops.Count(s => s.Status == "picked_up");
+        if (pickedUpStops > 0 && !forceEvenIfPickedUp)
+        {
+            return ForceReleaseOutcome.FailNeedsConfirmation(
+                $"Run has {pickedUpStops} stop(s) already marked picked_up. Confirm force-release to reset those stops and kerb bags back to open dispatch.",
+                pickedUpStops);
+        }
+
+        var previousStatus = run.Status;
+        var previousRunnerId = run.RunnerId;
+        var resetStops = 0;
+
+        foreach (var stop in run.Stops)
+        {
+            if (stop.Status != "pending" || stop.ArrivedAt is not null || stop.PickedUpAt is not null)
+            {
+                stop.Status = "pending";
+                stop.ArrivedAt = null;
+                stop.PickedUpAt = null;
+                stop.ActualContainers = null;
+                stop.PhotoUrl = null;
+                stop.ScannedBagCount = 0;
+                stop.ContaminationFlag = false;
+                stop.DiscrepancyCode = null;
+                stop.DiscrepancyNote = null;
+                resetStops++;
+            }
+        }
+
+        var resetBags = 0;
+        if (pickedUpStops > 0)
+        {
+            var linkedBags = await db.SortedBags.Where(b => b.RunId == run.Id).ToListAsync();
+            foreach (var bag in linkedBags)
+            {
+                bag.RunId = null;
+                bag.RunStopId = null;
+                bag.PickedUpAt = null;
+                bag.VerifiedAt = null;
+                bag.VerifiedContainers = null;
+                if (bag.Status is "picked_up" or "verified")
+                    bag.Status = "on_kerb";
+                resetBags++;
+            }
+        }
+
+        run.RunnerId = null;
+        run.ClaimedAt = null;
+        run.StartedAt = null;
+        run.DeliveredAt = null;
+        run.LastBriefedAt = null;
+        run.ActualContainers = 0;
+        run.ActualPayoutCents = 0;
+        if (run.ExpiresAt <= DateTime.UtcNow.AddHours(2))
+            run.ExpiresAt = DateTime.UtcNow.AddHours(6);
+
+        var minPayoutCents = RunGenerationService.ResolveMinPayoutCents(cfg);
+        var repriced = await pricing.CalculateRate(run);
+        run.PerContainerCents = repriced.PerContainerCents;
+        run.EstimatedPayoutCents = repriced.EstimatedPayoutCents;
+        run.PricingTier = repriced.PricingTier;
+        run.LastPricedAt = DateTime.UtcNow;
+        run.Status = publishImmediately || repriced.EstimatedPayoutCents >= minPayoutCents
+            ? "available"
+            : "below_threshold";
+
+        await db.SaveChangesAsync();
+        return ForceReleaseOutcome.Success(
+            previousStatus,
+            previousRunnerId,
+            resetStops,
+            resetBags,
+            run.Status,
+            run.PerContainerCents,
+            run.EstimatedPayoutCents);
+    });
+}
+
 record ProfileCreateRequest(string? Name);
 record ProfileUpdateRequest(string? Name, Guid? HouseholdId);
 record AdminCreateBinRequest(string? Code, string Name, string Address, double Lat, double Lng, string? HostedBy = null);
@@ -5695,6 +6164,30 @@ record RunnerHeartbeatRequest(Guid ProfileId, double Lat, double Lng, bool IsOnl
 record MarketplaceClaimRequest(Guid ProfileId);
 record RunStopPickupRequest(int ActualContainers, string? PhotoUrl = null, bool? ContaminationFlag = null, string? DiscrepancyCode = null, string? DiscrepancyNote = null);
 record PricingSimulateRequest(int Containers, double DistanceKm, int StopCount);
+record AdminRunnerStatusRequest(string Status, string? AdminNote = null, bool? ReleaseActiveRun = null, bool? ForceEvenIfPickedUp = null);
+record AdminForceReleaseRunRequest(bool? ForceEvenIfPickedUp = null, bool? PublishImmediately = null);
+
+sealed record ForceReleaseOutcome(
+    bool Released,
+    bool NotFound,
+    bool RequiresConfirmation,
+    int PickedUpStops,
+    string? Error,
+    string? PreviousStatus,
+    Guid? PreviousRunnerId,
+    int ResetStops,
+    int ResetBags,
+    string? NewStatus,
+    int PerContainerCents,
+    int EstimatedPayoutCents)
+{
+    public static ForceReleaseOutcome FailNotFound() => new(false, true, false, 0, "Run not found.", null, null, 0, 0, null, 0, 0);
+    public static ForceReleaseOutcome FailBadRequest(string error) => new(false, false, false, 0, error, null, null, 0, 0, null, 0, 0);
+    public static ForceReleaseOutcome FailNeedsConfirmation(string error, int pickedUpStops) => new(false, false, true, pickedUpStops, error, null, null, 0, 0, null, 0, 0);
+    public static ForceReleaseOutcome Success(string previousStatus, Guid? previousRunnerId, int resetStops, int resetBags, string newStatus, int perContainerCents, int estimatedPayoutCents) =>
+        new(true, false, false, 0, null, previousStatus, previousRunnerId, resetStops, resetBags, newStatus, perContainerCents, estimatedPayoutCents);
+}
+
 record AdminBootstrapRequest(string Email);
 record AdminResetBaselineRequest(string Confirm);
 

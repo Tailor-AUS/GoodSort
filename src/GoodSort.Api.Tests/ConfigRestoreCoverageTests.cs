@@ -73,6 +73,7 @@ public class ConfigRestoreCoverageTests
         ["DEPOSIT_REPLAY_HAMMING_MAX"] = "Anti-replay threshold; the code default is the intended value.",
         ["MINIMUM_RUN_PAYOUT_CENTS"] = "Run pricing floor; the code default is intended, and PricingBounds constrains the range.",
         ["RUNNER_STOP_MAX_CONTAINERS"] = "Defaults to 200, the intended per-stop ceiling.",
+        ["RUNNER_REQUIRE_APPROVAL"] = "Defaults to false (self-serve runner onboarding with instant admin suspend/approve controls on /admin/runners); set to true when ops wants new signups held in Pending.",
         ["OSRM_URL"] = "Defaults to the public OSRM demo endpoint, which is what the pilot uses.",
     };
 

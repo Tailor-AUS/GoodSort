@@ -15,6 +15,7 @@ export interface RunnerProfile {
   capacityBags: number;
   serviceRadiusKm: number;
   coexSchemeId?: string | null;
+  approvalStatus?: "approved" | "pending" | "suspended";
   isOnline: boolean;
   lastLat: number | null;
   lastLng: number | null;

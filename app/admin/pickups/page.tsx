@@ -180,9 +180,14 @@ export default function AdminPickupsPage() {
   return (
     <div className="min-h-dvh bg-slate-50">
       <div className="max-w-4xl mx-auto px-6 py-6">
-        <Link href="/admin" className="inline-flex items-center gap-1 text-[13px] text-slate-500 mb-4">
-          <ArrowLeft className="w-4 h-4" /> Back to admin
-        </Link>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <Link href="/admin" className="inline-flex items-center gap-1 text-[13px] text-slate-500">
+            <ArrowLeft className="w-4 h-4" /> Back to admin
+          </Link>
+          <Link href="/admin/runners" className="inline-flex items-center gap-1 text-[13px] font-semibold text-emerald-700 hover:text-emerald-900">
+            Runners &amp; Dispatch →
+          </Link>
+        </div>
         <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
           <h1 className="text-2xl font-display font-extrabold text-slate-900">Pickups &amp; pilot runs</h1>
           <div className="flex flex-wrap items-center gap-2">

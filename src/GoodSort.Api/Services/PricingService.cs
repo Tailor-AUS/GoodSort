@@ -42,7 +42,10 @@ public class PricingService
         // not stay "online" forever and depress dynamic run pricing.
         var onlineCutoff = DateTime.UtcNow - OnlineRunnerFreshness;
         var onlineRunners = await _db.RunnerProfiles.CountAsync(
-            rp => rp.IsOnline && rp.LastLocationAt != null && rp.LastLocationAt >= onlineCutoff);
+            rp => rp.IsOnline
+               && rp.ApprovalStatus == "approved"
+               && rp.LastLocationAt != null
+               && rp.LastLocationAt >= onlineCutoff);
         var availableRuns = await _db.Runs.CountAsync(r => r.Status == "available");
         var ratio = availableRuns > 0
             ? (double)onlineRunners / availableRuns
@@ -121,25 +124,29 @@ public class PricingService
     }
 
     /// <summary>
-    /// Re-price all unclaimed runs (biased upward over time, promoting
-    /// below_threshold runs once payout crosses minimum).
-    /// Called every 30 minutes by RunGenerationService.
+    /// Re-price all unclaimed runs (biased upward over time unless an admin explicitly
+    /// triggers a full re-sync, promoting below_threshold runs once payout crosses minimum).
+    /// Called every 30 minutes by RunGenerationService and on demand by /api/admin/pricing/reprice.
     /// </summary>
-    public async Task RepriceAvailableRuns(int minPayoutCents = 2000)
+    public async Task<int> RepriceAvailableRuns(int minPayoutCents = 2000, bool allowDecrease = false)
     {
         var unclaimedRuns = await _db.Runs
             .Include(r => r.Stops)
             .Where(r => RunLifecycle.Unclaimed.Contains(r.Status) && r.ExpiresAt > DateTime.UtcNow)
             .ToListAsync();
 
+        var updated = 0;
         foreach (var run in unclaimedRuns)
         {
             var result = await CalculateRate(run);
 
-            // Bias upward: never decrease price on re-price (incentivize taking older runs)
-            if (result.PerContainerCents >= run.PerContainerCents || run.Status == "below_threshold")
+            // Background sweep biases upward (never drops price on older runs).
+            // Admin-triggered re-sync applies the newly saved pricing bounds directly.
+            if (allowDecrease || result.PerContainerCents >= run.PerContainerCents || run.Status == "below_threshold")
             {
-                run.PerContainerCents = Math.Max(run.PerContainerCents, result.PerContainerCents);
+                run.PerContainerCents = allowDecrease
+                    ? result.PerContainerCents
+                    : Math.Max(run.PerContainerCents, result.PerContainerCents);
                 run.EstimatedPayoutCents = run.PerContainerCents * run.EstimatedContainers;
                 run.PricingTier = result.PricingTier;
                 run.LastPricedAt = DateTime.UtcNow;
@@ -147,10 +154,16 @@ public class PricingService
                 {
                     run.Status = "available";
                 }
+                else if (allowDecrease && run.Status == "available" && run.EstimatedPayoutCents < minPayoutCents)
+                {
+                    run.Status = "below_threshold";
+                }
+                updated++;
             }
         }
 
         await _db.SaveChangesAsync();
+        return updated;
     }
 
     public async Task<PricingConfig> GetActiveConfig()
