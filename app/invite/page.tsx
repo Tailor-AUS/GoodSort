@@ -132,8 +132,8 @@ export default function InvitePage() {
               </span>
             </div>
           )}
-          <p className="text-[12px] text-white/75 text-center leading-relaxed mb-4">
-            Grow your neighbour network: earn 100 Good Sort Points when a neighbour joins plus 1 bonus point on every container they sort. Send this to three neighbours to build suburb volume.
+          <p className="text-[12px] text-white/85 text-center leading-relaxed mb-4">
+            +100 Good Sort Points when a neighbour joins · +1 bonus point on every container they sort.
           </p>
           <Link
             href="/flyer"

@@ -252,7 +252,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
   })();
 
   return (
-    <div className="min-h-dvh bg-white overflow-y-auto overscroll-none">
+    <div className="min-h-dvh bg-[#f6f7f5] overflow-y-auto overscroll-none">
       {/* ══════════════════ FULL-BLEED APPLE LIQUID GLASS HERO ══════════════════ */}
       <section
         className="relative min-h-[92svh] overflow-hidden flex flex-col justify-between text-white"
@@ -355,22 +355,22 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
             Scan a can, earn 10¢. We collect from your kerb — you never drive to a depot.
           </p>
 
-          {/* Primary Liquid Glass Scan Action Capsule */}
+          {/* Primary Liquid Glass Scan Action Capsule (bright milky glass for WCAG AAA legibility over sunlit sky) */}
           <div className="max-w-lg mx-auto mb-3">
             <button
               type="button"
               onClick={() => { track("waitlist_cta", { suburb: place }); router.push("/scan"); }}
-              className="w-full min-h-[60px] rounded-full liquid-glass pl-6 pr-2 py-2 flex items-center justify-between gap-3 text-left group active:scale-[0.99] transition-transform"
+              className="w-full min-h-[62px] rounded-full liquid-glass-bright pl-6 pr-2 py-2 flex items-center justify-between gap-3 text-left group active:scale-[0.99] transition-transform"
             >
               <div className="min-w-0">
-                <p className="text-[15px] sm:text-[16px] font-display font-bold text-white truncate">
+                <p className="text-[15px] sm:text-[16px] font-display font-extrabold text-slate-950 truncate">
                   Scan a container · earn 10¢
                 </p>
-                <p className="text-[12px] text-white/75 truncate">
+                <p className="text-[12px] font-medium text-slate-700 truncate">
                   Moorooka, Annerley, Tarragindi &amp; Brisbane suburbs
                 </p>
               </div>
-              <span className="h-11 w-11 shrink-0 rounded-full bg-white text-slate-950 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
+              <span className="h-11 w-11 shrink-0 rounded-full bg-gradient-to-b from-emerald-500 to-emerald-600 text-white flex items-center justify-center shadow-lg shadow-emerald-900/25 group-hover:scale-105 transition-transform">
                 <ScanBarcode className="w-5 h-5" />
               </span>
             </button>
@@ -471,60 +471,66 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
       </section>
 
       {!suburbName && (
-        <section className="px-6 py-10 max-w-lg mx-auto">
-          <h2 className="text-center text-[12px] text-slate-400 font-semibold uppercase tracking-[0.15em] mb-4">Your suburb</h2>
-          <SuburbFinder />
-          <div className="mt-8"><DensityBoard /></div>
+        <section className="px-5 py-12 max-w-xl mx-auto">
+          <div className="rounded-[30px] bg-white border border-slate-200/80 shadow-[0_10px_30px_-14px_rgba(15,23,42,0.08)] p-6 sm:p-8">
+            <h2 className="text-center text-[12px] text-slate-500 font-semibold uppercase tracking-[0.15em] mb-4">Your suburb</h2>
+            <SuburbFinder />
+            <div className="mt-8"><DensityBoard /></div>
+          </div>
         </section>
       )}
 
-      <section className="px-6 py-12 bg-slate-900 text-white">
-        <div className="max-w-lg mx-auto text-center">
-          <p className="text-slate-400 text-[12px] uppercase tracking-[0.15em] mb-5">The leak</p>
-          <h2 className="text-[24px] sm:text-[28px] font-display font-extrabold leading-tight mb-4">
-            The depot trip is where<br /><span className="text-green-400">the 10¢ goes unclaimed</span>
-          </h2>
-          <p className="text-slate-400 text-[14px] leading-relaxed max-w-sm mx-auto mb-8">
-            About a third of eligible containers in Queensland never reach a refund point. People are recycling. They are not driving to a depot for 10¢ a bottle.
-          </p>
-          <div className="grid grid-cols-3 gap-3 max-w-xs mx-auto">
-            <MiniStat value="10¢" label="your credit" />
-            <MiniStat value="+100" label="invite pts" />
-            <MiniStat value="scan" label="the habit" />
+      <section className="px-5 py-4 max-w-2xl mx-auto">
+        <div className="rounded-[32px] bg-gradient-to-br from-[#0d2229] via-[#0e2a2c] to-[#0a1b20] text-white px-6 py-12 sm:px-10 shadow-[0_24px_60px_-24px_rgba(8,22,26,0.45)] border border-white/10">
+          <div className="max-w-lg mx-auto text-center">
+            <p className="text-emerald-300/90 text-[12px] font-semibold uppercase tracking-[0.16em] mb-4">Why at home</p>
+            <h2 className="text-[24px] sm:text-[30px] font-display font-extrabold leading-tight tracking-[-0.02em] mb-4">
+              The depot trip is where<br /><span className="text-emerald-300">the 10¢ goes unclaimed</span>
+            </h2>
+            <p className="text-white/75 text-[14px] leading-relaxed max-w-sm mx-auto mb-8">
+              About a third of eligible containers in Queensland never reach a refund point. People are recycling. They are not driving to a depot for 10¢ a bottle.
+            </p>
+            <div className="grid grid-cols-3 gap-3 max-w-xs mx-auto">
+              <MiniStat value="10¢" label="your credit" />
+              <MiniStat value="+100" label="invite pts" />
+              <MiniStat value="scan" label="the habit" />
+            </div>
           </div>
         </div>
       </section>
 
-      <section id="how-it-works" className="px-6 py-14 max-w-2xl mx-auto">
-        <h2 className="text-center text-[12px] text-slate-400 font-semibold uppercase tracking-[0.15em] mb-3">How it works</h2>
+      <section id="how-it-works" className="px-5 py-14 max-w-2xl mx-auto">
+        <h2 className="text-center text-[12px] text-slate-500 font-semibold uppercase tracking-[0.15em] mb-4">How it works</h2>
         <div className="hidden lg:block mb-8"><HeroKerbsideCard suburbName={suburbName} /></div>
         <div className="mb-10"><SortAnimation /></div>
 
-        <div className="relative">
-          <div className="absolute left-[23px] top-6 bottom-6 w-[2px] bg-slate-200 rounded-full" />
-          <div className="space-y-10">
-            <StepRow icon={<Home className="w-5 h-5" />} color="from-violet-400 to-violet-600" num={1}
-              title="Scan a container"
-              body="Point your camera at a can or bottle. 10¢ pending, straight away."
-              tag="Scan first" tagColor="bg-violet-100 text-violet-700" />
-            <StepRow icon={<Recycle className="w-5 h-5" />} color="from-blue-400 to-blue-600" num={2}
-              title="Sort into your bags"
-              body="Four streams at home: cans, PET, glass, other."
-              tag="Your bags, your sort" tagColor="bg-blue-100 text-blue-700" />
-            <StepRow icon={<Truck className="w-5 h-5" />} color="from-amber-400 to-amber-600" num={3}
-              title="Suburb volume run"
-              body={`At about ${LIVE_VOLUME_THRESHOLD} containers in your suburb, we drive. Bag out; we do the depot run.`}
-              tag="One driver trip" tagColor="bg-amber-100 text-amber-700" />
-            <StepRow icon={<Banknote className="w-5 h-5" />} color="from-emerald-400 to-emerald-600" num={4}
-              title="Get paid 10¢/can — plus Good Sort Points for invites"
-              body="Credits clear after the depot verifies. Share your link to grow your neighbour network and earn 100 Good Sort Points when a neighbour joins plus 1 bonus point on every container they sort."
-              tag="10¢ credit + Good Sort Points" tagColor="bg-emerald-100 text-emerald-700" />
+        <div className="rounded-[30px] bg-white border border-slate-200/80 shadow-[0_10px_30px_-14px_rgba(15,23,42,0.08)] p-6 sm:p-8 relative">
+          <div className="relative">
+            <div className="absolute left-[23px] top-6 bottom-6 w-[2px] bg-slate-200/80 rounded-full" />
+            <div className="space-y-9">
+              <StepRow icon={<Home className="w-5 h-5" />} color="from-slate-800 to-slate-950" num={1}
+                title="Scan a container"
+                body="Point your camera at a can or bottle. 10¢ pending, straight away."
+                tag="Scan first" tagColor="bg-slate-100 text-slate-700" />
+              <StepRow icon={<Recycle className="w-5 h-5" />} color="from-emerald-600 to-teal-700" num={2}
+                title="Sort into your bags"
+                body="Four streams at home: cans, clear plastic, coloured plastic, glass."
+                tag="Your bags, your sort" tagColor="bg-emerald-50 text-emerald-800" />
+              <StepRow icon={<Truck className="w-5 h-5" />} color="from-slate-800 to-slate-950" num={3}
+                title="Suburb volume run"
+                body={`At about ${LIVE_VOLUME_THRESHOLD} containers in your suburb, we drive. Bag out; we do the depot run.`}
+                tag="One driver trip" tagColor="bg-slate-100 text-slate-700" />
+              <StepRow icon={<Banknote className="w-5 h-5" />} color="from-emerald-500 to-emerald-700" num={4}
+                title="Get paid 10¢/can — plus Good Sort Points"
+                body="Credits clear after depot verification. Share your link to earn 100 Good Sort Points when a neighbour joins plus 1 bonus point on every container they sort."
+                tag="10¢ credit + Good Sort Points" tagColor="bg-emerald-50 text-emerald-800" />
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="px-6 py-10">
-        <div className="max-w-lg mx-auto flex flex-wrap justify-center gap-6">
+      <section className="px-6 py-6">
+        <div className="max-w-lg mx-auto flex flex-wrap justify-center gap-4">
           <TrustItem icon={<MapPin className="w-4 h-4" />} text="Scan today in Brisbane" />
           <TrustItem icon={<Check className="w-4 h-4" />} text="Volume run when ready" />
           <TrustItem icon={<Check className="w-4 h-4" />} text="Credits clear after depot verify" />
@@ -533,10 +539,10 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
 
       <section className="px-6 py-14 text-center">
         <div className="max-w-sm mx-auto">
-          <h2 className="text-[28px] font-display font-extrabold text-slate-900 mb-3 leading-tight">
+          <h2 className="text-[28px] font-display font-extrabold text-slate-900 mb-3 leading-tight tracking-[-0.02em]">
             Start scanning in your suburb
           </h2>
-          <p className="text-slate-400 text-[14px] mb-8">
+          <p className="text-slate-500 text-[14px] mb-8">
             About {LIVE_VOLUME_THRESHOLD} containers in your suburb and we drive.
           </p>
           <GreenButton onClick={() => { track("waitlist_cta", { suburb: place }); router.push("/scan"); }}>
@@ -545,7 +551,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
         </div>
       </section>
 
-      <footer className="px-6 py-8 text-center border-t border-slate-100">
+      <footer className="px-6 py-8 text-center border-t border-slate-200/70">
         <div className="flex justify-center mb-3"><Logo size="sm" /></div>
         <p className="text-[11px] text-slate-400">
           Not a live city-wide pickup. Sorting credits are a private reward, not the 10¢ Containers for Change refund. We are not claiming approval as a Containers for Change refund point.

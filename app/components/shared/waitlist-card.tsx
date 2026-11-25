@@ -51,20 +51,37 @@ export function WaitlistCard({ suburb, households, needed, live, binStatus, dayN
     body = `We've hit about ${LIVE_VOLUME_THRESHOLD} scanned containers — enough for one driver trip. We'll tell you when to bag out.`;
   }
 
+  const pct = Math.min(100, Math.round((volume / LIVE_VOLUME_THRESHOLD) * 100));
+
   return (
-    <div className="bg-violet-50 border border-violet-200 rounded-2xl px-4 py-3 mb-3">
-      <p className="text-[11px] uppercase tracking-wider text-violet-700/70 mb-1">Suburb</p>
-      <p className="text-[15px] font-display font-extrabold text-slate-900">{title}</p>
-      <p className="text-[12px] text-slate-600 mt-1">{body}</p>
+    <div className="rounded-[24px] liquid-glass px-4 py-4 mb-3 text-white">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <p className="text-[11px] uppercase tracking-wider text-emerald-200 font-bold">Suburb</p>
+        {!noSuburb && (
+          <span className="rounded-full bg-white/15 border border-white/25 px-2.5 py-0.5 text-[11px] font-bold text-white tabular-nums">
+            {live ? "Ready" : `${volume.toLocaleString()} / ${LIVE_VOLUME_THRESHOLD.toLocaleString()}`}
+          </span>
+        )}
+      </div>
+      <p className="text-[16px] font-display font-extrabold text-white glass-text-shadow">{title}</p>
+      <p className="text-[12px] text-white/85 leading-relaxed mt-1">{body}</p>
+      {!noSuburb && (
+        <div className="h-1.5 rounded-full bg-black/25 overflow-hidden mt-3">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-300 transition-all"
+            style={{ width: `${Math.max(pct, volume > 0 ? 4 : 2)}%` }}
+          />
+        </div>
+      )}
       {noSuburb && (
-        <a href="/onboard" className="mt-2 inline-block text-[12px] font-semibold text-violet-800 underline">
+        <a href="/onboard" className="mt-2.5 inline-block text-[12px] font-bold text-emerald-200 hover:text-white underline">
           Add your suburb →
         </a>
       )}
       {/* With no suburb, streetInvitePath falls back to "/" — so sharing here
           would send the bare city-wide link that 2a8ea09 removed. */}
       {!arriving && !hideInvite && !noSuburb && (
-        <div className="mt-3">
+        <div className="mt-3.5">
           <InviteActions url={inviteUrl} message={message} compact />
         </div>
       )}

@@ -146,7 +146,7 @@ export default function HouseholdPage() {
             <p className="text-[13px] text-white/85 glass-text-shadow mb-5">{hh.name} · {hh.address}</p>
 
             {hh && !isCollecting(hh.binStatus) && (
-              <div className="text-slate-900 mb-3">
+              <div className="mb-3">
                 <WaitlistCard
                   suburb={hh.suburb}
                   households={growth?.households ?? (hh.type === "unit_complex" ? 0 : 1)}

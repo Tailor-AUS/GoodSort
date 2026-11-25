@@ -33,7 +33,7 @@ export default function SortedBagsPage() {
   const [qrMap, setQrMap] = useState<Record<string, string>>({});
   const [selectedStream, setSelectedStream] = useState<BagStream>("aluminium");
   const [declaredCount, setDeclaredCount] = useState<number>(0);
-  const [putOnKerb, setPutOnKerb] = useState<boolean>(true);
+  const [putOnKerb, setPutOnKerb] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [signedIn, setSignedIn] = useState<boolean>(true);
   const [creating, setCreating] = useState<boolean>(false);
@@ -337,17 +337,27 @@ export default function SortedBagsPage() {
               </div>
 
               <div className="flex items-start sm:items-end">
-                <label className="flex items-center gap-2.5 p-3 rounded-xl liquid-glass-subtle w-full cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={putOnKerb}
-                    onChange={(e) => setPutOnKerb(e.target.checked)}
-                    className="w-4 h-4 accent-emerald-400 rounded"
-                  />
-                  <span className="text-xs font-semibold text-white">
-                    Bag is out on the kerb ready for pickup
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={putOnKerb}
+                  onClick={() => setPutOnKerb((v) => !v)}
+                  className={`flex items-center justify-between gap-3 p-3 rounded-xl w-full text-left transition-all min-h-[48px] ${
+                    putOnKerb ? "liquid-glass-emerald" : "liquid-glass-subtle"
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-white leading-tight">
+                      {putOnKerb ? "Already out on the kerb" : "Keep ready at home"}
+                    </p>
+                    <p className="text-[11px] text-white/75 leading-tight mt-0.5">
+                      {putOnKerb ? "Visible to runners for pickup" : "Switch on when you carry it outside"}
+                    </p>
+                  </div>
+                  <span className={`w-11 h-6 rounded-full relative transition-colors shrink-0 ${putOnKerb ? "bg-emerald-400" : "bg-white/25"}`}>
+                    <span className={`block w-5 h-5 rounded-full bg-white shadow absolute top-0.5 transition-transform ${putOnKerb ? "translate-x-5" : "translate-x-0.5"}`} />
                   </span>
-                </label>
+                </button>
               </div>
             </div>
           )}

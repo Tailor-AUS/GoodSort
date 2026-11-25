@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { fitWithin, scanErrorMessage, QUALITY_LADDER, TARGET_BASE64_CHARS } from "@/lib/image-budget";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Camera, RotateCcw, Check, Mail, ShieldCheck, ImagePlus, X, Home, ScanBarcode } from "lucide-react";
+import { Camera, RotateCcw, Check, Mail, ShieldCheck, ImagePlus, X, Home, ScanBarcode, Zap, ZapOff, Plus } from "lucide-react";
 import { track } from "@/lib/analytics";
 import { apiUrl, authHeaders, persistWaitlistFromUrl, readReferrerId, hasValidToken, clearAuth } from "@/lib/config";
 import { lookupContainerAsync } from "@/lib/containers";
@@ -56,6 +56,23 @@ function ScanPageContent() {
   const streamRef = useRef<MediaStream | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraDenied, setCameraDenied] = useState(false);
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+  const [shutterFlash, setShutterFlash] = useState(false);
+
+  // Rapid-fire multi-can batch session state (all hooks declared above early returns)
+  const [sessionBatch, setSessionBatch] = useState<{
+    count: number;
+    cents: number;
+    lastLabel: string;
+    lastBag: string;
+  }>({ count: 0, cents: 0, lastLabel: "", lastBag: "" });
+  const [batchToast, setBatchToast] = useState<{
+    title: string;
+    subtitle: string;
+    refused?: boolean;
+  } | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Results
   const [results, setResults] = useState<IdentifiedItem[]>([]);
@@ -89,6 +106,48 @@ function ScanPageContent() {
   const preScanEmailRef = useRef<string | null>(null);
   const [preScanStatus, setPreScanStatus] = useState<"idle" | "running" | "ready" | "failed">("idle");
 
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
+  function triggerHaptic(ms = 14) {
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      try { navigator.vibrate(ms); } catch { /* unsupported */ }
+    }
+  }
+
+  function flashBatchToast(toast: { title: string; subtitle: string; refused?: boolean }) {
+    setBatchToast(toast);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setBatchToast(null), 2600);
+  }
+
+  async function toggleTorch() {
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track || !torchSupported) return;
+    const next = !torchOn;
+    try {
+      await track.applyConstraints({
+        advanced: [{ torch: next } as MediaTrackConstraintSet],
+      });
+      setTorchOn(next);
+      triggerHaptic(10);
+    } catch {
+      setTorchSupported(false);
+    }
+  }
+
+  function finishBatchSession() {
+    stopCamera();
+    setResults([]);
+    setTotalItems(0);
+    setConfirmedCents(0);
+    setQuotedCents(0);
+    setStep("done");
+  }
+
   function toPreviewDataUrl(rawOrDataUrl: string): string {
     return rawOrDataUrl.startsWith("data:") ? rawOrDataUrl : `data:image/jpeg;base64,${rawOrDataUrl}`;
   }
@@ -116,6 +175,48 @@ function ScanPageContent() {
       setBarcodeBusy(false);
       barcodeLockRef.current = false;
       setStep("auth");
+      return;
+    }
+
+    // Rapid-fire batch barcode mode for signed-in home sorting (!binCode):
+    // credits immediately in the viewfinder without tearing down the camera.
+    if (!binCode) {
+      try {
+        const found = await lookupContainerAsync(cleaned);
+        const guide = streamGuideForMaterial(found.material, found.name);
+        const saved = await addScanApi(cleaned, found.name, guide.stream);
+        try {
+          sessionStorage.removeItem(PENDING_BARCODE_KEY);
+          localStorage.removeItem(PENDING_BARCODE_KEY);
+        } catch { /* ignore */ }
+        if (saved.refused) {
+          flashBatchToast({
+            title: "Daily scan limit reached",
+            subtitle: "Try again tomorrow — scan not added.",
+            refused: true,
+          });
+        } else {
+          const credited = saved.creditedCents ?? 10;
+          triggerHaptic(18);
+          trackScanCredited();
+          setSessionBatch((prev) => ({
+            count: prev.count + 1,
+            cents: prev.cents + credited,
+            lastLabel: found.name,
+            lastBag: guide.bagName,
+          }));
+          flashBatchToast({
+            title: `+${credited}¢ · ${found.name}`,
+            subtitle: `Put in ${guide.bagName} (${guide.shortLabel})`,
+          });
+          setManualBarcode("");
+        }
+      } catch {
+        setBarcodeError("Could not look up that barcode right now. Try again.");
+      } finally {
+        setBarcodeBusy(false);
+        setTimeout(() => { barcodeLockRef.current = false; }, 1500);
+      }
       return;
     }
 
@@ -388,6 +489,13 @@ function ScanPageContent() {
         video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
       });
       streamRef.current = stream;
+      const videoTrack = stream.getVideoTracks()[0];
+      const caps =
+        videoTrack && typeof videoTrack.getCapabilities === "function"
+          ? (videoTrack.getCapabilities() as MediaTrackCapabilities & { torch?: boolean })
+          : null;
+      setTorchSupported(Boolean(caps?.torch));
+      setTorchOn(false);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         // Wait for video metadata before playing (iOS fix)
@@ -414,6 +522,8 @@ function ScanPageContent() {
   const stopCamera = useCallback(() => {
     if (streamRef.current) { streamRef.current.getTracks().forEach((t) => t.stop()); streamRef.current = null; }
     setCameraReady(false);
+    setTorchOn(false);
+    setTorchSupported(false);
   }, []);
 
   useEffect(() => {
@@ -440,6 +550,10 @@ function ScanPageContent() {
     if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
     if (video.videoWidth === 0 || video.videoHeight === 0) return; // Not ready
+
+    triggerHaptic(12);
+    setShutterFlash(true);
+    setTimeout(() => setShutterFlash(false), 220);
 
     const { width, height } = fitWithin(video.videoWidth, video.videoHeight);
     if (width === 0 || height === 0) return;
@@ -658,11 +772,80 @@ function ScanPageContent() {
         setTotalItems(data.totalContainers);
       }
       setConfirmedCents(typeof data.totalCents === "number" ? data.totalCents : quotedCents);
+      triggerHaptic(18);
       trackScanCredited();
       setStep("done");
     } catch {
       setApiError(true);
       setAiMessage("Network connection dropped before confirmation could complete. Please tap Done to try again.");
+      setStep("results");
+    } finally {
+      setConfirming(false);
+    }
+  }
+
+  /** Bank confirmed photo items into the live batch session and immediately re-open the camera. */
+  async function confirmAndScanNext() {
+    if (confirming || binCode) return;
+    setConfirming(true);
+    const eligible = results
+      .filter((r) => r.eligible)
+      .map((r) => ({ ...r, count: Math.max(0, Math.min(100, r.count)) }));
+    const total = eligible.reduce((s, r) => s + r.count, 0);
+    if (total <= 0) {
+      setConfirming(false);
+      retake();
+      return;
+    }
+
+    const userId = (() => { try { return JSON.parse(localStorage.getItem("goodsort_profile") || "{}").id || ""; } catch { return ""; } })();
+    try {
+      const res = await fetch(apiUrl("/api/scan/photo/confirm"), {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ scanToken, userId, items: eligible, binCode: null, lat: null, lng: null }),
+      });
+      if (!res.ok) {
+        if (res.status === 401) {
+          clearAuth();
+          setStep("auth");
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        setApiError(true);
+        setAiMessage(data.error || "Couldn't confirm this scan. Please tap Done or try again.");
+        setStep("results");
+        return;
+      }
+      const data = await res.json().catch(() => ({} as { totalCents?: number; totalContainers?: number }));
+      const addedCount = typeof data.totalContainers === "number" ? data.totalContainers : total;
+      const addedCents = typeof data.totalCents === "number" ? data.totalCents : (quotedCents ?? addedCount * 10);
+      const firstGuide = streamGuideForMaterial(eligible[0].material, eligible[0].name);
+      triggerHaptic(18);
+      trackScanCredited();
+      setSessionBatch((prev) => ({
+        count: prev.count + addedCount,
+        cents: prev.cents + addedCents,
+        lastLabel: eligible[0].name,
+        lastBag: firstGuide.bagName,
+      }));
+      flashBatchToast({
+        title: `Banked +${addedCount} ${addedCount === 1 ? "can" : "cans"} (+${addedCents}¢)`,
+        subtitle: `Put in ${firstGuide.bagName} · ready for next scan`,
+      });
+      setResults([]);
+      setAiMessage("");
+      setTotalItems(0);
+      setScanToken(null);
+      setQuotedCents(null);
+      setConfirmedCents(null);
+      setCapturedImage(null);
+      setApiError(false);
+      setCameraReady(false);
+      setStep("camera");
+    } catch {
+      setApiError(true);
+      setAiMessage("Network connection dropped before confirmation could complete. Please try again.");
       setStep("results");
     } finally {
       setConfirming(false);
@@ -773,15 +956,20 @@ function ScanPageContent() {
 
   // Done
   if (step === "done") {
-    const earnedCents = confirmedCents ?? quotedCents ?? totalItems * 10;
+    const currentEarned = confirmedCents ?? quotedCents ?? totalItems * 10;
+    const earnedCents = sessionBatch.cents + currentEarned;
+    const combinedItems = sessionBatch.count + totalItems;
     void hasHousehold;
     return (
       <PostScanSetup
         earnedCents={earnedCents}
-        totalItems={totalItems}
+        totalItems={combinedItems}
         binName={bin?.name ?? null}
         isPublicBinScan={Boolean(binCode)}
-        onScanAnother={retake}
+        onScanAnother={() => {
+          setSessionBatch({ count: 0, cents: 0, lastLabel: "", lastBag: "" });
+          retake();
+        }}
       />
     );
   }
@@ -824,7 +1012,7 @@ function ScanPageContent() {
     </div>
   );
 
-  // Results
+  // Results — Apple Liquid Glass sheet over sunlit veranda backdrop
   if (step === "results") {
     const eligible = results.filter((r) => r.eligible);
     const total = eligible.reduce((s, r) => s + r.count, 0);
@@ -832,88 +1020,119 @@ function ScanPageContent() {
     const isBonusRate = total > 0 && displayCents > total * 10;
 
     return (
-      <div className="fixed inset-0 bg-white flex flex-col z-50" style={{ paddingTop: "env(safe-area-inset-top,0)", paddingBottom: "env(safe-area-inset-bottom,0)" }}>
-        <div className="px-5 py-3 border-b border-slate-100">
-          <h2 className="text-[17px] font-display font-extrabold text-slate-900">
-            {apiError ? "Connection error" : total > 0 ? `Sort ${total} container${total !== 1 ? "s" : ""}` : "No containers found"}
-          </h2>
-          {apiError && (
-            <div className="mt-2">
-              <p className="text-red-500 text-[12px]">{scanErrorMessage(apiStatus)}</p>
-              {!bin && (
+      <div className="fixed inset-0 flex flex-col z-50 text-white overflow-hidden" style={{ paddingTop: "env(safe-area-inset-top,0)", paddingBottom: "env(safe-area-inset-bottom,0)" }}>
+        <GlassBackdrop />
+        <div className="relative z-10 flex flex-col h-full max-w-md w-full mx-auto px-4 py-4">
+          <div className="rounded-[24px] liquid-glass px-5 py-4 mb-3">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-[19px] font-display font-extrabold text-white glass-text-shadow">
+                {apiError ? "Connection error" : total > 0 ? `Sort ${total} container${total !== 1 ? "s" : ""}` : "No containers found"}
+              </h2>
+              {sessionBatch.count > 0 && (
+                <span className="rounded-full bg-emerald-400/25 border border-emerald-200/45 px-2.5 py-0.5 text-[11px] font-bold text-emerald-100 tabular-nums shrink-0">
+                  +{sessionBatch.count} banked
+                </span>
+              )}
+            </div>
+            {apiError && (
+              <div className="mt-2">
+                <p className="text-red-200 text-[12px] font-medium">{scanErrorMessage(apiStatus)}</p>
+                {!bin && (
+                  <button
+                    type="button"
+                    onClick={() => { setApiError(false); setScanMode("barcode"); setStep("camera"); }}
+                    className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-bold text-slate-950 bg-white/95 rounded-full px-3.5 py-2 shadow-sm"
+                  >
+                    <ScanBarcode className="w-3.5 h-3.5 text-emerald-700" /> Switch to Barcode / Offline Scan instead
+                  </button>
+                )}
+              </div>
+            )}
+            {aiMessage && !apiError && <p className="text-white/85 text-[13px] mt-1 leading-snug">{aiMessage}</p>}
+          </div>
+
+          <div className="flex-1 overflow-y-auto space-y-2.5 pb-3">
+            {eligible.length === 0 && !apiError && (
+              <div className="rounded-[26px] liquid-glass text-center py-12 px-6">
+                <Camera className="w-12 h-12 text-white/60 mx-auto mb-3" />
+                <p className="text-white text-[15px] font-semibold mb-1.5">{aiMessage || "No containers detected"}</p>
+                {!aiMessage && <p className="text-white/75 text-[13px]">Try a clearer photo with better lighting or toggle the flashlight.</p>}
+              </div>
+            )}
+
+            {eligible.length > 0 && (
+              <>
+                {eligible.map((item, i) => {
+                  const bagGuide = streamGuideForMaterial(item.material, item.name);
+                  return (
+                    <div key={i} className="flex items-center gap-3 p-3.5 rounded-[22px] liquid-glass-light text-slate-900">
+                      <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <Check className="w-5 h-5 text-emerald-700" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[14px] text-slate-950 font-bold truncate">{item.name}</p>
+                        <p className="text-[12px] text-slate-600">{isBonusRate ? "Bonus sorting rate" : "10c each"} &middot; sort into your own bags today</p>
+                        <span className={`inline-flex items-center gap-1 mt-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${bagGuide.badgeBg} ${bagGuide.badgeText}`}>
+                          Put in {bagGuide.bagName} &middot; {bagGuide.shortLabel} (GSB-{bagGuide.codePrefix})
+                        </span>
+                      </div>
+                      <span className="text-[16px] font-display font-extrabold text-slate-950 tabular-nums">&times;{item.count}</span>
+                    </div>
+                  );
+                })}
+
+                <div className="p-4 rounded-[22px] liquid-glass-emerald">
+                  <p className="text-[12px] text-white/95 font-medium leading-relaxed">
+                    Keep it in your sorted bags. When suburb volume unlocks a run, bag out — we take them to a refund point.
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="pt-2 space-y-2">
+            {total > 0 && !binCode && (
+              <button
+                type="button"
+                onClick={confirmAndScanNext}
+                disabled={confirming}
+                className="w-full min-h-[48px] rounded-full liquid-glass-bright text-slate-950 font-extrabold text-[14px] disabled:opacity-50 flex items-center justify-center gap-2 active:scale-[0.99] transition-transform"
+                style={{ touchAction: "manipulation" }}
+              >
+                <Plus className="w-4 h-4 text-emerald-700" />
+                {confirming ? "Banking..." : `Bank +${displayCents}c & scan next`}
+              </button>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={retake}
+                className="flex-1 py-3.5 rounded-full liquid-glass-pill text-white font-bold text-[13px] flex items-center justify-center gap-1.5 min-h-[48px]"
+                style={{ touchAction: "manipulation" }}
+              >
+                <RotateCcw className="w-4 h-4" /> Retake
+              </button>
+              {total > 0 ? (
                 <button
                   type="button"
-                  onClick={() => { setApiError(false); setScanMode("barcode"); setStep("camera"); }}
-                  className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5"
+                  onClick={confirm}
+                  disabled={confirming}
+                  className="flex-[2] bg-gradient-to-b from-emerald-500 to-emerald-600 text-white font-extrabold py-3.5 rounded-full text-[15px] shadow-lg shadow-emerald-950/35 disabled:opacity-50 flex items-center justify-center gap-2 min-h-[48px]"
+                  style={{ touchAction: "manipulation" }}
                 >
-                  <ScanBarcode className="w-3.5 h-3.5" /> Switch to Barcode / Offline Scan instead
+                  <Check className="w-5 h-5" /> {confirming ? "Saving..." : <>Done &middot; +{displayCents}c</>}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => window.location.href = "/sort"}
+                  className="flex-1 py-3.5 rounded-full liquid-glass-pill text-white font-bold text-[13px] flex items-center justify-center gap-1.5 min-h-[48px]"
+                  style={{ touchAction: "manipulation" }}
+                >
+                  <Home className="w-4 h-4" /> Home
                 </button>
               )}
             </div>
-          )}
-          {aiMessage && !apiError && <p className="text-slate-500 text-[13px] mt-1">{aiMessage}</p>}
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 py-3">
-          {eligible.length === 0 && !apiError && (
-            <div className="text-center py-12">
-              <Camera className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-slate-500 text-[15px] font-semibold mb-2">{aiMessage || "No containers detected"}</p>
-              {!aiMessage && <p className="text-slate-400 text-[13px]">Try a clearer photo with better lighting</p>}
-            </div>
-          )}
-
-          {eligible.length > 0 && (
-            <div className="space-y-2">
-              {eligible.map((item, i) => {
-                const bagGuide = streamGuideForMaterial(item.material, item.name);
-                return (
-                  <div key={i} className="flex items-center gap-3 p-3.5 rounded-2xl border border-slate-200">
-                    <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                      <Check className="w-5 h-5 text-green-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[14px] text-slate-900 font-semibold">{item.name}</p>
-                      <p className="text-[12px] text-slate-500">{isBonusRate ? "Bonus sorting rate" : "10c each"} &middot; sort into your own bags today</p>
-                      <span className={`inline-flex items-center gap-1 mt-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${bagGuide.badgeBg} ${bagGuide.badgeText}`}>
-                        Put in {bagGuide.bagName} &middot; {bagGuide.shortLabel} (GSB-{bagGuide.codePrefix})
-                      </span>
-                    </div>
-                    <span className="text-[15px] font-display font-extrabold text-slate-900">&times;{item.count}</span>
-                  </div>
-                );
-              })}
-
-              <div className="mt-4 p-4 bg-green-50 rounded-2xl border border-green-100">
-                <p className="text-[12px] text-slate-700 font-medium">
-                  Keep it in your sorted bags. When suburb volume unlocks a run, bag out — we take them to a refund point.
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="px-5 py-4 border-t border-slate-100">
-          <div className="flex gap-2">
-            <button onClick={retake}
-              className="flex-1 py-3.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-[13px] flex items-center justify-center gap-2 min-h-[48px]"
-              style={{ touchAction: "manipulation" }}>
-              <RotateCcw className="w-4 h-4" /> Retake
-            </button>
-            {total > 0 ? (
-              <button onClick={confirm}
-                disabled={confirming}
-                className="flex-[2] bg-gradient-to-b from-green-500 to-green-600 text-white font-extrabold py-3.5 rounded-xl text-[15px] shadow-lg shadow-green-600/20 disabled:opacity-50 flex items-center justify-center gap-2 min-h-[48px]"
-                style={{ touchAction: "manipulation" }}>
-                <Check className="w-5 h-5" /> {confirming ? "Saving..." : <>Done &middot; +{displayCents}c</>}
-              </button>
-            ) : (
-              <button onClick={() => window.location.href = "/sort"}
-                className="flex-1 py-3.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-[13px] flex items-center justify-center gap-2 min-h-[48px]"
-                style={{ touchAction: "manipulation" }}>
-                <Home className="w-4 h-4" /> Home
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -921,50 +1140,139 @@ function ScanPageContent() {
   }
 
   // ════════════════════════════════════
-  // CAMERA VIEW
+  // EDGE-TO-EDGE APPLE CAMERA VIEW
   // ════════════════════════════════════
   return (
-    <div className="fixed inset-0 bg-black flex flex-col z-50">
-      {/* Top bar + Photo / Barcode mode toggle */}
-      <div className="flex-shrink-0 px-5 pb-2 bg-black flex items-center justify-between gap-2" style={{ paddingTop: "calc(env(safe-area-inset-top, 16px) + 0.25rem)" }}>
-        <p className="text-[15px] text-white font-display font-bold truncate">
-          {bin ? bin.name : "Scan a container · 10¢"}
-        </p>
-        {!bin && (
-          <div role="group" aria-label="Scanner mode" className="inline-flex rounded-full bg-white/10 p-1 border border-white/15 shrink-0">
+    <div className="fixed inset-0 bg-black flex flex-col z-50 overflow-hidden select-none">
+      {/* Full-bleed edge-to-edge live camera feed */}
+      <video
+        ref={videoRef}
+        className="absolute inset-0 w-full h-full object-cover"
+        playsInline
+        muted
+        autoPlay
+        style={{ WebkitTransform: "translateZ(0)" }}
+      />
+      <canvas ref={canvasRef} className="hidden" />
+
+      {/* Subtle top & bottom gradient scrims so floating glass HUD stays crisp in any light */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-32 z-10"
+        style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.58) 0%, rgba(0,0,0,0) 100%)" }}
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-52 z-10"
+        style={{ background: "linear-gradient(0deg, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.28) 58%, rgba(0,0,0,0) 100%)" }}
+      />
+
+      {/* Shutter pulse flash on capture */}
+      {shutterFlash && (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-white z-30 animate-shutter-flash" />
+      )}
+
+      {/* Precision translucent viewfinder brackets */}
+      {cameraReady && (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-10 pb-20">
+          <div className={`relative w-full max-w-[270px] ${scanMode === "barcode" ? "h-40" : "aspect-[3/4] max-h-[340px]"} transition-all duration-300`}>
+            <div className="absolute top-0 left-0 w-7 h-7 border-t-2 border-l-2 border-white/80 rounded-tl-2xl" />
+            <div className="absolute top-0 right-0 w-7 h-7 border-t-2 border-r-2 border-white/80 rounded-tr-2xl" />
+            <div className="absolute bottom-0 left-0 w-7 h-7 border-b-2 border-l-2 border-white/80 rounded-bl-2xl" />
+            <div className="absolute bottom-0 right-0 w-7 h-7 border-b-2 border-r-2 border-white/80 rounded-br-2xl" />
+            {scanMode === "barcode" && (
+              <div className="absolute inset-x-4 top-1/2 -translate-y-1/2 h-[2px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_12px_rgba(52,211,153,0.85)]" />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Floating Apple Liquid Glass Top HUD */}
+      <div
+        className="relative z-20 flex-shrink-0 px-4 flex items-center justify-between gap-2"
+        style={{ paddingTop: "max(14px, env(safe-area-inset-top, 14px))" }}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            if (sessionBatch.count > 0) finishBatchSession();
+            else window.location.href = "/sort";
+          }}
+          aria-label="Close scanner"
+          className="h-11 w-11 rounded-full liquid-glass-pill flex items-center justify-center text-white active:scale-95 transition-transform shrink-0"
+          style={{ touchAction: "manipulation" }}
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        {!bin ? (
+          <div role="group" aria-label="Scanner mode" className="inline-flex rounded-full liquid-glass-dock p-1 shrink-0">
             <button
               type="button"
               onClick={() => { setScanMode("photo"); setBarcodeError(""); }}
-              className={`min-h-[38px] px-3.5 py-1.5 rounded-full text-[12px] font-bold transition-colors ${scanMode === "photo" ? "bg-white text-slate-900" : "text-white/80"}`}
+              className={`min-h-[36px] px-3.5 py-1.5 rounded-full text-[12px] font-bold transition-all ${scanMode === "photo" ? "bg-white text-slate-950 shadow-sm" : "text-white/85"}`}
             >
               Photo AI
             </button>
             <button
               type="button"
               onClick={() => { setScanMode("barcode"); setBarcodeError(""); }}
-              className={`min-h-[38px] px-3.5 py-1.5 rounded-full text-[12px] font-bold transition-colors flex items-center gap-1 ${scanMode === "barcode" ? "bg-white text-slate-900" : "text-white/80"}`}
+              className={`min-h-[36px] px-3.5 py-1.5 rounded-full text-[12px] font-bold transition-all flex items-center gap-1 ${scanMode === "barcode" ? "bg-white text-slate-950 shadow-sm" : "text-white/85"}`}
             >
               <ScanBarcode className="w-3.5 h-3.5" /> Barcode
             </button>
           </div>
+        ) : (
+          <p className="rounded-full liquid-glass-pill px-4 py-2 text-[13px] text-white font-display font-bold truncate">
+            {bin.name}
+          </p>
+        )}
+
+        {torchSupported ? (
+          <button
+            type="button"
+            onClick={toggleTorch}
+            aria-label={torchOn ? "Turn flashlight off" : "Turn flashlight on"}
+            aria-pressed={torchOn}
+            className={`h-11 w-11 rounded-full flex items-center justify-center transition-all active:scale-95 shrink-0 ${
+              torchOn
+                ? "bg-amber-300 text-slate-950 shadow-[0_0_18px_rgba(252,211,77,0.7)]"
+                : "liquid-glass-pill text-white"
+            }`}
+            style={{ touchAction: "manipulation" }}
+          >
+            {torchOn ? <Zap className="w-5 h-5" /> : <ZapOff className="w-5 h-5" />}
+          </button>
+        ) : (
+          <span className="h-11 w-11 shrink-0" aria-hidden="true" />
         )}
       </div>
 
-      {/* Camera feed */}
-      <div className="flex-1 relative overflow-hidden">
-        <video
-          ref={videoRef}
-          className="absolute inset-0 w-full h-full object-cover"
-          playsInline
-          muted
-          autoPlay
-          style={{ WebkitTransform: "translateZ(0)" }}
-        />
-        <canvas ref={canvasRef} className="hidden" />
-        {scanMode === "barcode" && (
-          <div className="absolute inset-x-4 bottom-4 bg-black/75 backdrop-blur-md border border-white/15 rounded-2xl p-3.5 text-white">
-            <p className="text-[12px] font-semibold mb-2">
-              Point camera at barcode — or type the 8–13 digit barcode (works offline):
+      {/* Rapid-Fire Feedback Toast Pill */}
+      {batchToast && (
+        <div className="relative z-20 px-4 mt-3 flex justify-center pointer-events-none">
+          <div
+            className={`max-w-sm rounded-2xl px-4 py-2.5 text-center shadow-xl animate-tab-in ${
+              batchToast.refused
+                ? "bg-red-500/90 border border-red-200/50 text-white"
+                : "liquid-glass-emerald text-white"
+            }`}
+          >
+            <p className="text-[13px] font-display font-extrabold leading-tight">{batchToast.title}</p>
+            <p className="text-[11px] text-white/90 mt-0.5">{batchToast.subtitle}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Spacer pushing barcode tray + session bar + bottom controls cleanly to the bottom */}
+      <div className="flex-1" />
+
+      {/* Rapid Barcode Manual Input Drawer */}
+      {scanMode === "barcode" && (
+        <div className="relative z-20 px-4 mb-3 max-w-md w-full mx-auto">
+          <div className="liquid-glass-dock rounded-2xl p-3.5 text-white">
+            <p className="text-[12px] font-semibold mb-2 text-white/90">
+              Aim at barcode — or enter 8–13 digits (rapid batch &amp; offline ready):
             </p>
             <form
               onSubmit={(e) => { e.preventDefault(); void processBarcode(manualBarcode); }}
@@ -978,63 +1286,99 @@ function ScanPageContent() {
                 onChange={(e) => setManualBarcode(e.target.value.replace(/\D/g, ""))}
                 placeholder="e.g. 9300675024235"
                 maxLength={14}
-                className="flex-1 min-h-[44px] bg-white/10 border border-white/20 rounded-xl px-3.5 py-2.5 text-base text-white placeholder-white/40 focus:outline-none focus:border-green-400"
+                className="flex-1 min-h-[44px] bg-white/95 border border-white/80 rounded-xl px-3.5 py-2.5 text-base text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400"
               />
               <button
                 type="submit"
                 disabled={barcodeBusy || manualBarcode.length < 8}
-                className="bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white font-bold px-4 py-2.5 rounded-xl text-[14px] min-h-[44px]"
+                className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-extrabold px-4 py-2.5 rounded-xl text-[14px] min-h-[44px]"
               >
                 {barcodeBusy ? "..." : "Add"}
               </button>
             </form>
-            {barcodeError && <p className="text-red-300 text-[11px] mt-1.5">{barcodeError}</p>}
+            {barcodeError && <p className="text-red-200 text-[11px] mt-1.5">{barcodeError}</p>}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Bottom controls — always visible */}
-      <div className="flex-shrink-0 bg-black" style={{ paddingBottom: "max(20px, env(safe-area-inset-bottom, 20px))" }}>
-        <div className="flex items-center justify-center gap-6 py-4">
-          {/* File input — always available, primary when camera not ready */}
+      {/* Floating Multi-Can Batch Session Tray */}
+      {sessionBatch.count > 0 && (
+        <div className="relative z-20 px-4 mb-3 max-w-md w-full mx-auto">
+          <div className="rounded-full liquid-glass-emerald pl-4 pr-2 py-2 flex items-center justify-between gap-3 shadow-xl">
+            <div className="min-w-0">
+              <p className="text-[13px] font-display font-extrabold text-white tabular-nums truncate">
+                {sessionBatch.count} {sessionBatch.count === 1 ? "can" : "cans"} banked &middot; +${(sessionBatch.cents / 100).toFixed(2)}
+              </p>
+              {sessionBatch.lastBag && (
+                <p className="text-[11px] text-emerald-100 truncate">
+                  Last: {sessionBatch.lastBag}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={finishBatchSession}
+              className="min-h-[38px] px-4 py-1.5 rounded-full bg-white text-slate-950 font-extrabold text-[13px] shadow-sm active:scale-95 transition-transform shrink-0"
+            >
+              Finish &rarr;
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom Floating Camera Controls */}
+      <div className="relative z-20 flex-shrink-0 px-4" style={{ paddingBottom: "max(20px, env(safe-area-inset-bottom, 20px))" }}>
+        <div className="flex items-center justify-center gap-7 py-3">
+          {/* Gallery / file fallback — primary big emerald circle when camera not ready */}
           <label
             aria-label={cameraReady ? "Choose a photo from your gallery" : "Take or choose a photo of your container"}
-            className={`rounded-full flex items-center justify-center cursor-pointer transition-all ${
-            !cameraReady ? "w-[72px] h-[72px] bg-green-500 shadow-lg" : "w-12 h-12 bg-white/10"
-          }`} style={{ touchAction: "manipulation" }}>
-            <ImagePlus className={`${!cameraReady ? "w-8 h-8 text-white" : "w-5 h-5 text-white/60"}`} />
+            className={`rounded-full flex items-center justify-center cursor-pointer transition-all active:scale-95 ${
+              !cameraReady ? "w-[74px] h-[74px] bg-gradient-to-b from-emerald-400 to-emerald-600 shadow-[0_0_24px_rgba(16,185,129,0.55)]" : "w-12 h-12 liquid-glass-pill"
+            }`}
+            style={{ touchAction: "manipulation" }}
+          >
+            <ImagePlus className={`${!cameraReady ? "w-8 h-8 text-slate-950" : "w-5 h-5 text-white"}`} />
             <input type="file" accept="image/*" capture={cameraReady ? undefined : "environment"} className="hidden" onChange={handleFileCapture} />
           </label>
 
-          {/* Main capture button — only when camera is live */}
+          {/* Apple-style tactile shutter ring when camera is live */}
           {cameraReady && (
             <button
+              type="button"
               onClick={capture}
               aria-label="Capture photo"
-              className="rounded-full bg-white active:scale-90 transition-transform"
-              style={{ width: "72px", height: "72px", border: "4px solid rgba(255,255,255,0.4)", touchAction: "manipulation" }}
-            />
+              className="w-[74px] h-[74px] rounded-full border-[4px] border-white/90 p-1.5 flex items-center justify-center active:scale-90 transition-transform shadow-2xl"
+              style={{ touchAction: "manipulation" }}
+            >
+              <span className="w-full h-full rounded-full bg-white block" />
+            </button>
           )}
 
-          {/* Home button */}
-          <button onClick={() => window.location.href = "/sort"}
-            aria-label="Close scanner"
-            className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center"
-            style={{ touchAction: "manipulation" }}>
-            <X className="w-5 h-5 text-white/60" />
+          {/* Home shortcut (or Finish if batch active) */}
+          <button
+            type="button"
+            onClick={() => {
+              if (sessionBatch.count > 0) finishBatchSession();
+              else window.location.href = "/sort";
+            }}
+            aria-label={sessionBatch.count > 0 ? "Finish scanning session" : "Return to home dashboard"}
+            className="w-12 h-12 rounded-full liquid-glass-pill flex items-center justify-center text-white active:scale-95 transition-transform"
+            style={{ touchAction: "manipulation" }}
+          >
+            <Home className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Status text */}
-        <p className="text-white/50 text-[12px] text-center pb-1 px-4">
+        {/* Mode-aware concise camera status */}
+        <p className="text-white/80 text-[12px] font-medium text-center pb-1 px-4 glass-text-shadow">
           {scanMode === "barcode"
             ? cameraReady
-              ? "Aim at a container barcode, or enter the digits above"
+              ? "Aim at a container barcode — rapid scans bank automatically"
               : "Type the barcode above, or tap the green button for a photo"
             : cameraDenied
             ? "Camera blocked — tap the green button to use your photo gallery"
             : cameraReady
-            ? "Tap the white button to capture, or use the gallery"
+            ? "Tap the shutter to capture, or switch to Barcode for rapid batching"
             : "Tap the green button to take a photo"}
         </p>
       </div>
