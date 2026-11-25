@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ShieldCheck, ChevronRight, Recycle, Banknote, Truck, ArrowDown, Check, MapPin, Home } from "lucide-react";
+import { ShieldCheck, ChevronRight, Recycle, Banknote, Truck, ArrowDown, Check, MapPin, Home, ScanBarcode } from "lucide-react";
 import { launchBonusHeadline } from "@/lib/credit";
 import { apiUrl, clearAuth, hasValidToken, persistWaitlistFromUrl, readDayHint, readReferrerId, readStoredProfile, waitlistContinuePath, writeDayHint } from "@/lib/config";
 import { track } from "@/lib/analytics";
-import { BCC_BIN_DAY_DATASET, LIVE_VOLUME_THRESHOLD, dayClusterStats, daySlug, findSuburb, inviteMessage, sameSuburb, streetInviteUrl, type GrowthSuburb } from "@/lib/brisbane";
+import { BCC_BIN_DAY_DATASET, LIVE_VOLUME_THRESHOLD, dayClusterStats, daySlug, findSuburb, inviteMessage, sameSuburb, streetInviteUrl, titleSuburb, type GrowthSuburb } from "@/lib/brisbane";
 import { Logo } from "@/app/components/shared/logo";
 import { HeroKerbsideCard, SortAnimation } from "@/app/components/shared/sort-animation";
 import { InviteActions } from "@/app/components/shared/invite-actions";
@@ -224,71 +225,187 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
     );
   }
 
-  return (
-    <div className="min-h-dvh bg-white overflow-y-auto overscroll-none" style={{ paddingTop: "env(safe-area-inset-top,0)" }}>
-      <section className="relative min-h-[88svh] overflow-hidden px-6 py-8 flex items-center bg-gradient-to-br from-white via-violet-50 to-emerald-50">
-        <div className="relative z-10 w-full max-w-6xl mx-auto lg:grid lg:grid-cols-2 lg:gap-12 lg:items-center">
-          <div>
-          <div className="mb-9"><Logo size="lg" /></div>
+  const heroSuburbs = (() => {
+    const liveList = (growth?.suburbs ?? [])
+      .filter((s) => s.suburb && s.suburb !== "UNKNOWN")
+      .slice(0, 3)
+      .map((s) => ({
+        name: titleSuburb(s.suburb),
+        slug: findSuburb(s.suburb)?.slug ?? s.suburb.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+        containers: s.containers ?? 0,
+        live: Boolean(s.live),
+      }));
+    if (liveList.length >= 3) return liveList;
+    const defaults = [
+      { name: "Moorooka", slug: "moorooka", containers: 0, live: false },
+      { name: "Annerley", slug: "annerley", containers: 0, live: false },
+      { name: "Tarragindi", slug: "tarragindi", containers: 0, live: false },
+    ];
+    for (const d of defaults) {
+      if (liveList.length >= 3) break;
+      if (!liveList.some((x) => x.slug === d.slug)) liveList.push(d);
+    }
+    return liveList;
+  })();
 
-          <div className="inline-flex items-center gap-2 bg-white/82 text-violet-800 text-[12px] font-semibold px-3.5 py-1.5 rounded-full mb-6 border border-violet-200">
-            <MapPin className="w-3.5 h-3.5" /> {suburbName ? `${suburbName} · scan first` : "Brisbane · scan first"}
+  return (
+    <div className="min-h-dvh bg-white overflow-y-auto overscroll-none">
+      {/* ══════════════════ FULL-BLEED APPLE LIQUID GLASS HERO ══════════════════ */}
+      <section
+        className="relative min-h-[92svh] overflow-hidden flex flex-col justify-between text-white"
+        style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}
+      >
+        {/* Full-bleed sunlit Brisbane Queenslander veranda backdrop */}
+        <div className="absolute inset-0 z-0 select-none pointer-events-none" aria-hidden="true">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/images/brisbane-veranda-glass.webp"
+            alt=""
+            className="h-full w-full object-cover object-center"
+          />
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                "linear-gradient(180deg, rgba(6,15,17,0.40) 0%, rgba(7,16,18,0.28) 42%, rgba(6,16,15,0.74) 100%)",
+            }}
+          />
+        </div>
+
+        {/* Floating Apple iOS 26 Liquid Glass Top Bar */}
+        <header className="relative z-10 w-full max-w-6xl mx-auto px-5 sm:px-8 pt-1 pb-4 flex items-center justify-between gap-3">
+          <Link href="/" className="inline-flex items-center gap-2.5 min-h-[44px]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/images/tgs-glass-icon.webp"
+              alt=""
+              aria-hidden="true"
+              width={32}
+              height={32}
+              className="h-8 w-8 rounded-[9px] shadow-md"
+            />
+            <span className="font-display font-extrabold text-[17px] tracking-tight text-white glass-text-shadow">
+              thegoodsort.org
+            </span>
+          </Link>
+
+          <nav
+            aria-label="Primary navigation"
+            className="hidden md:inline-flex items-center gap-1 rounded-full liquid-glass-pill p-1"
+          >
+            <Link
+              href="/scan"
+              className="min-h-[36px] px-4 py-1.5 rounded-full bg-white/95 text-slate-950 text-[13px] font-bold shadow-sm inline-flex items-center"
+            >
+              Scan
+            </Link>
+            <Link
+              href="/marketplace#suburb-map"
+              className="min-h-[36px] px-4 py-1.5 rounded-full text-white/90 hover:text-white hover:bg-white/10 text-[13px] font-semibold inline-flex items-center transition-colors"
+            >
+              Suburbs
+            </Link>
+            <Link
+              href="/bags"
+              className="min-h-[36px] px-4 py-1.5 rounded-full text-white/90 hover:text-white hover:bg-white/10 text-[13px] font-semibold inline-flex items-center transition-colors"
+            >
+              Bags
+            </Link>
+            <Link
+              href="/runner/signup"
+              className="min-h-[36px] px-4 py-1.5 rounded-full text-white/90 hover:text-white hover:bg-white/10 text-[13px] font-semibold inline-flex items-center transition-colors"
+            >
+              Runners
+            </Link>
+          </nav>
+
+          <button
+            type="button"
+            onClick={() => {
+              track("waitlist_cta", { suburb: place });
+              if (hasValidToken()) { void waitlistContinuePath().then((path) => router.push(path)); return; }
+              setShowAuth(true);
+            }}
+            className="min-h-[42px] px-4 py-2 rounded-full liquid-glass-pill text-[13px] font-bold text-white hover:bg-white/25 active:scale-[0.97] transition-all"
+          >
+            Start Free
+          </button>
+        </header>
+
+        {/* Centerpiece Hero Typography + Liquid Glass Scan Capsule */}
+        <div className="relative z-10 w-full max-w-3xl mx-auto px-5 sm:px-8 py-8 sm:py-12 text-center">
+          <div className="inline-flex items-center gap-2 liquid-glass-pill text-white text-[12px] font-semibold px-3.5 py-1.5 rounded-full mb-5">
+            <MapPin className="w-3.5 h-3.5 text-emerald-300" />
+            <span>{suburbName ? `${suburbName} · 10¢ at your door` : "Brisbane · 10¢ at your door"}</span>
           </div>
 
           {inviteFrom && (
-            <p className="max-w-xl mb-5 text-[15px] font-semibold text-violet-900 bg-violet-50/90 border border-violet-200 rounded-2xl px-4 py-3">
+            <p className="max-w-xl mx-auto mb-5 text-[14px] font-semibold text-white liquid-glass-emerald rounded-2xl px-4 py-3">
               {inviteFrom.name} invited you{suburbName ? ` to scan in ${suburbName}` : ""}. Join and scan — suburb volume unlocks a driver trip.
             </p>
           )}
 
-          <h1 className="text-[40px] sm:text-[60px] max-w-2xl leading-[0.98] font-display font-extrabold text-slate-950 mb-6">
+          <h1 className="text-[40px] sm:text-[62px] leading-[1.02] font-display font-extrabold tracking-[-0.03em] text-white glass-text-shadow mb-4">
             Scan, sort, skip the depot.
           </h1>
-          <p className="text-slate-700 text-[17px] sm:text-[19px] leading-relaxed mb-4 max-w-xl">
+          <p className="text-white/90 text-[16px] sm:text-[19px] leading-relaxed max-w-xl mx-auto mb-6 glass-text-shadow">
             Scan a can, earn 10¢. We collect from your kerb — you never drive to a depot.
           </p>
-          {/* The badge depends on /api/growth/brisbane, so on first paint it is
-              absent and everything below sits higher — then it pops in and
-              shoves the primary CTA down, under a finger already reaching for
-              it. Reserve its row while the answer is unknown.
 
-              The placeholder is a copy of the badge rather than a min-height,
-              so the reserved box matches whatever the badge's own padding and
-              line-height work out to, with no measured constant to drift. It
-              collapses once we know the promo is off, so a permanently-off
-              promo does not leave dead space forever. */}
-          {growth === null ? (
-            <p aria-hidden className="inline-block rounded-full text-[13px] font-semibold px-4 py-2 mb-6 opacity-0 select-none">
-              {launchBonusHeadline(20)}
-            </p>
-          ) : (
-            launchBonusHeadline(growth.launchBonusContainers) && (
-              <p className="inline-block rounded-full bg-violet-100 text-violet-900 text-[13px] font-semibold px-4 py-2 mb-6">
-                {launchBonusHeadline(growth.launchBonusContainers)}
-              </p>
-            )
-          )}
-          <p className="text-slate-500 text-[13px] mb-8 max-w-xl">
-            A 10¢ sorting credit paid after pickup and depot verification. <a href="/terms" className="underline text-violet-800">How it works</a>.
-          </p>
+          {/* Primary Liquid Glass Scan Action Capsule */}
+          <div className="max-w-lg mx-auto mb-3">
+            <button
+              type="button"
+              onClick={() => { track("waitlist_cta", { suburb: place }); router.push("/scan"); }}
+              className="w-full min-h-[60px] rounded-full liquid-glass pl-6 pr-2 py-2 flex items-center justify-between gap-3 text-left group active:scale-[0.99] transition-transform"
+            >
+              <div className="min-w-0">
+                <p className="text-[15px] sm:text-[16px] font-display font-bold text-white truncate">
+                  Scan a container · earn 10¢
+                </p>
+                <p className="text-[12px] text-white/75 truncate">
+                  Moorooka, Annerley, Tarragindi &amp; Brisbane suburbs
+                </p>
+              </div>
+              <span className="h-11 w-11 shrink-0 rounded-full bg-white text-slate-950 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
+                <ScanBarcode className="w-5 h-5" />
+              </span>
+            </button>
 
-          <div className="w-full max-w-xs">
-            <GreenButton onClick={() => { track("waitlist_cta", { suburb: place }); router.push("/scan"); }}>
-              Scan a container <ChevronRight className="w-5 h-5 inline ml-1" />
-            </GreenButton>
-            <button type="button" onClick={() => {
-              track("waitlist_cta", { suburb: place });
-              if (hasValidToken()) { void waitlistContinuePath().then((path) => router.push(path)); return; }
-              setShowAuth(true);
-            }} className="block w-full min-h-[44px] mt-2 py-2.5 text-left sm:text-center text-green-700 text-[13px] font-semibold hover:text-green-800 transition-colors">
+            <button
+              type="button"
+              onClick={() => {
+                track("waitlist_cta", { suburb: place });
+                if (hasValidToken()) { void waitlistContinuePath().then((path) => router.push(path)); return; }
+                setShowAuth(true);
+              }}
+              className="inline-flex items-center justify-center min-h-[44px] mt-2 px-4 py-2 text-white/90 hover:text-white text-[13px] font-semibold transition-colors glass-text-shadow"
+            >
               No container handy? Join your suburb waitlist or sign in →
             </button>
           </div>
 
+          {growth === null ? (
+            <p aria-hidden className="inline-block rounded-full text-[12px] font-semibold px-4 py-1.5 opacity-0 select-none">
+              {launchBonusHeadline(20)}
+            </p>
+          ) : (
+            launchBonusHeadline(growth.launchBonusContainers) && (
+              <p className="inline-block rounded-full liquid-glass-emerald text-emerald-100 text-[12px] font-semibold px-4 py-1.5 mb-2">
+                {launchBonusHeadline(growth.launchBonusContainers)}
+              </p>
+            )
+          )}
+
+          <p className="text-white/75 text-[12px] max-w-md mx-auto">
+            A 10¢ sorting credit paid after pickup and depot verification.{" "}
+            <a href="/terms" className="underline text-white hover:text-emerald-200">How it works</a>.
+          </p>
+
           {place && (
-            <div className="mt-10 max-w-md bg-white/85 border border-violet-200 rounded-2xl px-4 py-3">
-              <p className="text-[12px] text-slate-500 uppercase tracking-wider mb-1">{place}</p>
-              <p className="text-[15px] font-semibold text-slate-900">
+            <div className="mt-6 max-w-md mx-auto liquid-glass rounded-2xl px-4 py-3.5 text-left">
+              <p className="text-[11px] font-bold text-emerald-200 uppercase tracking-wider mb-1">{place}</p>
+              <p className="text-[15px] font-semibold text-white">
                 {dayLive
                   ? `Enough containers for a driver trip — bag out when we collect.`
                   : scanned === 0
@@ -300,13 +417,52 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
               </div>
             </div>
           )}
+        </div>
 
-          <div className="mt-10 text-slate-500 animate-bounce lg:hidden">
+        {/* Bottom Floating Translucent Liquid Glass Suburb Cards (matching 2D inspiration) */}
+        <div className="relative z-10 w-full max-w-6xl mx-auto px-5 sm:px-8 pb-7">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {heroSuburbs.map((s) => {
+              const progressPct = Math.min(100, Math.round((s.containers / LIVE_VOLUME_THRESHOLD) * 100));
+              return (
+                <Link
+                  key={s.slug}
+                  href={`/brisbane/${s.slug}`}
+                  className={`${s.live ? "liquid-glass-emerald" : "liquid-glass"} rounded-[22px] p-4 flex flex-col justify-between gap-2.5 hover:scale-[1.01] active:scale-[0.99] transition-transform`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[16px] font-display font-bold text-white truncate">
+                      {s.name}
+                    </p>
+                    <span
+                      className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                        s.live
+                          ? "bg-emerald-400/90 text-slate-950"
+                          : "bg-emerald-500/35 border border-emerald-200/40 text-emerald-100"
+                      }`}
+                    >
+                      {s.live ? "Ready" : "Forming"}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-[12px] text-white/85 tabular-nums mb-1.5">
+                      {s.containers > 0
+                        ? `${s.containers.toLocaleString()} / ${LIVE_VOLUME_THRESHOLD.toLocaleString()} cans`
+                        : `1,000 cans unlocks kerb pickup`}
+                    </p>
+                    <div className="h-1.5 rounded-full bg-white/15 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-emerald-400"
+                        style={{ width: `${Math.max(progressPct, s.containers > 0 ? 6 : 4)}%` }}
+                      />
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+          <div className="mt-4 text-white/70 animate-bounce sm:hidden">
             <ArrowDown className="w-5 h-5 mx-auto" />
-          </div>
-          </div>
-          <div className="hidden lg:block pt-4">
-            <HeroKerbsideCard suburbName={suburbName} />
           </div>
         </div>
       </section>
@@ -336,8 +492,9 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
         </div>
       </section>
 
-      <section id="how-it-works" className="px-6 py-14 max-w-lg mx-auto">
+      <section id="how-it-works" className="px-6 py-14 max-w-2xl mx-auto">
         <h2 className="text-center text-[12px] text-slate-400 font-semibold uppercase tracking-[0.15em] mb-3">How it works</h2>
+        <div className="hidden lg:block mb-8"><HeroKerbsideCard suburbName={suburbName} /></div>
         <div className="mb-10"><SortAnimation /></div>
 
         <div className="relative">

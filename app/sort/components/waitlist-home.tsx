@@ -177,24 +177,41 @@ export function WaitlistHome({
   }
 
   return (
-    <div className="min-h-dvh bg-[#f4f5f7] text-slate-900 pb-28">
-      <div className="mx-auto w-full max-w-[430px]">
+    <div className="relative min-h-dvh text-white pb-28 overflow-x-clip">
+      {/* Full-bleed golden-hour Brisbane veranda backdrop so Liquid Glass refracts real light, timber & greenery */}
+      <div className="fixed inset-0 z-0 pointer-events-none select-none overflow-hidden" aria-hidden="true">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/images/brisbane-veranda-glass.webp"
+          alt=""
+          className="h-full w-full object-cover object-center scale-[1.03]"
+        />
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "linear-gradient(180deg, rgba(6,15,17,0.42) 0%, rgba(8,18,18,0.36) 44%, rgba(5,14,14,0.68) 100%)",
+          }}
+        />
+      </div>
+
+      <div className="relative z-10 mx-auto w-full max-w-[430px]">
         {/* ══════════════════ TAB 1: HOME ══════════════════ */}
         {activeTab === "home" && (
           <div className="px-5" style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top))" }}>
-            {/* Top Bar: Help pill (left) + Metallic Tier Card pill (right) */}
-            <div className="flex items-center justify-between mb-6">
+            {/* Top Bar: Liquid Glass Help pill (left) + Card pill (right) */}
+            <div className="flex items-center justify-between mb-5">
               <Link
                 href="/guides/containers-for-change-brisbane"
-                className="inline-flex items-center gap-1.5 min-h-[40px] rounded-full bg-white px-3.5 py-2 text-[13px] font-semibold text-slate-800 shadow-[0_2px_8px_rgba(15,23,42,0.06)] active:scale-[0.97] transition-transform"
+                className="inline-flex items-center gap-1.5 min-h-[40px] rounded-full liquid-glass-pill px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-white/25 active:scale-[0.97] transition-all"
               >
-                <HelpCircle className="w-4 h-4 text-slate-600" />
+                <HelpCircle className="w-4 h-4 text-white/85" />
                 Help
               </Link>
               <button
                 type="button"
                 onClick={() => setActiveTab("profile")}
-                className={`inline-flex items-center gap-1.5 min-h-[40px] rounded-full px-3.5 py-2 text-[13px] font-bold shadow-[0_2px_10px_rgba(15,23,42,0.1)] active:scale-[0.97] transition-transform ${summary.tier.pillClass}`}
+                className="inline-flex items-center gap-1.5 min-h-[40px] rounded-full liquid-glass-pill px-3.5 py-2 text-[13px] font-bold text-white hover:bg-white/25 active:scale-[0.97] transition-all"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -210,50 +227,60 @@ export function WaitlistHome({
             </div>
 
             {/* Calm Personal Greeting */}
-            <h1 className="text-[28px] leading-tight font-display font-bold tracking-tight text-slate-900 mb-4">
+            <h1 className="text-[28px] leading-tight font-display font-bold tracking-tight text-white glass-text-shadow mb-4">
               Hi {firstName}
             </h1>
 
-            {/* Elevated White Balance & Containers Hero Strip */}
+            {/* Refractive Liquid Glass Balance & Containers Hero Card */}
             <button
               type="button"
               onClick={() => setActiveTab("profile")}
-              className="w-full text-left rounded-[24px] bg-white px-5 py-4 shadow-[0_2px_12px_rgba(15,23,42,0.05)] flex items-center justify-between gap-3 mb-7 active:scale-[0.99] transition-transform"
+              className={`w-full text-left rounded-[26px] ${
+                summary.totalContainers > 0 ? "liquid-glass-emerald" : "liquid-glass"
+              } p-5 mb-6 active:scale-[0.99] transition-transform`}
             >
-              <div className="flex items-center gap-6 min-w-0">
-                <div>
-                  <p className="text-[12px] font-medium text-slate-500">
-                    {user.clearedCents > 0 ? "Balance" : "Pending"}
-                  </p>
-                  <p className="text-[24px] leading-tight font-display font-bold text-slate-900 tabular-nums mt-0.5 tracking-[-0.02em]">
-                    {formatCents(summary.totalCreditCents)}
-                  </p>
-                </div>
-                <div className="h-9 w-px bg-slate-200/80" />
-                <div>
-                  <p className="text-[12px] font-medium text-slate-500">Containers</p>
-                  <div className="flex items-baseline gap-1.5 mt-0.5">
-                    <p className="text-[24px] leading-tight font-display font-bold text-slate-900 tabular-nums tracking-[-0.02em]">
-                      {summary.totalContainers.toLocaleString()}
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-5 min-w-0">
+                  <div>
+                    <p className="text-[12px] font-medium text-white/80">
+                      {user.clearedCents > 0 ? "Balance" : "Pending"}
                     </p>
-                    <span className="text-[11px] font-semibold text-emerald-700 tabular-nums">
-                      · {summary.goodSortPoints.toLocaleString()} pts
-                    </span>
+                    <p className="text-[30px] leading-tight font-display font-extrabold text-white tabular-nums mt-0.5 tracking-[-0.03em] glass-text-shadow">
+                      {formatCents(summary.totalCreditCents)}
+                    </p>
+                  </div>
+                  <div className="h-10 w-px bg-white/25" />
+                  <div>
+                    <p className="text-[12px] font-medium text-white/80">Containers</p>
+                    <div className="flex items-baseline gap-1.5 mt-0.5">
+                      <p className="text-[24px] leading-tight font-display font-bold text-white tabular-nums tracking-[-0.02em]">
+                        {summary.totalContainers.toLocaleString()}
+                      </p>
+                      <span className="text-[11px] font-bold text-emerald-200 tabular-nums">
+                        · {summary.goodSortPoints.toLocaleString()} pts
+                      </span>
+                    </div>
                   </div>
                 </div>
+                <span className="shrink-0 rounded-full bg-emerald-400/25 border border-emerald-200/45 px-2.5 py-1 text-[11px] font-bold text-emerald-100">
+                  {live ? "Ready" : summary.tier.label}
+                </span>
               </div>
-              <div
-                className={`h-11 w-11 shrink-0 rounded-full bg-gradient-to-br ${summary.tier.medallionGradient} flex items-center justify-center shadow-inner`}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="/images/tgs-glass-icon.webp"
-                  alt=""
-                  aria-hidden="true"
-                  width={26}
-                  height={26}
-                  className="h-6 w-6 drop-shadow-[0_2px_4px_rgba(0,0,0,0.25)]"
-                />
+
+              {/* Embedded translucent suburb progress pill */}
+              <div className="mt-4 pt-3 border-t border-white/15">
+                <div className="flex items-center justify-between text-[11px] font-semibold text-white/85 mb-1.5">
+                  <span className="truncate">{place}</span>
+                  <span className="tabular-nums text-emerald-200 shrink-0 ml-2">
+                    {containers.toLocaleString()} / {LIVE_VOLUME_THRESHOLD.toLocaleString()} cans
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-black/25 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-300 transition-all"
+                    style={{ width: `${Math.max(pct, containers > 0 ? 4 : 2)}%` }}
+                  />
+                </div>
               </div>
             </button>
 
@@ -261,51 +288,55 @@ export function WaitlistHome({
             {residentialNeedsStreet(household) ? (
               <Link
                 href="/onboard"
-                className="mb-6 flex items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3.5 shadow-[0_2px_10px_rgba(15,23,42,0.05)]"
+                className="mb-6 flex items-center justify-between gap-3 rounded-2xl liquid-glass px-4 py-3.5 hover:bg-white/20 transition-colors"
               >
                 <div className="min-w-0">
-                  <p className="text-[13px] font-bold text-slate-900">Add home address &amp; payout</p>
-                  <p className="text-[11px] text-slate-500">So we can collect &amp; pay your 10¢ credits</p>
+                  <p className="text-[13px] font-bold text-white">Add home address &amp; payout</p>
+                  <p className="text-[11px] text-white/75">So we can collect &amp; pay your 10¢ credits</p>
                 </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                <ChevronRight className="w-4 h-4 text-white/75 shrink-0" />
               </Link>
             ) : hasPayoutDetails === false ? (
               <Link
                 href="/onboard"
-                className="mb-6 flex items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3.5 shadow-[0_2px_10px_rgba(15,23,42,0.05)]"
+                className="mb-6 flex items-center justify-between gap-3 rounded-2xl liquid-glass px-4 py-3.5 hover:bg-white/20 transition-colors"
               >
                 <div className="min-w-0">
-                  <p className="text-[13px] font-bold text-slate-900">Add PayID or bank details</p>
-                  <p className="text-[11px] text-slate-500">Ready for cashout once verified at depot</p>
+                  <p className="text-[13px] font-bold text-white">Add PayID or bank details</p>
+                  <p className="text-[11px] text-white/75">Ready for cashout once verified at depot</p>
                 </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                <ChevronRight className="w-4 h-4 text-white/75 shrink-0" />
               </Link>
             ) : null}
 
-            {/* Section: Sort and explore (4 unique actions — zero duplication with bottom tab bar) */}
-            <h2 className="text-[17px] font-display font-bold text-slate-900 mb-3.5 tracking-[-0.015em]">
+            {/* Section: Sort and explore (2x2 Apple Liquid Glass tile grid matching 2D inspiration) */}
+            <h2 className="text-[16px] font-display font-bold text-white/95 glass-text-shadow mb-3 tracking-[-0.015em]">
               Sort and explore
             </h2>
-            <div className="grid grid-cols-4 gap-3 mb-7">
-              <ActionTileLink
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <GlassTileLink
                 label="Home Bags"
+                caption="4-stream QR tags"
                 href="/bags"
-                icon={<Package className="w-6 h-6 text-blue-600" strokeWidth={1.75} />}
+                icon={<Package className="w-6 h-6 text-white" strokeWidth={1.75} />}
               />
-              <ActionTileLink
+              <GlassTileLink
                 label="Suburb Map"
+                caption="Live Brisbane pools"
                 href="/marketplace#suburb-map"
-                icon={<MapPin className="w-6 h-6 text-emerald-600" strokeWidth={1.75} />}
+                icon={<MapPin className="w-6 h-6 text-emerald-300" strokeWidth={1.75} />}
               />
-              <ActionTileLink
+              <GlassTileLink
                 label="Invite"
+                caption="+100 PTS per neighbour"
                 href="/invite"
-                icon={<Users className="w-6 h-6 text-amber-600" strokeWidth={1.75} />}
+                icon={<Users className="w-6 h-6 text-amber-200" strokeWidth={1.75} />}
               />
-              <ActionTileLink
+              <GlassTileLink
                 label="Household"
+                caption="Address & payouts"
                 href="/household"
-                icon={<Home className="w-6 h-6 text-slate-700" strokeWidth={1.75} />}
+                icon={<Home className="w-6 h-6 text-white" strokeWidth={1.75} />}
               />
             </div>
 
@@ -317,15 +348,15 @@ export function WaitlistHome({
                   setPickupsFilter("building");
                   setActiveTab("pickups");
                 }}
-                className="w-full text-left mb-6 rounded-2xl bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.06)] border border-emerald-100 flex items-center justify-between gap-3 active:scale-[0.99] transition-transform"
+                className="w-full text-left mb-6 rounded-2xl liquid-glass-emerald p-4 flex items-center justify-between gap-3 active:scale-[0.99] transition-transform"
               >
                 <div className="flex items-start gap-3 min-w-0">
-                  <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
+                  <div className="h-10 w-10 rounded-xl bg-white/15 border border-white/25 text-emerald-200 flex items-center justify-center shrink-0">
                     <Building2 className="w-5 h-5" />
                   </div>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <p className="text-[14px] font-display font-bold text-slate-900 truncate">
+                      <p className="text-[14px] font-display font-bold text-white truncate">
                         {syndicateData.myMembership.status === "approved"
                           ? syndicateData.syndicate.channelName
                           : syndicateData.myMembership.status === "pending"
@@ -333,17 +364,17 @@ export function WaitlistHome({
                             : "Building syndicate detected"}
                       </p>
                       {syndicateData.syndicate.status === "official" && (
-                        <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                        <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-400/25 border border-emerald-200/40 px-2 py-0.5 text-[10px] font-bold text-emerald-100">
                           <ShieldCheck className="w-3 h-3" /> Official
                         </span>
                       )}
                       {syndicateData.myMembership.canApprovePending && syndicateData.syndicate.pendingRequestsCount > 0 && (
-                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                        <span className="rounded-full bg-amber-400/90 px-2 py-0.5 text-[10px] font-bold text-slate-950">
                           {syndicateData.syndicate.pendingRequestsCount} to approve
                         </span>
                       )}
                     </div>
-                    <p className="text-[12px] text-slate-500 mt-0.5 truncate">
+                    <p className="text-[12px] text-white/80 mt-0.5 truncate">
                       {syndicateData.myMembership.status === "approved"
                         ? `${syndicateData.syndicate.totalContainers.toLocaleString()} cans (${formatCents(syndicateData.syndicate.potCents)}) · ${syndicateData.syndicate.approvedMembersCount} anonymous`
                         : syndicateData.myMembership.status === "pending"
@@ -354,24 +385,24 @@ export function WaitlistHome({
                     </p>
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                <ChevronRight className="w-4 h-4 text-white/75 shrink-0" />
               </button>
             )}
 
-            {/* Editorial Suburb Run Section (mirrors Flight deals photo card) */}
+            {/* Editorial Suburb Run Glass Card */}
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-[17px] font-display font-bold text-slate-900">
+              <h2 className="text-[16px] font-display font-bold text-white/95 glass-text-shadow">
                 Your suburb run
               </h2>
               <Link
                 href="/marketplace#suburb-map"
-                className="inline-flex items-center gap-0.5 min-h-[40px] rounded-full bg-white px-3.5 py-2 text-[12px] font-semibold text-slate-700 shadow-[0_1px_4px_rgba(15,23,42,0.06)]"
+                className="inline-flex items-center gap-0.5 min-h-[40px] rounded-full liquid-glass-pill px-3.5 py-2 text-[12px] font-semibold text-white hover:bg-white/25"
               >
                 View map <ChevronRight className="w-3.5 h-3.5" />
               </Link>
             </div>
 
-            <div className="overflow-hidden rounded-[24px] bg-white shadow-[0_2px_14px_rgba(15,23,42,0.06)] mb-5">
+            <div className="overflow-hidden rounded-[26px] liquid-glass mb-5">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/images/brisbane-kerbside-hero.webp"
@@ -380,20 +411,20 @@ export function WaitlistHome({
               />
               <div className="p-4">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-[17px] font-display font-bold text-slate-900">
+                  <p className="text-[17px] font-display font-bold text-white">
                     {building ? `${place} building pool` : `${place} kerbside run`}
                   </p>
-                  <span className="text-[12px] font-bold text-emerald-700 tabular-nums">
+                  <span className="text-[12px] font-bold text-emerald-300 tabular-nums">
                     {pct}%
                   </span>
                 </div>
-                <div className="h-2 bg-slate-100 rounded-full overflow-hidden mt-2.5 mb-2">
+                <div className="h-2 bg-black/25 rounded-full overflow-hidden mt-2.5 mb-2">
                   <div
-                    className="h-full bg-emerald-500 rounded-full transition-all"
+                    className="h-full bg-gradient-to-r from-emerald-400 to-teal-300 rounded-full transition-all"
                     style={{ width: `${Math.max(pct, containers > 0 ? 3 : 0)}%` }}
                   />
                 </div>
-                <p className="text-[13px] text-slate-500">
+                <p className="text-[13px] text-white/80">
                   {building
                     ? live
                       ? "Street volume has hit a driver trip. You do not count toward suburb volume."
@@ -402,14 +433,14 @@ export function WaitlistHome({
                       ? `${containers} containers — enough for a driver trip`
                       : `${containers.toLocaleString()}/${LIVE_VOLUME_THRESHOLD.toLocaleString()} containers${needed > 0 ? ` · ${needed.toLocaleString()} more to unlock a run` : ""}`}
                 </p>
-                <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
-                  <span className="text-[12px] font-medium text-slate-500">
-                    Balance · <strong className="text-slate-900">{formatCents(summary.totalCreditCents)}</strong>
+                <div className="mt-3 pt-2.5 border-t border-white/15 flex items-center justify-between">
+                  <span className="text-[12px] font-medium text-white/75">
+                    Balance · <strong className="text-white">{formatCents(summary.totalCreditCents)}</strong>
                   </span>
                   <button
                     type="button"
                     onClick={handleScanClick}
-                    className="inline-flex items-center min-h-[40px] px-2 -mr-2 text-[13px] font-bold text-emerald-700 hover:text-emerald-900"
+                    className="inline-flex items-center min-h-[40px] px-2 -mr-2 text-[13px] font-bold text-emerald-300 hover:text-emerald-200"
                   >
                     Scan a can →
                   </button>
@@ -417,16 +448,18 @@ export function WaitlistHome({
               </div>
             </div>
 
-            <CollectionNightCard
-              nextPickup={nextPickup}
-              confirmed={pickupConfirmed}
-              unlocked={live || household?.binStatus === "allocated"}
-              dayName={dayName}
-            />
+            <div className="text-slate-900">
+              <CollectionNightCard
+                nextPickup={nextPickup}
+                confirmed={pickupConfirmed}
+                unlocked={live || household?.binStatus === "allocated"}
+                dayName={dayName}
+              />
+            </div>
           </div>
         )}
 
-        {/* ══════════════════ TAB 2: PICKUPS (Mirrors Trips) ══════════════════ */}
+        {/* ══════════════════ TAB 2: PICKUPS ══════════════════ */}
         {activeTab === "pickups" && (
           <div className="px-5" style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top))" }}>
             <div className="flex items-center justify-end mb-1">
@@ -434,18 +467,18 @@ export function WaitlistHome({
                 type="button"
                 onClick={handleScanClick}
                 aria-label="Scan a container"
-                className="h-10 w-10 rounded-full bg-white shadow-[0_2px_10px_rgba(15,23,42,0.07)] flex items-center justify-center text-slate-800 active:scale-95 transition-transform"
+                className="h-10 w-10 rounded-full liquid-glass-pill flex items-center justify-center text-white active:scale-95 transition-transform"
               >
                 <Plus className="w-5 h-5" />
               </button>
             </div>
 
-            <h1 className="text-[32px] font-display font-bold tracking-tight text-slate-900 mb-4">
+            <h1 className="text-[32px] font-display font-bold tracking-tight text-white glass-text-shadow mb-4">
               Pickups
             </h1>
 
-            {/* Segmented Filter Pills (4-column iOS track — fits 360px+ with zero horizontal overflow) */}
-            <div className="grid grid-cols-4 gap-1 rounded-2xl bg-white p-1 shadow-[0_2px_10px_rgba(15,23,42,0.05)] mb-5">
+            {/* Segmented Filter Pills (4-column Liquid Glass track — fits 360px+ with zero horizontal overflow) */}
+            <div className="grid grid-cols-4 gap-1 rounded-2xl liquid-glass p-1 mb-5">
               {(
                 [
                   { id: "upcoming", label: "Upcoming", icon: <Truck className="w-3.5 h-3.5 shrink-0" /> },
@@ -462,8 +495,8 @@ export function WaitlistHome({
                     onClick={() => setPickupsFilter(pill.id)}
                     className={`min-h-[44px] flex flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-[11px] font-semibold transition-all ${
                       selected
-                        ? "bg-slate-900 text-white shadow-sm"
-                        : "text-slate-700 hover:bg-slate-50"
+                        ? "bg-white/95 text-slate-950 shadow-sm"
+                        : "text-white/85 hover:bg-white/10"
                     }`}
                   >
                     {pill.icon}
@@ -474,18 +507,20 @@ export function WaitlistHome({
             </div>
 
             {pickupsFilter === "building" && (
-              <BuildingSyndicatePanel
-                data={syndicateData}
-                loading={syndicateLoading}
-                onUpdate={setSyndicateData}
-                onRefresh={refreshSyndicate}
-              />
+              <div className="text-slate-900">
+                <BuildingSyndicatePanel
+                  data={syndicateData}
+                  loading={syndicateLoading}
+                  onUpdate={setSyndicateData}
+                  onRefresh={refreshSyndicate}
+                />
+              </div>
             )}
 
             {pickupsFilter === "upcoming" && (
               <>
                 {pickupConfirmed ? (
-                  <div className="mb-6">
+                  <div className="mb-6 text-slate-900">
                     <CollectionNightCard
                       nextPickup={nextPickup}
                       confirmed={pickupConfirmed}
@@ -494,11 +529,10 @@ export function WaitlistHome({
                     />
                   </div>
                 ) : (
-                  <div className="py-4 text-center mb-6">
-                    {/* Crisp floating tilted pickup pass card */}
-                    <div className="relative mx-auto w-64 h-36 mb-6">
-                      <div className="absolute inset-0 rotate-3 rounded-2xl bg-white/70 border border-white shadow-sm" />
-                      <div className="relative h-full w-full -rotate-1 rounded-2xl bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.08)] flex items-center justify-between gap-3">
+                  <div className="rounded-[26px] liquid-glass p-5 text-center mb-5">
+                    <div className="relative mx-auto w-60 h-32 mb-5">
+                      <div className="absolute inset-0 rotate-3 rounded-2xl bg-white/15 border border-white/25" />
+                      <div className="relative h-full w-full -rotate-1 rounded-2xl bg-white/95 p-3.5 shadow-xl flex items-center justify-between gap-3">
                         <div className="text-left space-y-2 flex-1">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
@@ -511,7 +545,7 @@ export function WaitlistHome({
                           />
                           <div className="h-2 w-24 rounded-full bg-slate-200" />
                           <div className="h-2 w-20 rounded-full bg-slate-100" />
-                          <div className="h-2 w-16 rounded-full bg-emerald-100" />
+                          <div className="h-2 w-16 rounded-full bg-emerald-200" />
                         </div>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
@@ -523,42 +557,42 @@ export function WaitlistHome({
                       </div>
                     </div>
 
-                    <h2 className="text-[20px] font-display font-bold text-slate-900 mb-1.5">
+                    <h2 className="text-[20px] font-display font-bold text-white mb-1.5">
                       No scheduled pickups yet
                     </h2>
-                    <p className="text-[13px] text-slate-500 max-w-[290px] mx-auto leading-relaxed mb-5">
+                    <p className="text-[13px] text-white/80 max-w-[290px] mx-auto leading-relaxed mb-5">
                       {place} is at {containers.toLocaleString()}/{LIVE_VOLUME_THRESHOLD.toLocaleString()} containers — {needed.toLocaleString()} more to unlock a run. Scan containers at home and sort into four bags.
                     </p>
                     <button
                       type="button"
                       onClick={handleScanClick}
-                      className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 text-[15px] shadow-sm active:scale-[0.99] transition-all"
+                      className="w-full min-h-[48px] rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3.5 text-[15px] shadow-lg active:scale-[0.99] transition-all"
                     >
                       Scan a container
                     </button>
                   </div>
                 )}
 
-                {/* Grouped White Action List (exact Trips bottom menu) */}
-                <div className="rounded-2xl bg-white shadow-[0_2px_12px_rgba(15,23,42,0.05)] divide-y divide-slate-100 overflow-hidden">
+                {/* Grouped Liquid Glass Action List */}
+                <div className="rounded-[24px] liquid-glass divide-y divide-white/15 overflow-hidden">
                   <ListLinkRow
                     href="/bags"
-                    icon={<Package className="w-5 h-5 text-slate-700" strokeWidth={1.75} />}
+                    icon={<Package className="w-5 h-5 text-white/90" strokeWidth={1.75} />}
                     label="Tag my 4 home bags"
                   />
                   <ListLinkRow
                     href="/marketplace#suburb-map"
-                    icon={<MapPin className="w-5 h-5 text-slate-700" strokeWidth={1.75} />}
+                    icon={<MapPin className="w-5 h-5 text-emerald-300" strokeWidth={1.75} />}
                     label="View Brisbane suburb progress"
                   />
                   <ListLinkRow
                     href="/flyer"
-                    icon={<Printer className="w-5 h-5 text-slate-700" strokeWidth={1.75} />}
+                    icon={<Printer className="w-5 h-5 text-white/90" strokeWidth={1.75} />}
                     label="Print street sorting flyer"
                   />
                   <ListLinkRow
                     href="/onboard"
-                    icon={<Home className="w-5 h-5 text-slate-700" strokeWidth={1.75} />}
+                    icon={<Home className="w-5 h-5 text-white/90" strokeWidth={1.75} />}
                     label="Manage home address & payouts"
                   />
                 </div>
@@ -568,28 +602,38 @@ export function WaitlistHome({
             {pickupsFilter === "bags" && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
-                  {STREAMS.map((s) => (
-                    <div
-                      key={s.key}
-                      className="rounded-2xl bg-white p-4 shadow-[0_2px_10px_rgba(15,23,42,0.05)]"
-                    >
-                      <div className="flex items-center justify-between mb-3">
-                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${s.soft}`}>
-                          <span className={`h-2 w-2 rounded-full ${s.dot}`} />
-                          {s.short}
-                        </span>
-                        <span className="text-[22px] font-display font-bold text-slate-900 tabular-nums">
-                          {summary.streams[s.key]}
-                        </span>
+                  {STREAMS.map((s) => {
+                    const glassTone =
+                      s.key === "aluminium"
+                        ? "liquid-glass-blue"
+                        : s.key === "clearPet"
+                          ? "liquid-glass-teal"
+                          : s.key === "coloured"
+                            ? "liquid-glass-amber"
+                            : "liquid-glass-green";
+                    return (
+                      <div
+                        key={s.key}
+                        className={`rounded-2xl ${glassTone} p-4`}
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 border border-white/30 px-2.5 py-1 text-[11px] font-bold text-white">
+                            <span className={`h-2 w-2 rounded-full ${s.dot}`} />
+                            {s.short}
+                          </span>
+                          <span className="text-[22px] font-display font-bold text-white tabular-nums">
+                            {summary.streams[s.key]}
+                          </span>
+                        </div>
+                        <p className="text-[14px] font-bold text-white">{s.label}</p>
+                        <p className="text-[11px] text-white/80 mt-0.5">{s.hint}</p>
                       </div>
-                      <p className="text-[14px] font-bold text-slate-900">{s.label}</p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">{s.hint}</p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 <Link
                   href="/bags"
-                  className="block w-full rounded-xl bg-slate-900 text-white text-center font-bold py-3.5 text-[14px]"
+                  className="block w-full min-h-[48px] rounded-full bg-white/95 hover:bg-white text-slate-950 text-center font-bold py-3.5 text-[14px] shadow-lg"
                 >
                   Open QR bag tagger →
                 </Link>
@@ -598,24 +642,26 @@ export function WaitlistHome({
 
             {pickupsFilter === "suburb" && (
               <div className="space-y-4">
-                <WaitlistCard
-                  suburb={suburb ?? null}
-                  households={have}
-                  containers={containers}
-                  needed={needed}
-                  live={live}
-                  binStatus={household?.binStatus}
-                  dayName={dayName}
-                  day={household?.councilCollectionDay}
-                  building={building}
-                  hideInvite
-                />
+                <div className="text-slate-900">
+                  <WaitlistCard
+                    suburb={suburb ?? null}
+                    households={have}
+                    containers={containers}
+                    needed={needed}
+                    live={live}
+                    binStatus={household?.binStatus}
+                    dayName={dayName}
+                    day={household?.councilCollectionDay}
+                    building={building}
+                    hideInvite
+                  />
+                </div>
                 {canInviteSuburb && (
-                  <div className="rounded-2xl bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.05)]">
-                    <p className="text-[15px] font-display font-bold text-slate-900 mb-1">
+                  <div className="rounded-2xl liquid-glass p-4">
+                    <p className="text-[15px] font-display font-bold text-white mb-1">
                       Grow your neighbour network · earn bonus points
                     </p>
-                    <p className="text-[12px] text-slate-500 mb-3">
+                    <p className="text-[12px] text-white/80 mb-3">
                       Earn 100 Good Sort Points when a neighbour joins plus 1 bonus point on every container they sort.
                     </p>
                     <InviteActions url={inviteUrl} message={message} compact />
@@ -626,26 +672,26 @@ export function WaitlistHome({
           </div>
         )}
 
-        {/* ══════════════════ TAB 4: POINTS (Mirrors Points) ══════════════════ */}
+        {/* ══════════════════ TAB 4: POINTS ══════════════════ */}
         {activeTab === "points" && (
           <div className="px-5" style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top))" }}>
             {/* Centered Points Header */}
             <div className="text-center mb-5">
-              <h1 className="text-[17px] font-display font-bold text-slate-900">Points</h1>
-              <p className="text-[13px] font-medium text-slate-500 tabular-nums mt-0.5">
+              <h1 className="text-[20px] font-display font-bold text-white glass-text-shadow">Points</h1>
+              <p className="text-[13px] font-semibold text-emerald-200 tabular-nums mt-0.5">
                 {summary.goodSortPoints.toLocaleString()} PTS · {formatCents(summary.totalCreditCents)}
               </p>
             </div>
 
-            {/* Segmented Pills: Earn Points / Rewards */}
+            {/* Segmented Liquid Glass Pills: Earn Points / Use Points */}
             <div className="flex items-center gap-2 mb-5">
               <button
                 type="button"
                 onClick={() => setPointsFilter("earn")}
                 className={`inline-flex items-center gap-1.5 min-h-[40px] rounded-full px-4 py-2 text-[13px] font-semibold transition-all ${
                   pointsFilter === "earn"
-                    ? "bg-slate-900 text-white shadow-sm"
-                    : "bg-white text-slate-800 shadow-[0_1px_6px_rgba(15,23,42,0.05)]"
+                    ? "bg-white/95 text-slate-950 shadow-md"
+                    : "liquid-glass-pill text-white"
                 }`}
               >
                 <Sparkles className="w-3.5 h-3.5" />
@@ -656,8 +702,8 @@ export function WaitlistHome({
                 onClick={() => setPointsFilter("rewards")}
                 className={`inline-flex items-center gap-1.5 min-h-[40px] rounded-full px-4 py-2 text-[13px] font-semibold transition-all ${
                   pointsFilter === "rewards"
-                    ? "bg-slate-900 text-white shadow-sm"
-                    : "bg-white text-slate-800 shadow-[0_1px_6px_rgba(15,23,42,0.05)]"
+                    ? "bg-white/95 text-slate-950 shadow-md"
+                    : "liquid-glass-pill text-white"
                 }`}
               >
                 <Gift className="w-3.5 h-3.5" />
@@ -665,17 +711,17 @@ export function WaitlistHome({
               </button>
             </div>
 
-            {/* Rounded Pill Scan Launcher (mirrors Qantas Search products pill) */}
+            {/* Rounded Liquid Glass Scan Launcher */}
             <button
               type="button"
               onClick={handleScanClick}
-              className="w-full rounded-full bg-white pl-5 pr-2 py-2 shadow-[0_2px_12px_rgba(15,23,42,0.06)] flex items-center justify-between gap-3 mb-6 active:scale-[0.99] transition-transform"
+              className="w-full rounded-full liquid-glass pl-5 pr-2 py-2 flex items-center justify-between gap-3 mb-6 active:scale-[0.99] transition-transform"
             >
               <div className="text-left min-w-0">
-                <p className="text-[14px] font-semibold text-slate-900 truncate">Scan a container</p>
-                <p className="text-[11px] text-slate-500 truncate">Earn 10¢ + 10 Good Sort Points per scan</p>
+                <p className="text-[14px] font-semibold text-white truncate">Scan a container</p>
+                <p className="text-[11px] text-white/75 truncate">Earn 10¢ + 10 Good Sort Points per scan</p>
               </div>
-              <span className="h-11 w-11 shrink-0 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-sm">
+              <span className="h-11 w-11 shrink-0 rounded-full bg-emerald-400 text-slate-950 flex items-center justify-center shadow-md">
                 <ScanBarcode className="w-5 h-5" />
               </span>
             </button>
@@ -686,8 +732,8 @@ export function WaitlistHome({
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <div>
-                      <h2 className="text-[17px] font-display font-bold text-slate-900">Milestones</h2>
-                      <p className="text-[12px] text-slate-500">
+                      <h2 className="text-[17px] font-display font-bold text-white glass-text-shadow">Milestones</h2>
+                      <p className="text-[12px] text-white/75">
                         {summary.milestones.filter((m) => m.earned).length} of {summary.milestones.length} unlocked
                       </p>
                     </div>
@@ -696,25 +742,25 @@ export function WaitlistHome({
                     {summary.milestones.map((m) => (
                       <div
                         key={m.id}
-                        className={`rounded-2xl p-3.5 shadow-[0_2px_10px_rgba(15,23,42,0.05)] ${
-                          m.earned ? "bg-white" : "bg-white/70"
+                        className={`rounded-2xl p-3.5 ${
+                          m.earned ? "liquid-glass-emerald" : "liquid-glass-subtle"
                         }`}
                       >
                         <div className="flex items-center justify-between mb-2">
                           <Award
-                            className={`w-5 h-5 ${m.earned ? "text-amber-500" : "text-slate-300"}`}
+                            className={`w-5 h-5 ${m.earned ? "text-amber-300" : "text-white/40"}`}
                           />
                           <span
                             className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                               m.earned
-                                ? "bg-emerald-50 text-emerald-700"
-                                : "bg-slate-100 text-slate-400"
+                                ? "bg-emerald-400/25 text-emerald-100 border border-emerald-200/40"
+                                : "bg-white/10 text-white/70"
                             }`}
                           >
                             {m.earned ? "Earned" : m.targetText}
                           </span>
                         </div>
-                        <p className={`text-[14px] font-bold ${m.earned ? "text-slate-900" : "text-slate-500"}`}>
+                        <p className={`text-[14px] font-bold ${m.earned ? "text-white" : "text-white/75"}`}>
                           {m.label}
                         </p>
                       </div>
@@ -723,21 +769,21 @@ export function WaitlistHome({
                 </div>
 
                 {/* Neighbour Network Offer Card */}
-                <div className="rounded-2xl bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.05)]">
-                  <p className="text-[15px] font-display font-bold text-slate-900 mb-1">
+                <div className="rounded-2xl liquid-glass p-4">
+                  <p className="text-[15px] font-display font-bold text-white mb-1">
                     Earn Good Sort Points from your neighbour network
                   </p>
-                  <p className="text-[12px] text-slate-500 leading-relaxed mb-3">
+                  <p className="text-[12px] text-white/80 leading-relaxed mb-3">
                     Get 100 Good Sort Points when a neighbour joins {place} plus 1 bonus point on every container they sort.
                   </p>
                   {network && network.sortersCount > 0 && (
-                    <p className="text-[12px] font-semibold text-emerald-700 mb-3">
+                    <p className="text-[12px] font-semibold text-emerald-300 mb-3">
                       Active network: {network.sortersCount} sorter{network.sortersCount === 1 ? "" : "s"} · {network.referredContainers} cans · +{(network.totalNetworkPoints ?? network.sortersCount * 100 + network.referredContainers).toLocaleString()} PTS
                     </p>
                   )}
                   <Link
                     href="/invite"
-                    className="inline-flex items-center gap-1 min-h-[40px] py-2 -mb-2 text-[13px] font-bold text-emerald-700 hover:text-emerald-900"
+                    className="inline-flex items-center gap-1 min-h-[40px] py-2 -mb-2 text-[13px] font-bold text-emerald-300 hover:text-emerald-200"
                   >
                     Share invite link <ChevronRight className="w-4 h-4" />
                   </Link>
@@ -745,13 +791,15 @@ export function WaitlistHome({
               </div>
             ) : (
               <div className="space-y-4">
-                <MemberStatusCard
-                  suburbLabel={suburb ? titleSuburb(suburb) : null}
-                  onOpenPayouts={() => onOpenAccount?.()}
-                />
-                <div className="rounded-2xl bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.05)]">
-                  <p className="text-[14px] font-bold text-slate-900 mb-1">How points &amp; credits clear</p>
-                  <p className="text-[12px] text-slate-500 leading-relaxed">
+                <div className="text-slate-900">
+                  <MemberStatusCard
+                    suburbLabel={suburb ? titleSuburb(suburb) : null}
+                    onOpenPayouts={() => onOpenAccount?.()}
+                  />
+                </div>
+                <div className="rounded-2xl liquid-glass p-4">
+                  <p className="text-[14px] font-bold text-white mb-1">How points &amp; credits clear</p>
+                  <p className="text-[12px] text-white/80 leading-relaxed">
                     Every eligible 150mL–3L container earns 10¢ sorting credit + 10 Good Sort Points. Credits clear after kerbside pickup and depot verification, ready to cash out via PayID or bank transfer.
                   </p>
                 </div>
@@ -760,19 +808,18 @@ export function WaitlistHome({
           </div>
         )}
 
-        {/* ══════════════════ TAB 5: PROFILE (Mirrors My QFF) ══════════════════ */}
+        {/* ══════════════════ TAB 5: PROFILE ══════════════════ */}
         {activeTab === "profile" && (
-          <div>
-            {/* Brushed Metallic Tier Header Band */}
-            <div
-              className={`bg-gradient-to-b ${summary.tier.headerGradient} px-5 pb-14`}
-              style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top))" }}
-            >
-              <div className="flex items-center justify-end gap-2.5 mb-3">
+          <div className="px-5" style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top))" }}>
+            <div className="flex items-center justify-between gap-2.5 mb-4">
+              <h1 className="text-[32px] leading-tight font-display font-bold tracking-tight text-white glass-text-shadow">
+                {firstName === "there" ? "Member" : firstName}
+              </h1>
+              <div className="flex items-center gap-2">
                 <Link
                   href="/invite"
                   aria-label="Invite neighbours"
-                  className="h-10 w-10 rounded-full bg-white/90 shadow-sm flex items-center justify-center text-slate-800 active:scale-95 transition-transform"
+                  className="h-10 w-10 rounded-full liquid-glass-pill flex items-center justify-center text-white active:scale-95 transition-transform"
                 >
                   <Share2 className="w-4 h-4" />
                 </Link>
@@ -780,38 +827,35 @@ export function WaitlistHome({
                   type="button"
                   onClick={() => onOpenAccount?.()}
                   aria-label="Account settings and payouts"
-                  className="h-10 w-10 rounded-full bg-white/90 shadow-sm flex items-center justify-center text-slate-800 active:scale-95 transition-transform"
+                  className="h-10 w-10 rounded-full liquid-glass-pill flex items-center justify-center text-white active:scale-95 transition-transform"
                 >
                   <Settings className="w-4 h-4" />
                 </button>
               </div>
-              <h1 className="text-[32px] leading-tight font-display font-bold tracking-tight text-slate-900">
-                {firstName === "there" ? "Member" : firstName}
-              </h1>
             </div>
 
-            <div className="px-5 -mt-10 space-y-3.5">
-              {/* Overlapping White Tier Identity Card */}
-              <div className="rounded-2xl bg-white px-4 py-3.5 shadow-[0_4px_18px_rgba(15,23,42,0.06)] flex items-center justify-between gap-3">
+            <div className="space-y-3.5">
+              {/* Liquid Glass Tier Identity Card */}
+              <div className="rounded-[24px] liquid-glass-emerald px-4 py-3.5 flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[20px] leading-tight font-display font-bold text-slate-900">
+                  <p className="text-[20px] leading-tight font-display font-bold text-white">
                     {summary.tier.label}
                   </p>
                   <button
                     type="button"
                     onClick={copyMemberCode}
-                    className="inline-flex items-center gap-1.5 min-h-[40px] py-1.5 -my-1 text-[13px] font-medium text-slate-500 hover:text-slate-800"
+                    className="inline-flex items-center gap-1.5 min-h-[40px] py-1.5 -my-1 text-[13px] font-medium text-white/80 hover:text-white"
                   >
                     <span className="tabular-nums">{memberCode}</span>
                     {copiedMemberId ? (
-                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <Check className="w-3.5 h-3.5 text-emerald-300" />
                     ) : (
-                      <Copy className="w-3.5 h-3.5 text-slate-400" />
+                      <Copy className="w-3.5 h-3.5 text-white/70" />
                     )}
                   </button>
                 </div>
                 <div
-                  className={`h-12 w-12 shrink-0 rounded-full bg-gradient-to-br ${summary.tier.medallionGradient} flex items-center justify-center shadow-inner`}
+                  className={`h-12 w-12 shrink-0 rounded-full bg-gradient-to-br ${summary.tier.medallionGradient} flex items-center justify-center shadow-inner ring-1 ring-white/40`}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -827,33 +871,33 @@ export function WaitlistHome({
 
               {/* Admin-only quick shortcut (invisible to non-admin sorters) */}
               {isAdmin && (
-                <div className="rounded-2xl bg-slate-900 text-white p-3.5 shadow-[0_4px_18px_rgba(15,23,42,0.14)] space-y-2.5">
+                <div className="rounded-[24px] liquid-glass-dock text-white p-3.5 space-y-2.5">
                   <Link
                     href="/admin"
                     className="min-h-[44px] flex items-center justify-between gap-2.5 px-1"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="h-9 w-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                      <div className="h-9 w-9 rounded-xl bg-emerald-400/20 border border-emerald-200/30 text-emerald-300 flex items-center justify-center shrink-0">
                         <ShieldCheck className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
                         <p className="text-[13px] font-bold leading-tight">Admin Command Centre</p>
-                        <p className="text-[11px] text-slate-400 leading-tight mt-0.5">Funnel, live activity &amp; ops</p>
+                        <p className="text-[11px] text-white/70 leading-tight mt-0.5">Funnel, live activity &amp; ops</p>
                       </div>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                    <ChevronRight className="w-4 h-4 text-white/60 shrink-0" />
                   </Link>
                   <div className="grid grid-cols-2 gap-2">
                     <Link
                       href="/admin/users"
-                      className="min-h-[40px] px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold text-white inline-flex items-center justify-center gap-1"
+                      className="min-h-[40px] px-3 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-xs font-bold text-white inline-flex items-center justify-center gap-1"
                     >
                       Users CRM
                       <ChevronRight className="w-3.5 h-3.5" />
                     </Link>
                     <Link
                       href="/admin/runners"
-                      className="min-h-[40px] px-3 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-xs font-bold text-emerald-200 inline-flex items-center justify-center gap-1"
+                      className="min-h-[40px] px-3 py-2 rounded-xl bg-emerald-400/25 hover:bg-emerald-400/35 text-xs font-bold text-emerald-100 inline-flex items-center justify-center gap-1"
                     >
                       Runners
                       <ChevronRight className="w-3.5 h-3.5" />
@@ -863,23 +907,23 @@ export function WaitlistHome({
               )}
 
               {/* Points, Status & Recent Activity Statement Card */}
-              <div className="rounded-2xl bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.05)]">
-                <div className="grid grid-cols-2 gap-4 pb-4 border-b border-slate-100">
+              <div className="rounded-[24px] liquid-glass p-5">
+                <div className="grid grid-cols-2 gap-4 pb-4 border-b border-white/15">
                   <div>
-                    <p className="text-[12px] font-medium text-slate-500">Points</p>
-                    <p className="text-[26px] leading-tight font-display font-bold text-slate-900 tabular-nums mt-0.5">
+                    <p className="text-[12px] font-medium text-white/75">Points</p>
+                    <p className="text-[26px] leading-tight font-display font-bold text-white tabular-nums mt-0.5">
                       {summary.goodSortPoints.toLocaleString()}
                     </p>
-                    <p className="text-[11px] font-medium text-emerald-700 mt-0.5">
+                    <p className="text-[11px] font-medium text-emerald-300 mt-0.5">
                       {formatCents(summary.totalCreditCents)} credit
                     </p>
                   </div>
-                  <div className="border-l border-slate-100 pl-4">
-                    <p className="text-[12px] font-medium text-slate-500">Containers</p>
-                    <p className="text-[26px] leading-tight font-display font-bold text-slate-900 tabular-nums mt-0.5">
+                  <div className="border-l border-white/15 pl-4">
+                    <p className="text-[12px] font-medium text-white/75">Containers</p>
+                    <p className="text-[26px] leading-tight font-display font-bold text-white tabular-nums mt-0.5">
                       {summary.totalContainers.toLocaleString()}
                     </p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
+                    <p className="text-[11px] text-white/75 mt-0.5">
                       {summary.tier.nextTierLabel
                         ? `${summary.containersToNextTier.toLocaleString()} to ${summary.tier.nextTierLabel}`
                         : "Top tier unlocked"}
@@ -889,19 +933,18 @@ export function WaitlistHome({
 
                 {/* Subtle tier progress bar */}
                 <div className="pt-3 pb-4">
-                  <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                  <div className="h-1.5 w-full rounded-full bg-black/25 overflow-hidden">
                     <div
-                      className="h-full rounded-full transition-all"
+                      className="h-full rounded-full bg-emerald-400 transition-all"
                       style={{
                         width: `${Math.max(summary.progressPct, summary.totalContainers > 0 ? 4 : 0)}%`,
-                        backgroundColor: summary.tier.accentHex,
                       }}
                     />
                   </div>
                 </div>
 
-                {/* Recent Activity (exact clean Qantas statement typography) */}
-                <p className="text-[13px] font-bold text-slate-900 mb-3">Recent activity</p>
+                {/* Recent Activity */}
+                <p className="text-[13px] font-bold text-white mb-3">Recent activity</p>
                 {recentScans.length > 0 ? (
                   <div className="space-y-3 mb-4">
                     {recentScans.slice(0, 4).map((scan) => {
@@ -911,10 +954,10 @@ export function WaitlistHome({
                           <div className="flex items-start gap-2.5 min-w-0">
                             <span className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${STREAM_DOT_BY_KEY[streamKey]}`} />
                             <div className="min-w-0">
-                              <p className="text-[13px] font-medium text-slate-800 uppercase tracking-tight truncate">
+                              <p className="text-[13px] font-medium text-white uppercase tracking-tight truncate">
                                 {scan.containerName || "ELIGIBLE CONTAINER"}
                               </p>
-                              <p className="text-[11px] text-slate-400">
+                              <p className="text-[11px] text-white/65">
                                 {new Date(scan.timestamp).toLocaleString("en-AU", {
                                   day: "2-digit",
                                   month: "short",
@@ -924,10 +967,10 @@ export function WaitlistHome({
                             </div>
                           </div>
                           <div className="text-right shrink-0 tabular-nums">
-                            <p className="text-[13px] font-semibold text-emerald-700">
+                            <p className="text-[13px] font-semibold text-emerald-300">
                               + 10 PTS
                             </p>
-                            <p className="text-[11px] font-medium text-slate-500">
+                            <p className="text-[11px] font-medium text-white/75">
                               + {scan.refundCents || 10}¢
                             </p>
                           </div>
@@ -936,7 +979,7 @@ export function WaitlistHome({
                     })}
                   </div>
                 ) : (
-                  <p className="text-[13px] text-slate-400 mb-4">
+                  <p className="text-[13px] text-white/70 mb-4">
                     No scans yet — scan your first container to earn 10¢ + 10 PTS.
                   </p>
                 )}
@@ -944,55 +987,55 @@ export function WaitlistHome({
                 <button
                   type="button"
                   onClick={() => onOpenAccount?.()}
-                  className="w-full min-h-[44px] pt-3.5 pb-1 border-t border-slate-100 flex items-center justify-between text-[14px] font-semibold text-slate-900"
+                  className="w-full min-h-[44px] pt-3.5 pb-1 border-t border-white/15 flex items-center justify-between text-[14px] font-semibold text-white"
                 >
                   <span>View payouts &amp; activity statement</span>
-                  <ChevronRight className="w-4 h-4 text-slate-400" />
+                  <ChevronRight className="w-4 h-4 text-white/70" />
                 </button>
               </div>
 
-              {/* 4-Column Quick Action Squares (mirrors My QFF 4-icon strip) */}
+              {/* 4-Column Liquid Glass Quick Stat Squares */}
               <div className="grid grid-cols-4 gap-2.5">
                 <ActionTile
                   label="Earn Points"
-                  icon={<ScanBarcode className="w-5 h-5 text-emerald-600" strokeWidth={1.75} />}
+                  icon={<ScanBarcode className="w-5 h-5 text-emerald-300" strokeWidth={1.75} />}
                   onClick={handleScanClick}
                 />
                 <ActionTile
                   label="Rewards"
-                  icon={<Sparkles className="w-5 h-5 text-slate-800" strokeWidth={1.75} />}
+                  icon={<Sparkles className="w-5 h-5 text-white" strokeWidth={1.75} />}
                   onClick={() => { setPointsFilter("rewards"); setActiveTab("points"); }}
                 />
                 <ActionTile
                   label={`${summary.currentStreakDays}d Streak`}
-                  icon={<Flame className="w-5 h-5 text-amber-500" strokeWidth={1.75} />}
+                  icon={<Flame className="w-5 h-5 text-amber-300" strokeWidth={1.75} />}
                   onClick={() => setActiveTab("points")}
                 />
                 <ActionTile
                   label={`${summary.co2SavedKg.toFixed(1)}kg CO₂`}
-                  icon={<Leaf className="w-5 h-5 text-emerald-600" strokeWidth={1.75} />}
+                  icon={<Leaf className="w-5 h-5 text-emerald-300" strokeWidth={1.75} />}
                   onClick={() => onOpenAccount?.()}
                 />
               </div>
 
-              {/* Bonus Reward Card (mirrors "Your Loyalty Bonus Reward is waiting") */}
-              <div className="rounded-2xl bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.05)]">
+              {/* Bonus Reward Card */}
+              <div className="rounded-[24px] liquid-glass p-4">
                 <div className="flex items-start gap-3">
-                  <div className="h-10 w-10 shrink-0 rounded-xl bg-emerald-50 flex items-center justify-center">
-                    <Gift className="w-5 h-5 text-emerald-600" />
+                  <div className="h-10 w-10 shrink-0 rounded-xl bg-emerald-400/20 border border-emerald-200/30 flex items-center justify-center">
+                    <Gift className="w-5 h-5 text-emerald-200" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[15px] font-display font-bold text-slate-900 leading-snug">
+                    <p className="text-[15px] font-display font-bold text-white leading-snug">
                       Neighbour Network bonus
                     </p>
-                    <p className="text-[12px] text-slate-500 mt-1 leading-relaxed">
+                    <p className="text-[12px] text-white/80 mt-1 leading-relaxed">
                       Earn 100 Good Sort Points when a neighbour joins {place} plus 1 bonus point on every container they sort.
                     </p>
                     {!showInviteSheet ? (
                       <button
                         type="button"
                         onClick={() => setShowInviteSheet(true)}
-                        className="mt-1 inline-flex items-center min-h-[40px] py-2 -mb-2 text-[13px] font-bold text-emerald-700 hover:text-emerald-900"
+                        className="mt-1 inline-flex items-center min-h-[40px] py-2 -mb-2 text-[13px] font-bold text-emerald-300 hover:text-emerald-200"
                       >
                         Share invite link
                       </button>
@@ -1015,7 +1058,7 @@ export function WaitlistHome({
         className="fixed inset-x-0 z-30 flex justify-center px-4 pointer-events-none"
         style={{ bottom: "max(14px, env(safe-area-inset-bottom, 14px))" }}
       >
-        <div className="pointer-events-auto w-full max-w-[390px] rounded-full bg-white/90 backdrop-blur-2xl border border-white/95 shadow-[0_12px_36px_rgba(15,23,42,0.14),0_2px_8px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,1)] p-1.5 grid grid-cols-5 items-center gap-0.5">
+        <div className="pointer-events-auto w-full max-w-[390px] rounded-full liquid-glass-dock p-1.5 grid grid-cols-5 items-center gap-0.5">
           <TabPill
             label="Home"
             active={activeTab === "home"}
@@ -1031,7 +1074,8 @@ export function WaitlistHome({
           <TabPill
             label="Scan"
             active={false}
-            icon={<ScanBarcode className="w-[21px] h-[21px]" strokeWidth={1.9} />}
+            accent
+            icon={<ScanBarcode className="w-[21px] h-[21px]" strokeWidth={2} />}
             onClick={handleScanClick}
           />
           <TabPill
@@ -1055,11 +1099,13 @@ export function WaitlistHome({
 function TabPill({
   label,
   active,
+  accent,
   icon,
   onClick,
 }: {
   label: string;
   active: boolean;
+  accent?: boolean;
   icon: React.ReactNode;
   onClick: () => void;
 }) {
@@ -1070,8 +1116,10 @@ function TabPill({
       aria-current={active ? "page" : undefined}
       className={`flex flex-col items-center justify-center rounded-full py-2 px-1 transition-all duration-150 ${
         active
-          ? "bg-[#e8eaed]/90 text-emerald-600 shadow-[inset_0_1px_1px_rgba(255,255,255,0.65)]"
-          : "text-slate-900 hover:bg-slate-900/[0.04]"
+          ? "bg-white/95 text-slate-950 shadow-[0_4px_14px_rgba(0,0,0,0.22)]"
+          : accent
+            ? "text-emerald-300 hover:bg-emerald-400/20"
+            : "text-white/85 hover:text-white hover:bg-white/10"
       }`}
     >
       {icon}
@@ -1093,33 +1141,39 @@ function ActionTile({
 }) {
   return (
     <button type="button" onClick={onClick} className="flex flex-col items-center group">
-      <div className="w-full aspect-square rounded-2xl bg-white shadow-[0_2px_10px_rgba(15,23,42,0.045)] flex items-center justify-center group-active:scale-[0.95] transition-transform">
+      <div className="w-full aspect-square rounded-2xl liquid-glass flex items-center justify-center group-active:scale-[0.95] transition-transform">
         {icon}
       </div>
-      <span className="text-[11px] font-medium text-slate-700 text-center mt-1.5 leading-tight">
+      <span className="text-[11px] font-semibold text-white/90 text-center mt-1.5 leading-tight glass-text-shadow">
         {label}
       </span>
     </button>
   );
 }
 
-function ActionTileLink({
+function GlassTileLink({
   label,
+  caption,
   href,
   icon,
 }: {
   label: string;
+  caption: string;
   href: string;
   icon: React.ReactNode;
 }) {
   return (
-    <Link href={href} className="flex flex-col items-center group">
-      <div className="w-full aspect-square rounded-2xl bg-white shadow-[0_2px_10px_rgba(15,23,42,0.045)] flex items-center justify-center group-active:scale-[0.95] transition-transform">
+    <Link
+      href={href}
+      className="rounded-[24px] liquid-glass p-4 min-h-[116px] flex flex-col items-center justify-center text-center gap-2 hover:bg-white/20 active:scale-[0.97] transition-all"
+    >
+      <div className="h-11 w-11 rounded-2xl bg-white/15 border border-white/25 flex items-center justify-center shadow-inner">
         {icon}
       </div>
-      <span className="text-[11px] font-medium text-slate-700 text-center mt-1.5 leading-tight">
-        {label}
-      </span>
+      <div>
+        <p className="text-[14px] font-display font-bold text-white leading-tight">{label}</p>
+        <p className="text-[11px] text-white/75 leading-tight mt-0.5">{caption}</p>
+      </div>
     </Link>
   );
 }
@@ -1136,13 +1190,13 @@ function ListLinkRow({
   return (
     <Link
       href={href}
-      className="flex items-center justify-between gap-3 px-4 py-3.5 hover:bg-slate-50 transition-colors"
+      className="flex items-center justify-between gap-3 px-4 py-3.5 hover:bg-white/10 transition-colors"
     >
       <div className="flex items-center gap-3 min-w-0">
         {icon}
-        <span className="text-[14px] font-medium text-slate-900 truncate">{label}</span>
+        <span className="text-[14px] font-medium text-white truncate">{label}</span>
       </div>
-      <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+      <ChevronRight className="w-4 h-4 text-white/70 shrink-0" />
     </Link>
   );
 }

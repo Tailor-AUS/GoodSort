@@ -126,24 +126,48 @@ export default function SortedBagsPage() {
     await loadBags(selectedStream);
   };
 
+  const STREAM_GLASS: Record<BagStream, string> = {
+    aluminium: "liquid-glass-blue",
+    pet_clear: "liquid-glass-teal",
+    pet_coloured: "liquid-glass-amber",
+    glass: "liquid-glass-green",
+  };
+
   return (
-    <div className="min-h-dvh bg-slate-50 text-slate-900 pb-16">
+    <div className="relative min-h-dvh text-white print:bg-white print:text-slate-900 pb-16 overflow-x-clip">
+      {/* Full-bleed sunlit Brisbane backdrop for tinted Liquid Glass (hidden when printing QR tags) */}
+      <div className="print:hidden fixed inset-0 z-0 pointer-events-none select-none overflow-hidden" aria-hidden="true">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/images/brisbane-veranda-glass.webp"
+          alt=""
+          className="h-full w-full object-cover object-center scale-[1.03]"
+        />
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "linear-gradient(180deg, rgba(6,15,17,0.48) 0%, rgba(8,18,18,0.42) 48%, rgba(6,15,15,0.72) 100%)",
+          }}
+        />
+      </div>
+
       {/* Screen Header (hidden when printing) */}
-      <header className="print:hidden sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-2.5">
+      <header className="print:hidden sticky top-0 z-20 px-4 pt-3 pb-2" style={{ paddingTop: "max(12px, env(safe-area-inset-top))" }}>
+        <div className="max-w-3xl mx-auto rounded-full liquid-glass px-2.5 py-2 flex items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
             <Link
               href="/sort"
               aria-label="Back to home"
-              className="w-10 h-10 shrink-0 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700"
+              className="w-10 h-10 shrink-0 rounded-full liquid-glass-pill flex items-center justify-center text-white hover:bg-white/25"
             >
               <ArrowLeft size={18} />
             </Link>
             <div className="min-w-0">
-              <h1 className="font-display font-extrabold text-base text-slate-900 leading-tight truncate">
+              <h1 className="font-display font-extrabold text-base text-white leading-tight truncate glass-text-shadow">
                 Home Bag Tags
               </h1>
-              <p className="text-xs text-slate-500 leading-snug line-clamp-1">
+              <p className="text-xs text-white/80 leading-snug line-clamp-1">
                 Tag full bags so your scanned cans clear on kerb pickup
               </p>
             </div>
@@ -152,7 +176,7 @@ export default function SortedBagsPage() {
           <div className="flex items-center gap-2 shrink-0">
             <Link
               href="/scan"
-              className="inline-flex items-center justify-center min-h-[40px] px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs whitespace-nowrap"
+              className="inline-flex items-center justify-center min-h-[40px] px-3.5 py-2 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs whitespace-nowrap shadow-sm"
             >
               + Scan
             </Link>
@@ -160,7 +184,7 @@ export default function SortedBagsPage() {
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs whitespace-nowrap"
+                className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3.5 py-2 rounded-full bg-white/95 hover:bg-white text-slate-950 font-bold text-xs whitespace-nowrap shadow-sm"
               >
                 <Printer size={14} /> Print Tags
               </button>
@@ -169,15 +193,15 @@ export default function SortedBagsPage() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+      <main className="relative z-10 max-w-3xl mx-auto px-4 py-5 space-y-6">
         {/* Sign-in / Household prerequisite checks */}
         {!loading && !signedIn && (
-          <div className="print:hidden rounded-2xl bg-amber-50 border border-amber-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="print:hidden rounded-2xl liquid-glass-amber p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3">
-              <Home size={20} className="text-amber-600 shrink-0 mt-0.5" />
+              <Home size={20} className="text-amber-200 shrink-0 mt-0.5" />
               <div>
-                <p className="font-bold text-sm text-amber-900">Scan a container or sign in first</p>
-                <p className="text-xs text-amber-800 mt-0.5">
+                <p className="font-bold text-sm text-white">Scan a container or sign in first</p>
+                <p className="text-xs text-white/85 mt-0.5">
                   Home bag tags link to your account and street address so we can collect your bags and pay you 10¢ per container.
                 </p>
               </div>
@@ -185,13 +209,13 @@ export default function SortedBagsPage() {
             <div className="flex items-center gap-2 shrink-0">
               <Link
                 href="/scan"
-                className="px-4 py-2 rounded-xl bg-green-600 text-white font-bold text-xs whitespace-nowrap"
+                className="px-4 py-2 rounded-full bg-emerald-500 text-slate-950 font-bold text-xs whitespace-nowrap"
               >
                 Scan a can
               </Link>
               <Link
                 href="/login"
-                className="px-4 py-2 rounded-xl bg-white border border-amber-300 text-amber-900 font-bold text-xs whitespace-nowrap"
+                className="px-4 py-2 rounded-full bg-white/95 text-slate-950 font-bold text-xs whitespace-nowrap"
               >
                 Sign in
               </Link>
@@ -200,19 +224,19 @@ export default function SortedBagsPage() {
         )}
 
         {!loading && signedIn && data && !data.hasHousehold && (
-          <div className="print:hidden rounded-2xl bg-amber-50 border border-amber-200 p-4 flex items-center justify-between gap-4">
+          <div className="print:hidden rounded-2xl liquid-glass-amber p-4 flex items-center justify-between gap-4">
             <div className="flex items-start gap-3">
-              <Home size={20} className="text-amber-600 shrink-0 mt-0.5" />
+              <Home size={20} className="text-amber-200 shrink-0 mt-0.5" />
               <div>
-                <p className="font-bold text-sm text-amber-900">Add your home address first</p>
-                <p className="text-xs text-amber-800 mt-0.5">
+                <p className="font-bold text-sm text-white">Add your home address first</p>
+                <p className="text-xs text-white/85 mt-0.5">
                   Bag tags link to your house so the driver knows whose account to credit at the kerb.
                 </p>
               </div>
             </div>
             <Link
               href="/onboard"
-              className="px-4 py-2 rounded-xl bg-amber-600 text-white font-bold text-xs whitespace-nowrap"
+              className="px-4 py-2 rounded-full bg-white/95 text-slate-950 font-bold text-xs whitespace-nowrap"
             >
               Set Address
             </Link>
@@ -220,20 +244,20 @@ export default function SortedBagsPage() {
         )}
 
         {/* Create New 4-Stream Bag Tag (hidden on print) */}
-        <section className="print:hidden rounded-3xl bg-white border border-slate-200 p-5 shadow-sm space-y-4">
+        <section className="print:hidden rounded-[28px] liquid-glass p-5 space-y-4">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="font-display font-extrabold text-lg text-slate-900">
+            <h2 className="font-display font-extrabold text-lg text-white glass-text-shadow">
               Tag a full bag at home
             </h2>
             <Link
               href="/scan"
-              className="inline-flex items-center min-h-[40px] px-2 -mr-2 text-xs font-bold text-emerald-700 hover:underline whitespace-nowrap shrink-0"
+              className="inline-flex items-center min-h-[40px] px-2 -mr-2 text-xs font-bold text-emerald-300 hover:text-emerald-200 whitespace-nowrap shrink-0"
             >
               + Scan a container
             </Link>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {(Object.keys(BAG_STREAMS) as BagStream[]).map((key) => {
               const info = BAG_STREAMS[key];
               const unbagged = data?.unbaggedByStream?.[key] ?? 0;
@@ -243,24 +267,22 @@ export default function SortedBagsPage() {
                   key={key}
                   type="button"
                   onClick={() => handleSelectStream(key)}
-                  className={`text-left p-3.5 rounded-2xl border-2 transition-all ${
-                    active
-                      ? "border-emerald-600 bg-emerald-50/50 shadow-sm"
-                      : "border-slate-200 hover:border-slate-300 bg-white"
+                  className={`text-left p-4 rounded-2xl transition-all ${STREAM_GLASS[key]} ${
+                    active ? "ring-2 ring-white/90 scale-[1.01]" : "opacity-85 hover:opacity-100"
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="font-display font-bold text-sm text-slate-900">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-display font-bold text-[15px] text-white">
                       {info.label}
                     </span>
-                    <span className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded ${info.badgeBg} ${info.badgeText}`}>
+                    <span className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-white/90 text-slate-900">
                       {info.codePrefix}
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-500 mt-1">{info.rule}</p>
-                  <p className={`text-[11px] font-bold mt-1.5 ${unbagged > 0 || loading ? "text-emerald-700" : "text-slate-400"}`}>
+                  <p className="text-[11px] text-white/85 mt-1 leading-relaxed">{info.rule}</p>
+                  <p className={`text-[12px] font-bold mt-2 ${unbagged > 0 || loading ? "text-emerald-200" : "text-white/70"}`}>
                     {loading ? (
-                      <span className="inline-block h-3 w-32 rounded-full bg-slate-200 animate-pulse align-middle" aria-label="Checking scanned containers" />
+                      <span className="inline-block h-3 w-32 rounded-full bg-white/30 animate-pulse align-middle" aria-label="Checking scanned containers" />
                     ) : (
                       `${unbagged} scanned ${unbagged === 1 ? "container" : "containers"} ready to bag`
                     )}
@@ -271,18 +293,18 @@ export default function SortedBagsPage() {
           </div>
 
           {!loading && selectedUnbagged === 0 ? (
-            <div className="rounded-2xl bg-slate-50 border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="rounded-2xl liquid-glass-subtle p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-bold text-slate-800">
+                <p className="text-xs font-bold text-white">
                   No scanned {BAG_STREAMS[selectedStream].label.toLowerCase()} ready to bag yet
                 </p>
-                <p className="text-[11px] text-slate-500 mt-0.5">
+                <p className="text-[11px] text-white/75 mt-0.5">
                   Bag tags link directly to your scanned inventory so every container clears cleanly at pickup.
                 </p>
               </div>
               <Link
                 href="/scan"
-                className="inline-flex items-center justify-center rounded-xl bg-emerald-600 hover:bg-emerald-700 px-3.5 py-2 text-xs font-bold text-white whitespace-nowrap"
+                className="inline-flex items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-400 px-4 py-2.5 text-xs font-bold text-slate-950 whitespace-nowrap"
               >
                 + Scan {BAG_STREAMS[selectedStream].shortLabel}
               </Link>
@@ -290,9 +312,9 @@ export default function SortedBagsPage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
               <div>
-                <label htmlFor="declared-count" className="block text-xs font-bold text-slate-700 mb-1">
+                <label htmlFor="declared-count" className="block text-xs font-bold text-white mb-1">
                   Scanned containers to include{" "}
-                  <span className="font-semibold text-emerald-700">
+                  <span className="font-semibold text-emerald-300">
                     ({selectedUnbagged} in inventory)
                   </span>
                 </label>
@@ -311,32 +333,32 @@ export default function SortedBagsPage() {
                           : Math.max(1, maxBagCount),
                       );
                     }}
-                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-300 text-base font-bold text-slate-900 tabular-nums"
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-white/95 border border-white text-base font-bold text-slate-900 tabular-nums"
                   />
                   {effectiveBagCount < maxBagCount && (
                     <button
                       type="button"
                       onClick={() => setDeclaredCount(maxBagCount)}
-                      className="shrink-0 px-3 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-800 hover:bg-emerald-100"
+                      className="shrink-0 px-3 py-2.5 rounded-xl liquid-glass-pill text-xs font-bold text-white hover:bg-white/25"
                     >
                       All {maxBagCount}
                     </button>
                   )}
                 </div>
-                <p className="text-[11px] text-slate-500 mt-1">
+                <p className="text-[11px] text-white/80 mt-1">
                   Links {effectiveBagCount} scanned {effectiveBagCount === 1 ? "container" : "containers"} (${(effectiveBagCount * 0.1).toFixed(2)} credit once verified at depot).
                 </p>
               </div>
 
               <div className="flex items-start sm:items-end">
-                <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-50 border border-slate-200 w-full cursor-pointer">
+                <label className="flex items-center gap-2.5 p-3 rounded-xl liquid-glass-subtle w-full cursor-pointer">
                   <input
                     type="checkbox"
                     checked={putOnKerb}
                     onChange={(e) => setPutOnKerb(e.target.checked)}
-                    className="w-4 h-4 accent-emerald-600 rounded"
+                    className="w-4 h-4 accent-emerald-400 rounded"
                   />
-                  <span className="text-xs font-semibold text-slate-700">
+                  <span className="text-xs font-semibold text-white">
                     Bag is out on the kerb ready for pickup
                   </span>
                 </label>
@@ -364,31 +386,31 @@ export default function SortedBagsPage() {
                 : `Scan ${BAG_STREAMS[selectedStream].shortLabel} containers first`}
           </button>
 
-          <p className="text-[11px] text-slate-500 text-center">
-            No printer? Write the short <strong>GSB-...</strong> code on masking tape with a marker — our driver can scan the QR or enter the code at your kerb.
+          <p className="text-[11px] text-white/75 text-center">
+            No printer? Write the short <strong className="text-white">GSB-...</strong> code on masking tape with a marker — our driver can scan the QR or enter the code at your kerb.
           </p>
         </section>
 
         {/* Active & Printable QR Bag Labels */}
         <section className="space-y-3">
           <div className="print:hidden flex items-center justify-between">
-            <h2 className="font-display font-bold text-base text-slate-900">
+            <h2 className="font-display font-bold text-base text-white glass-text-shadow">
               Your Home Bag Tags ({loading ? "…" : (data?.bags.length ?? 0)})
             </h2>
           </div>
 
           {loading ? (
-            <div className="p-8 text-center text-sm text-slate-400">Loading bag tags...</div>
+            <div className="p-8 text-center text-sm text-white/75">Loading bag tags...</div>
           ) : (data?.bags.length ?? 0) === 0 ? (
-            <div className="print:hidden rounded-2xl bg-white border border-slate-200 p-8 text-center">
-              <QrCode size={36} className="text-slate-300 mx-auto mb-2" />
-              <p className="font-bold text-sm text-slate-700">No tagged bags yet</p>
-              <p className="text-xs text-slate-500 mt-1">
+            <div className="print:hidden rounded-[24px] liquid-glass p-8 text-center">
+              <QrCode size={36} className="text-white/50 mx-auto mb-2" />
+              <p className="font-bold text-sm text-white">No tagged bags yet</p>
+              <p className="text-xs text-white/75 mt-1">
                 Pick one of the 4 bags above when a bag at home is full.
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 print:grid-cols-2 print:gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 print:grid-cols-2 print:gap-3 text-slate-900">
               {data!.bags.map((bag) => {
                 const streamInfo = BAG_STREAMS[bag.stream] ?? BAG_STREAMS.aluminium;
                 const qrSrc = qrMap[bag.code];

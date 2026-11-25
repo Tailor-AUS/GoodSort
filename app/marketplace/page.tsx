@@ -164,7 +164,7 @@ export default function MarketplacePage() {
         className="pointer-events-none fixed inset-x-0 top-0 z-20 px-3"
         style={{ paddingTop: "max(12px, env(safe-area-inset-top))" }}
       >
-        <div className="pointer-events-auto mx-auto max-w-md flex items-center justify-between gap-2 rounded-full bg-white/92 backdrop-blur-2xl border border-white/95 shadow-[0_6px_24px_rgba(15,23,42,0.12)] px-2 py-1.5">
+        <div className="pointer-events-auto mx-auto max-w-md flex items-center justify-between gap-2 rounded-full liquid-glass-light px-2 py-1.5">
           <Link
             href={signedIn ? "/sort" : "/"}
             aria-label={signedIn ? "Back to dashboard" : "Back to home"}
@@ -210,7 +210,7 @@ export default function MarketplacePage() {
         type="button"
         onClick={handleRecentre}
         aria-label="Recentre Brisbane map"
-        className={`fixed right-3.5 bottom-[166px] z-20 h-11 w-11 rounded-full bg-white/95 backdrop-blur-xl border border-white shadow-[0_4px_16px_rgba(15,23,42,0.14)] flex items-center justify-center text-slate-800 hover:text-slate-950 active:scale-95 transition-all duration-200 ${
+        className={`fixed right-3.5 bottom-[166px] z-20 h-11 w-11 rounded-full liquid-glass-light flex items-center justify-center text-slate-800 hover:text-slate-950 active:scale-95 transition-all duration-200 ${
           sheetExpanded ? "opacity-0 pointer-events-none translate-y-2" : "opacity-100"
         }`}
       >
@@ -222,7 +222,7 @@ export default function MarketplacePage() {
         <div
           onTouchStart={handleSheetTouchStart}
           onTouchEnd={handleSheetTouchEnd}
-          className="pointer-events-auto mx-auto max-w-md rounded-t-[24px] sm:rounded-[24px] bg-white/96 backdrop-blur-2xl border-t sm:border border-slate-200/75 shadow-[0_-8px_32px_rgba(15,23,42,0.12)] px-5 pt-1 transition-all duration-300"
+          className="pointer-events-auto mx-auto max-w-md rounded-t-[26px] sm:rounded-[26px] liquid-glass-light px-5 pt-1 transition-all duration-300"
           style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}
         >
           {/* Real interactive grab handle — tap or swipe up/down */}
