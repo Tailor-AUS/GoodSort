@@ -73,7 +73,7 @@ test("/sort Pickups segmented pills fit 4 columns without overflow, /marketplace
   assert.match(waitlist, /grid grid-cols-4 gap-1 rounded-2xl bg-white/, "Pickups tabs should use a 4-column segmented track with zero horizontal scroll");
 
   const css = read("app/globals.css");
-  assert.match(css, /\.tgs-fullscreen-map \.maplibregl-ctrl-bottom-right\s*\{[\s\S]*?left:\s*10px;[\s\S]*?right:\s*auto;/, "MapLibre attribution should sit bottom-left away from Recentre FAB");
+  assert.match(css, /\.tgs-fullscreen-map \.maplibregl-ctrl-bottom-right\s*\{[\s\S]*?left:\s*1[02]px;[\s\S]*?right:\s*auto;/, "MapLibre attribution should sit bottom-left away from Recentre FAB");
 
   const scan = read("app/scan/page.tsx");
   assert.match(scan, /scanMode === "barcode"\s*\?/, "Bottom status hint on /scan must adapt when Barcode mode is active");
@@ -99,4 +99,26 @@ test("MapProvider mounts MapLibre once without tearing down on centroid load, co
 
   const finder = read("app/components/marketing/suburb-finder.tsx");
   assert.match(finder, /min-h-\[40px\][\s\S]*?All suburbs/, "SuburbFinder pills should be >=40px tall");
+});
+
+test("Apple craft pass: brand-matched obsidian/emerald map pins, touch zoom hide, real expandable map sheet, plain-English /sort balance, and zero-flash splash", () => {
+  const mapView = read("app/components/shared/map-view.tsx");
+  assert.doesNotMatch(mapView, /function tierColor[\s\S]*?#3b82f6[\s\S]*?function CentroidBubbles/, "Suburb pins should use brand obsidian/emerald rather than generic web-blue");
+  assert.match(mapView, /#0f172a/, "Forming suburb pins should use obsidian #0f172a");
+
+  const css = read("app/globals.css");
+  assert.match(css, /@media \(max-width: 767px\)[\s\S]*?\.maplibregl-ctrl-top-right\s*\{\s*display:\s*none;/, "Touch/mobile viewports should hide +/- zoom controls");
+
+  const market = read("app/marketplace/page.tsx");
+  assert.match(market, /aria-label=\{sheetExpanded \? "Collapse suburb list" : "Expand suburb list"\}/, "Bottom sheet grab handle must be genuinely interactive");
+  assert.match(market, /onTouchStart=\{handleSheetTouchStart\}/, "Bottom sheet must support touch swipe expand/collapse");
+
+  const waitlist = read("app/sort/components/waitlist-home.tsx");
+  assert.match(waitlist, /Containers<\/p>/, "/sort hero should use plain-English Containers label instead of Status");
+
+  const sortPage = read("app/sort/page.tsx");
+  assert.match(sortPage, /animate-pulse/, "/sort loading state should render a layout skeleton rather than plain Loading... text");
+
+  const mkt = read("app/components/marketing/marketing-home.tsx");
+  assert.match(mkt, /redirectingToApp/, "MarketingHome should suppress hero flash while redirecting signed-in users to /sort");
 });

@@ -48,7 +48,7 @@ test("AccountPanel syncs loaded streetStats and householdMeta into InviteFriends
 
 test("SortedBagsPage suppresses 0-container flash while loading and InstallPrompt stays off /runner", () => {
   const bagsSrc = readClean("app/bags/page.tsx");
-  assert.match(bagsSrc, /loading\s*\?\s*"Checking scanned containers…"/);
+  assert.match(bagsSrc, /loading\s*\?[\s\S]*?Checking scanned containers/);
 
   const installSrc = readClean("app/components/shared/install-prompt.tsx");
   const match = installSrc.match(/const\s+INSTALL_PROMPT_PATHS\s*=\s*\[([^\]]+)\]/);

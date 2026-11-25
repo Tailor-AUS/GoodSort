@@ -25,7 +25,6 @@ import {
   Truck,
   User as UserIcon,
   Users,
-  Wallet,
 } from "lucide-react";
 import {
   LIVE_VOLUME_THRESHOLD,
@@ -213,25 +212,32 @@ export function WaitlistHome({
               Hi {firstName}
             </h1>
 
-            {/* Elevated White Points & Status Hero Strip */}
+            {/* Elevated White Balance & Containers Hero Strip */}
             <button
               type="button"
               onClick={() => setActiveTab("profile")}
-              className="w-full text-left rounded-2xl bg-white px-5 py-4 shadow-[0_2px_12px_rgba(15,23,42,0.05)] flex items-center justify-between gap-3 mb-7 active:scale-[0.99] transition-transform"
+              className="w-full text-left rounded-[24px] bg-white px-5 py-4 shadow-[0_2px_12px_rgba(15,23,42,0.05)] flex items-center justify-between gap-3 mb-7 active:scale-[0.99] transition-transform"
             >
               <div className="flex items-center gap-6 min-w-0">
                 <div>
-                  <p className="text-[12px] font-medium text-slate-500">Points</p>
-                  <p className="text-[24px] leading-tight font-display font-bold text-slate-900 tabular-nums mt-0.5">
-                    {summary.goodSortPoints.toLocaleString()}
+                  <p className="text-[12px] font-medium text-slate-500">
+                    {user.clearedCents > 0 ? "Balance" : "Pending"}
+                  </p>
+                  <p className="text-[24px] leading-tight font-display font-bold text-slate-900 tabular-nums mt-0.5 tracking-[-0.02em]">
+                    {formatCents(summary.totalCreditCents)}
                   </p>
                 </div>
                 <div className="h-9 w-px bg-slate-200/80" />
                 <div>
-                  <p className="text-[12px] font-medium text-slate-500">Status</p>
-                  <p className="text-[24px] leading-tight font-display font-bold text-slate-900 tabular-nums mt-0.5">
-                    {summary.totalContainers.toLocaleString()}
-                  </p>
+                  <p className="text-[12px] font-medium text-slate-500">Containers</p>
+                  <div className="flex items-baseline gap-1.5 mt-0.5">
+                    <p className="text-[24px] leading-tight font-display font-bold text-slate-900 tabular-nums tracking-[-0.02em]">
+                      {summary.totalContainers.toLocaleString()}
+                    </p>
+                    <span className="text-[11px] font-semibold text-emerald-700 tabular-nums">
+                      · {summary.goodSortPoints.toLocaleString()} pts
+                    </span>
+                  </div>
                 </div>
               </div>
               <div
@@ -274,16 +280,11 @@ export function WaitlistHome({
               </Link>
             ) : null}
 
-            {/* Section: Sort and explore (4x2 Calm White Tile Grid) */}
-            <h2 className="text-[17px] font-display font-bold text-slate-900 mb-3.5">
+            {/* Section: Sort and explore (4 unique actions — zero duplication with bottom tab bar) */}
+            <h2 className="text-[17px] font-display font-bold text-slate-900 mb-3.5 tracking-[-0.015em]">
               Sort and explore
             </h2>
             <div className="grid grid-cols-4 gap-3 mb-7">
-              <ActionTile
-                label="Scan"
-                icon={<ScanBarcode className="w-6 h-6 text-emerald-600" strokeWidth={1.75} />}
-                onClick={handleScanClick}
-              />
               <ActionTileLink
                 label="Home Bags"
                 href="/bags"
@@ -292,12 +293,7 @@ export function WaitlistHome({
               <ActionTileLink
                 label="Suburb Map"
                 href="/marketplace#suburb-map"
-                icon={<MapPin className="w-6 h-6 text-teal-600" strokeWidth={1.75} />}
-              />
-              <ActionTile
-                label="Payouts"
-                icon={<Wallet className="w-6 h-6 text-slate-800" strokeWidth={1.75} />}
-                onClick={() => onOpenAccount?.()}
+                icon={<MapPin className="w-6 h-6 text-emerald-600" strokeWidth={1.75} />}
               />
               <ActionTileLink
                 label="Invite"
@@ -305,38 +301,10 @@ export function WaitlistHome({
                 icon={<Users className="w-6 h-6 text-amber-600" strokeWidth={1.75} />}
               />
               <ActionTileLink
-                label="Flyer"
-                href="/flyer"
-                icon={<Printer className="w-6 h-6 text-slate-700" strokeWidth={1.75} />}
-              />
-              <ActionTileLink
                 label="Household"
                 href="/household"
-                icon={<Home className="w-6 h-6 text-violet-600" strokeWidth={1.75} />}
+                icon={<Home className="w-6 h-6 text-slate-700" strokeWidth={1.75} />}
               />
-              {/* 2x2 Mini Stream Cluster Tile (mirrors 2x2 "All products" tile) */}
-              <button
-                type="button"
-                onClick={() => setActiveTab("points")}
-                className="flex flex-col items-center group"
-              >
-                <div className="w-full aspect-square rounded-2xl bg-transparent grid grid-cols-2 gap-1.5 group-active:scale-[0.95] transition-transform">
-                  {STREAMS.map((s) => (
-                    <div
-                      key={s.key}
-                      className="rounded-xl bg-white shadow-[0_1px_6px_rgba(15,23,42,0.05)] flex flex-col items-center justify-center"
-                    >
-                      <span className={`h-2 w-2 rounded-full ${s.dot} mb-0.5`} />
-                      <span className="text-[10px] font-bold text-slate-800 tabular-nums leading-none">
-                        {summary.streams[s.key]}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <span className="text-[11px] font-medium text-slate-700 text-center mt-1.5 leading-tight">
-                  4 Streams
-                </span>
-              </button>
             </div>
 
             {/* Anonymous Building Syndicate Notification / Quick Entry Card */}
@@ -401,7 +369,7 @@ export function WaitlistHome({
               </Link>
             </div>
 
-            <div className="overflow-hidden rounded-2xl bg-white shadow-[0_2px_14px_rgba(15,23,42,0.06)] mb-5">
+            <div className="overflow-hidden rounded-[24px] bg-white shadow-[0_2px_14px_rgba(15,23,42,0.06)] mb-5">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/images/brisbane-kerbside-hero.webp"
@@ -868,7 +836,7 @@ export function WaitlistHome({
                     </p>
                   </div>
                   <div className="border-l border-slate-100 pl-4">
-                    <p className="text-[12px] font-medium text-slate-500">Status</p>
+                    <p className="text-[12px] font-medium text-slate-500">Containers</p>
                     <p className="text-[26px] leading-tight font-display font-bold text-slate-900 tabular-nums mt-0.5">
                       {summary.totalContainers.toLocaleString()}
                     </p>

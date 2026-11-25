@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ShieldCheck, ChevronRight, Recycle, Banknote, Truck, ArrowDown, Check, MapPin, Home } from "lucide-react";
 import { launchBonusHeadline } from "@/lib/credit";
-import { apiUrl, clearAuth, hasValidToken, persistWaitlistFromUrl, readDayHint, readReferrerId, waitlistContinuePath, writeDayHint } from "@/lib/config";
+import { apiUrl, clearAuth, hasValidToken, persistWaitlistFromUrl, readDayHint, readReferrerId, readStoredProfile, waitlistContinuePath, writeDayHint } from "@/lib/config";
 import { track } from "@/lib/analytics";
 import { BCC_BIN_DAY_DATASET, LIVE_VOLUME_THRESHOLD, dayClusterStats, daySlug, findSuburb, inviteMessage, sameSuburb, streetInviteUrl, type GrowthSuburb } from "@/lib/brisbane";
 import { Logo } from "@/app/components/shared/logo";
@@ -31,6 +31,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
   const [inviteFrom, setInviteFrom] = useState<{ name: string; suburb: string | null; dayName?: string | null } | null>(null);
   const [dayHint, setDayHint] = useState<number | null>(null);
   const [lookedUpSuburb, setLookedUpSuburb] = useState<string | null>(null);
+  const [redirectingToApp, setRedirectingToApp] = useState(false);
 
   useEffect(() => {
     persistWaitlistFromUrl();
@@ -39,11 +40,17 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
     if (!hasValidToken()) {
       if (localStorage.getItem("goodsort_token")) clearAuth();
     } else if (!suburbName && !new URLSearchParams(window.location.search).has("home")) {
+      setRedirectingToApp(true);
+      const cachedProfile = readStoredProfile();
+      if (typeof cachedProfile.householdId === "string" && cachedProfile.householdId) {
+        router.replace(APP_HOME_PATH);
+      }
       void waitlistContinuePath()
         .then((path) => {
-          if (path === APP_HOME_PATH) router.push(path);
+          if (path === APP_HOME_PATH) router.replace(path);
+          else setRedirectingToApp(false);
         })
-        .catch(() => { /* stay on the invite landing */ });
+        .catch(() => { setRedirectingToApp(false); });
     }
     const rid = readReferrerId();
     if (!rid) return;
@@ -141,6 +148,16 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
       router.push(await waitlistContinuePath());
     } catch { setError("Verification failed"); }
     setLoading(false);
+  }
+
+  if (redirectingToApp) {
+    return (
+      <div className="min-h-dvh bg-white flex flex-col items-center justify-center px-6" aria-busy="true" aria-label="Opening your dashboard">
+        <div className="animate-pulse">
+          <Logo size="lg" />
+        </div>
+      </div>
+    );
   }
 
   if (showAuth) {

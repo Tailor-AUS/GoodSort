@@ -37,24 +37,30 @@ body {
 /* Google Maps */
 .gm-style iframe + div { border: none !important; }
 
-/* Full-screen Google Maps-style suburb map control offsets */
+/* Full-screen Apple Maps-style suburb map control offsets */
 .tgs-fullscreen-map .maplibregl-ctrl-top-right {
   top: max(76px, calc(env(safe-area-inset-top) + 66px));
   right: 12px;
+}
+/* Hide +/- zoom buttons on touch/mobile viewports (pinch-to-zoom is native) */
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
+  .tgs-fullscreen-map .maplibregl-ctrl-top-right {
+    display: none;
+  }
 }
 .tgs-fullscreen-map .maplibregl-ctrl-group button {
   width: 40px;
   height: 40px;
 }
 .tgs-fullscreen-map .maplibregl-ctrl-bottom-right {
-  left: 10px;
+  left: 12px;
   right: auto;
-  bottom: 186px;
+  bottom: 162px;
   max-width: calc(100vw - 84px);
 }
 .tgs-fullscreen-map .maplibregl-ctrl-bottom-left {
-  left: 10px;
-  bottom: 186px;
+  left: 12px;
+  bottom: 162px;
 }
 
 /* Google Places Autocomplete — light theme */

@@ -161,8 +161,25 @@ export default function SorterApp() {
 
   if (loading) {
     return (
-      <div className="h-dvh flex items-center justify-center bg-white">
-        <div className="text-slate-400 text-sm">Loading...</div>
+      <div className="min-h-dvh bg-[#f4f5f7] pb-28" aria-busy="true" aria-label="Loading dashboard">
+        <div className="mx-auto w-full max-w-[430px] px-5" style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top))" }}>
+          <div className="flex items-center justify-between mb-6">
+            <div className="h-10 w-20 rounded-full bg-white animate-pulse" />
+            <div className="h-10 w-24 rounded-full bg-white animate-pulse" />
+          </div>
+          <div className="h-8 w-36 rounded-xl bg-slate-200/80 animate-pulse mb-4" />
+          <div className="h-24 w-full rounded-[24px] bg-white shadow-[0_2px_12px_rgba(15,23,42,0.04)] animate-pulse mb-7" />
+          <div className="h-5 w-32 rounded-lg bg-slate-200/80 animate-pulse mb-3.5" />
+          <div className="grid grid-cols-4 gap-3 mb-7">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="space-y-2">
+                <div className="w-full aspect-square rounded-2xl bg-white animate-pulse" />
+                <div className="h-3 w-12 mx-auto rounded bg-slate-200/80 animate-pulse" />
+              </div>
+            ))}
+          </div>
+          <div className="h-64 w-full rounded-[24px] bg-white shadow-[0_2px_14px_rgba(15,23,42,0.05)] animate-pulse" />
+        </div>
       </div>
     );
   }
