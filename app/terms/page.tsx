@@ -36,7 +36,7 @@ export default function TermsPage() {
         <p className="text-slate-600 text-sm mb-4">
           Tailor Intelligence Pty Ltd (ABN 13 688 827 572), trading as The Good Sort (&quot;The Good Sort&quot;, &quot;we&quot;, &quot;us&quot;)
           operates a scan-first container sorting and kerbside collection service in Queensland.
-          You scan eligible cans and bottles for a 10¢ sorting credit, sort into four streams at home,
+          You scan eligible cans and bottles for an 8¢ sorting credit, sort into four streams at home,
           and invite neighbours to scan. When your suburb reaches enough scanned container volume for
           one driver trip (about 1,000 containers), we unlock a volume run. We contact you when to
           bag out sorted containers on the kerb. You authorise The Good Sort and its appointed runners
@@ -57,7 +57,7 @@ export default function TermsPage() {
 
         <h2 className="text-lg font-display font-bold text-slate-900 mt-8 mb-3">3. Sorting Credit Rates &amp; Good Sort Points</h2>
         <p className="text-slate-600 text-sm mb-4">
-          Sorters earn Sorting Credits at the rate displayed in the app (currently 10 cents per eligible
+          Sorters earn Sorting Credits at the rate displayed in the app (currently 8 cents per eligible
           container scanned and sorted at home,
           subject to physical collection and depot verification). When you invite a neighbour at a separate residential address using your
           referral link, you earn non-cash Good Sort Points (currently 100 points when their household registers plus 1 bonus point per

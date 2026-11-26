@@ -654,7 +654,7 @@ export default function AdminPage() {
                   COEX Secondary-Sorted CRP Settlement Ledger (17.68¢/can)
                 </p>
                 <p className="text-[14px] font-extrabold text-slate-900">
-                  10.00¢ COEX Refund + 7.68¢ Handling = 17.68¢ → {crpLedger.activeHouseholdRateCents}¢ Sorter · 0¢ Referrals (Points) · 3¢ Runner · +4.68¢ CRP Margin
+                  10.00¢ COEX Refund + 7.68¢ Handling = 17.68¢ → {crpLedger.activeHouseholdRateCents}¢ Sorter · 0¢ Referrals (Points) · 3¢ Runner · +6.68¢ CRP Margin
                 </p>
               </div>
               <span
@@ -664,7 +664,7 @@ export default function AdminPage() {
                     : "bg-amber-50 text-amber-800 border-amber-200"
                 }`}
               >
-                {crpLedger.crpActive ? "COEX CRP Active (10¢ Sorter)" : "CRP Building — Pre-CCA Mode (10¢ home sorter + pro-forma 17.68¢)"}
+                {crpLedger.crpActive ? "COEX CRP Active (8¢ Sorter)" : "CRP Building — Pre-CCA Mode (8¢ home sorter + pro-forma 17.68¢)"}
               </span>
             </div>
 
@@ -697,7 +697,7 @@ export default function AdminPage() {
                 <p className="text-lg font-display font-extrabold text-violet-800">
                   ${crpLedger.totals.proFormaCrpNetMarginDollars.toFixed(2)}
                 </p>
-                <p className="text-[10px] text-violet-700 uppercase tracking-wider">+4.68¢ Margin</p>
+                <p className="text-[10px] text-violet-700 uppercase tracking-wider">+6.68¢ Margin</p>
               </div>
             </div>
 

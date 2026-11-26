@@ -4,7 +4,7 @@
   <rect x="0" y="0" width="400" height="80" rx="20" fill="#7c3aed"/>
   <rect x="0" y="40" width="400" height="40" fill="#7c3aed"/>
   <text x="200" y="36" text-anchor="middle" fill="white" font-size="26" font-weight="800">The Good Sort</text>
-  <text x="200" y="62" text-anchor="middle" fill="rgba(255,255,255,0.85)" font-size="13" font-weight="600">4-stream home sorting · 10¢ credit · no depot trip</text>
+  <text x="200" y="62" text-anchor="middle" fill="rgba(255,255,255,0.85)" font-size="13" font-weight="600">4-stream home sorting · 8¢ credit · no depot trip</text>
 
   <rect x="100" y="100" width="200" height="200" rx="16" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="2"/>
   <text x="200" y="190" text-anchor="middle" fill="#7c3aed" font-size="60" font-weight="800">QR</text>
@@ -15,7 +15,7 @@
 
   <circle cx="50" cy="365" r="16" fill="#7c3aed"/>
   <text x="50" y="370" text-anchor="middle" fill="white" font-size="14" font-weight="800">1</text>
-  <text x="80" y="362" fill="#0f172a" font-size="13" font-weight="700">Scan eligible cans and bottles for 10¢</text>
+  <text x="80" y="362" fill="#0f172a" font-size="13" font-weight="700">Scan eligible cans and bottles for 8¢</text>
   <text x="80" y="378" fill="#64748b" font-size="11">150ml–3L containers with the 10¢ refund mark</text>
 
   <circle cx="50" cy="410" r="16" fill="#7c3aed"/>

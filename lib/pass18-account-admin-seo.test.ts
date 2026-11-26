@@ -42,13 +42,13 @@ test("Admin pages clear stale error banners and surface clear 401/403 status mes
   assert.match(invite, /clearAuth\(\)/);
 });
 
-test("SEO metadata, structured data, and legal pages preserve 10¢ credit honesty and ABN 13 688 827 572", () => {
+test("SEO metadata, structured data, and legal pages preserve 8¢ credit honesty and ABN 13 688 827 572", () => {
   const seo = readFileSync(path.join(ROOT, "app/seo.ts"), "utf8");
-  assert.match(seo, /Earn 10¢ sorting credit each/);
+  assert.match(seo, /Earn 8¢ sorting credit each/);
 
   const suburbPage = readFileSync(path.join(ROOT, "app/brisbane/[suburb]/page.tsx"), "utf8");
   assert.match(suburbPage, /"@type": "Service"/);
-  assert.match(suburbPage, /Earn 10¢ each/);
+  assert.match(suburbPage, /Earn 8¢ each/);
 
   const guide = readFileSync(path.join(ROOT, "app/guides/containers-for-change-brisbane/page.tsx"), "utf8");
   assert.match(guide, /"@type": "FAQPage"/);

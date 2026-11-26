@@ -32,11 +32,11 @@ test("marketplace-api getStoredUserId falls back to readStoredProfileId for mult
   assert.match(src, /return readStoredProfileId\(\) \?\? null/);
 });
 
-test("containers.ts local DB and unknown container fallback align with 10c domestic sorting credit", async () => {
+test("containers.ts local DB and unknown container fallback align with 8c domestic sorting credit", async () => {
   const { LOCAL_DB, createUnknownContainer } = await import("./containers.ts");
   assert.ok(LOCAL_DB.length > 0);
   for (const c of LOCAL_DB) {
-    assert.equal(c.refund_cents, 10, `${c.name} should carry 10c sorting credit`);
+    assert.equal(c.refund_cents, 8, `${c.name} should carry 8c sorting credit`);
   }
-  assert.equal(createUnknownContainer("9999999999999").refund_cents, 10);
+  assert.equal(createUnknownContainer("9999999999999").refund_cents, 8);
 });

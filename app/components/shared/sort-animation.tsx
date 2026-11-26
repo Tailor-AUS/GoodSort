@@ -21,7 +21,7 @@ const STAGES: Array<{
     eyebrow: "Step 1 · Instant AI camera scan",
     headline: "Aluminium Can 375mL → Blue bag",
     detail: "Point your phone camera at any eligible 150mL–3L container.",
-    badge: "+10¢ pending",
+    badge: "+8¢ pending",
     badgeTone: "bg-violet-700 text-white",
     spotlightClass: "left-3 top-3",
   },
@@ -49,7 +49,7 @@ const STAGES: Array<{
     idx: 3,
     pill: "4. Paid",
     eyebrow: "Step 4 · Verified depot payout + Good Sort Points",
-    headline: "10¢/can cleared to PayID + bonus Good Sort Points",
+    headline: "8¢/can cleared to PayID + bonus Good Sort Points",
     detail: "Cash out from $20 via PayID or bank transfer, plus 100 bonus points when a neighbour joins.",
     badge: "PayID ready",
     badgeTone: "bg-emerald-700 text-white",
@@ -148,7 +148,7 @@ export function SortAnimation() {
           <span className="ml-0.5">4 home streams · no wheelie bins</span>
         </div>
         <span className="text-[11px] font-extrabold bg-emerald-100 text-emerald-900 px-2.5 py-0.5 rounded-full">
-          10¢ / can
+          8¢ / can
         </span>
       </div>
 
@@ -252,7 +252,7 @@ export function HeroKerbsideCard({ suburbName }: { suburbName?: string }) {
             <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
             <div>
               <p className="text-[11px] font-extrabold text-slate-900 leading-none">
-                10¢ credit per container
+                8¢ credit per container
               </p>
               <p className="text-[10px] font-semibold text-slate-600 mt-0.5 leading-none">
                 Scan indoors · bag out at 1,000 cans

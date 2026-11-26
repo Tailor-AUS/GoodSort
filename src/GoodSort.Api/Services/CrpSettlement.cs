@@ -14,10 +14,10 @@ namespace GoodSort.Api.Services;
 ///   = 17.68¢/container (1768 bp) gross COEX revenue
 ///
 /// Full-scale payout stack:
-///   - 10.00¢/container Sorter household payout
+///   -  8.00¢/container Sorter household payout
 ///   -  0.00¢/container Neighbour referral cash override (points-only: +100 PTS join, +1 PT/can)
 ///   -  3.00¢/container Suburb Runner collection payout
-///   = +4.68¢/container (+468 bp) net GoodSort margin.
+///   = +6.68¢/container (+668 bp) net GoodSort margin.
 /// </summary>
 public static class CrpSettlement
 {
@@ -25,8 +25,8 @@ public static class CrpSettlement
     public const long CoexHandlingFeeBpPerContainer = 768;   //  7.68¢
     public const long CoexGrossBpPerContainer = 1768;        // 17.68¢
 
-    public const int CrpHouseholdCentsPerContainer = 10;
-    public const int PreCrpHouseholdCentsPerContainer = HouseholdCredit.CentsPerContainer; // 10¢
+    public const int CrpHouseholdCentsPerContainer = 8;
+    public const int PreCrpHouseholdCentsPerContainer = HouseholdCredit.CentsPerContainer; // 8¢
     public const int ContainerMafiaCentsPerContainer = HouseholdCredit.ReferralCommissionCentsPerContainer; // 0¢ (points-only)
     public const int CrpRunnerTargetCentsPerContainer = 3;
 
@@ -125,7 +125,7 @@ public static class CrpSettlement
         var totalPayoutCents = householdPayoutCents + containerMafiaCents + runnerPayoutCents;
         var netMarginBp = grossBp - (totalPayoutCents * 100L);
 
-        // Full-scale CRP pro-forma at 10¢ household + actual Mafia + actual runner payout
+        // Full-scale CRP pro-forma at 8¢ household + actual Mafia + actual runner payout
         // (never substitute a synthetic 3¢ runner rate when actual runner payout differs):
         var proFormaPayoutCents = (safeContainers * CrpHouseholdCentsPerContainer)
                                 + containerMafiaCents

@@ -185,8 +185,8 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
         Assert.False(string.IsNullOrWhiteSpace(scanToken), "photo scan must return a signed scanToken.");
         Assert.Equal(1, scanPhotoBody.GetProperty("totalItems").GetInt32());
 
-        // Container #1 gets 10¢ launch bonus preview (LaunchBonus.TotalCents(0, 1, 10))
-        Assert.Equal(10, scanPhotoBody.GetProperty("totalCents").GetInt32());
+        // Container #1 gets 8¢ standard household sorting credit preview
+        Assert.Equal(8, scanPhotoBody.GetProperty("totalCents").GetInt32());
 
         var containersArr = scanPhotoBody.GetProperty("containers");
         Assert.Equal(1, containersArr.GetArrayLength());
@@ -225,8 +225,8 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
 
         var confirmBody = await confirmRes.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(1, confirmBody.GetProperty("totalContainers").GetInt32());
-        Assert.Equal(10, confirmBody.GetProperty("totalCents").GetInt32());
-        Assert.Equal(10, confirmBody.GetProperty("pendingCents").GetInt32());
+        Assert.Equal(8, confirmBody.GetProperty("totalCents").GetInt32());
+        Assert.Equal(8, confirmBody.GetProperty("pendingCents").GetInt32());
 
         // Assert DB state after Step 4: Single-use token recorded, orphan scan created, profile credited
         await _host.WithDbContextAsync(async db =>
@@ -240,7 +240,7 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
             Assert.Single(scans);
             var scan = scans[0];
             Assert.Null(scan.HouseholdId); // MUST BE NULL (ORPHAN SCAN)
-            Assert.Equal(10, scan.RefundCents); // Launch bonus double rate
+            Assert.Equal(8, scan.RefundCents); // Standard 8c sorting rate
             Assert.Equal("pending", scan.Status);
             Assert.Equal("PHOTO", scan.Barcode);
             Assert.Equal("Coca-Cola 375ml can", scan.ContainerName);
@@ -249,7 +249,7 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
 
             // Profile ledger update
             var profile = await db.Profiles.SingleAsync(p => p.Id == profileId);
-            Assert.Equal(10, profile.PendingCents);
+            Assert.Equal(8, profile.PendingCents);
             Assert.Equal(1, profile.TotalContainers);
             Assert.Null(profile.HouseholdId);
         });
@@ -294,7 +294,7 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
         Assert.NotEqual(Guid.Empty, householdId);
         Assert.Equal("waitlisted", householdBody.GetProperty("binStatus").GetString());
         Assert.Equal(1, householdBody.GetProperty("pendingContainers").GetInt32());
-        Assert.Equal(10, householdBody.GetProperty("pendingValueCents").GetInt32());
+        Assert.Equal(8, householdBody.GetProperty("pendingValueCents").GetInt32());
 
         // Assert DB state after Step 6: CRITICAL BACKFILL INVARIANTS
         await _host.WithDbContextAsync(async db =>
@@ -304,7 +304,7 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
             Assert.Equal("MOOROOKA", household.Suburb);
             Assert.Equal("waitlisted", household.BinStatus);
             Assert.Equal(1, household.PendingContainers);
-            Assert.Equal(10, household.PendingValueCents);
+            Assert.Equal(8, household.PendingValueCents);
             Assert.Equal(1, household.Materials.Aluminium);
 
             // Bins entity created for the household
@@ -314,7 +314,7 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
             // Profile updated
             var profile = await db.Profiles.SingleAsync(p => p.Id == profileId);
             Assert.Equal(householdId, profile.HouseholdId);
-            Assert.Equal(10, profile.PendingCents);
+            Assert.Equal(8, profile.PendingCents);
             Assert.Equal(1, profile.TotalContainers);
 
             // Scan backfill invariant: Zero orphan scans remaining!
@@ -336,7 +336,7 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
         var finalProfileBody = await profileRes.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(profileId, finalProfileBody.GetProperty("id").GetGuid());
         Assert.Equal(householdId, finalProfileBody.GetProperty("householdId").GetGuid());
-        Assert.Equal(10, finalProfileBody.GetProperty("pendingCents").GetInt32());
+        Assert.Equal(8, finalProfileBody.GetProperty("pendingCents").GetInt32());
         Assert.Equal(1, finalProfileBody.GetProperty("totalContainers").GetInt32());
         snapshots.Add(await CaptureSnapshotAsync("Step 7", "GET /api/profiles/{id} (Final State)", email, profileId, householdId));
 
@@ -412,8 +412,8 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
         var scanToken = photoBody.GetProperty("scanToken").GetString()!;
         Assert.False(string.IsNullOrEmpty(scanToken));
 
-        // Invariant: Preview quotes 10¢ double credit launch bonus (1st container)
-        Assert.Equal(10, photoBody.GetProperty("totalCents").GetInt32());
+        // Invariant: Preview quotes 8¢ standard household sorting credit (1st container)
+        Assert.Equal(8, photoBody.GetProperty("totalCents").GetInt32());
         Assert.Equal(1, photoBody.GetProperty("totalItems").GetInt32());
 
         // Zero DB scan writes occurred during preview
@@ -424,7 +424,7 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
             Assert.Equal(0, prof!.PendingCents);
         });
 
-        // Step 5: Confirm deposit -> Creates orphan scan with HouseholdId = null & 10¢ credit
+        // Step 5: Confirm deposit -> Creates orphan scan with HouseholdId = null & 8¢ credit
         var confirmRes = await _client.PostAsJsonAsync("/api/scan/photo/confirm", new
         {
             scanToken,
@@ -433,7 +433,7 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
         });
         Assert.Equal(HttpStatusCode.OK, confirmRes.StatusCode);
         var confirmBody = await confirmRes.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(10, confirmBody.GetProperty("totalCents").GetInt32());
+        Assert.Equal(8, confirmBody.GetProperty("totalCents").GetInt32());
         Assert.False(confirmBody.GetProperty("bonusApplied").GetBoolean());
 
         // Verify orphan scan state in DB
@@ -441,12 +441,12 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
         {
             var orphans = await db.Scans.Where(s => s.UserId == profileId && s.HouseholdId == null).ToListAsync();
             Assert.Single(orphans);
-            Assert.Equal(10, orphans[0].RefundCents);
+            Assert.Equal(8, orphans[0].RefundCents);
             Assert.Equal("pending", orphans[0].Status);
             Assert.Equal("aluminium", orphans[0].Material);
 
             var prof = await db.Profiles.FindAsync(profileId);
-            Assert.Equal(10, prof!.PendingCents);
+            Assert.Equal(8, prof!.PendingCents);
             Assert.Equal(1, prof.TotalContainers);
         });
 
@@ -489,7 +489,7 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
             Assert.Equal("MOOROOKA", hh.Suburb);
             Assert.Equal("waitlisted", hh.BinStatus);
             Assert.Equal(1, hh.PendingContainers);
-            Assert.Equal(10, hh.PendingValueCents);
+            Assert.Equal(8, hh.PendingValueCents);
             Assert.Equal(1, hh.Materials.Aluminium);
 
             // Placeholder bin created with GS-H prefix and mirrored counters
@@ -509,7 +509,7 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
             // Profile updated to point to household
             var prof = await db.Profiles.FindAsync(profileId);
             Assert.Equal(householdId, prof!.HouseholdId);
-            Assert.Equal(10, prof.PendingCents);
+            Assert.Equal(8, prof.PendingCents);
             Assert.Equal(1, prof.TotalContainers);
         });
     }
@@ -800,7 +800,7 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
             Assert.Single(usedTokens);
 
             var profile = await db.Profiles.SingleAsync(p => p.Id == profileId);
-            Assert.Equal(10, profile.PendingCents);
+            Assert.Equal(8, profile.PendingCents);
             Assert.Equal(1, profile.TotalContainers);
         });
     }
@@ -923,7 +923,7 @@ public class R1FirstTimeJourneySimulationTests : IDisposable
             // 4. Household A metrics
             var hh = await db.Households.SingleAsync(h => h.Id == householdAId);
             Assert.Equal(2, hh.PendingContainers);
-            Assert.Equal(20, hh.PendingValueCents);
+            Assert.Equal(16, hh.PendingValueCents);
         });
 
         // 5. Subsequent scan by User A immediately attaches to Household A (mode 4)

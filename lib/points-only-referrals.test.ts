@@ -22,11 +22,11 @@ test("no cash referral promises ($1 signup bonus or 1¢/can override) remain in 
   }
 });
 
-test("terms and admin reflect points-only referrals and +4.68¢ CRP margin", () => {
+test("terms and admin reflect points-only referrals and +6.68¢ CRP margin", () => {
   const terms = fs.readFileSync(path.join(ROOT, "app", "terms", "page.tsx"), "utf8");
   assert.match(terms, /non-cash Good Sort Points/i);
   assert.match(terms, /no cash signup bonus or per-container cash commission/i);
 
   const admin = fs.readFileSync(path.join(ROOT, "app", "admin", "page.tsx"), "utf8");
-  assert.match(admin, /\+4\.68¢ CRP Margin/);
+  assert.match(admin, /\+6\.68¢ CRP Margin/);
 });

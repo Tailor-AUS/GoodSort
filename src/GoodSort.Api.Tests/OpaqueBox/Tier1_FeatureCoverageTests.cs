@@ -115,8 +115,8 @@ public class Tier1_FeatureCoverageTests : IClassFixture<OpaqueBoxHost>
         var res = await client.PostAsJsonAsync("/api/scan/photo/confirm", new { scanToken = token });
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         var json = await res.Content.ReadFromJsonAsync<JsonElement>();
-        // Standard domestic rate pays 10c each = 20c
-        Assert.Equal(20, json.GetProperty("totalCents").GetInt32());
+        // Standard domestic rate pays 8c each = 16c
+        Assert.Equal(16, json.GetProperty("totalCents").GetInt32());
         Assert.False(json.GetProperty("bonusApplied").GetBoolean());
     }
 
@@ -321,7 +321,7 @@ public class Tier1_FeatureCoverageTests : IClassFixture<OpaqueBoxHost>
         var hh = await hhRes.Content.ReadFromJsonAsync<JsonElement>();
 
         Assert.Equal(3, hh.GetProperty("pendingContainers").GetInt32());
-        Assert.Equal(30, hh.GetProperty("pendingValueCents").GetInt32());
+        Assert.Equal(24, hh.GetProperty("pendingValueCents").GetInt32());
     }
 
     // =========================================================================
@@ -438,7 +438,7 @@ public class Tier1_FeatureCoverageTests : IClassFixture<OpaqueBoxHost>
 
         var prof = await _host.GetProfileAsync(client, profileId);
         Assert.Equal(2, prof.GetProperty("totalContainers").GetInt32());
-        Assert.Equal(20, prof.GetProperty("pendingCents").GetInt32());
+        Assert.Equal(16, prof.GetProperty("pendingCents").GetInt32());
     }
 
     [Fact]
@@ -465,7 +465,7 @@ public class Tier1_FeatureCoverageTests : IClassFixture<OpaqueBoxHost>
 
         var hh = await _host.GetHouseholdAsync(client, hhId);
         Assert.Equal(4, hh.GetProperty("pendingContainers").GetInt32());
-        Assert.Equal(40, hh.GetProperty("pendingValueCents").GetInt32());
+        Assert.Equal(32, hh.GetProperty("pendingValueCents").GetInt32());
     }
 
     [Fact]
@@ -511,7 +511,7 @@ public class Tier1_FeatureCoverageTests : IClassFixture<OpaqueBoxHost>
 
         var prof = await _host.GetProfileAsync(client, profileId);
         Assert.Equal(3, prof.GetProperty("totalContainers").GetInt32());
-        Assert.Equal(30, prof.GetProperty("pendingCents").GetInt32());
+        Assert.Equal(24, prof.GetProperty("pendingCents").GetInt32());
     }
 
     // =========================================================================
@@ -694,7 +694,7 @@ public class Tier1_FeatureCoverageTests : IClassFixture<OpaqueBoxHost>
 
         var prof = await _host.GetProfileAsync(client, profileId);
         Assert.Equal(4, prof.GetProperty("totalContainers").GetInt32());
-        Assert.Equal(40, prof.GetProperty("pendingCents").GetInt32());
+        Assert.Equal(32, prof.GetProperty("pendingCents").GetInt32());
     }
 
     // =========================================================================
@@ -779,7 +779,7 @@ public class Tier1_FeatureCoverageTests : IClassFixture<OpaqueBoxHost>
         // Re-login
         var (client2, _, id2) = await _host.SignInMemberAsync(email);
         var prof = await _host.GetProfileAsync(client2, id2);
-        Assert.Equal(30, prof.GetProperty("pendingCents").GetInt32());
+        Assert.Equal(24, prof.GetProperty("pendingCents").GetInt32());
     }
 
     // =========================================================================
@@ -909,7 +909,7 @@ public class Tier1_FeatureCoverageTests : IClassFixture<OpaqueBoxHost>
 
         // Simulate reconnecting and fetching source of truth
         var prof = await _host.GetProfileAsync(client, profileId);
-        Assert.Equal(20, prof.GetProperty("pendingCents").GetInt32());
+        Assert.Equal(16, prof.GetProperty("pendingCents").GetInt32());
     }
 
     [Fact]
@@ -931,7 +931,7 @@ public class Tier1_FeatureCoverageTests : IClassFixture<OpaqueBoxHost>
 
         var prof = await _host.GetProfileAsync(client, profileId);
         Assert.Equal(3, prof.GetProperty("totalContainers").GetInt32());
-        Assert.Equal(30, prof.GetProperty("pendingCents").GetInt32());
+        Assert.Equal(24, prof.GetProperty("pendingCents").GetInt32());
     }
 
     [Fact]

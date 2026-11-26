@@ -66,7 +66,7 @@ export default function LoginPage() {
             <div className="flex justify-center mb-3">
               <Logo size="lg" dark />
             </div>
-            <p className="text-white/85 text-[13px] mt-1">Scan for 10¢. We’ll tell you when we collect.</p>
+            <p className="text-white/85 text-[13px] mt-1">Scan for 8¢. We’ll tell you when we collect.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">

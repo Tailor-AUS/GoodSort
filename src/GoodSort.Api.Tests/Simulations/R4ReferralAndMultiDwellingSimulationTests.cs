@@ -157,11 +157,11 @@ public class R4ReferralAndMultiDwellingSimulationTests : IDisposable
         });
         Assert.Equal(HttpStatusCode.OK, confirmResB.StatusCode);
 
-        // Invariant: User B gets 10¢ launch bonus, orphan scan created, User A still has 0¢
+        // Invariant: User B gets 8¢ standard sorting credit, orphan scan created, User A still has 0¢
         await _host.WithDbContextAsync(async db =>
         {
             var pB = await db.Profiles.FindAsync(userBId);
-            Assert.Equal(10, pB!.PendingCents);
+            Assert.Equal(8, pB!.PendingCents);
             Assert.Equal(1, pB.TotalContainers);
 
             var orphanScan = await db.Scans.SingleAsync(s => s.UserId == userBId);
@@ -211,7 +211,7 @@ public class R4ReferralAndMultiDwellingSimulationTests : IDisposable
             var hhB = await db.Households.FindAsync(householdBId);
             Assert.NotNull(hhB);
             Assert.Equal(1, hhB.PendingContainers);
-            Assert.Equal(10, hhB.PendingValueCents);
+            Assert.Equal(8, hhB.PendingValueCents);
         });
 
         // Verify via API GET /api/profiles/{userAId} and /network
@@ -328,7 +328,7 @@ public class R4ReferralAndMultiDwellingSimulationTests : IDisposable
         {
             var orphanScan = await db.Scans.SingleAsync(s => s.UserId == userCId);
             Assert.Null(orphanScan.HouseholdId);
-            Assert.Equal(10, orphanScan.RefundCents);
+            Assert.Equal(8, orphanScan.RefundCents);
         });
 
         // ══════════════════════════════════════════════════════════════════════

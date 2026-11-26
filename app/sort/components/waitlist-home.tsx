@@ -280,7 +280,7 @@ export function WaitlistHome({
               <div className="mt-4 pt-3.5 border-t border-white/15 space-y-3">
                 <div>
                   <div className="flex items-center justify-between text-[11px] font-semibold text-white/90 mb-1.5">
-                    <span>{fullBagReady ? "Kitchen bag ready to tag" : "First kitchen bag ($5.00)"}</span>
+                    <span>{fullBagReady ? "Kitchen bag ready to tag" : "First kitchen bag ($4.00)"}</span>
                     <span className="tabular-nums text-emerald-200 shrink-0 ml-2">
                       {fullBagReady ? `${summary.totalContainers.toLocaleString()} scanned` : `${firstBagCount} / ${FIRST_BAG_TARGET} cans`}
                     </span>
@@ -325,7 +325,7 @@ export function WaitlistHome({
             >
               <div className="min-w-0">
                 <p className="text-[15px] font-display font-extrabold text-slate-950 leading-tight truncate">
-                  Scan a container · +10¢
+                  Scan a container · +8¢
                 </p>
                 <p className="text-[12px] font-medium text-slate-700 leading-tight mt-0.5 truncate">
                   Photo AI or rapid barcode · sort at home
@@ -344,7 +344,7 @@ export function WaitlistHome({
               >
                 <div className="min-w-0">
                   <p className="text-[13px] font-bold text-white">Add home address &amp; payout</p>
-                  <p className="text-[11px] text-white/80">So we can collect &amp; pay your 10¢ credits</p>
+                  <p className="text-[11px] text-white/80">So we can collect &amp; pay your 8¢ credits</p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-white/80 shrink-0" />
               </Link>
@@ -710,7 +710,7 @@ export function WaitlistHome({
             >
               <div className="text-left min-w-0">
                 <p className="text-[14px] font-semibold text-white truncate">Scan a container</p>
-                <p className="text-[11px] text-white/75 truncate">Earn 10¢ + 10 Good Sort Points per scan</p>
+                <p className="text-[11px] text-white/75 truncate">Earn 8¢ + 10 Good Sort Points per scan</p>
               </div>
               <span className="h-11 w-11 shrink-0 rounded-full bg-emerald-400 text-slate-950 flex items-center justify-center shadow-md">
                 <ScanBarcode className="w-5 h-5" />
@@ -789,7 +789,7 @@ export function WaitlistHome({
                 <div className="rounded-2xl liquid-glass p-4">
                   <p className="text-[14px] font-bold text-white mb-1">How points &amp; credits clear</p>
                   <p className="text-[12px] text-white/80 leading-relaxed">
-                    Every eligible 150mL–3L container earns 10¢ sorting credit + 10 Good Sort Points. Credits clear after kerbside pickup and depot verification, ready to cash out via PayID or bank transfer.
+                    Every eligible 150mL–3L container earns 8¢ sorting credit + 10 Good Sort Points. Credits clear after kerbside pickup and depot verification, ready to cash out via PayID or bank transfer.
                   </p>
                 </div>
               </div>
@@ -960,7 +960,7 @@ export function WaitlistHome({
                               + 10 PTS
                             </p>
                             <p className="text-[11px] font-medium text-white/75">
-                              + {scan.refundCents || 10}¢
+                              + {scan.refundCents || 8}¢
                             </p>
                           </div>
                         </div>
@@ -969,7 +969,7 @@ export function WaitlistHome({
                   </div>
                 ) : (
                   <p className="text-[13px] text-white/70 mb-4">
-                    No scans yet — scan your first container to earn 10¢ + 10 PTS.
+                    No scans yet — scan your first container to earn 8¢ + 10 PTS.
                   </p>
                 )}
 
@@ -1054,7 +1054,7 @@ export function WaitlistHome({
             <div className="flex items-center justify-between gap-2 mb-4">
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700">10-second guide</p>
-                <h2 className="text-[20px] font-display font-extrabold text-slate-950 leading-tight">What earns 10¢?</h2>
+                <h2 className="text-[20px] font-display font-extrabold text-slate-950 leading-tight">What earns 8¢?</h2>
               </div>
               <button
                 type="button"

@@ -592,8 +592,8 @@ export default function OnboardPage() {
           // Saying so beats a blank form that looks like starting over.
           ? "You are already signed up — we just need your suburb before your scans count toward a run."
           : suburbHint
-            ? `Start scanning in ${suburbHint}. Address & payout, done — then scan for 10¢.`
-            : "Address & payout, then scan. Earn 10¢ each. Suburb volume unlocks a driver trip."}
+            ? `Start scanning in ${suburbHint}. Address & payout, done — then scan for 8¢.`
+            : "Address & payout, then scan. Earn 8¢ each. Suburb volume unlocks a driver trip."}
     >
       <div className="space-y-3 mb-4">
         {type === "residential" && (

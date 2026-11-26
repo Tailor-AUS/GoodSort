@@ -206,7 +206,7 @@ public class R1BreakerHardeningTests : IClassFixture<R1BreakerHardeningTests.R1H
         var partialSettle = await admin.Client.PostAsync($"/api/marketplace/runs/{runPartialId}/settle", null);
         Assert.Equal(HttpStatusCode.OK, partialSettle.StatusCode);
         var partialJson = await partialSettle.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(500, partialJson.GetProperty("householdPayoutCents").GetInt32()); // 50 * 10¢ = $5.00
+        Assert.Equal(400, partialJson.GetProperty("householdPayoutCents").GetInt32()); // 50 * 8¢ = $4.00
         Assert.Equal(0, partialJson.GetProperty("containerMafiaCents").GetInt32());    // Points-only referrals = 0¢ cash
     }
 
@@ -414,7 +414,7 @@ public class R1BreakerHardeningTests : IClassFixture<R1BreakerHardeningTests.R1H
             householdPayoutCents: 10_000,
             containerMafiaCents: 1_000,
             runnerPayoutCents: 8_000);
-        Assert.Equal(-132_000L, highRunnerLedger.ProFormaCrpNetMarginBasisPoints); // Honest -$13.20 when runner=8¢, never fake +$36.80!
+        Assert.Equal(68_000L, highRunnerLedger.ProFormaCrpNetMarginBasisPoints); // Honest +$0.68 when runner=8¢ (17.68 - 8 - 1 - 8 = +0.68¢), never fake +$56.80!
 
         // F-06: /api/admin/reset-baseline returns 404 NotFound when RESET_BASELINE_ENABLED is unset
         var resetAttempt = await admin.Client.PostAsJsonAsync("/api/admin/reset-baseline", new { confirm = "RESET_BASELINE" });
@@ -522,7 +522,7 @@ public class R1BreakerHardeningTests : IClassFixture<R1BreakerHardeningTests.R1H
         Assert.Equal(HttpStatusCode.OK, (await patchedUser.Client.DeleteAsync($"/api/profiles/{patchedUser.ProfileId}")).StatusCode);
 
         var refAfterPatchDel = await referrer.Client.GetFromJsonAsync<JsonElement>($"/api/profiles/{referrer.ProfileId}");
-        Assert.Equal(20, refAfterPatchDel.GetProperty("pendingCents").GetInt32()); // Kept 100% of own 20¢ scan balance!
+        Assert.Equal(16, refAfterPatchDel.GetProperty("pendingCents").GetInt32()); // Kept 100% of own 16¢ scan balance!
 
         // 3. F-09 (c): Same-building /api/waitlist/unit-complex does not award self/same-building bonus
         Assert.Equal(HttpStatusCode.OK, (await referrer.Client.PostAsJsonAsync("/api/waitlist/unit-complex", new
@@ -543,7 +543,7 @@ public class R1BreakerHardeningTests : IClassFixture<R1BreakerHardeningTests.R1H
             lng = 153.03,
         })).StatusCode);
         var refAfterSameBuilding = await referrer.Client.GetFromJsonAsync<JsonElement>($"/api/profiles/{referrer.ProfileId}");
-        Assert.Equal(20, refAfterSameBuilding.GetProperty("pendingCents").GetInt32()); // Still 20¢, no +100¢ same-building bonus!
+        Assert.Equal(16, refAfterSameBuilding.GetProperty("pendingCents").GetInt32()); // Still 16¢, no +100¢ same-building bonus!
 
         // 4. F-10: GET export routes rejected (POST-only), "pending" cashout blocks DELETE with 409, and /api/cashout/{id}/cancel refunds & unblocks DELETE
         var getPayIdExport = await admin.Client.GetAsync("/api/admin/payid-export");

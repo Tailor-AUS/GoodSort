@@ -110,11 +110,11 @@ public class Tier2_BoundaryCornerTests : IClassFixture<OpaqueBoxHost>
     }
 
     [Fact]
-    public async Task F2_B05_Launch_Bonus_Container_51_Steps_Down_To_Standard_10c()
+    public async Task F2_B05_Launch_Bonus_Container_51_Steps_Down_To_Standard_8c()
     {
         var cents = LaunchBonus.CentsForContainerAt(50, 50);
         Assert.Equal(HouseholdCredit.CentsPerContainer, cents);
-        Assert.Equal(10, cents);
+        Assert.Equal(8, cents);
     }
 
     // =========================================================================
@@ -801,7 +801,7 @@ public class Tier2_BoundaryCornerTests : IClassFixture<OpaqueBoxHost>
 
         var prof = await _host.GetProfileAsync(client, profileId);
         Assert.Equal(2, prof.GetProperty("totalContainers").GetInt32());
-        Assert.Equal(20, prof.GetProperty("pendingCents").GetInt32());
+        Assert.Equal(16, prof.GetProperty("pendingCents").GetInt32());
     }
 
     // =========================================================================

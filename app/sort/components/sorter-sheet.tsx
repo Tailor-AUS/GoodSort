@@ -150,7 +150,7 @@ export function SorterSheet({
               <button type="button" onClick={onScanPress}
                 className="w-full bg-white border border-slate-200 text-slate-700 font-semibold py-3 rounded-2xl text-[13px] mb-2.5 flex items-center justify-center gap-2 min-h-[44px]">
                 <ScanBarcode className="w-4 h-4" />
-                Scan a container · 10¢
+                Scan a container · 8¢
               </button>
 
               <div className="grid grid-cols-2 gap-2 mb-4">

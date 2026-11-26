@@ -243,7 +243,7 @@ public class ChallengerVerificationTests : IDisposable
         var firstRes = await authClient.PostAsJsonAsync("/api/scan/photo/confirm", new { scanToken, lat = -27.48, lng = 153.01 });
         Assert.Equal(HttpStatusCode.OK, firstRes.StatusCode);
         var firstBody = await firstRes.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(20, firstBody.GetProperty("totalCents").GetInt32());
+        Assert.Equal(16, firstBody.GetProperty("totalCents").GetInt32());
         Assert.Equal(2, firstBody.GetProperty("totalContainers").GetInt32());
 
         // 2. Ten subsequent duplicate confirmation attempts with the identical scanToken
@@ -259,7 +259,7 @@ public class ChallengerVerificationTests : IDisposable
         await _host.WithDbContextAsync(async db =>
         {
             var profile = await db.Profiles.SingleAsync(p => p.Id == profileId);
-            Assert.Equal(20, profile.PendingCents);
+            Assert.Equal(16, profile.PendingCents);
             Assert.Equal(2, profile.TotalContainers);
 
             var scans = await db.Scans.Where(s => s.UserId == profileId).ToListAsync();
@@ -311,7 +311,7 @@ public class ChallengerVerificationTests : IDisposable
             Assert.Single(usedTokens);
 
             var profile = await db.Profiles.SingleAsync(p => p.Id == profileId);
-            Assert.Equal(10, profile.PendingCents);
+            Assert.Equal(8, profile.PendingCents);
             Assert.Equal(1, profile.TotalContainers);
         });
     }
@@ -352,7 +352,7 @@ public class ChallengerVerificationTests : IDisposable
             foreach (var u in users)
             {
                 var profile = await db.Profiles.SingleAsync(p => p.Id == u.ProfileId);
-                Assert.Equal(10, profile.PendingCents);
+                Assert.Equal(8, profile.PendingCents);
                 Assert.Equal(1, profile.TotalContainers);
 
                 var scans = await db.Scans.Where(s => s.UserId == u.ProfileId).ToListAsync();
@@ -399,7 +399,7 @@ public class ChallengerVerificationTests : IDisposable
 
             var profile = await db.Profiles.SingleAsync(p => p.Id == profileId);
             // Zero lost updates across 5 concurrent distinct-token confirmations:
-            Assert.Equal(50, profile.PendingCents);
+            Assert.Equal(40, profile.PendingCents);
             Assert.Equal(5, profile.TotalContainers);
         });
     }

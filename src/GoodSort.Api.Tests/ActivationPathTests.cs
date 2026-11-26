@@ -118,8 +118,8 @@ public class ActivationPathTests : IClassFixture<ActivationPathTests.Host>
         var after = await Profile(m);
         Assert.Equal(1, after.GetProperty("totalContainers").GetInt32());
 
-        // Every domestic scan credits the 10c household sorting rate.
-        Assert.Equal(10, HouseholdCredit.CentsPerContainer);
+        // Every domestic scan credits the 8c household sorting rate.
+        Assert.Equal(8, HouseholdCredit.CentsPerContainer);
         Assert.Equal(HouseholdCredit.CentsPerContainer, after.GetProperty("pendingCents").GetInt32());
     }
 
@@ -166,7 +166,7 @@ public class ActivationPathTests : IClassFixture<ActivationPathTests.Host>
     }
 
     [Fact]
-    public async Task Credit_accrues_at_10c_across_scans()
+    public async Task Credit_accrues_at_8c_across_scans()
     {
         var m = await SignUp("activation-cap@example.test");
 

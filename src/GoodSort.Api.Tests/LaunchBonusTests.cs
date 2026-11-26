@@ -15,7 +15,7 @@ public class LaunchBonusTests
     [Fact]
     public void Bonus_is_double_the_standard_rate()
     {
-        Assert.Equal(10, HouseholdCredit.CentsPerContainer);
+        Assert.Equal(8, HouseholdCredit.CentsPerContainer);
         Assert.Equal(HouseholdCredit.CentsPerContainer * 2, LaunchBonus.CentsPerContainer);
     }
 
