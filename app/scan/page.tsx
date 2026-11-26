@@ -198,6 +198,7 @@ function ScanPageContent() {
         } else {
           const credited = saved.creditedCents ?? 8;
           triggerHaptic(18);
+          track("scan_barcode_ok");
           trackScanCredited();
           setSessionBatch((prev) => ({
             count: prev.count + 1,
@@ -515,6 +516,7 @@ function ScanPageContent() {
       if (name === "NotAllowedError") {
         setCameraDenied(true);
       }
+      track("camera_denied");
       setCameraReady(false);
     }
   }, []);
@@ -677,15 +679,18 @@ function ScanPageContent() {
       }
       if (!res.ok) { setApiStatus(res.status); throw new Error("API error"); }
       const data = await res.json();
-      setResults(data.containers || []);
+      const foundList: IdentifiedItem[] = data.containers || [];
+      setResults(foundList);
       setAiMessage(data.message || "");
       setScanToken(data.scanToken || null);
       setQuotedCents(typeof data.totalCents === "number" ? data.totalCents : null);
+      track(foundList.some((c) => c.eligible) ? "scan_vision_ok" : "scan_vision_empty");
       try {
         sessionStorage.removeItem(PENDING_CAPTURE_KEY);
         sessionStorage.removeItem(PENDING_EMAIL_KEY);
       } catch { /* ignore */ }
     } catch {
+      track("scan_vision_error");
       setResults([]);
       setQuotedCents(null);
       setApiError(true);
