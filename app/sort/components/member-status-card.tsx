@@ -12,7 +12,7 @@ interface RewardPreferenceCardProps {
 }
 
 /**
- * Frequent Sorter Reward Preference selector — lets members keep live 10c
+ * Frequent Sorter Reward Preference selector — lets members keep live 8c
  * cash via PayID/bank or register demand for future Australian frequent
  * flyer points swaps (Good Sort Points / Points Swap) without claiming any
  * unexecuted third-party airline partnership.
@@ -67,7 +67,7 @@ export function MemberStatusCard({ suburbLabel, onOpenPayouts }: RewardPreferenc
               Live
             </span>
           </div>
-          <p className="text-[14px] font-bold text-white">10¢ Cash</p>
+          <p className="text-[14px] font-bold text-white">8¢ Cash</p>
           <p className="text-[11px] text-white/80 mt-0.5">Direct to PayID / bank</p>
         </button>
 
@@ -101,7 +101,7 @@ export function MemberStatusCard({ suburbLabel, onOpenPayouts }: RewardPreferenc
         <p className="mt-3 flex items-start gap-2 text-[12px] text-white/90 leading-snug bg-white/12 border border-white/20 rounded-xl p-3">
           <CheckCircle2 className="w-4 h-4 text-emerald-300 shrink-0 mt-0.5" />
           <span>
-            Vote saved — member demand unlocks Australian frequent flyer points swaps. Your 10¢ PayID cash payouts stay active until launched.
+            Vote saved — member demand unlocks Australian frequent flyer points swaps. Your 8¢ PayID cash payouts stay active until launched.
           </span>
         </p>
       ) : onOpenPayouts ? (

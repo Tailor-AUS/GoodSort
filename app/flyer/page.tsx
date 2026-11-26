@@ -131,7 +131,7 @@ export default function FlyerPage() {
               Home Fridge / Bag Reminder · Stick Above Your 4 Home Bags
             </span>
             <span className="text-xs font-extrabold uppercase tracking-wider text-slate-900">
-              10¢ / Can at Home
+              8¢ / Can at Home
             </span>
           </div>
           <h2 className="text-2xl md:text-3xl font-display font-extrabold leading-tight mb-2">
@@ -150,7 +150,7 @@ export default function FlyerPage() {
               </p>
             </div>
             <div className="rounded-xl bg-emerald-500 text-slate-950 font-extrabold px-3.5 py-2 text-xs uppercase tracking-wider shrink-0">
-              Earn 10¢ / Can
+              Earn 8¢ / Can
             </div>
           </div>
         </div>
@@ -174,9 +174,9 @@ export default function FlyerPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
             <div className="rounded-2xl bg-slate-50 border border-slate-200 p-4">
               <p className="text-xs font-extrabold uppercase tracking-wider text-emerald-700 mb-1">1. Scan at home</p>
-              <p className="text-lg font-extrabold text-slate-900 mb-1">10¢ per can</p>
+              <p className="text-lg font-extrabold text-slate-900 mb-1">8¢ per can</p>
               <p className="text-xs text-slate-600">
-                Earn a 10¢ sorting credit on every eligible container you scan and sort into four streams at home.
+                Earn an 8¢ sorting credit on every eligible container you scan and sort into four streams at home.
               </p>
             </div>
             <div className="rounded-2xl bg-slate-50 border border-slate-200 p-4">
@@ -222,7 +222,7 @@ export default function FlyerPage() {
           </div>
 
           <p className="text-[11px] text-slate-500 mt-6 leading-normal">
-            Sorting credits (10¢ per eligible container) are a private reward paid by The Good Sort after physical collection and depot verification. Neighbour referrals earn non-cash Good Sort Points only. Operated by Tailor Intelligence Pty Ltd (ABN 13 688 827 572) t/a The Good Sort · thegoodsort.org
+            Sorting credits (8¢ per eligible container) are a private reward paid by The Good Sort after physical collection and depot verification. Neighbour referrals earn non-cash Good Sort Points only. Operated by Tailor Intelligence Pty Ltd (ABN 13 688 827 572) t/a The Good Sort · thegoodsort.org
           </p>
         </div>
       </div>

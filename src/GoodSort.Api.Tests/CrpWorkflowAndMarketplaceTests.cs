@@ -329,16 +329,16 @@ public class CrpWorkflowAndMarketplaceTests : IClassFixture<CrpWorkflowAndMarket
         Assert.Equal(HttpStatusCode.OK, settleRes.StatusCode);
         var settleJson = await settleRes.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("coex_crp", settleJson.GetProperty("settlementMode").GetString());
-        Assert.Equal(3000, settleJson.GetProperty("householdPayoutCents").GetInt32()); // 300 * 10¢ = $30.00
+        Assert.Equal(2400, settleJson.GetProperty("householdPayoutCents").GetInt32()); // 300 * 8¢ = $24.00
         Assert.Equal(0, settleJson.GetProperty("containerMafiaCents").GetInt32());     // Points-only referrals = $0.00 cash
         Assert.Equal(900, settleJson.GetProperty("actualPayoutCents").GetInt32());     // 300 *  3¢ =  $9.00
         Assert.Equal(53.04m, settleJson.GetProperty("grossRevenueDollars").GetDecimal()); // 300 * 17.68¢
-        Assert.Equal(14.04m, settleJson.GetProperty("netMarginDollars").GetDecimal());    // $53.04 - $30.00 - $9.00 (+4.68¢/can)
+        Assert.Equal(20.04m, settleJson.GetProperty("netMarginDollars").GetDecimal());    // $53.04 - $24.00 - $9.00 (+6.68¢/can)
 
-        // 6. Sorter requests $25 PayID payout & Admin downloads NPP PayID CSV + inspects CRP Ledger
+        // 6. Sorter requests $20 PayID payout & Admin downloads NPP PayID CSV + inspects CRP Ledger
         var payIdReq = await sorter.Client.PostAsJsonAsync("/api/cashout/payid", new
         {
-            amountCents = 2500,
+            amountCents = 2000,
             payIdType = "email",
             payIdValue = "sorter@crp.test",
             accountName = "SORTER HOUSEHOLD",
@@ -354,11 +354,11 @@ public class CrpWorkflowAndMarketplaceTests : IClassFixture<CrpWorkflowAndMarket
         var csvRes = await admin.Client.PostAsync("/api/admin/payid-export", null);
         Assert.Equal(HttpStatusCode.OK, csvRes.StatusCode);
         var csvText = await csvRes.Content.ReadAsStringAsync();
-        Assert.Contains("SORTER HOUSEHOLD,email,sorter@crp.test,25.00,2500", csvText);
+        Assert.Contains("SORTER HOUSEHOLD,email,sorter@crp.test,20.00,2000", csvText);
     }
 
     [Fact]
-    public async Task Post_scan_setup_backfills_10c_orphan_scan_and_persists_payout_details()
+    public async Task Post_scan_setup_backfills_8c_orphan_scan_and_persists_payout_details()
     {
         var member = await SignUp("postscan-home@crp.test");
 
@@ -366,7 +366,7 @@ public class CrpWorkflowAndMarketplaceTests : IClassFixture<CrpWorkflowAndMarket
         var initialPayout = await member.Client.GetFromJsonAsync<JsonElement>("/api/profiles/me/payout");
         Assert.False(initialPayout.GetProperty("hasPayoutDetails").GetBoolean());
 
-        // 2. Member scans a can BEFORE entering home address — earns 10¢ pending
+        // 2. Member scans a can BEFORE entering home address — earns 8¢ pending
         var scanRes = await member.Client.PostAsJsonAsync("/api/scans", new
         {
             userId = member.ProfileId,
@@ -376,7 +376,7 @@ public class CrpWorkflowAndMarketplaceTests : IClassFixture<CrpWorkflowAndMarket
         });
         Assert.Equal(HttpStatusCode.OK, scanRes.StatusCode);
         var scanJson = await scanRes.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(10, scanJson.GetProperty("creditedCents").GetInt32());
+        Assert.Equal(8, scanJson.GetProperty("creditedCents").GetInt32());
 
         // 3. Invalid BSB is rejected cleanly
         var badPayout = await member.Client.PutAsJsonAsync("/api/profiles/me/payout", new
@@ -405,7 +405,7 @@ public class CrpWorkflowAndMarketplaceTests : IClassFixture<CrpWorkflowAndMarket
         Assert.Equal(HttpStatusCode.Created, createHh.StatusCode);
         var hhJson = await createHh.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(1, hhJson.GetProperty("pendingContainers").GetInt32());
-        Assert.Equal(10, hhJson.GetProperty("pendingValueCents").GetInt32());
+        Assert.Equal(8, hhJson.GetProperty("pendingValueCents").GetInt32());
         Assert.Equal("ANNERLEY", hhJson.GetProperty("suburb").GetString());
 
         var savePayId = await member.Client.PutAsJsonAsync("/api/profiles/me/payout", new

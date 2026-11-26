@@ -188,7 +188,7 @@ export default function SortedBagsPage() {
               <div>
                 <p className="font-bold text-sm text-white">Scan a container or sign in first</p>
                 <p className="text-xs text-white/85 mt-0.5">
-                  Home bag tags link to your account and street address so we can collect your bags and pay you 10¢ per container.
+                  Home bag tags link to your account and street address so we can collect your bags and pay you 8¢ per container.
                 </p>
               </div>
             </div>
@@ -332,7 +332,7 @@ export default function SortedBagsPage() {
                   )}
                 </div>
                 <p className="text-[11px] text-white/80 mt-1">
-                  Links {effectiveBagCount} scanned {effectiveBagCount === 1 ? "container" : "containers"} (${(effectiveBagCount * 0.1).toFixed(2)} credit once verified at depot).
+                  Links {effectiveBagCount} scanned {effectiveBagCount === 1 ? "container" : "containers"} (${(effectiveBagCount * 0.08).toFixed(2)} credit once verified at depot).
                 </p>
               </div>
 

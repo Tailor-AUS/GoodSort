@@ -214,11 +214,11 @@ public class R3EdgeCaseSimulationTests : IDisposable
             var profileCount = await db.Profiles.CountAsync(p => p.Email == chloeEmail);
             Assert.Equal(1, profileCount);
 
-            // Existing metrics preserved: 1 container, 10c
+            // Existing metrics preserved: 1 container, 8c
             var prof = await db.Profiles.FindAsync(origProfileId);
             Assert.NotNull(prof);
             Assert.Equal(1, prof.TotalContainers);
-            Assert.Equal(10, prof.PendingCents);
+            Assert.Equal(8, prof.PendingCents);
         });
 
         snapshots.Add(await CaptureSnapshotAsync("Step 1", "Device 2 OTP Verification Resolves Existing Profile", chloeEmail, origProfileId, hhId));
@@ -241,12 +241,12 @@ public class R3EdgeCaseSimulationTests : IDisposable
             var prof = await db.Profiles.FindAsync(origProfileId);
             Assert.NotNull(prof);
             Assert.Equal(2, prof.TotalContainers);
-            Assert.Equal(20, prof.PendingCents);
+            Assert.Equal(16, prof.PendingCents);
 
             var hh = await db.Households.FindAsync(hhId);
             Assert.NotNull(hh);
             Assert.Equal(2, hh.PendingContainers);
-            Assert.Equal(20, hh.PendingValueCents);
+            Assert.Equal(16, hh.PendingValueCents);
         });
 
         snapshots.Add(await CaptureSnapshotAsync("Step 2", "Device 2 Deposit Directly Attributed to Household", chloeEmail, origProfileId, hhId));
@@ -316,7 +316,7 @@ public class R3EdgeCaseSimulationTests : IDisposable
             var prof = await db.Profiles.FindAsync(profileId);
             Assert.NotNull(prof);
             Assert.Equal(1, prof.TotalContainers);
-            Assert.Equal(10, prof.PendingCents);
+            Assert.Equal(8, prof.PendingCents);
         });
 
         client.Dispose();
@@ -363,7 +363,7 @@ public class R3EdgeCaseSimulationTests : IDisposable
             var prof = await db.Profiles.FindAsync(profileId);
             Assert.NotNull(prof);
             Assert.Equal(6, prof.TotalContainers);
-            Assert.Equal(60, prof.PendingCents);
+            Assert.Equal(48, prof.PendingCents);
         });
 
         client.Dispose();
@@ -639,11 +639,11 @@ public class R3EdgeCaseSimulationTests : IDisposable
         var dupJson = await duplicateRetry.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Contains("already been added", dupJson.GetProperty("error").GetString());
 
-        // Reconciled source of truth on server: exactly 1 scan and 10c credit
+        // Reconciled source of truth on server: exactly 1 scan and 8c credit
         var profRes = await client.GetAsync($"/api/profiles/{profileId}");
         Assert.Equal(HttpStatusCode.OK, profRes.StatusCode);
         var profJson = await profRes.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(10, profJson.GetProperty("pendingCents").GetInt32());
+        Assert.Equal(8, profJson.GetProperty("pendingCents").GetInt32());
         Assert.Equal(1, profJson.GetProperty("totalContainers").GetInt32());
 
         client.Dispose();
@@ -710,7 +710,7 @@ public class R3EdgeCaseSimulationTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, photoRes.StatusCode);
         var photoJson = await photoRes.Content.ReadFromJsonAsync<JsonElement>();
         var scanToken = photoJson.GetProperty("scanToken").GetString()!;
-        Assert.Equal(10, photoJson.GetProperty("totalCents").GetInt32());
+        Assert.Equal(8, photoJson.GetProperty("totalCents").GetInt32());
 
         // Confirm deposit
         var confirmRes = await reloadedClient.PostAsJsonAsync("/api/scan/photo/confirm", new
@@ -730,12 +730,12 @@ public class R3EdgeCaseSimulationTests : IDisposable
         {
             var scans = await db.Scans.Where(s => s.UserId == profileId).ToListAsync();
             Assert.Single(scans);
-            Assert.Equal(10, scans[0].RefundCents);
+            Assert.Equal(8, scans[0].RefundCents);
             Assert.Null(scans[0].HouseholdId); // Initial orphan scan before address onboarding
 
             var prof = await db.Profiles.FindAsync(profileId);
             Assert.NotNull(prof);
-            Assert.Equal(10, prof.PendingCents);
+            Assert.Equal(8, prof.PendingCents);
             Assert.Equal(1, prof.TotalContainers);
         });
 
@@ -830,11 +830,11 @@ public class R3EdgeCaseSimulationTests : IDisposable
         {
             var scans = await db.Scans.Where(s => s.UserId == expiredUserId).ToListAsync();
             Assert.Single(scans);
-            Assert.Equal(10, scans[0].RefundCents);
+            Assert.Equal(8, scans[0].RefundCents);
 
             var prof = await db.Profiles.FindAsync(expiredUserId);
             Assert.NotNull(prof);
-            Assert.Equal(10, prof.PendingCents);
+            Assert.Equal(8, prof.PendingCents);
             Assert.Equal(1, prof.TotalContainers);
         });
 

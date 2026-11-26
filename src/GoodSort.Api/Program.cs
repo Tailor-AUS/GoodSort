@@ -2027,7 +2027,7 @@ app.MapGet("/api/households/{id:guid}/next-pickup", async (HttpContext ctx, Guid
             ? "Active Good Sort run in progress for your suburb — place your QR-tagged sorted bags on the kerb."
             : BinStatuses.IsServiceable(h.BinStatus)
                 ? "Keep sorting into your 4 home bags. We'll email you to bag out when a Runner claims your suburb run."
-                : "Scan eligible containers for 10¢. A volume run unlocks when your suburb hits about 1,000 scanned containers.",
+                : "Scan eligible containers for 8¢. A volume run unlocks when your suburb hits about 1,000 scanned containers.",
     });
 }).RequireAuthorization();
 
@@ -2964,8 +2964,8 @@ app.MapGet("/api/admin/crp-ledger", async (GoodSortDbContext db, CashoutService 
             sorterCents = CrpSettlement.CrpHouseholdCentsPerContainer,
             containerMafiaCents = CrpSettlement.ContainerMafiaCentsPerContainer,
             runnerTargetCents = CrpSettlement.CrpRunnerTargetCentsPerContainer,
-            netMarginWithMafiaCents = 4.68m,
-            netMarginDirectCents = 4.68m,
+            netMarginWithMafiaCents = 6.68m,
+            netMarginDirectCents = 6.68m,
         },
         payouts = new
         {

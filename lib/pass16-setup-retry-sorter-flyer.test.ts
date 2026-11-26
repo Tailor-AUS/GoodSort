@@ -68,12 +68,12 @@ test("SorterSheet prompts collecting households missing payout details and uses 
   }
 });
 
-test("Household BinOutToggle exposes switch role and aria-checked, and /flyer uses honest Earn 10¢ / Can badge", () => {
+test("Household BinOutToggle exposes switch role and aria-checked, and /flyer uses honest Earn 8¢ / Can badge", () => {
   const hhSrc = readFileSync(join(ROOT, "app", "household", "page.tsx"), "utf8");
   assert.match(hhSrc, /role="switch"/);
   assert.match(hhSrc, /aria-checked=\{hh\.binIsOut\}/);
 
   const flyerSrc = readFileSync(join(ROOT, "app", "flyer", "page.tsx"), "utf8");
-  assert.match(flyerSrc, /Earn 10¢ \/ Can/);
+  assert.match(flyerSrc, /Earn 8¢ \/ Can/);
   assert.doesNotMatch(flyerSrc, /\+10¢ \/ Can Bonus/i);
 });

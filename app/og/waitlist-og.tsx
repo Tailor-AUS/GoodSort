@@ -10,8 +10,8 @@ export function waitlistOgElement(opts?: { suburb?: string }) {
     ? `Scan in ${suburb}`
     : "Scan, sort, skip the depot.";
   const body = suburb
-    ? `Scan for 10¢. About ${LIVE_VOLUME_THRESHOLD} containers unlock a driver trip to the refund point.`
-    : `Scan for 10¢. About ${LIVE_VOLUME_THRESHOLD} containers — one driver trip — and we collect.`;
+    ? `Scan for 8¢. About ${LIVE_VOLUME_THRESHOLD} containers unlock a driver trip to the refund point.`
+    : `Scan for 8¢. About ${LIVE_VOLUME_THRESHOLD} containers — one driver trip — and we collect.`;
 
   return (
     <div
@@ -113,7 +113,7 @@ export function waitlistOgElement(opts?: { suburb?: string }) {
         {(
           [
             ["Scan", "#7c3aed"],
-            ["10¢ credit", "#2563eb"],
+            ["8¢ credit", "#2563eb"],
             ["Volume run", "#d97706"],
             ["Refund point", "#15803d"],
           ] as const

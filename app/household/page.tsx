@@ -123,7 +123,7 @@ export default function HouseholdPage() {
           <div className="mt-4 rounded-[26px] liquid-glass p-5 space-y-3">
             <p className="text-[14px] font-semibold text-white">{err}</p>
             <p className="text-[12px] text-white/80 leading-relaxed">
-              Add your home pickup address and payout details so we can count your 10¢ scans toward a 1,000-container suburb run and pay you when we collect.
+              Add your home pickup address and payout details so we can count your 8¢ scans toward a 1,000-container suburb run and pay you when we collect.
             </p>
             <div className="flex flex-col gap-2 pt-1">
               <Link

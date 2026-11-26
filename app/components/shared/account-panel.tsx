@@ -162,7 +162,7 @@ export function AccountPanel({ user, open, onClose, onRefresh }: AccountPanelPro
 
         <div className="p-6">
           {waiting ? (
-            <p className="text-[13px] text-slate-500 mb-1">Scan for 10¢. Invite neighbours to scan — suburb volume unlocks a driver trip.</p>
+            <p className="text-[13px] text-slate-500 mb-1">Scan for 8¢. Invite neighbours to scan — suburb volume unlocks a driver trip.</p>
           ) : (
             <>
           <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-[0.15em] mb-3">
@@ -724,7 +724,7 @@ function CashoutSection({
   }
 
   const remaining = Math.max(0, minCashout - clearedCents);
-  const moreContainers = Math.ceil(remaining / 10);
+  const moreContainers = Math.ceil(remaining / 8);
   if (!showForm) {
     return (
       <div className="mt-3">

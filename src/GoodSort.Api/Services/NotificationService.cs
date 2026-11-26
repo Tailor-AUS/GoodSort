@@ -37,10 +37,10 @@ public class NotificationService
             : $"<b>{containers}</b> container{(containers == 1 ? "" : "s")} scanned in {placeHtml}. <b>{needed}</b> more and we run a driver trip to the refund point.";
         var subject = needed <= 0
             ? $"{place} volume run is ready — bag out when we say"
-            : $"Scan today in {place} — 10¢ each";
+            : $"Scan today in {place} — 8¢ each";
         var body = $@"
           <div style='font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 20px;color:#0f172a'>
-            <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Scan. Earn 10¢.</h1>
+            <h1 style='font-size:22px;font-weight:800;margin:0 0 8px'>Scan. Earn 8¢.</h1>
             <p style='color:#64748b;font-size:14px;margin:0 0 16px'>Hi {helloHtml},</p>
             <p style='font-size:14px;line-height:1.55'>You're on the list at <b>{addressHtml}</b>. Scan eligible cans and bottles — sort into four streams at home.</p>
             <p style='font-size:14px;line-height:1.55'>{status}</p>
@@ -402,7 +402,7 @@ public class NotificationService
     private static string WhatsAppInvite(string place, string inviteUrl, int containers = 0, int needed = WaitlistDensity.LiveThreshold)
     {
         var text = needed <= 0
-            ? $"The Good Sort in {place} has enough scanned volume for a driver trip. Scan for 10¢: {inviteUrl}"
+            ? $"The Good Sort in {place} has enough scanned volume for a driver trip. Scan for 8¢: {inviteUrl}"
             : $"Scan with The Good Sort in {place}. {containers}/{WaitlistDensity.LiveThreshold} containers — {needed} more for a driver trip: {inviteUrl}";
         return $"https://wa.me/?text={Uri.EscapeDataString(text)}";
     }

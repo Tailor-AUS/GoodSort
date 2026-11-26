@@ -47,9 +47,9 @@ test("/runner respects runnerApprovalStatus and stops heartbeats when suspended 
   assert.match(runnerPage, /runnerProfile\.approvalStatus/);
 });
 
-test("app-version meta and SW_VERSION stay locked at 20261112-qa-pass39", () => {
+test("app-version meta and SW_VERSION stay locked at 20261112-qa-pass40", () => {
   const layout = read("app/layout.tsx");
   const sw = read("public/sw.js");
-  assert.match(layout, /name="app-version"\s+content="20261112-qa-pass39"/);
-  assert.match(sw, /const SW_VERSION = "20261112-qa-pass39";/);
+  assert.match(layout, /name="app-version"\s+content="20261112-qa-pass40"/);
+  assert.match(sw, /const SW_VERSION = "20261112-qa-pass40";/);
 });

@@ -59,7 +59,7 @@ test("the bonus headline disappears the moment ops turns the promotion off", () 
   assert.equal(launchBonusHeadline(undefined), null);
   assert.equal(launchBonusHeadline(-1), null);
 
-  assert.equal(CENTS_PER_CONTAINER, 10);
+  assert.equal(CENTS_PER_CONTAINER, 8);
   assert.match(launchBonusHeadline(20)!, /double credit/i);
   assert.match(launchBonusHeadline(20)!, /\b20\b/);
 });
@@ -74,7 +74,7 @@ test("the per-member bonus note stops once a member has used the bonus up", () =
 // ── The claim gate ─────────────────────────────────────────────────────────
 
 test("no member-facing copy describes our credit as the scheme refund", () => {
-  // The 10¢ sorting credit is a private reward paid by The Good Sort after
+  // The 8¢ sorting credit is a private reward paid by The Good Sort after
   // pickup and verification — The Good Sort is not an approved Containers for
   // Change refund point. Copy that invokes the scheme is a false claim about
   // a government scheme, so this asserts on generated strings directly.

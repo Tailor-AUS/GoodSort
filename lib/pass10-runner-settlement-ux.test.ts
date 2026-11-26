@@ -47,8 +47,8 @@ test("readStoredProfileId falls back to valid JWT sub when goodsort_profile is e
   }
 });
 
-test("SORTER_CREDIT_CENTS matches the 10c home sorting credit rate", () => {
-  assert.equal(SORTER_CREDIT_CENTS, 10);
+test("SORTER_CREDIT_CENTS matches the 8c home sorting credit rate", () => {
+  assert.equal(SORTER_CREDIT_CENTS, 8);
 });
 
 test("RunActive supports up to 2,000 containers per stop, clamps depot verified count, and uses noopener", () => {

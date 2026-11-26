@@ -72,7 +72,7 @@ test("/flyer supports Moorooka, Annerley, and Tarragindi with scannable QR and a
   assert.match(flyerSrc, /slug:\s*"annerley"/);
   assert.match(flyerSrc, /slug:\s*"tarragindi"/);
   assert.match(flyerSrc, /QRCode\.toDataURL/);
-  assert.match(flyerSrc, /Earn 10¢ \/ Can/);
+  assert.match(flyerSrc, /Earn 8¢ \/ Can/);
 
   const layoutSrc = readClean("app/layout.tsx");
   const swSrc = readClean("public/sw.js");

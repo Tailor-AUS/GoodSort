@@ -8,7 +8,7 @@ import { GlassBackdrop } from "@/app/components/shared/glass-backdrop";
 export const metadata: Metadata = {
   title: "Brisbane suburbs",
   description:
-    "Scan eligible containers in your Brisbane suburb. Earn 10¢ each. About 1,000 scanned containers unlocks a driver trip to the refund point.",
+    "Scan eligible containers in your Brisbane suburb. Earn 8¢ each. About 1,000 scanned containers unlocks a driver trip to the refund point.",
   alternates: { canonical: "/brisbane" },
 };
 

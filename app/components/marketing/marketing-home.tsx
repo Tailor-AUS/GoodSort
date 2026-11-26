@@ -176,7 +176,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
               <div className="text-center mb-6">
                 <div className="flex justify-center mb-4"><Logo size="md" dark /></div>
                 <h1 className="text-2xl font-display font-extrabold text-white glass-text-shadow mb-2">Start scanning today</h1>
-                <p className="text-white/85 text-[13px]">Your email. Then your address &amp; payout details. Scan for 10¢ — suburb volume unlocks a driver trip.</p>
+                <p className="text-white/85 text-[13px]">Your email. Then your address &amp; payout details. Scan for 8¢ — suburb volume unlocks a driver trip.</p>
               </div>
               <input type="email" aria-label="Email address" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com"
                 onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}
@@ -339,7 +339,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
         <div className="relative z-10 w-full max-w-3xl mx-auto px-5 sm:px-8 py-8 sm:py-12 text-center">
           <div className="inline-flex items-center gap-2 liquid-glass-pill text-white text-[12px] font-semibold px-3.5 py-1.5 rounded-full mb-5">
             <MapPin className="w-3.5 h-3.5 text-emerald-300" />
-            <span>{suburbName ? `${suburbName} · 10¢ at your door` : "Brisbane · 10¢ at your door"}</span>
+            <span>{suburbName ? `${suburbName} · 8¢ at your door` : "Brisbane · 8¢ at your door"}</span>
           </div>
 
           {inviteFrom && (
@@ -352,7 +352,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
             Scan, sort, skip the depot.
           </h1>
           <p className="text-white/90 text-[16px] sm:text-[19px] leading-relaxed max-w-xl mx-auto mb-6 glass-text-shadow">
-            Scan a can, earn 10¢. We collect from your kerb — you never drive to a depot.
+            Scan a can, earn 8¢. We collect from your kerb — you never drive to a depot.
           </p>
 
           {/* Primary Liquid Glass Scan Action Capsule (bright milky glass for WCAG AAA legibility over sunlit sky) */}
@@ -364,7 +364,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
             >
               <div className="min-w-0">
                 <p className="text-[15px] sm:text-[16px] font-display font-extrabold text-slate-950 truncate">
-                  Scan a container · earn 10¢
+                  Scan a container · earn 8¢
                 </p>
                 <p className="text-[12px] font-medium text-slate-700 truncate">
                   Moorooka, Annerley, Tarragindi &amp; Brisbane suburbs
@@ -401,7 +401,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
           )}
 
           <p className="text-white/75 text-[12px] max-w-md mx-auto">
-            A 10¢ sorting credit paid after pickup and depot verification.{" "}
+            An 8¢ sorting credit paid after pickup and depot verification.{" "}
             <a href="/terms" className="underline text-white hover:text-emerald-200">How it works</a>.
           </p>
 
@@ -491,7 +491,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
               About a third of eligible containers in Queensland never reach a refund point. People are recycling. They are not driving to a depot for 10¢ a bottle.
             </p>
             <div className="grid grid-cols-3 gap-3 max-w-xs mx-auto">
-              <MiniStat value="10¢" label="your credit" />
+              <MiniStat value="8¢" label="your credit" />
               <MiniStat value="+100" label="invite pts" />
               <MiniStat value="scan" label="the habit" />
             </div>
@@ -510,7 +510,7 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
             <div className="space-y-9">
               <StepRow icon={<Home className="w-5 h-5" />} color="from-slate-800 to-slate-950" num={1}
                 title="Scan a container"
-                body="Point your camera at a can or bottle. 10¢ pending, straight away."
+                body="Point your camera at a can or bottle. 8¢ pending, straight away."
                 tag="Scan first" tagColor="bg-slate-100 text-slate-700" />
               <StepRow icon={<Recycle className="w-5 h-5" />} color="from-emerald-600 to-teal-700" num={2}
                 title="Sort into your bags"
@@ -521,9 +521,9 @@ export function MarketingHome({ suburbName }: { suburbName?: string }) {
                 body={`At about ${LIVE_VOLUME_THRESHOLD} containers in your suburb, we drive. Bag out; we do the depot run.`}
                 tag="One driver trip" tagColor="bg-slate-100 text-slate-700" />
               <StepRow icon={<Banknote className="w-5 h-5" />} color="from-emerald-500 to-emerald-700" num={4}
-                title="Get paid 10¢/can — plus Good Sort Points"
+                title="Get paid 8¢/can — plus Good Sort Points"
                 body="Credits clear after depot verification. Share your link to earn 100 Good Sort Points when a neighbour joins plus 1 bonus point on every container they sort."
-                tag="10¢ credit + Good Sort Points" tagColor="bg-emerald-50 text-emerald-800" />
+                tag="8¢ credit + Good Sort Points" tagColor="bg-emerald-50 text-emerald-800" />
             </div>
           </div>
         </div>

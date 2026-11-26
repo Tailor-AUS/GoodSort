@@ -53,8 +53,8 @@ public class Tier4_RealWorldPersonaJourneyTests : IClassFixture<OpaqueBoxHost>
         Assert.Equal(HttpStatusCode.OK, confirmRes.StatusCode);
         var confirmJson = await confirmRes.Content.ReadFromJsonAsync<JsonElement>();
 
-        // 10c domestic sorting credit earned
-        Assert.Equal(10, confirmJson.GetProperty("totalCents").GetInt32());
+        // 8c domestic sorting credit earned
+        Assert.Equal(8, confirmJson.GetProperty("totalCents").GetInt32());
         Assert.False(confirmJson.GetProperty("bonusApplied").GetBoolean());
 
         // Initial scan is an orphan (HouseholdId is null)
@@ -90,7 +90,7 @@ public class Tier4_RealWorldPersonaJourneyTests : IClassFixture<OpaqueBoxHost>
 
         // ── Step 7: Verifies orphan scan backfilled and counters updated ──
         Assert.Equal(1, hhJson.GetProperty("pendingContainers").GetInt32());
-        Assert.Equal(10, hhJson.GetProperty("pendingValueCents").GetInt32());
+        Assert.Equal(8, hhJson.GetProperty("pendingValueCents").GetInt32());
 
         // Profile is now attached to the household
         var profileAfterHh = await _host.GetProfileAsync(authClient, mayaProfileId);
@@ -277,6 +277,6 @@ public class Tier4_RealWorldPersonaJourneyTests : IClassFixture<OpaqueBoxHost>
         // ── Verify ledger state remained completely protected ──
         var prof = await _host.GetProfileAsync(client, profileId);
         Assert.Equal(1, prof.GetProperty("totalContainers").GetInt32());
-        Assert.Equal(10, prof.GetProperty("pendingCents").GetInt32());
+        Assert.Equal(8, prof.GetProperty("pendingCents").GetInt32());
     }
 }

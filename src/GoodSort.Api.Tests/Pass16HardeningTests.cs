@@ -256,7 +256,7 @@ public class Pass16HardeningTests : IClassFixture<OpaqueBoxHost>
         Assert.Equal(HttpStatusCode.OK, confirmRes.StatusCode);
         var confirmBody = await confirmRes.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(100, confirmBody.GetProperty("totalContainers").GetInt32());
-        Assert.Equal(1000, confirmBody.GetProperty("totalCents").GetInt32());
+        Assert.Equal(800, confirmBody.GetProperty("totalCents").GetInt32());
 
         using (var scope = _host.Services.CreateScope())
         {
@@ -274,7 +274,7 @@ public class Pass16HardeningTests : IClassFixture<OpaqueBoxHost>
             Assert.Equal(100, hh.Materials.Aluminium);
             Assert.Equal(0, hh.Materials.Other);
             Assert.Equal(100, bin.Materials.Aluminium);
-            Assert.Equal(1000, bin.PendingValueCents);
+            Assert.Equal(800, bin.PendingValueCents);
         }
     }
 }

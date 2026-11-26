@@ -7,7 +7,7 @@
  * verification. Never describe it as the Containers for Change scheme refund
  * or imply The Good Sort is an approved refund point.
  */
-export const CENTS_PER_CONTAINER = 10;
+export const CENTS_PER_CONTAINER = 8;
 
 /** Containers per member that earn double credit while an optional promotion runs (0 = off). */
 export const LAUNCH_BONUS_CONTAINERS = 0;

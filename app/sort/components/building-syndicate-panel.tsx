@@ -232,7 +232,7 @@ export function BuildingSyndicatePanel({
             <div className="flex items-start gap-2 text-[12px] text-slate-700">
               <Sparkles className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
               <span>
-                <strong>Lotto-syndicate pooling:</strong> coordinate drop spots &amp; shared pickups together while your exact <strong>10¢/can</strong> still clears straight to your own PayID.
+                <strong>Lotto-syndicate pooling:</strong> coordinate drop spots &amp; shared pickups together while your exact <strong>8¢/can</strong> still clears straight to your own PayID.
               </span>
             </div>
           </div>

@@ -613,7 +613,7 @@ export default function AdminRunnersPage() {
     ? Math.max(pricing.bronzeBonus, pricing.silverBonus, pricing.goldBonus, pricing.platinumBonus)
     : 0;
   const effectiveMaxCents = pricing ? pricing.ceilingCents + maxBonus : 0;
-  const baseMarginCents = pricing ? 7.68 - pricing.baseCents : 4.68;
+  const baseMarginCents = pricing ? 9.68 - pricing.baseCents : 6.68;
   const weightSum = pricing
     ? pricing.distanceEfficiencyWeight +
       pricing.binDensityWeight +
@@ -1205,7 +1205,7 @@ export default function AdminRunnersPage() {
                     </span>
                   </div>
                   <p className="text-sm font-bold">
-                    17.68¢ gross − 10.00¢ sorter − 0¢ referrals − {pricing.baseCents}¢ base runner ={" "}
+                    17.68¢ gross − 8.00¢ sorter − 0¢ referrals − {pricing.baseCents}¢ base runner ={" "}
                     <span className={baseMarginCents < 1 ? "text-red-400" : "text-emerald-400"}>
                       {baseMarginCents >= 0 ? "+" : ""}
                       {baseMarginCents.toFixed(2)}¢/can

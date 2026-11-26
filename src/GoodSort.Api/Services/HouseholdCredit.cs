@@ -3,14 +3,14 @@ using GoodSort.Api.Data.Entities;
 namespace GoodSort.Api.Services;
 
 /// <summary>
-/// Household sorting credit. Scan earns 10¢ pending. The runner count after a
+/// Household sorting credit. Scan earns 8¢ pending. The runner count after a
 /// depot drop is the settle authority — Vision outages must not zero a street.
 /// </summary>
 public static class HouseholdCredit
 {
-    public const int CentsPerContainer = 10;
+    public const int CentsPerContainer = 8;
     // Neighbour referrals earn Good Sort Points only (0¢ cash override, 0¢ signup bonus)
-    // so unit economics preserve +4.68¢/can margin under COEX CRP and zero cash burn pre-CCA.
+    // so unit economics preserve +6.68¢/can margin under COEX CRP and zero cash burn pre-CCA.
     public const int ReferralCommissionCentsPerContainer = 0;
     public const int ReferralSignupBonusPoints = 100;
     public const int ReferralPointsPerContainer = 1;
@@ -50,9 +50,9 @@ public static class HouseholdCredit
     /// scan cents into ClearedCents — that would double-pay scanned containers.
     /// The launch-bonus portion is the exception in 5¢ pre-CCA mode: it is a
     /// marketing grant, not an estimate the runner count supersedes, so it clears
-    /// to the scanner. In 10¢ CRP mode, the full 10¢ is already paid by the
+    /// to the scanner. In 8¢ CRP mode, the full 8¢ is already paid by the
     /// pickup rate, so any overlapping launch-bonus bridge is absorbed rather
-    /// than double-paying 15¢.
+    /// than double-paying.
     /// </summary>
     public static int ApplyPickup(
         IReadOnlyList<Profile> members,

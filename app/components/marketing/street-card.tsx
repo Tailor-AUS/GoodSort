@@ -73,21 +73,21 @@ export function StreetCard({ suburb, slug }: { suburb: string; slug: string }) {
               <div className="mb-2.5 flex items-center gap-2">
                 <Logo size="sm" />
                 <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-900">
-                  10¢ / Can
+                  8¢ / Can
                 </span>
               </div>
               <p className="font-display text-[18px] font-extrabold leading-tight text-slate-950">
                 Scan, sort,<br />skip the depot.
               </p>
               <p className="mt-1.5 text-[12px] leading-snug text-slate-600">
-                Scan a can, earn 10¢. We collect from your kerb — you never drive
+                Scan a can, earn 8¢. We collect from your kerb — you never drive
                 to a depot.
               </p>
               <p className="mt-1.5 text-[11px] font-semibold text-violet-800">
                 Starting in {suburb} · thegoodsort.org
               </p>
               <p className="mt-1 text-[9px] leading-snug text-slate-400">
-                10¢ sorting credit paid after pickup and depot verification.
+                8¢ sorting credit paid after pickup and depot verification.
               </p>
             </div>
             {qr ? (

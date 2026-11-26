@@ -192,10 +192,10 @@ export default function SorterApp() {
             The Good Sort · Brisbane
           </p>
           <h1 className="text-2xl font-display font-extrabold text-white glass-text-shadow mb-2">
-            Scan cans at home. Earn 10¢.
+            Scan cans at home. Earn 8¢.
           </h1>
           <p className="text-[13px] text-white/85 leading-relaxed mb-6">
-            Scan your first eligible container to start banking 10¢ credits, or sign in to view your saved balance and suburb progress.
+            Scan your first eligible container to start banking 8¢ credits, or sign in to view your saved balance and suburb progress.
           </p>
           <Link
             href="/scan"

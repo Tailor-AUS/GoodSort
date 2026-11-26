@@ -196,7 +196,7 @@ function ScanPageContent() {
             refused: true,
           });
         } else {
-          const credited = saved.creditedCents ?? 10;
+          const credited = saved.creditedCents ?? 8;
           triggerHaptic(18);
           trackScanCredited();
           setSessionBatch((prev) => ({
@@ -232,7 +232,7 @@ function ScanPageContent() {
         barcode: cleaned,
       }]);
       setScanToken(null);
-      setQuotedCents(10);
+      setQuotedCents(8);
       setApiError(false);
       setAiMessage(`Barcode ${cleaned} matched — place into your ${guide.bagName} (${guide.label}).`);
       try {
@@ -716,11 +716,11 @@ function ScanPageContent() {
         setStep("results");
         return;
       }
-      setConfirmedCents(saved.creditedCents ?? quotedCents ?? 10);
+      setConfirmedCents(saved.creditedCents ?? quotedCents ?? 8);
       trackScanCredited();
       setStep("done");
     } catch {
-      setConfirmedCents(10);
+      setConfirmedCents(8);
       trackScanCredited();
       setStep("done");
     } finally {
@@ -819,7 +819,7 @@ function ScanPageContent() {
       }
       const data = await res.json().catch(() => ({} as { totalCents?: number; totalContainers?: number }));
       const addedCount = typeof data.totalContainers === "number" ? data.totalContainers : total;
-      const addedCents = typeof data.totalCents === "number" ? data.totalCents : (quotedCents ?? addedCount * 10);
+      const addedCents = typeof data.totalCents === "number" ? data.totalCents : (quotedCents ?? addedCount * 8);
       const firstGuide = streamGuideForMaterial(eligible[0].material, eligible[0].name);
       triggerHaptic(18);
       trackScanCredited();
@@ -876,7 +876,7 @@ function ScanPageContent() {
       <IconBubble><Mail className="w-7 h-7 text-emerald-100" /></IconBubble>
       <h1 className="text-xl font-display font-extrabold text-white glass-text-shadow mb-1">Nice — where should we keep it?</h1>
       <p className="text-white/80 text-[13px] mb-6 leading-relaxed">
-        Your photo is ready. Enter your email to save your 10¢ sorting credit — next we&apos;ll ask where to collect and pay you.
+        Your photo is ready. Enter your email to save your 8¢ sorting credit — next we&apos;ll ask where to collect and pay you.
       </p>
       <input type="email" aria-label="Email address" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
         onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "center" }), 300)}
@@ -956,7 +956,7 @@ function ScanPageContent() {
 
   // Done
   if (step === "done") {
-    const currentEarned = confirmedCents ?? quotedCents ?? totalItems * 10;
+    const currentEarned = confirmedCents ?? quotedCents ?? totalItems * 8;
     const earnedCents = sessionBatch.cents + currentEarned;
     const combinedItems = sessionBatch.count + totalItems;
     void hasHousehold;
@@ -1016,8 +1016,8 @@ function ScanPageContent() {
   if (step === "results") {
     const eligible = results.filter((r) => r.eligible);
     const total = eligible.reduce((s, r) => s + r.count, 0);
-    const displayCents = quotedCents ?? total * 10;
-    const isBonusRate = total > 0 && displayCents > total * 10;
+    const displayCents = quotedCents ?? total * 8;
+    const isBonusRate = total > 0 && displayCents > total * 8;
 
     return (
       <div className="fixed inset-0 flex flex-col z-50 text-white overflow-hidden" style={{ paddingTop: "env(safe-area-inset-top,0)", paddingBottom: "env(safe-area-inset-bottom,0)" }}>
@@ -1071,7 +1071,7 @@ function ScanPageContent() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-[14px] text-slate-950 font-bold truncate">{item.name}</p>
-                        <p className="text-[12px] text-slate-600">{isBonusRate ? "Bonus sorting rate" : "10c each"} &middot; sort into your own bags today</p>
+                        <p className="text-[12px] text-slate-600">{isBonusRate ? "Bonus sorting rate" : "8c each"} &middot; sort into your own bags today</p>
                         <span className={`inline-flex items-center gap-1 mt-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${bagGuide.badgeBg} ${bagGuide.badgeText}`}>
                           Put in {bagGuide.bagName} &middot; {bagGuide.shortLabel} (GSB-{bagGuide.codePrefix})
                         </span>

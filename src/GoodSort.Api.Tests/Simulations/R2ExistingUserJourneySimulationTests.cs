@@ -245,7 +245,7 @@ public class R2ExistingUserJourneySimulationTests : IDisposable
         });
         Assert.Equal(HttpStatusCode.OK, confirmRes1.StatusCode);
         var confirmJson1 = await confirmRes1.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(10, confirmJson1.GetProperty("totalCents").GetInt32());
+        Assert.Equal(8, confirmJson1.GetProperty("totalCents").GetInt32());
         Assert.False(confirmJson1.GetProperty("bonusApplied").GetBoolean());
 
         snapshots.Add(await CaptureSnapshotAsync("Step 3", "First Deposit Confirmed (Direct Household Attribution)", email, profileId, householdId));
@@ -260,20 +260,20 @@ public class R2ExistingUserJourneySimulationTests : IDisposable
             // Exactly 1 scan created, attached directly to HouseholdId
             var attachedScans = await db.Scans.Where(s => s.UserId == profileId && s.HouseholdId == householdId).ToListAsync();
             Assert.Single(attachedScans);
-            Assert.Equal(10, attachedScans[0].RefundCents);
+            Assert.Equal(8, attachedScans[0].RefundCents);
             Assert.Equal("aluminium", attachedScans[0].Material);
 
             // Profile pending cents and total containers updated
             var prof = await db.Profiles.FindAsync(profileId);
             Assert.NotNull(prof);
-            Assert.Equal(10, prof.PendingCents);
+            Assert.Equal(8, prof.PendingCents);
             Assert.Equal(1, prof.TotalContainers);
 
             // Household pending counters updated
             var hh = await db.Households.FindAsync(householdId);
             Assert.NotNull(hh);
             Assert.Equal(1, hh.PendingContainers);
-            Assert.Equal(10, hh.PendingValueCents);
+            Assert.Equal(8, hh.PendingValueCents);
             Assert.Equal(1, hh.Materials.Aluminium);
 
             // Placeholder bin counter updated via BinCounter
@@ -318,7 +318,7 @@ public class R2ExistingUserJourneySimulationTests : IDisposable
             var hh = await db.Households.FindAsync(householdId);
             Assert.NotNull(hh);
             Assert.Equal(6, hh.PendingContainers);
-            Assert.Equal(60, hh.PendingValueCents);
+            Assert.Equal(48, hh.PendingValueCents);
             Assert.Equal(3, hh.Materials.Aluminium);
             Assert.Equal(2, hh.Materials.Pet);
             Assert.Equal(1, hh.Materials.Glass);
@@ -327,7 +327,7 @@ public class R2ExistingUserJourneySimulationTests : IDisposable
             var prof = await db.Profiles.FindAsync(profileId);
             Assert.NotNull(prof);
             Assert.Equal(6, prof.TotalContainers);
-            Assert.Equal(60, prof.PendingCents);
+            Assert.Equal(48, prof.PendingCents);
         });
 
         // ══════════════════════════════════════════════════════════════════════
@@ -337,13 +337,13 @@ public class R2ExistingUserJourneySimulationTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, finalProfRes.StatusCode);
         var finalProf = await finalProfRes.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(6, finalProf.GetProperty("totalContainers").GetInt32());
-        Assert.Equal(60, finalProf.GetProperty("pendingCents").GetInt32());
+        Assert.Equal(48, finalProf.GetProperty("pendingCents").GetInt32());
 
         var finalHhRes = await _client.GetAsync($"/api/households/{householdId}");
         Assert.Equal(HttpStatusCode.OK, finalHhRes.StatusCode);
         var finalHh = await finalHhRes.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(6, finalHh.GetProperty("pendingContainers").GetInt32());
-        Assert.Equal(60, finalHh.GetProperty("pendingValueCents").GetInt32());
+        Assert.Equal(48, finalHh.GetProperty("pendingValueCents").GetInt32());
 
         snapshots.Add(await CaptureSnapshotAsync("Step 5", "Final Dashboard Refresh at /sort (Balance Verified)", email, profileId, householdId));
     }
@@ -458,9 +458,9 @@ public class R2ExistingUserJourneySimulationTests : IDisposable
 
         // 7 total containers: 3 aluminium + 2 pet + 2 glass
         Assert.Equal(7, confirmJson.GetProperty("totalContainers").GetInt32());
-        // First 20 containers get double credit launch bonus (10¢ each) -> 7 * 10 = 70¢
-        Assert.Equal(70, confirmJson.GetProperty("totalCents").GetInt32());
-        Assert.Equal(70, confirmJson.GetProperty("pendingCents").GetInt32());
+        // Standard 8¢ household rate -> 7 * 8 = 56¢
+        Assert.Equal(56, confirmJson.GetProperty("totalCents").GetInt32());
+        Assert.Equal(56, confirmJson.GetProperty("pendingCents").GetInt32());
 
         // Step 4: Verify Instant Profile & Household Credit Attachment in Database (0 orphan scans!)
         await _host.WithDbContextAsync(async db =>
@@ -480,7 +480,7 @@ public class R2ExistingUserJourneySimulationTests : IDisposable
             var hh = await db.Households.FindAsync(householdId);
             Assert.NotNull(hh);
             Assert.Equal(7, hh.PendingContainers);
-            Assert.Equal(70, hh.PendingValueCents);
+            Assert.Equal(56, hh.PendingValueCents);
             Assert.Equal(3, hh.Materials.Aluminium);
             Assert.Equal(2, hh.Materials.Pet);
             Assert.Equal(2, hh.Materials.Glass);
@@ -494,7 +494,7 @@ public class R2ExistingUserJourneySimulationTests : IDisposable
             var prof = await db.Profiles.FindAsync(profileId);
             Assert.NotNull(prof);
             Assert.Equal(7, prof.TotalContainers);
-            Assert.Equal(70, prof.PendingCents);
+            Assert.Equal(56, prof.PendingCents);
         });
 
         // Step 5: Returning to /sort displays updated balance immediately without manual re-entry
@@ -502,13 +502,13 @@ public class R2ExistingUserJourneySimulationTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, profCheck.StatusCode);
         var profCheckJson = await profCheck.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(7, profCheckJson.GetProperty("totalContainers").GetInt32());
-        Assert.Equal(70, profCheckJson.GetProperty("pendingCents").GetInt32());
+        Assert.Equal(56, profCheckJson.GetProperty("pendingCents").GetInt32());
 
         var hhCheck = await client.GetAsync($"/api/households/{householdId}");
         Assert.Equal(HttpStatusCode.OK, hhCheck.StatusCode);
         var hhCheckJson = await hhCheck.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(7, hhCheckJson.GetProperty("pendingContainers").GetInt32());
-        Assert.Equal(70, hhCheckJson.GetProperty("pendingValueCents").GetInt32());
+        Assert.Equal(56, hhCheckJson.GetProperty("pendingValueCents").GetInt32());
 
         client.Dispose();
     }

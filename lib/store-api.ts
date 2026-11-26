@@ -123,7 +123,7 @@ export async function getUserApi(): Promise<User | null> {
         barcode: s.barcode,
         containerName: s.containerName,
         material: s.material,
-        refundCents: typeof s.refundCents === "number" ? s.refundCents : 10,
+        refundCents: typeof s.refundCents === "number" ? s.refundCents : 8,
         status: s.status as "pending" | "in_route" | "settled",
         householdId: s.householdId,
         routeId: s.routeId,
@@ -144,7 +144,7 @@ export async function getUserApi(): Promise<User | null> {
   if (stillUnsynced.length > 0) {
     user.scans = [...stillUnsynced, ...user.scans];
     user.pendingCents += stillUnsynced.reduce(
-      (sum, s) => sum + (typeof s.refundCents === "number" ? s.refundCents : 10),
+      (sum, s) => sum + (typeof s.refundCents === "number" ? s.refundCents : 8),
       0,
     );
     user.totalContainers += stillUnsynced.length;
