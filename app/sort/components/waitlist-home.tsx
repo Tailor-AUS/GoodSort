@@ -37,6 +37,7 @@ import {
   canonicalSuburb,
 } from "@/lib/brisbane";
 import { apiUrl, authHeaders, isStoredAdmin, readStoredProfileId } from "@/lib/config";
+import { track } from "@/lib/analytics";
 import { formatCents, type User } from "@/lib/store";
 import { buildSorterLoyaltySummary, bucketScanMaterial } from "@/lib/sorter-loyalty";
 import { WaitlistCard } from "@/app/components/shared/waitlist-card";
@@ -149,6 +150,11 @@ export function WaitlistHome({
       .catch(() => {})
       .finally(() => setSyndicateLoading(false));
   }
+
+  useEffect(() => {
+    track("sort_dashboard_viewed", { suburb: household?.suburb ?? null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fire once per /sort visit
+  }, []);
 
   useEffect(() => {
     setFirstName(resolveFirstName(user));
@@ -876,17 +882,24 @@ export function WaitlistHome({
                     </div>
                     <ChevronRight className="w-4 h-4 text-white/60 shrink-0" />
                   </Link>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
+                    <Link
+                      href="/admin/live"
+                      className="min-h-[40px] px-2.5 py-2 rounded-xl bg-emerald-400/25 hover:bg-emerald-400/35 text-xs font-bold text-emerald-100 inline-flex items-center justify-center gap-1"
+                    >
+                      Live
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </Link>
                     <Link
                       href="/admin/users"
-                      className="min-h-[40px] px-3 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-xs font-bold text-white inline-flex items-center justify-center gap-1"
+                      className="min-h-[40px] px-2.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-xs font-bold text-white inline-flex items-center justify-center gap-1"
                     >
-                      Users CRM
+                      Users
                       <ChevronRight className="w-3.5 h-3.5" />
                     </Link>
                     <Link
                       href="/admin/runners"
-                      className="min-h-[40px] px-3 py-2 rounded-xl bg-emerald-400/25 hover:bg-emerald-400/35 text-xs font-bold text-emerald-100 inline-flex items-center justify-center gap-1"
+                      className="min-h-[40px] px-2.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-xs font-bold text-white inline-flex items-center justify-center gap-1"
                     >
                       Runners
                       <ChevronRight className="w-3.5 h-3.5" />

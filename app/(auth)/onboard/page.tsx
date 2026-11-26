@@ -66,6 +66,7 @@ export default function OnboardPage() {
 
   useEffect(() => {
     persistWaitlistFromUrl();
+    track("onboard_viewed");
     try { setSuburbHint(sessionStorage.getItem("goodsort_suburb_hint")); } catch { /* ignore */ }
     const hinted = readDayHint();
     if (hinted != null) { setCollectionDay(hinted); setDayAuto(true); }

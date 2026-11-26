@@ -33,6 +33,13 @@ export const TRACKED_EVENTS = [
   "bin_day_looked_up",
   "points_swap_voted",
   "cash_payout_selected",
+  "camera_denied",
+  "scan_vision_ok",
+  "scan_vision_empty",
+  "scan_vision_error",
+  "scan_barcode_ok",
+  "onboard_viewed",
+  "sort_dashboard_viewed",
 ] as const;
 
 export type TrackedEvent = (typeof TRACKED_EVENTS)[number];

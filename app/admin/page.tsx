@@ -305,7 +305,20 @@ export default function AdminPage() {
   return (
     <div className="min-h-dvh bg-slate-50">
       <div className="max-w-4xl mx-auto px-6 py-8">
-        <h1 className="text-2xl font-display font-extrabold text-slate-900 mb-6">Admin Dashboard</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <h1 className="text-2xl font-display font-extrabold text-slate-900">Admin Dashboard</h1>
+          <Link
+            href="/admin/live"
+            className="inline-flex items-center gap-2 min-h-[44px] px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-white text-xs font-extrabold shadow-sm border border-emerald-500/40"
+          >
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400" />
+            </span>
+            Live Interactions Radar
+            <ChevronRight className="w-3.5 h-3.5 text-emerald-400" />
+          </Link>
+        </div>
         {denied && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-[13px] text-amber-900 mb-6">
             This login is not an admin. After the waitlist ships, set <code className="font-mono">ADMIN_SEED_EMAIL</code> on the API to your email and sign in once — or use the one-shot bootstrap secret. Zeros below are not household counts.
@@ -788,6 +801,14 @@ export default function AdminPage() {
 
         {/* Actions */}
         <div className="space-y-3">
+          <Link href="/admin/live"
+            className="flex items-center gap-3 w-full bg-slate-950 text-white rounded-xl p-4 border border-emerald-500/40 hover:bg-slate-900 transition-colors text-left">
+            <Activity className="w-5 h-5 text-emerald-400" />
+            <div>
+              <p className="text-[14px] font-bold text-white">Live Interactions Radar (Real-Time)</p>
+              <p className="text-[12px] text-slate-300">Watch visitors, OTP signups, camera opens, AI Vision calls, scans &amp; drop-offs live every 3 seconds</p>
+            </div>
+          </Link>
           <Link href="/marketplace"
             className="flex items-center gap-3 w-full bg-white rounded-xl p-4 border border-slate-200 hover:border-green-300 transition-colors text-left">
             <MapPin className="w-5 h-5 text-emerald-600" />

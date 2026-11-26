@@ -1816,6 +1816,8 @@ var waitlistEvents = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     "invite_whatsapp", "invite_sms", "invite_share", "invite_landed", "suburb_picked",
     "bin_day_looked_up",
     "points_swap_voted", "cash_payout_selected",
+    "camera_denied", "scan_vision_ok", "scan_vision_empty", "scan_vision_error",
+    "scan_barcode_ok", "onboard_viewed", "sort_dashboard_viewed",
 };
 app.MapPost("/api/growth/events", async (WaitlistEventRequest req, GoodSortDbContext db, ILoggerFactory logFactory) =>
 {
@@ -3635,6 +3637,545 @@ app.MapGet("/api/admin/activity", async (int? limit, GoodSortDbContext db) =>
         .ToList();
 
     return Results.Ok(new { items = ordered });
+})
+    .RequireAuthorization(AuthHelpers.AdminPolicy);
+
+// ── Admin: Real-Time Interactions Radar (/admin/live) — unified stream, pulse KPIs & per-tester journeys ──
+app.MapGet("/api/admin/live-feed", async (int? minutes, int? limit, GoodSortDbContext db) =>
+{
+    var now = DateTime.UtcNow;
+    var windowMinutes = Math.Clamp(minutes ?? 120, 5, 1440);
+    var maxItems = Math.Clamp(limit ?? 150, 20, 300);
+    var since = now.AddMinutes(-windowMinutes);
+    var since15m = now.AddMinutes(-15);
+    var since5m = now.AddMinutes(-5);
+    const string syntheticGuardEmail = "acs-guard@thegoodsort.org";
+
+    var growthEvents = await db.GrowthEvents
+        .AsNoTracking()
+        .Where(e => e.CreatedAt >= since)
+        .OrderByDescending(e => e.CreatedAt)
+        .Take(400)
+        .ToListAsync();
+
+    var otpCodes = await db.OtpCodes
+        .AsNoTracking()
+        .Where(o => o.CreatedAt >= since && o.Email != syntheticGuardEmail)
+        .OrderByDescending(o => o.CreatedAt)
+        .Take(200)
+        .ToListAsync();
+
+    var recentProfiles = await db.Profiles
+        .AsNoTracking()
+        .Include(p => p.Household)
+        .Where(p => !p.IsAdmin)
+        .OrderByDescending(p => p.CreatedAt)
+        .Take(60)
+        .ToListAsync();
+
+    var profileById = recentProfiles.ToDictionary(p => p.Id);
+    var profileByEmail = recentProfiles
+        .Where(p => !string.IsNullOrWhiteSpace(p.Email))
+        .GroupBy(p => p.Email!.Trim().ToLowerInvariant())
+        .ToDictionary(g => g.Key, g => g.First());
+
+    var visionCalls = await db.VisionCalls
+        .AsNoTracking()
+        .Where(v => v.CreatedAt >= since)
+        .OrderByDescending(v => v.CreatedAt)
+        .Take(200)
+        .ToListAsync();
+
+    var scans = await db.Scans
+        .AsNoTracking()
+        .Include(s => s.User)
+            .ThenInclude(u => u!.Household)
+        .Where(s => s.CreatedAt >= since)
+        .OrderByDescending(s => s.CreatedAt)
+        .Take(200)
+        .ToListAsync();
+
+    var households = await db.Households
+        .AsNoTracking()
+        .Where(h => h.CreatedAt >= since)
+        .OrderByDescending(h => h.CreatedAt)
+        .Take(100)
+        .ToListAsync();
+
+    var bags = await db.SortedBags
+        .AsNoTracking()
+        .Include(b => b.Household)
+        .Where(b => b.CreatedAt >= since)
+        .OrderByDescending(b => b.CreatedAt)
+        .Take(100)
+        .ToListAsync();
+
+    var cashouts = await db.CashoutRequests
+        .AsNoTracking()
+        .Include(c => c.User)
+            .ThenInclude(u => u!.Household)
+        .Where(c => c.CreatedAt >= since)
+        .OrderByDescending(c => c.CreatedAt)
+        .Take(100)
+        .ToListAsync();
+
+    // Also pull historical recent scans & vision calls for our top 25 testers so their journey cards stay rich across windows.
+    var topTesterIds = recentProfiles.Take(25).Select(p => p.Id).ToList();
+    var testerRecentScans = topTesterIds.Count == 0
+        ? new List<Scan>()
+        : await db.Scans
+            .AsNoTracking()
+            .Where(s => topTesterIds.Contains(s.UserId))
+            .OrderByDescending(s => s.CreatedAt)
+            .Take(250)
+            .ToListAsync();
+    var testerRecentVision = topTesterIds.Count == 0
+        ? new List<VisionCall>()
+        : await db.VisionCalls
+            .AsNoTracking()
+            .Where(v => v.UserId.HasValue && topTesterIds.Contains(v.UserId.Value))
+            .OrderByDescending(v => v.CreatedAt)
+            .Take(200)
+            .ToListAsync();
+    var testerRecentBags = topTesterIds.Count == 0
+        ? new List<SortedBag>()
+        : await db.SortedBags
+            .AsNoTracking()
+            .Where(b => topTesterIds.Contains(b.CreatorProfileId) && b.Status != "cancelled")
+            .OrderByDescending(b => b.CreatedAt)
+            .Take(100)
+            .ToListAsync();
+    var testerOtps = await db.OtpCodes
+        .AsNoTracking()
+        .Where(o => o.Email != syntheticGuardEmail)
+        .OrderByDescending(o => o.CreatedAt)
+        .Take(150)
+        .ToListAsync();
+
+    // ── Build unified live stream ──
+    var stream = new List<(DateTime Ts, object Item)>();
+
+    static (string Kind, string Severity, string Title) DescribeGrowthEvent(string name) => name switch
+    {
+        "landing_viewed" => ("page", "info", "Viewed homepage"),
+        "suburb_page_viewed" => ("page", "info", "Viewed suburb page"),
+        "map_viewed" => ("page", "info", "Opened Brisbane map"),
+        "sort_dashboard_viewed" => ("page", "info", "Opened /sort dashboard"),
+        "onboard_viewed" => ("page", "info", "Opened address onboarding"),
+        "waitlist_cta" => ("cta", "info", "Tapped primary CTA"),
+        "suburb_picked" => ("cta", "info", "Picked suburb"),
+        "bin_day_looked_up" => ("cta", "info", "Looked up bin day"),
+        "scan_camera_opened" => ("camera", "info", "Opened scanner camera"),
+        "camera_denied" => ("error", "error", "Camera permission denied"),
+        "scan_captured" => ("camera", "info", "Captured container"),
+        "scan_vision_ok" => ("vision", "success", "AI identified container"),
+        "scan_vision_empty" => ("vision", "warn", "AI found 0 containers"),
+        "scan_vision_error" => ("error", "error", "Photo scan API error"),
+        "scan_barcode_ok" => ("scan", "success", "Barcode scan matched"),
+        "scan_credited" => ("scan", "success", "Scan credited"),
+        "first_scan_credited" => ("scan", "success", "First scan activated!"),
+        "otp_sent" => ("otp", "info", "Requested login code"),
+        "otp_verified" => ("otp", "success", "Verified login code"),
+        "household_joined" => ("household", "success", "Saved home address"),
+        "payout_details_saved" => ("household", "success", "Saved PayID / bank details"),
+        "bag_tagged" => ("bag", "success", "Tagged home bag"),
+        "flyer_printed" => ("cta", "info", "Opened printable flyer"),
+        "invite_whatsapp" => ("cta", "success", "Shared invite via WhatsApp"),
+        "invite_sms" => ("cta", "success", "Shared invite via SMS"),
+        "invite_share" => ("cta", "success", "Copied / shared street link"),
+        "invite_landed" => ("page", "info", "Landed via neighbour invite"),
+        "points_swap_voted" => ("cta", "info", "Voted for points swap"),
+        "cash_payout_selected" => ("cta", "info", "Selected 8¢ cash payouts"),
+        _ => ("page", "info", name.Replace('_', ' ')),
+    };
+
+    foreach (var e in growthEvents)
+    {
+        var (kind, severity, title) = DescribeGrowthEvent(e.Name);
+        var detailParts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(e.Path)) detailParts.Add(e.Path);
+        if (!string.IsNullOrWhiteSpace(e.Suburb)) detailParts.Add(e.Suburb);
+        stream.Add((e.CreatedAt, new
+        {
+            id = $"evt-{e.Id}",
+            kind,
+            severity,
+            timestamp = e.CreatedAt,
+            actor = "Visitor",
+            userId = (Guid?)null,
+            suburb = e.Suburb,
+            path = e.Path,
+            title,
+            detail = detailParts.Count > 0 ? string.Join(" · ", detailParts) : e.Name,
+        }));
+    }
+
+    foreach (var o in otpCodes)
+    {
+        var emailKey = o.Email.Trim().ToLowerInvariant();
+        profileByEmail.TryGetValue(emailKey, out var matchedProfile);
+        var state = o.Used ? "verified" : (o.ExpiresAt < now ? "expired" : "waiting for code");
+        var severity = o.Used ? "success" : (o.Attempts >= 3 ? "warn" : "info");
+        stream.Add((o.CreatedAt, new
+        {
+            id = $"otp-{o.Id}",
+            kind = "otp",
+            severity,
+            timestamp = o.CreatedAt,
+            actor = o.Email,
+            userId = matchedProfile?.Id,
+            suburb = BinDayService.CanonicalSuburb(matchedProfile?.Household?.Suburb),
+            path = (string?)null,
+            title = o.Used ? "OTP verified" : "OTP emailed",
+            detail = $"{o.Email} · {state}" + (o.Attempts > 0 ? $" · {o.Attempts} {(o.Attempts == 1 ? "attempt" : "attempts")}" : ""),
+        }));
+    }
+
+    foreach (var u in recentProfiles.Where(p => p.CreatedAt >= since))
+    {
+        var suburb = BinDayService.CanonicalSuburb(u.Household?.Suburb);
+        var missingAddress = u.Household is null || suburb is null;
+        stream.Add((u.CreatedAt, new
+        {
+            id = $"signup-{u.Id}",
+            kind = "signup",
+            severity = "success",
+            timestamp = u.CreatedAt,
+            actor = u.Email ?? u.Name,
+            userId = (Guid?)u.Id,
+            suburb,
+            path = (string?)null,
+            title = "New user signed up",
+            detail = $"{u.Name}" + (!string.IsNullOrWhiteSpace(u.Email) ? $" ({u.Email})" : "") + (missingAddress ? " · address pending" : $" · {suburb}"),
+        }));
+    }
+
+    foreach (var v in visionCalls)
+    {
+        Profile? caller = null;
+        if (v.UserId.HasValue) profileById.TryGetValue(v.UserId.Value, out caller);
+        var severity = !v.Success ? "error" : (v.ContainerCount == 0 ? "warn" : "success");
+        var title = !v.Success
+            ? $"AI Vision failed ({v.Provider})"
+            : $"AI Vision · {v.ContainerCount} {(v.ContainerCount == 1 ? "can" : "cans")}";
+        var detail = !v.Success
+            ? $"{v.Provider} · {v.DurationMs}ms · {v.ErrorSummary ?? "unknown error"}"
+            : $"{v.Provider} · {v.DurationMs}ms" + (caller?.Email is not null ? $" · {caller.Email}" : "");
+        stream.Add((v.CreatedAt, new
+        {
+            id = $"vision-{v.Id}",
+            kind = v.Success ? "vision" : "error",
+            severity,
+            timestamp = v.CreatedAt,
+            actor = caller?.Email ?? caller?.Name ?? "Scanner user",
+            userId = v.UserId,
+            suburb = BinDayService.CanonicalSuburb(caller?.Household?.Suburb),
+            path = "/scan",
+            title,
+            detail,
+        }));
+    }
+
+    foreach (var s in scans)
+    {
+        var suburb = BinDayService.CanonicalSuburb(s.User?.Household?.Suburb);
+        var label = string.IsNullOrWhiteSpace(s.ContainerName) ? "Eligible container" : s.ContainerName;
+        var via = string.Equals(s.Barcode, "PHOTO", StringComparison.OrdinalIgnoreCase) ? "photo" : $"barcode {s.Barcode}";
+        stream.Add((s.CreatedAt, new
+        {
+            id = $"scan-{s.Id}",
+            kind = "scan",
+            severity = "success",
+            timestamp = s.CreatedAt,
+            actor = s.User?.Email ?? s.User?.Name ?? "Sorter",
+            userId = (Guid?)s.UserId,
+            suburb,
+            path = "/scan",
+            title = $"Scan credited +{s.RefundCents}¢",
+            detail = $"{label} ({s.Material}) via {via}" + (s.HouseholdId is null ? " · orphan (no address yet)" : ""),
+        }));
+    }
+
+    foreach (var h in households)
+    {
+        var suburb = BinDayService.CanonicalSuburb(h.Suburb);
+        stream.Add((h.CreatedAt, new
+        {
+            id = $"hh-{h.Id}",
+            kind = "household",
+            severity = "success",
+            timestamp = h.CreatedAt,
+            actor = h.Name,
+            userId = (Guid?)null,
+            suburb,
+            path = "/onboard",
+            title = h.Type == "unit_complex" ? "Unit complex waitlisted" : "Household onboarded",
+            detail = $"{h.Address}" + (h.PendingContainers > 0 ? $" · {h.PendingContainers} backfilled" : ""),
+        }));
+    }
+
+    foreach (var b in bags)
+    {
+        var suburb = BinDayService.CanonicalSuburb(b.Household?.Suburb);
+        profileById.TryGetValue(b.CreatorProfileId, out var creator);
+        stream.Add((b.CreatedAt, new
+        {
+            id = $"bag-{b.Id}",
+            kind = "bag",
+            severity = "success",
+            timestamp = b.CreatedAt,
+            actor = creator?.Email ?? creator?.Name ?? b.Household?.Name ?? "Household",
+            userId = b.CreatorProfileId != Guid.Empty ? (Guid?)b.CreatorProfileId : null,
+            suburb,
+            path = "/bags",
+            title = $"Bag tagged ({b.Code})",
+            detail = $"{b.Stream} · {b.DeclaredContainers} cans · {b.Status}",
+        }));
+    }
+
+    foreach (var c in cashouts)
+    {
+        var suburb = BinDayService.CanonicalSuburb(c.User?.Household?.Suburb);
+        stream.Add((c.CreatedAt, new
+        {
+            id = $"cashout-{c.Id}",
+            kind = "cashout",
+            severity = "success",
+            timestamp = c.CreatedAt,
+            actor = c.User?.Email ?? c.User?.Name ?? "Member",
+            userId = (Guid?)c.UserId,
+            suburb,
+            path = "/sort",
+            title = $"Cashout ${(c.AmountCents / 100.0):0.00}",
+            detail = $"{c.PayoutMethod} · {c.Status}",
+        }));
+    }
+
+    var orderedStream = stream
+        .OrderByDescending(x => x.Ts)
+        .Take(maxItems)
+        .Select(x => x.Item)
+        .ToList();
+
+    // ── Live KPIs & Funnel for selected window ──
+    var evtCounts = growthEvents
+        .GroupBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+    int EvtCount(string name) => evtCounts.TryGetValue(name, out var c) ? c : 0;
+
+    var visionSucceeded = visionCalls.Count(v => v.Success);
+    var visionFailed = visionCalls.Count(v => !v.Success);
+    var avgVisionMs = visionCalls.Count > 0 ? (int)Math.Round(visionCalls.Average(v => v.DurationMs)) : 0;
+    var eventsLast15m = growthEvents.Count(e => e.CreatedAt >= since15m)
+        + otpCodes.Count(o => o.CreatedAt >= since15m)
+        + visionCalls.Count(v => v.CreatedAt >= since15m)
+        + scans.Count(s => s.CreatedAt >= since15m)
+        + households.Count(h => h.CreatedAt >= since15m);
+    var interactionsLast5m = growthEvents.Count(e => e.CreatedAt >= since5m)
+        + otpCodes.Count(o => o.CreatedAt >= since5m)
+        + visionCalls.Count(v => v.CreatedAt >= since5m)
+        + scans.Count(s => s.CreatedAt >= since5m);
+
+    var pulse = new
+    {
+        eventsLast15m,
+        interactionsLast5m,
+        pageViews = EvtCount("landing_viewed") + EvtCount("suburb_page_viewed") + EvtCount("map_viewed") + EvtCount("sort_dashboard_viewed"),
+        ctaTaps = EvtCount("waitlist_cta"),
+        otpsSent = otpCodes.Count,
+        otpsVerified = otpCodes.Count(o => o.Used),
+        newSignups = recentProfiles.Count(p => p.CreatedAt >= since),
+        cameraOpens = EvtCount("scan_camera_opened"),
+        cameraDenied = EvtCount("camera_denied"),
+        scansCaptured = EvtCount("scan_captured"),
+        visionCalls = visionCalls.Count,
+        visionSucceeded,
+        visionFailed,
+        avgVisionMs,
+        scansCredited = scans.Count,
+        householdsCreated = households.Count,
+        bagsTagged = bags.Count,
+    };
+
+    var funnel = new[]
+    {
+        new { key = "views", label = "Page views", count = pulse.pageViews },
+        new { key = "cta", label = "CTA tapped", count = pulse.ctaTaps },
+        new { key = "otp_sent", label = "OTP sent", count = Math.Max(pulse.otpsSent, EvtCount("otp_sent")) },
+        new { key = "otp_verified", label = "OTP verified", count = Math.Max(pulse.otpsVerified, EvtCount("otp_verified")) },
+        new { key = "camera", label = "Camera opened", count = pulse.cameraOpens },
+        new { key = "captured", label = "Photo / barcode", count = Math.Max(pulse.scansCaptured, pulse.visionCalls) },
+        new { key = "credited", label = "Scan credited", count = Math.Max(pulse.scansCredited, EvtCount("scan_credited")) },
+        new { key = "address", label = "Address saved", count = Math.Max(pulse.householdsCreated, EvtCount("household_joined")) },
+        new { key = "payout", label = "PayID / bank saved", count = EvtCount("payout_details_saved") },
+    };
+
+    var topSuburbs = growthEvents
+        .Where(e => !string.IsNullOrWhiteSpace(e.Suburb))
+        .GroupBy(e => e.Suburb!)
+        .Select(g => new { suburb = g.Key, events = g.Count() })
+        .OrderByDescending(x => x.events)
+        .Take(10)
+        .ToList();
+
+    // ── Per-tester live journeys (profiles + unverified OTP leads) ──
+    var otpsByEmail = testerOtps
+        .GroupBy(o => o.Email.Trim().ToLowerInvariant())
+        .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.CreatedAt).ToList());
+    var scansByUser = testerRecentScans
+        .GroupBy(s => s.UserId)
+        .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.CreatedAt).ToList());
+    var visionByUser = testerRecentVision
+        .Where(v => v.UserId.HasValue)
+        .GroupBy(v => v.UserId!.Value)
+        .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.CreatedAt).ToList());
+    var bagsByUser = testerRecentBags
+        .GroupBy(b => b.CreatorProfileId)
+        .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.CreatedAt).ToList());
+
+    var testerEntries = new List<(DateTime LastSeen, object Card)>();
+    var seenEmails = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    foreach (var p in recentProfiles.Take(25))
+    {
+        var emailNorm = (p.Email ?? "").Trim().ToLowerInvariant();
+        if (!string.IsNullOrEmpty(emailNorm)) seenEmails.Add(emailNorm);
+
+        otpsByEmail.TryGetValue(emailNorm, out var pOtps);
+        scansByUser.TryGetValue(p.Id, out var pScans);
+        visionByUser.TryGetValue(p.Id, out var pVision);
+        bagsByUser.TryGetValue(p.Id, out var pBags);
+
+        var suburb = BinDayService.CanonicalSuburb(p.Household?.Suburb);
+        var hasAddress = p.Household is not null && !string.IsNullOrWhiteSpace(p.Household.Address) && suburb is not null;
+        var hasPayout = !string.IsNullOrWhiteSpace(p.PayIdValue)
+            || (!string.IsNullOrWhiteSpace(p.BankBsb) && !string.IsNullOrWhiteSpace(p.BankAccountNumber));
+        var hasScan = p.TotalContainers > 0 || (pScans?.Count ?? 0) > 0;
+        var hasBag = (pBags?.Count ?? 0) > 0;
+
+        var steps = new List<(DateTime Ts, string Label, string Tone)>();
+        if (pOtps is not null)
+        {
+            foreach (var o in pOtps.Take(2))
+                steps.Add((o.CreatedAt, o.Used ? "OTP verified" : "OTP emailed", o.Used ? "ok" : "info"));
+        }
+        steps.Add((p.CreatedAt, "Account created", "ok"));
+        if (p.Household is not null)
+            steps.Add((p.Household.CreatedAt, $"Saved address ({suburb ?? p.Household.Suburb ?? "Brisbane"})", "ok"));
+        if (pVision is not null)
+        {
+            foreach (var v in pVision.Take(3))
+                steps.Add((v.CreatedAt, v.Success ? $"AI Vision: {v.ContainerCount} can(s) ({v.DurationMs}ms)" : $"AI Vision error: {v.ErrorSummary ?? "failed"}", v.Success ? "ok" : "err"));
+        }
+        if (pScans is not null)
+        {
+            foreach (var s in pScans.Take(3))
+                steps.Add((s.CreatedAt, $"Credited +{s.RefundCents}¢ · {(string.IsNullOrWhiteSpace(s.ContainerName) ? s.Material : s.ContainerName)}", "ok"));
+        }
+        if (pBags is not null)
+        {
+            foreach (var b in pBags.Take(2))
+                steps.Add((b.CreatedAt, $"Tagged bag {b.Code} ({b.DeclaredContainers} cans)", "ok"));
+        }
+
+        var lastSeen = steps.Count > 0 ? steps.Max(x => x.Ts) : p.CreatedAt;
+        var status = hasScan && hasAddress
+            ? "activated"
+            : hasScan
+                ? "scanned_no_address"
+                : hasAddress
+                    ? "address_no_scan"
+                    : "verified_no_scan";
+
+        testerEntries.Add((lastSeen, new
+        {
+            key = p.Id.ToString(),
+            userId = (Guid?)p.Id,
+            email = p.Email,
+            name = p.Name,
+            suburb,
+            status,
+            milestones = new
+            {
+                otpSent = true,
+                otpVerified = true,
+                scanned = hasScan,
+                hasAddress,
+                hasPayout,
+                hasBag,
+            },
+            otpAttempts = pOtps?.Sum(o => o.Attempts) ?? 0,
+            scansCount = p.TotalContainers,
+            pendingCents = p.PendingCents,
+            visionCalls = pVision?.Count ?? 0,
+            visionErrors = pVision?.Count(v => !v.Success) ?? 0,
+            createdAt = p.CreatedAt,
+            lastSeenAt = lastSeen,
+            recentSteps = steps
+                .OrderByDescending(x => x.Ts)
+                .Take(6)
+                .Select(x => new { timestamp = x.Ts, label = x.Label, tone = x.Tone })
+                .ToList(),
+        }));
+    }
+
+    // Include unverified OTP leads (people who entered their email but haven't verified yet!)
+    foreach (var kv in otpsByEmail)
+    {
+        if (seenEmails.Contains(kv.Key)) continue;
+        var latest = kv.Value[0];
+        if (latest.CreatedAt < now.AddHours(-24)) continue;
+        testerEntries.Add((latest.CreatedAt, new
+        {
+            key = $"otp-{latest.Id}",
+            userId = (Guid?)null,
+            email = latest.Email,
+            name = latest.Email.Split('@')[0],
+            suburb = (string?)null,
+            status = "otp_pending",
+            milestones = new
+            {
+                otpSent = true,
+                otpVerified = latest.Used,
+                scanned = false,
+                hasAddress = false,
+                hasPayout = false,
+                hasBag = false,
+            },
+            otpAttempts = kv.Value.Sum(o => o.Attempts),
+            scansCount = 0,
+            pendingCents = 0,
+            visionCalls = 0,
+            visionErrors = 0,
+            createdAt = latest.CreatedAt,
+            lastSeenAt = latest.CreatedAt,
+            recentSteps = kv.Value.Take(3)
+                .Select(o => new
+                {
+                    timestamp = o.CreatedAt,
+                    label = o.Used ? "OTP verified" : (o.ExpiresAt < now ? "OTP expired without verify" : "OTP emailed — waiting for 6-digit code"),
+                    tone = o.Used ? "ok" : "warn",
+                })
+                .ToList(),
+        }));
+    }
+
+    var testers = testerEntries
+        .OrderByDescending(x => x.LastSeen)
+        .Take(25)
+        .Select(x => x.Card)
+        .ToList();
+
+    return Results.Ok(new
+    {
+        serverTimeUtc = now,
+        windowMinutes,
+        pulse,
+        funnel,
+        topSuburbs,
+        testers,
+        stream = orderedStream,
+    });
 })
     .RequireAuthorization(AuthHelpers.AdminPolicy);
 
