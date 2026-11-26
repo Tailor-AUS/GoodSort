@@ -24,13 +24,17 @@ export default function FlyerPage() {
 
   useEffect(() => {
     setSignedIn(hasValidToken());
-    setProfileId(readStoredProfileId());
     if (typeof window !== "undefined") {
-      const q = new URLSearchParams(window.location.search).get("suburb");
+      const params = new URLSearchParams(window.location.search);
+      const r = params.get("r")?.trim() || undefined;
+      setProfileId(r || readStoredProfileId());
+      const q = params.get("suburb");
       if (q) {
         const match = findSuburb(q);
         if (match) setSelectedSlug(match.slug);
       }
+    } else {
+      setProfileId(readStoredProfileId());
     }
   }, []);
 

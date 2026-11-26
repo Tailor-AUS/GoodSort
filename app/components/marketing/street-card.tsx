@@ -20,7 +20,11 @@ export function StreetCard({ suburb, slug }: { suburb: string; slug: string }) {
   const [url, setUrl] = useState("");
 
   useEffect(() => {
-    const target = streetInviteUrl({ suburb: slug, profileId: readStoredProfileId() });
+    const urlParamR =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("r")?.trim() || undefined
+        : undefined;
+    const target = streetInviteUrl({ suburb: slug, profileId: urlParamR || readStoredProfileId() });
     setUrl(target);
     QRCode.toDataURL(target, {
       // Print-grade settings. Q tolerates ~25% damage, which a letterbox card
@@ -47,35 +51,40 @@ export function StreetCard({ suburb, slug }: { suburb: string; slug: string }) {
 
       <div className="no-print mx-auto max-w-lg px-6 pt-8 pb-4 text-center">
         <p className="text-[13px] text-slate-500">
-          Four cards per A4. Print, cut, and letterbox them in {suburb}.
+          Six cards per A4. Print, cut, and share them across {suburb}.
         </p>
         <button
           type="button"
           onClick={() => window.print()}
           className="mt-3 rounded-xl bg-gradient-to-b from-green-500 to-green-600 px-5 py-3 text-white font-bold text-[15px]"
         >
-          Print
+          Print 6-up A4 Sheet
         </button>
         {url && <p className="mt-3 break-all text-[11px] text-slate-400">{url}</p>}
       </div>
 
-      <div className="mx-auto grid max-w-[210mm] grid-cols-1 gap-4 p-4 sm:grid-cols-2">
-        {[0, 1, 2, 3].map((i) => (
+      <div className="mx-auto grid max-w-[210mm] grid-cols-1 gap-3.5 p-4 sm:grid-cols-2">
+        {[0, 1, 2, 3, 4, 5].map((i) => (
           <div
             key={i}
-            className="card flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5"
+            className="card flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4"
           >
             <div className="flex-1">
-              <div className="mb-3"><Logo size="sm" /></div>
-              <p className="font-display text-[19px] font-extrabold leading-tight text-slate-950">
+              <div className="mb-2.5 flex items-center gap-2">
+                <Logo size="sm" />
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-900">
+                  10¢ / Can
+                </span>
+              </div>
+              <p className="font-display text-[18px] font-extrabold leading-tight text-slate-950">
                 Scan, sort,<br />skip the depot.
               </p>
-              <p className="mt-2 text-[12px] leading-snug text-slate-600">
+              <p className="mt-1.5 text-[12px] leading-snug text-slate-600">
                 Scan a can, earn 10¢. We collect from your kerb — you never drive
                 to a depot.
               </p>
-              <p className="mt-2 text-[11px] font-semibold text-violet-800">
-                Starting in {suburb}
+              <p className="mt-1.5 text-[11px] font-semibold text-violet-800">
+                Starting in {suburb} · thegoodsort.org
               </p>
               <p className="mt-1 text-[9px] leading-snug text-slate-400">
                 10¢ sorting credit paid after pickup and depot verification.
@@ -83,9 +92,9 @@ export function StreetCard({ suburb, slug }: { suburb: string; slug: string }) {
             </div>
             {qr ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={qr} alt={`Scan to join in ${suburb}`} className="h-[112px] w-[112px] shrink-0" />
+              <img src={qr} alt={`Scan to join in ${suburb}`} className="h-[108px] w-[108px] shrink-0" />
             ) : (
-              <div className="h-[112px] w-[112px] shrink-0 rounded bg-slate-100" />
+              <div className="h-[108px] w-[108px] shrink-0 rounded bg-slate-100" />
             )}
           </div>
         ))}
